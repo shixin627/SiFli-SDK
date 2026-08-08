@@ -881,6 +881,11 @@ void refersh_battery(uint8_t battery_level)
         refresh_charge_icon();
         set_battery_image(p_app_clock_main->instruction_list_battery,
                           battery_level);
+        /* 頂部面板的控制中心頁也有一組電量顯示，一併刷新 */
+        {
+            extern void lv_top_panel_refresh_battery(void);
+            lv_top_panel_refresh_battery();
+        }
     }
     else
     {

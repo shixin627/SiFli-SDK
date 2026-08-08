@@ -51,6 +51,11 @@ static lv_obj_t *s_media_page[MAX_SYNCED_DEVICES];
 static int s_media_count = 0;
 
 static lv_obj_t *s_dev_strip = NULL;   /* 設備列的觸控攔截條（吃掉 press，不穿透）*/
+/* 控制中心那頁的頂部顯示電量（founder 2026-08-07：從「手錶」改回以前
+   通知列表上那組電量圖 + %）。自己建一組而不是重用錶面那組 ——
+   錶面那組在面板底下，滑鼠模式時會被不透明的滑鼠圖層蓋住。 */
+static lv_obj_t *s_batt_img = NULL;
+static lv_obj_t *s_batt_label = NULL;
 static lv_obj_t *s_dev_dot = NULL;
 static lv_obj_t *s_dev_label = NULL;
 static lv_obj_t *s_arrow_left = NULL;
@@ -123,6 +128,50 @@ static int last_device_page(void)
     return (s_media_count > 0) ? (PAGE_MEDIA_0 + s_media_count - 1) : PAGE_MESSAGE;
 }
 
+/* 與錶面那組同一套分段（見 app_clock_main.c 的 set_battery_image） */
+static const void *panel_batt_img_for(uint8_t lv)
+{
+    if (lv < 5)  return APP_ELC_5;
+    if (lv < 20) return APP_ELC_20;
+    if (lv < 40) return APP_ELC_40;
+    if (lv < 60) return APP_ELC_60;
+    if (lv < 80) return APP_ELC_80;
+    return APP_ELC_100;
+}
+
+static void update_battery_ui(bool show)
+{
+    if (s_batt_img == NULL || !lv_obj_is_valid(s_batt_img)) return;
+    if (!show)
+    {
+        lv_obj_add_flag(s_batt_img, LV_OBJ_FLAG_HIDDEN);
+        if (s_batt_label && lv_obj_is_valid(s_batt_label))
+            lv_obj_add_flag(s_batt_label, LV_OBJ_FLAG_HIDDEN);
+        return;
+    }
+    uint8_t lv_pct = SkaiWatchSys.battery_level_value;
+    lv_img_set_src(s_batt_img, panel_batt_img_for(lv_pct));
+    lv_obj_clear_flag(s_batt_img, LV_OBJ_FLAG_HIDDEN);
+    if (s_batt_label && lv_obj_is_valid(s_batt_label))
+    {
+        char buf[8];
+        rt_snprintf(buf, sizeof(buf), "%d%%", (int)lv_pct);
+        lv_label_set_text(s_batt_label, buf);
+        /* 充電中 = 綠字，跟錶面那組一致 */
+        lv_obj_set_style_text_color(s_batt_label,
+                                    SkaiWatchSys.charger_status == InCharging
+                                        ? lv_color_hex(0x00CC00)
+                                        : lv_color_hex(0xFFFFFF), 0);
+        lv_obj_clear_flag(s_batt_label, LV_OBJ_FLAG_HIDDEN);
+    }
+}
+
+void lv_top_panel_refresh_battery(void)
+{
+    if (s_pager == NULL || !lv_obj_is_valid(s_pager)) return;
+    if (current_page() == PAGE_CONTROL) update_battery_ui(true);
+}
+
 static void update_device_bar(void)
 {
     int cnt = hid_mouse_device_count();
@@ -138,6 +187,10 @@ static void update_device_bar(void)
     else
         name = (idx >= 0) ? hid_mouse_device_name(idx) : NULL;
 
+    /* 控制中心 = 手錶自己，頂部改顯示電量，設備名/燈號讓位 */
+    update_battery_ui(is_watch);
+    if (is_watch)
+        name = NULL;
     if (s_dev_label && lv_obj_is_valid(s_dev_label))
     {
         if (name && name[0])
@@ -592,6 +645,7 @@ void lv_top_panel_deinit(void)
     s_cell_control = NULL;
     s_cell_message = NULL;
     s_dev_strip = NULL;
+    s_batt_img = s_batt_label = NULL;
     s_dev_dot = s_dev_label = s_arrow_left = s_arrow_right = NULL;
     s_strip_pressing = false;
     s_btn = s_btn_img = s_btn_label = NULL;
@@ -664,6 +718,18 @@ lv_obj_t *lv_top_panel_create(lv_obj_t *tile, lv_obj_t *layer_parent)
     lv_obj_clear_flag(s_dev_dot, LV_OBJ_FLAG_CLICKABLE);
     lv_obj_clear_flag(s_dev_dot, LV_OBJ_FLAG_SCROLLABLE);
     lv_obj_add_flag(s_dev_dot, LV_OBJ_FLAG_HIDDEN);
+
+    s_batt_img = lv_img_create(tile);
+    lv_obj_align(s_batt_img, LV_ALIGN_TOP_MID, 30, 26);
+    lv_obj_clear_flag(s_batt_img, LV_OBJ_FLAG_CLICKABLE);
+    lv_obj_add_flag(s_batt_img, LV_OBJ_FLAG_HIDDEN);
+
+    s_batt_label = lv_label_create(tile);
+    lv_obj_set_style_text_align(s_batt_label, LV_TEXT_ALIGN_CENTER, 0);
+    lv_obj_set_style_text_color(s_batt_label, lv_color_white(), 0);
+    lv_obj_align(s_batt_label, LV_ALIGN_TOP_MID, -30, 22);
+    lv_obj_clear_flag(s_batt_label, LV_OBJ_FLAG_CLICKABLE);
+    lv_obj_add_flag(s_batt_label, LV_OBJ_FLAG_HIDDEN);
 
     s_dev_label = lv_label_create(tile);
     lv_obj_set_width(s_dev_label, 200);

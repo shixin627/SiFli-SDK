@@ -50,6 +50,9 @@ void lv_top_panel_set_hor_enabled(bool enabled);
 /** 面板下拉進度 → 滑鼠模式下的黑色半透明底濃度（0..204）。非滑鼠模式為 no-op。*/
 void lv_top_panel_set_backdrop_opa(uint8_t opa);
 
+/** 電量有更新時刷新控制中心那頁頂部的電量顯示。 */
+void lv_top_panel_refresh_battery(void);
+
 /** 狀態列 deinit 時一併拆掉滑鼠圖層（面板本體隨 tile 一起被刪）。 */
 void lv_top_panel_deinit(void);
 
