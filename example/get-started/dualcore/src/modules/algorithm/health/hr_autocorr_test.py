@@ -224,6 +224,66 @@ def spectral_estimate(x):
     return float(pk_b), min(60, int(sharp * 200))
 
 
+# ------------------------------------------------------------------ tracking
+# The octave ambiguity cannot be resolved inside a single window, and that is a
+# property of the data rather than of any one method. All three independent
+# estimators tried here fail on it, in different directions:
+#
+#   autocorrelation — correlates equally at T, 2T, 3T
+#   spectrum        — on a weak pulse the sub-harmonic can outrank the fundamental
+#   pulse counting  — counts the dicrotic notch as a beat and doubles the rate
+#
+# What DOES resolve it is continuity. A heart cannot go 76 -> 34 -> 94 in twenty
+# minutes at rest; an octave error can. This is why commercial trackers carry a
+# state estimate across windows instead of judging each one alone, and it is the
+# piece this estimator was missing.
+#
+# Deliberately minimal. It only ever replaces a value with exactly its double or
+# its half, and only when that lands near an already-established baseline. A
+# genuine change — waking, standing up, exercise — is neither double nor half of
+# the baseline, so it passes through untouched. This is not a plausibility clamp
+# and must not become one: refusing "unusual" readings would hide exactly the
+# events an HR curve exists to show.
+TRACK_NEAR = 0.25       # within this of the baseline, leave the estimate alone
+TRACK_SNAP = 0.20       # an octave shift must land this close to be applied
+TRACK_WARMUP = 3        # consistent readings needed before the baseline may act
+TRACK_MISS_MAX = 40     # consecutive no-answers that expire the baseline
+
+
+class Tracker:
+    def __init__(self):
+        self.base = None
+        self.warm = 0
+        self.miss = 0
+
+    def feed(self, bpm):
+        """Returns the corrected bpm. None input is a refusal and ages the state."""
+        if bpm is None:
+            self.miss += 1
+            if self.miss > TRACK_MISS_MAX:
+                self.base, self.warm = None, 0
+            return None
+        self.miss = 0
+        out = bpm
+        if self.base is not None and self.warm >= TRACK_WARMUP:
+            if abs(bpm - self.base) > TRACK_NEAR * self.base:
+                for cand in (bpm * 2, bpm / 2.0):
+                    if 30 <= cand <= 220 and abs(cand - self.base) <= TRACK_SNAP * self.base:
+                        out = cand
+                        break
+        # The baseline follows ACCEPTED output, and slowly: a run of bad windows
+        # must not be able to drag it onto the wrong octave in a few steps.
+        if self.base is None:
+            self.base, self.warm = out, 1
+        else:
+            if abs(out - self.base) <= TRACK_NEAR * self.base:
+                self.warm += 1
+            else:
+                self.warm = 1                      # genuine change: re-establish
+            self.base = (self.base * 3 + out) / 4.0
+        return out
+
+
 def estimate(raw):
     x = detrend(raw)
     if x is None:
@@ -514,6 +574,43 @@ def main():
                  "%d ok / %d refused" % (rok, rref),
                  "OK" if rbad <= REAL_MAX_WRONG
                  else "REGRESSION: %d wrong, baseline %d" % (rbad, REAL_MAX_WRONG)))
+
+    # SEQUENTIAL replay — the only test that exercises the tracker at all, since
+    # every other case resets between windows. Scored on physiology rather than
+    # on any single-window method: at rest a heart does not step to half its rate
+    # and back inside ten minutes, so an octave-sized step between consecutive
+    # readings is a defect regardless of which value was "right".
+    if os.path.exists(real):
+        seq = []
+        with io.open(real, encoding="utf-8") as f:
+            for line in f:
+                if line.startswith("#") or line.startswith("time,"):
+                    continue
+                _, _, samples = line.rstrip().split(",", 2)
+                seq.append([float(v) for v in samples.split()])
+        tr = Tracker()
+        out = []
+        for x in seq:
+            e, _ = estimate_detrended(x)
+            if e is None:
+                e, _ = spectral_estimate(x)
+            out.append(tr.feed(e))
+        steps = 0
+        prev = None
+        for v in out:
+            if v is None:
+                continue
+            if prev is not None:
+                ratio = v / prev
+                if 1.7 <= ratio <= 2.4 or 0.42 <= ratio <= 0.6:
+                    steps += 1
+            prev = v
+        bad += steps
+        vals = [v for v in out if v]
+        print("%-34s %6s %14s %s"
+              % ("sequential octave steps", "-",
+                 "%d..%d bpm" % (min(vals), max(vals)),
+                 "OK" if steps == 0 else "*** %d STEPS ***" % steps))
 
     # Pure noise must be refused. The vendor library's failure to do this is why
     # a watch on a table reported a rock-steady 108-115 bpm for two minutes.

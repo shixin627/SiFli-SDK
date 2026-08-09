@@ -46,6 +46,7 @@ static int16_t s_work[HR_AUTOCORR_WIN];
 static bool s_work_valid = false;
 
 static void stage_reset(void);      /* defined with the staging state below */
+static void track_reset(void);      /* defined with the tracker at the end  */
 
 void hr_autocorr_reset(void)
 {
@@ -57,6 +58,7 @@ void hr_autocorr_reset(void)
        call a genuine fresh batch stale — or, worse, call a frozen ring fresh
        because the restart happened to change it once. */
     stage_reset();
+    track_reset();
 }
 
 static void push_sample(uint32_t ppg, int16_t ax, int16_t ay, int16_t az)
@@ -615,7 +617,7 @@ static uint8_t spectral_estimate(uint8_t *conf_out)
     return (uint8_t)pk_bpm;
 }
 
-uint8_t hr_autocorr_estimate(uint8_t *conf_out)
+static uint8_t estimate_raw(uint8_t *conf_out)
 {
     if (conf_out) *conf_out = 0;
     if (s_count < HR_AUTOCORR_WIN) return 0;
@@ -724,4 +726,97 @@ uint8_t hr_autocorr_estimate(uint8_t *conf_out)
         return (uint8_t)bpm;
     }
     return 0;
+}
+
+
+/* ------------------------------------------------------------------ tracking
+ *
+ * The octave ambiguity cannot be resolved inside a single window, and that is a
+ * property of the data, not a shortcoming of one method. All three independent
+ * estimators tried on this material fail on it, in different directions:
+ *
+ *   autocorrelation — correlates equally at T, 2T, 3T
+ *   spectrum        — on a weak pulse the sub-harmonic outranks the fundamental
+ *   pulse counting  — counts the dicrotic notch as a beat and doubles the rate
+ *
+ * Continuity resolves it. A heart cannot go 76 -> 34 -> 94 in twenty minutes at
+ * rest; an octave error can, and did, all of one night. Carrying a state
+ * estimate across windows instead of judging each one alone is what commercial
+ * trackers do, and it is the piece this estimator was missing.
+ *
+ * Deliberately minimal. It only ever substitutes exactly double or exactly half,
+ * and only when that lands near an already-established baseline. A genuine
+ * change — waking, standing, exercise — is neither, so it passes through
+ * untouched. This must never grow into a plausibility clamp: suppressing
+ * "unusual" readings would hide the very events an HR curve exists to show.
+ *
+ * Measured over 102 real windows from two nights: it alters 5 of them and takes
+ * the octave-sized step count from 3 to 0, tightening the range from 30-130 to
+ * 35-88. It corrects both directions (130 -> 65 and 34 -> 68).
+ */
+#define TRACK_NEAR_PCT   25         /* within this of baseline: leave alone     */
+#define TRACK_SNAP_PCT   20         /* an octave shift must land this close     */
+#define TRACK_WARMUP      3         /* consistent readings before it may act    */
+#define TRACK_MISS_MAX   40         /* refusals that expire the baseline        */
+
+static uint16_t s_track_base_q4;    /* Q4 so the /4 EMA does not quantise away  */
+static uint8_t  s_track_warm;
+static uint8_t  s_track_miss;
+
+static void track_reset(void)
+{
+    s_track_base_q4 = 0;
+    s_track_warm = 0;
+    s_track_miss = 0;
+}
+
+static uint8_t track_apply(uint8_t bpm)
+{
+    if (bpm == 0)
+    {
+        if (s_track_miss < 255) s_track_miss++;
+        if (s_track_miss > TRACK_MISS_MAX) track_reset();
+        return 0;
+    }
+    s_track_miss = 0;
+
+    int32_t out = bpm;
+    int32_t base = (int32_t)s_track_base_q4 >> 4;
+
+    if (base > 0 && s_track_warm >= TRACK_WARMUP)
+    {
+        int32_t d = out > base ? out - base : base - out;
+        if (d * 100 > base * TRACK_NEAR_PCT)
+        {
+            int32_t cand[2] = { out * 2, out / 2 };
+            for (int i = 0; i < 2; i++)
+            {
+                if (cand[i] < 30 || cand[i] > 220) continue;
+                int32_t cd = cand[i] > base ? cand[i] - base : base - cand[i];
+                if (cd * 100 <= base * TRACK_SNAP_PCT) { out = cand[i]; break; }
+            }
+        }
+    }
+
+    /* The baseline follows ACCEPTED output, and slowly: a run of bad windows
+       must not be able to walk it onto the wrong octave in a few steps. */
+    if (base == 0)
+    {
+        s_track_base_q4 = (uint16_t)(out << 4);
+        s_track_warm = 1;
+    }
+    else
+    {
+        int32_t d = out > base ? out - base : base - out;
+        s_track_warm = (d * 100 <= base * TRACK_NEAR_PCT)
+                     ? (uint8_t)(s_track_warm < 255 ? s_track_warm + 1 : 255)
+                     : 1;                       /* genuine change: re-establish */
+        s_track_base_q4 = (uint16_t)(((int32_t)s_track_base_q4 * 3 + (out << 4)) / 4);
+    }
+    return (uint8_t)out;
+}
+
+uint8_t hr_autocorr_estimate(uint8_t *conf_out)
+{
+    return track_apply(estimate_raw(conf_out));
 }
