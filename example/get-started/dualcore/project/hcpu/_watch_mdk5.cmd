@@ -11,7 +11,16 @@ REM Output: project.uvprojx (+ project.uvoptx) in this dir, open with Keil MDK 5
 
 for %%I in ("%~dp0..\..\..\..\..") do set REPO_ROOT=%%~fI
 
-set ENV_ROOT=C:\dev\env_latest
+REM ENV_ROOT is probed, not pinned: the SiFli env install dir differs per
+REM machine (env_latest / env), and a stale hardcode makes set_env.bat report
+REM the misleading "Please upgrate env to v1.2.0" (really: dir not found).
+REM An ENV_ROOT already set in the environment always wins.
+if not exist "%ENV_ROOT%\tools\ConEmu\ConEmu\CmdInit.cmd" set "ENV_ROOT=C:\dev\env_latest"
+if not exist "%ENV_ROOT%\tools\ConEmu\ConEmu\CmdInit.cmd" set "ENV_ROOT=C:\dev\env"
+if not exist "%ENV_ROOT%\tools\ConEmu\ConEmu\CmdInit.cmd" (
+    echo ERROR: SiFli env not found. Set ENV_ROOT to the env install dir.
+    exit /b 1
+)
 REM Read the version from the installed env instead of pinning it here:
 REM a hardcoded value silently blocks every SDK that raises the minimum.
 for /f "tokens=2 delims==" %%V in ('findstr /b /c:"set ENV_VER=" "%ENV_ROOT%\tools\ConEmu\ConEmu\CmdInit.cmd"') do set ENV_VER=%%V

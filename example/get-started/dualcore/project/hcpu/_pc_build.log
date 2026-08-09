@@ -19,10 +19,28 @@ warning: app_layout/lv_session_pager.c calls bloc_*/provider/watch_sys_sync dire
 scons: done reading SConscript files.
 scons: Building targets ...
 scons: building associated VariantDir targets: build_pc_hcpu .
-Building compilation database build_pc_hcpu\compile_commands.json
 CC build_pc_hcpu\sifli_sdk\middleware\lvgl\lvsf\lvsf_font.obj
+Building compilation database build_pc_hcpu\compile_commands.json
 lvsf_font.c
+CC build_pc_hcpu\sifli_sdk\middleware\lvgl\lvsf\lvsf_switchanim_com.obj
+CC build_pc_hcpu\sifli_sdk\middleware\lvgl\lvsf\lvsf_theme_1.obj
+CC build_pc_hcpu\sifli_sdk\middleware\lvgl\lvsf\lvsf_utils.obj
+CC build_pc_hcpu\src\gui_apps\disp_refr_governor.obj
+lvsf_switchanim_com.c
+lvsf_theme_1.c
+disp_refr_governor.c
+lvsf_utils.c
+CC build_pc_hcpu\src\gui_apps\watch_demo.obj
+CC build_pc_hcpu\src\gui_apps\alarm\app_alarm.obj
+watch_demo.c
+CC build_pc_hcpu\src\gui_apps\alarm\app_alarm_edit.obj
+app_alarm.c
+app_alarm_edit.c
 C:\skaiwalk\SiFli-SDK\middleware\lvgl\lvsf\lvsf_font.c(263): error C4013: 'lv_img_decode_flash_read' 未定義; 假設 extern 傳回整數
-C:\skaiwalk\SiFli-SDK\middleware\lvgl\lvsf\lvsf_font.c(998): warning C4003: 類似函式的巨集引動過程 'L1_NON_RET_BSS_SECT' 沒有足夠的引數
 scons: *** [build_pc_hcpu\sifli_sdk\middleware\lvgl\lvsf\lvsf_font.obj] Error 2
+C:\skaiwalk\SiFli-SDK\example\get-started\dualcore\src\hcpu\gui_apps\alarm\app_alarm.c(672): warning C4305: '正在初始化': 從 'uint32_t' 轉換為 'uint8_t'，是由較大的類型轉換為較小的類型，可能導致資料遺失
+C:\skaiwalk\SiFli-SDK\example\get-started\dualcore\src\hcpu\gui_apps\alarm\app_alarm.c(672): warning C4047: '正在初始化': 'uint32_t' 與 'const void *' 間接取值的層級不同
+C:\skaiwalk\SiFli-SDK\example\get-started\dualcore\src\hcpu\gui_apps\alarm\app_alarm.c(672): warning C4047: '正在初始化': 'char' 與 'gui_app_entry_func_ptr_t' 間接取值的層級不同
+C:\skaiwalk\SiFli-SDK\example\get-started\dualcore\src\hcpu\gui_apps\alarm\app_alarm.c : fatal error C1311: COFF 格式無法以靜態方式初始化 '___builtinapp1' (位址為 1 個位元組)
+scons: *** [build_pc_hcpu\src\gui_apps\alarm\app_alarm.obj] Error 1
 scons: building terminated because of errors.

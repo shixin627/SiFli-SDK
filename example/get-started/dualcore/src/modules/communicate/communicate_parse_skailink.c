@@ -506,6 +506,59 @@ void handwrite_cand_apply_pending(void)
     rt_free(buf);
 }
 
+/* ── 0x23: TV 綁定狀態(phone→watch) ───────────────────────────────────────
+   同 media_state 單槽交接:BLE thread 收 raw payload 進槽+發 LVGL msg,GUI thread
+   tv_state_apply_pending() 消化(槽空=較新 msg 已先消化,no-op)。狀態列是 UI-only,
+   丟掉舊的那筆沒有副作用。 */
+static char *s_tv_state_pending = NULL;
+
+static void handle_tv_state(uint8_t *pValue, uint16_t length)
+{
+    if (pValue == NULL || length == 0) return;
+    char *buf = (char *)rt_malloc((rt_size_t)length + 1);
+    if (buf == NULL) return;
+    memcpy(buf, pValue, length);
+    buf[length] = '\0';
+    rt_base_t level = rt_hw_interrupt_disable();
+    char *old = s_tv_state_pending;
+    s_tv_state_pending = buf;
+    rt_hw_interrupt_enable(level);
+    if (old != NULL) rt_free(old);
+    lvgl_msg_t msg;
+    msg.type = LVGL_MSG_TYPE_TV_STATE_RAW;
+    lvgl_send_msg(msg);
+}
+
+/* GUI thread(ui_handler LVGL_MSG_TYPE_TV_STATE_RAW)。 */
+void tv_state_apply_pending(void)
+{
+    rt_base_t level = rt_hw_interrupt_disable();
+    char *buf = s_tv_state_pending;
+    s_tv_state_pending = NULL;
+    rt_hw_interrupt_enable(level);
+    if (buf == NULL) return;
+
+    extern void tv_remote_handle_state(const char *name, const char *platform,
+                                       const char *state, const char *detail);
+    cJSON *root = cJSON_Parse(buf);
+    if (root == NULL)
+    {
+        LOG_W("skailink: tv_state malformed payload");
+        rt_free(buf);
+        return;
+    }
+    cJSON *j_name = cJSON_GetObjectItem(root, "name");
+    cJSON *j_plat = cJSON_GetObjectItem(root, "platform");
+    cJSON *j_st   = cJSON_GetObjectItem(root, "state");
+    cJSON *j_det  = cJSON_GetObjectItem(root, "detail");
+    tv_remote_handle_state(cJSON_IsString(j_name) ? j_name->valuestring : "",
+                           cJSON_IsString(j_plat) ? j_plat->valuestring : "",
+                           cJSON_IsString(j_st)   ? j_st->valuestring   : "none",
+                           cJSON_IsString(j_det)  ? j_det->valuestring  : "");
+    cJSON_Delete(root);
+    rt_free(buf);
+}
+
 void resolve_skailink_command(uint8_t key, uint8_t *pValue, uint16_t length)
 {
     switch ((SKAI_LINK_KEY)key)
@@ -587,6 +640,14 @@ void resolve_skailink_command(uint8_t key, uint8_t *pValue, uint16_t length)
     case KEY_HANDWRITE_CAND:
         /* phone→watch (DOWNLINK): 手寫當前字的辨識候選(ML Kit top-5)。 */
         handle_handwrite_cand(pValue, length);
+        break;
+    case KEY_TV_CONTROL:
+        /* Uplink-only (watch→phone); never received here. */
+        LOG_W("skailink: KEY_TV_CONTROL is uplink-only");
+        break;
+    case KEY_TV_STATE:
+        /* phone→watch (DOWNLINK): bound TV + pairing state for the TV remote app. */
+        handle_tv_state(pValue, length);
         break;
     default:
         LOG_W("skailink: unknown key 0x%02x", key);

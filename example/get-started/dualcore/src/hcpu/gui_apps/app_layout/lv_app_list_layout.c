@@ -70,6 +70,9 @@ static const uint16_t APP_LIST_ITEMS[] = {
 #ifdef APP_ID_MOUSE
     app_id_mouse,
 #endif
+#ifdef APP_ID_TV_REMOTE
+    app_id_tv_remote,
+#endif
 #ifdef APP_ID_PHOTO
     app_id_photo,
 #endif
@@ -116,6 +119,9 @@ static const char *get_app_id_str(uint16_t app_id)
 #endif
 #ifdef APP_ID_MOUSE
     case app_id_mouse:       return APP_ID_MOUSE;
+#endif
+#ifdef APP_ID_TV_REMOTE
+    case app_id_tv_remote:   return APP_ID_TV_REMOTE;
 #endif
 #ifdef APP_ID_TOUCHPAD
     case app_id_touchpad:    return APP_ID_TOUCHPAD;
@@ -165,6 +171,12 @@ static const char *get_app_list_icon(uint16_t app_id)
 #endif
 #ifdef APP_ID_MOUSE
     case app_id_mouse:       return IMG_MOUSE;
+#endif
+#ifdef APP_ID_TV_REMOTE
+    /* TODO(asset): reusing the media glyph — no TV icon in the resource pack
+       yet. app_id_media is commented out of this grid, so it reads unambiguously
+       for now, but a real remote/TV icon should replace it. */
+    case app_id_tv_remote:   return IMG_ITUNES;
 #endif
 #ifdef APP_ID_PHOTO
     case app_id_photo:       return IMG_PHOTO;

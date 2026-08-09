@@ -22,6 +22,9 @@ extern "C"
 #define APP_ID_EXERCISE "exercise"
 #define APP_ID_FLASHLIGHT "flashlight"
 #define APP_ID_MOUSE "mouse"
+/* TV remote — brand-neutral key surface; the phone owns discovery + the vendor
+   driver (see SKAI_LINK KEY_TV_CONTROL 0x22 / KEY_TV_STATE 0x23). */
+#define APP_ID_TV_REMOTE "tv_remote"
 #define APP_ID_INTERACT "interact"
 #define APP_ID_MESSAGE "message"
 #define APP_ID_RECORDER "recorder"
@@ -73,6 +76,7 @@ extern "C"
         app_id_photo,
         app_id_sleep,
         app_id_skaiapp,
+        app_id_tv_remote,
     } watch_app_id_t;
 
     enum
@@ -86,6 +90,8 @@ extern "C"
         LVGL_MSG_TYPE_MEDIA_STATE_RAW,
         /* 手寫候選字(0x1c)下行:同上單槽 raw,GUI 端 handwrite_cand_apply_pending()。 */
         LVGL_MSG_TYPE_HANDWRITE_CAND_RAW,
+        /* TV 綁定狀態(0x23)下行:同上單槽 raw,GUI 端 tv_state_apply_pending()。 */
+        LVGL_MSG_TYPE_TV_STATE_RAW,
         LVGL_MSG_TYPE_MEDIA_IMG,
         LVGL_MSG_TYPE_MEDIA_HEADER_IMG,
         LVGL_MSG_TYPE_MEDIA_VOLUME,

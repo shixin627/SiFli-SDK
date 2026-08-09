@@ -22,11 +22,21 @@ To go GCC-production would require:
 - Enable `USE_MICROLIB=True` in `project/lcpu/rtconfig.py` (nano.specs, side effects unverified)
 - OR rewrite LCPU to not use `localtime`
 
-### env hardcoded
+### env root probing
 
-`C:\dev\env_latest`, `ENV_VER=1.1.4`. All three wrappers
-(`_pc_build.cmd` / `_watch_build.cmd` / `_watch_mdk5.cmd`) bake the
-version. Upgrading env = bump all three.
+All three wrappers (`_pc_build.cmd` / `_watch_build.cmd` / `_watch_mdk5.cmd`)
+plus `_dev_test.ps1` **probe** for the env install instead of pinning it:
+existing `%ENV_ROOT%` → `C:\dev\env_latest` → `C:\dev\env`, first one with
+`tools\ConEmu\ConEmu\CmdInit.cmd` wins. `ENV_VER` is read out of that
+`CmdInit.cmd`, never baked in — so an env upgrade needs no wrapper edit.
+
+Failure mode this replaced: a stale hardcoded root made `findstr` fail →
+`ENV_VER` empty → `set_env.bat` printed the misleading
+`Please upgrate env to v1.2.0 or greater` when the installed env was
+already new enough, just at a different path. If you see that message now,
+it means no candidate dir exists — set `ENV_ROOT` yourself.
+
+Current machine: `C:\dev\env`, `ENV_VER=1.2.0` (SDK requires ≥ 1.2.0).
 
 ### Wrapper path detection
 
@@ -47,7 +57,7 @@ Use `--` / `:` in comments. Verify: `file <path>` should say
 not Keil (`set_env.bat`: `if "%1"=="" goto :SET_GCC`).
 
 To make ConEmu default to Keil: edit
-`C:\dev\env_latest\tools\ConEmu\ConEmu\SifliUser.cmd`, both `@call`
+`<ENV_ROOT>\tools\ConEmu\ConEmu\SifliUser.cmd`, both `@call`
 sites add ` keil` arg. **env upgrade overwrites this — re-patch after upgrade.**
 
 ---

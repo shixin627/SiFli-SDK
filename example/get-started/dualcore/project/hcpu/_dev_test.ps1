@@ -24,7 +24,13 @@ param(
 $ErrorActionPreference = 'Stop'
 $proj = $PSScriptRoot
 $exe  = Join-Path $proj 'build_pc_hcpu\main.exe'
-$py   = 'C:\dev\env_latest\tools\python-3.11.9-amd64\python.exe'
+# env install dir differs per machine (env_latest / env) -- probe, don't pin.
+$py = @($env:ENV_ROOT, 'C:\dev\env_latest', 'C:\dev\env') |
+    Where-Object { $_ } |
+    ForEach-Object { Join-Path $_ 'tools\python-3.11.9-amd64\python.exe' } |
+    Where-Object { Test-Path $_ } |
+    Select-Object -First 1
+if (-not $py) { throw 'SiFli env python not found. Set ENV_ROOT to the env install dir.' }
 $send = Join-Path $proj '_send_to_main.py'
 
 function Kill-Sim {

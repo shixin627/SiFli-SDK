@@ -207,6 +207,32 @@ extern "C"
            is built and whenever the watch reconnects; the Data path has no pull, so this
            is the watch's only way to recover a list it missed while disconnected. */
         KEY_CONV_LIST_REQ = 0x21,
+        /* ── TV remote (APP_ID_TV_REMOTE). The watch has no IP stack, so the TV app is a
+           pure input surface: it emits BRAND-NEUTRAL verbs and the phone owns discovery,
+           pairing and the per-vendor driver (Android TV Remote v2 / LG SSAP / Roku ECP /
+           Samsung Tizen ws). Keeping the verbs neutral is what lets one watch UI drive
+           every brand — never leak a vendor key name (KEY_VOLUP / Lit_) up here. ── */
+        /* watch→phone (UPLINK): {"cmd":"<verb>"} — one remote key press. verb ∈
+             power | up | down | left | right | ok | back | home
+             volumeUp | volumeDown | mute | playPause
+           plus two control verbs that carry no key:
+             discover  = (re)scan the LAN and (re)bind a TV; answered by KEY_TV_STATE
+             pair      = the user asked to (re)start pairing on the bound TV
+           The phone maps each verb to the bound device's driver. Unmappable verbs on a
+           given platform are dropped by the phone with a log — the watch does NOT hide
+           buttons per platform, because the bound TV can change under it at any time. */
+        KEY_TV_CONTROL = 0x22,
+        /* phone→watch (DOWNLINK): {"name":"客廳電視","platform":"androidtv|webos|roku|
+           samsung","state":"none|scanning|pairing|ready|error","detail":"..."} — which TV
+           the phone is currently bound to, for the watch's status line. "state" drives the
+           watch's dot colour AND its text (§1.4: colour is never the sole indicator):
+             none     = nothing found on the LAN yet
+             scanning = discovery in flight
+             pairing  = needs the user to finish pairing ON THE PHONE (PIN entry / TV prompt)
+             ready    = bound, keys will actuate
+             error    = last command failed (detail carries a short reason)
+           Pushed on every binding change and as the answer to cmd:"discover". */
+        KEY_TV_STATE = 0x23,
     } SKAI_LINK_KEY;
 
     /* Dispatched from communicate_parse.c for cmd_id == SKAI_LINK_COMMAND_ID.
