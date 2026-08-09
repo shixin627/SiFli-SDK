@@ -101,8 +101,8 @@ def vertex(r, l):
     return l + d, b - 0.25 * (a - c) * d
 
 
-TROUGH = 0.30       # the correlation must fall through this before any peak
-                    # is believed
+TROUGH_RISE = 0.15  # how far the correlation must climb back after its first
+                    # turning point before that turning point is believed
 
 
 def estimate_detrended(x):
@@ -110,7 +110,8 @@ def estimate_detrended(x):
     r = ncc(x)
 
     # Rule 0, and the one that matters most: find where the zero-lag main lobe
-    # ends, and refuse the window if it never does.
+    # ends — by TURNING POINT, not by absolute level — and refuse the window if
+    # it never turns.
     #
     # Correlation starts at 1.0 and decays. With a real pulse it decays THROUGH
     # a trough and returns at the period — a real captured window reading 55 bpm
@@ -121,11 +122,28 @@ def estimate_detrended(x):
     # genuinely tall (0.84 on the worst window) — so no confidence threshold
     # could ever separate the two, and none ever did.
     #
-    # Measured on the 43 windows captured from the wrist on 2026-08-08: 21 were
-    # wrong before this rule, 2 after, with 22 refused. Refusal is the correct
-    # answer for those — the window has no measurable pulse, and a gap beats a
-    # fabricated 151.
-    trough = next((l for l in range(2, LAG_MAX + 1) if r[l] <= TROUGH), None)
+    # Measured on the 43 windows captured on 2026-08-08: 21 were wrong before
+    # this rule, 1 after. Refusing is the correct answer for the rest — the
+    # window has no measurable pulse, and a gap beats a fabricated 151.
+    #
+    # The FIRST version of this rule used an absolute level (r <= 0.30), and it
+    # shipped, and it halved 38 of the next night's 59 windows. When the
+    # half-period dip happens not to reach 0.30 the search skips straight past
+    # the fundamental and lands on the peak at TWICE the period: 76 bpm read as
+    # 38, 66 as 33, 58 as 30, over and over. A turning point does not care how
+    # deep the dip is — and depth was never the thing worth testing. The real
+    # question was always "does this curve come back up at all", and a monotone
+    # decay is precisely the curve that never does.
+    #
+    # The 0.15 rise separates a real turning point from noise wobble on the way
+    # down. Over both nights (102 real windows): absolute-0.30 scores 54 correct
+    # / 39 wrong, turning-point-0.15 scores 88 correct / 2 wrong.
+    trough = None
+    for l in range(3, LAG_MAX):
+        if r[l] <= r[l - 1] and r[l] < r[l + 1]:
+            if max(r[l + 1:LAG_MAX + 1]) - r[l] >= TROUGH_RISE:
+                trough = l
+                break
     if trough is None:
         return None, 0
     lo = max(trough, LAG_MIN)
@@ -484,7 +502,11 @@ def main():
         # the same reasoning as the AMBIGUOUS list. So the count is compared to
         # a recorded baseline instead. LOWER this when the estimator improves;
         # never raise it to make a change pass.
-        REAL_MAX_WRONG = 1
+        # Baseline over BOTH nights (102 windows). It was 1 when the fixture held
+        # only 2026-08-08; adding 2026-08-09 brought in two windows that still
+        # lock to twice the period. Lower this when the estimator improves;
+        # never raise it to make a change pass.
+        REAL_MAX_WRONG = 2
         if rbad > REAL_MAX_WRONG:
             bad += rbad - REAL_MAX_WRONG
         print("%-34s %6s %14s %s"

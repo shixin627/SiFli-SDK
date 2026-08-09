@@ -7,9 +7,9 @@
    run once a second. */
 #define Q15                 32768
 #define THR_Q15             11469   /* 0.35 — below this the window is noise   */
-#define TROUGH_Q15           9830   /* 0.30 — the correlation must fall through
-                                       this before any peak is believed; see
-                                       hr_autocorr_estimate for why            */
+#define TROUGH_RISE_Q15      4915   /* 0.15 — how far the correlation must climb
+                                       back after its first turning point for
+                                       that turning point to be believed       */
 #define TOL_Q15              1966   /* 0.06 — peaks within this of the best are
                                        "tied", and among ties the SHORTEST lag
                                        wins. See the header for why.           */
@@ -648,11 +648,27 @@ uint8_t hr_autocorr_estimate(uint8_t *conf_out)
      * genuinely has no measurable pulse, and a gap in the curve is worth far
      * more than a fabricated 151.
      *
-     * 0.30 was chosen against those same 43 windows: 0.50 keeps more coverage
-     * but lets 8 wrong readings through, 0.15 refuses 26 to save one more. */
+     * The FIRST version of this test used an absolute level (r <= 0.30). It
+     * shipped, and it halved 38 of the NEXT night's 59 windows: when the
+     * half-period dip happens not to reach 0.30, the search skips straight past
+     * the fundamental and lands on the peak at TWICE the period — 76 bpm read as
+     * 38, 66 as 33, 58 as 30, over and over, all night. A turning point does not
+     * care how deep the dip is, and depth was never the thing worth testing. The
+     * question was always "does this curve come back up at all", and the
+     * monotone decay is exactly the curve that never does.
+     *
+     * The 0.15 rise separates a real turning point from noise wobble on the way
+     * down. Over both nights (102 real windows): absolute-0.30 scores 54 correct
+     * / 39 wrong; turning-point-0.15 scores 88 correct / 2 wrong. */
     int trough = 0;
-    for (int l = 2; l <= HR_AUTOCORR_LAG_MAX; l++)
-        if (r[l] <= TROUGH_Q15) { trough = l; break; }
+    for (int l = 3; l < HR_AUTOCORR_LAG_MAX; l++)
+    {
+        if (r[l] > r[l - 1] || r[l] >= r[l + 1]) continue;   /* not a minimum */
+        int32_t top = r[l + 1];
+        for (int m = l + 2; m <= HR_AUTOCORR_LAG_MAX; m++)
+            if (r[m] > top) top = r[m];
+        if (top - r[l] >= TROUGH_RISE_Q15) { trough = l; break; }
+    }
     if (trough == 0) return spectral_estimate(conf_out);
 
     int lag_lo = (trough > HR_AUTOCORR_LAG_MIN) ? trough : HR_AUTOCORR_LAG_MIN;
