@@ -995,7 +995,11 @@ const char *ft_get_font_path(void)
     L2_CACHE_NON_RET_BSS_SECT_END
 #else
     L1_NON_RET_BSS_SECT_BEGIN(ft_render_pool)
-    ALIGN(RT_ALIGN_SIZE) static uint8_t render[FT_RENDER_SIZE] L1_NON_RET_BSS_SECT(ft_render_pool);
+    /* L1_NON_RET_BSS_SECT 的契約是 (section_name, var) — 三個編譯器變體都一樣，
+       原本這行當單引數後綴用，只是因為手錶 build 走上面 L2 cache 分支才沒編到；
+       PC sim 走這條就 C4003 掛掉(2026-08-07)。 */
+    ALIGN(RT_ALIGN_SIZE) static uint8_t L1_NON_RET_BSS_SECT(ft_render_pool,
+                                                            render[FT_RENDER_SIZE]);
     L1_NON_RET_BSS_SECT_END
 #endif
 

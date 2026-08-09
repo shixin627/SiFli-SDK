@@ -354,6 +354,13 @@ void motor_pattern_unlocked(void)
 {
     motor_play_if_enabled(100, 25000, 1); /*  25ms */
 }
+void motor_pattern_key_tick(void)
+{
+    /* 鍵盤按鍵回饋(founder 2026-08-07:「按每個鍵盤按鍵的時候都加一個微小的震動」)。
+       打字一次會連打很多下,要比現有最小的 air_hint(4.5ms)再小一階,不然整段輸入
+       會變成持續嗡嗡。同上:震動「大小」看時長,duty 維持 100。 */
+    motor_play_if_enabled(100, 2500, 1); /* 2.5ms */
+}
 void motor_pattern_air_hint(void)
 {
     /* 飛鼠觸發提示 = tap(9ms)時長的 50% = 4.5ms。震動「大小」主要看時長(period),不是 duty

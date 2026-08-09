@@ -1913,6 +1913,147 @@ static lv_obj_t *find_closest_key(lv_point_t touch_point)
     return closest;
 }
 
+/* 鍵盤模式下，**畫在鍵盤之上**的底部浮動物件必須全部藏好 —— 它們都是 bg 的直接
+   子物件，z-order 在 mode_container 之上，任一個漏掉就會蓋住最後一排(空白/地球/
+   刪除)。它們的 cb 雖然都寫了「鍵盤模式就 early-return」，但**早退不等於放行**:
+   物件仍是 clickable，LVGL 照樣把 press 派給它，底下的鍵盤根本收不到事件
+   (founder 2026-08-07:中文空白鍵完全沒反應，log 連 [hit] 都沒有)。
+   中文佈局把空白鍵下移到 y≈401..451 讓位給ㄈㄥㄦ，正好落進這條 chrome 帶，
+   英文的在 y≈361..411 大半在帶子上緣之外 —— 這就是「只有中文按不到」。
+   顯藏邏輯散在好幾條進場路徑上，統一由這裡掃。 */
+/* 鍵盤的鍵是不是正露在畫面上(不看模式旗標 —— 進場路徑有十來條,旗標的翻面時機
+   各不相同,曾經因此掃不到)。 */
+static bool kbd_keys_showing(void)
+{
+    if (!keyboard_container || !lv_obj_is_valid(keyboard_container))
+        return false;
+    if (lv_obj_has_flag(keyboard_container, LV_OBJ_FLAG_HIDDEN))
+        return false;
+    lv_area_t a;
+    lv_obj_get_coords(keyboard_container, &a);
+    return a.x1 < LV_HOR_RES && a.x2 > 0; /* 換頁動畫停在畫面外的不算 */
+}
+
+/* 輸入畫面**當前這一站**的作用區(鍵盤站=鍵盤容器;語音站=麥克風那一段)。
+   兩站都有自己的底部按鈕、也都會被外來浮層蓋住,所以判準不能只寫鍵盤
+   (founder 2026-08-07:中文空白鍵通了,但長按空白跳到語音站後,下面的刪除與切換
+   又按不到 —— 語音站裡 keyboard_container 是藏的，防護整個沒生效)。 */
+static lv_obj_t *kbd_input_active_area(void)
+{
+    if (kbd_keys_showing())
+        return keyboard_container;
+    if (s_voice_box_on && kbd_mic_section && lv_obj_is_valid(kbd_mic_section) &&
+        !lv_obj_has_flag(kbd_mic_section, LV_OBJ_FLAG_HIDDEN))
+        return kbd_mic_section;
+    /* 觸控板站:底部那顆「進輸入」圖示同病 —— 全螢幕的觸控板感應面有時排在它上面，
+       按下就被吃掉，症狀是「圖示只有靠上一小塊按得到」(founder 2026-08-07,
+       [press] 坐實 obj area=(0,0)-(465,465) 接走)。保護範圍只取圖示**本體**座標，
+       不含 ext_click_area 那 34px 外圈 —— 否則觸控板中下方會多出一塊 131×131
+       的死區，從那裡起手的拖曳會變成點圖示。 */
+    if (current_hid_mode == HID_MODE_TRACKPAD && s_top_logo &&
+        lv_obj_is_valid(s_top_logo) &&
+        !lv_obj_has_flag(s_top_logo, LV_OBJ_FLAG_HIDDEN))
+        return s_top_logo;
+    return NULL;
+}
+
+/* 底部 chrome(鍵盤入口圖 / skaibar 觸控帶 / 頂部下拉感應區)與輸入區重疊時,在
+   **按下的當下**自己拒絕命中,LVGL 會繼續往下找到底下的鍵/按鈕。
+   為什麼不靠顯藏:「鍵盤露出來」有十來條進場路徑,每條都要記得藏這幾個物件,漏一條
+   就整排按不到,而且 cb 裡的 early-return 不算放行 —— 物件只要還 hit 得到,press
+   就停在它身上(founder 2026-08-07:中文空白鍵連 [hit] 都印不出來)。
+   hit-test 是每次按下現算的,跟旗標同不同步無關。 */
+static void chrome_hit_test_cb(lv_event_t *e)
+{
+    if (lv_event_get_code(e) != LV_EVENT_HIT_TEST)
+        return;
+    lv_hit_test_info_t *info = lv_event_get_param(e);
+    if (!info || !info->point) return;
+    lv_obj_t *act = kbd_input_active_area();
+    if (!act) return;
+    /* 作用區自己(或它的子孫)不能對自己放行 —— 觸控板站的作用區就是那顆圖示本身，
+       而它身上正掛著這支 cb(它同時也是別人的攔截者)，不擋掉就會拒絕自己的命中。 */
+    for (lv_obj_t *q = lv_event_get_target(e); q; q = lv_obj_get_parent(q))
+        if (q == act) return;
+    /* 只在**按下點真的落在作用區內**才放行 —— 浮層伸出作用區以外的部分照常可按，
+       不會因為輸入畫面開著就整個失效。 */
+    lv_area_t aa;
+    lv_obj_get_coords(act, &aa);
+    if (_lv_area_is_point_on(&aa, info->point, 0))
+        info->res = false;
+}
+
+/* 鍵盤露出時，把**任何**壓在鍵盤範圍上的可點擊物件都掛上「按下時放行」。
+   為什麼要通用掃描而不是一個一個點名：實測吃掉按下的物件一路從底部鍵盤圖示、
+   skaibar 觸控帶，追到 lv_layer_top() 上的 mic_bar、再到螢幕層底部那條 y437..465
+   的橫帶(founder 2026-08-07，[press] 探針逐一坐實)——它們分屬不同模組、不同圖層，
+   而且會隨浮層顯示與否來去，這正是「有時候擋有時候不擋」的來源。
+   由 40ms poll 驅動，晚一步才出現的浮層下一拍就會被蓋到。 */
+static void kbd_guard_overlappers(void)
+{
+    lv_obj_t *act = kbd_input_active_area();
+    if (!act) return;
+    lv_area_t ka;
+    lv_obj_get_coords(act, &ka);
+
+    lv_obj_t *roots[] = { lv_scr_act(), lv_layer_top(), lv_layer_sys() };
+    for (unsigned r = 0; r < sizeof(roots) / sizeof(roots[0]); r++)
+    {
+        if (!roots[r]) continue;
+        uint32_t n1 = lv_obj_get_child_cnt(roots[r]);
+        for (uint32_t i = 0; i < n1; i++)
+        {
+            lv_obj_t *c1 = lv_obj_get_child(roots[r], i);
+            uint32_t n2 = lv_obj_get_child_cnt(c1);
+            for (uint32_t j = 0; j <= n2; j++)
+            {
+                lv_obj_t *o = (j == 0) ? c1 : lv_obj_get_child(c1, j - 1);
+                if (!o) continue;
+                if (lv_obj_has_flag(o, LV_OBJ_FLAG_HIDDEN)) continue;
+                if (!lv_obj_has_flag(o, LV_OBJ_FLAG_CLICKABLE)) continue;
+                if (lv_obj_has_flag(o, LV_OBJ_FLAG_ADV_HITTEST)) continue;
+                /* 作用區自己(含裡面的鍵/按鈕)不能放行 */
+                bool inside_act = false;
+                for (lv_obj_t *q = o; q; q = lv_obj_get_parent(q))
+                    if (q == act) { inside_act = true; break; }
+                if (inside_act) continue;
+                /* 全螢幕的感應面也要納管 —— 觸控板那面就是 (0,0)-(465,465)，
+                   正是吃掉底部圖示的元兇。這是安全的:lv_indev_search_obj() 先遞迴
+                   搜子物件、才用 hit_test 決定自己能不能認領，所以拒絕命中不會連帶
+                   擋掉底下的東西(已對 LVGL v8 原始碼確認)。而且放行只在作用區那個
+                   小矩形內生效，其餘範圍照常。 */
+                lv_area_t oa;
+                lv_obj_get_click_area(o, &oa);
+                if (oa.x2 < ka.x1 || oa.x1 > ka.x2 || oa.y2 < ka.y1 ||
+                    oa.y1 > ka.y2)
+                    continue;
+                lv_obj_add_flag(o, LV_OBJ_FLAG_ADV_HITTEST);
+                lv_obj_add_event_cb(o, chrome_hit_test_cb, LV_EVENT_HIT_TEST,
+                                    NULL);
+            }
+        }
+    }
+}
+
+static void kbd_hide_bottom_chrome(void)
+{
+    struct { lv_obj_t *o; const char *n; } chrome[] = {
+        { s_top_logo,         "bottom keyboard icon" },
+        { bottom_swipe_area,  "bottom swipe area" },
+        { kbd_exit_btn,       "kbd exit btn" },
+        { s_ai_drag_logo,     "ai drag logo" },
+        { status_bar_area_up, "top pull zone" },
+    };
+    for (unsigned k = 0; k < sizeof(chrome) / sizeof(chrome[0]); k++)
+    {
+        lv_obj_t *o = chrome[k].o;
+        if (o == NULL || !lv_obj_is_valid(o)) continue;
+        if (lv_obj_has_flag(o, LV_OBJ_FLAG_HIDDEN)) continue;
+        LOG_W("keyboard: %s was visible over keys -> hide", chrome[k].n);
+        lv_obj_add_flag(o, LV_OBJ_FLAG_HIDDEN);
+    }
+}
+
 /**
  * @brief Handle proximity-based input
  */
@@ -1928,6 +2069,12 @@ static void handle_proximity_input(lv_event_t *e)
            同一顆(實測:按空白全部變地球、一直切輸入法)。
            **看實際座標**而不是 translate —— 前一版只檢查 translate，但實測
            translate=0 而座標却在 x466，保險完全沒接到。 */
+        /* 鍵盤模式下，**畫在鍵盤之上**的底部浮動物件必須全部藏好 ——
+           它們都是 bg 的直接子物件， z-order 在 mode_container 之上，任一個漏掉
+           就會蓋住最後一排（空白/地球/刪除），手感就是「有東西擋在上面」
+           (founder 2026-08-07)。各自的顯藏邏輯分散在好幾條路徑上，這裡統一掃一次，
+           並把真的漏掉的那個記下來。 */
+        kbd_hide_bottom_chrome();
         if (keyboard_container && lv_obj_is_valid(keyboard_container))
         {
             lv_area_t ka;
@@ -1973,6 +2120,11 @@ static void handle_proximity_input(lv_event_t *e)
                     lv_obj_add_state(closest_btn, LV_STATE_PRESSED);
                 }
                 currently_pressed_btn = closest_btn;
+
+                /* 每一顆鍵的觸覺回饋(founder 2026-08-07)。掛在這裡是因為所有鍵盤
+                   (英文/數字/符號/注音)都走同一條 proximity 判定,包含空白/地球/
+                   刪除 —— 不必逐鍵接線,也不會漏掉哪個佈局。 */
+                motor_pattern_key_tick();
 
                 // 啟動長按檢測（僅針對 Space 按鍵）
                 start_long_press_timer(closest_key_text);
@@ -3105,7 +3257,15 @@ static void create_circular_keyboard_layout(lv_obj_t *parent)
 
     // close_btn 已移除（鍵盤關閉由 mode 切換取代）
 
-    /* TEMP DIAG(2026-08-07):中文頁的空白鍵完全沒反應 —— 把實況印出來 */
+
+    /* 建立當下就把位移歸零 —— 左右換頁動畫的起點是 translate_x = +466
+       (螢幕外)，動畫若沒跑到尾(被 lv_anim_del 中斷、或容器在動畫期間被
+       重建)，容器就停在起點。而 find_closest_key() 是「沒有距離上限的最近
+       鍵」—— 所有鍵都在螢幕外時，按哪裡都會被判給同一顆，手感就是
+       「最下排很難按到/按空白變成切輸入法」(founder 2026-08-07 實測)。
+       不要依賴動畫的收尾來歸零；動畫要起點時自己再設。 */
+    lv_obj_set_style_translate_x(keyboard_container, 0, 0);
+    lv_obj_set_style_translate_y(keyboard_container, 0, 0);
 
     // 初始時隱藏
     lv_obj_add_flag(keyboard_container, LV_OBJ_FLAG_HIDDEN);
@@ -8645,20 +8805,7 @@ static void kbd_scroll_to_caret_async(void *unused)
 {
     (void)unused;
     update_input_display();
-    /* TEMP DIAG(2026-08-07):輸入頁疊了什麼在上面 —— 找「按了沒反應」的攔截者。
-       由後往前列(後面的蓋在前面之上),標出可點擊/可見的那些。 */
-    lv_obj_t *mc = mode_container[HID_MODE_KEYBOARD];
-    if (mc && lv_obj_is_valid(mc))
-    {
-        uint32_t n = lv_obj_get_child_cnt(mc);
-        for (uint32_t i = 0; i < n; i++)
-        {
-            lv_obj_t *c = lv_obj_get_child(mc, (int32_t)i);
-            if (c == NULL) continue;
-            lv_area_t a;
-            lv_obj_get_coords(c, &a);
-        }
-    }
+
 }
 
 static void kbd_lower_switch(bool to_kbd)
@@ -8785,6 +8932,12 @@ static void kbd_lower_switch(bool to_kbd)
                (founder 2026-08-07)。只有真的在畫面上才演退場。 */
             if (lv_obj_has_flag(keyboard_container, LV_OBJ_FLAG_HIDDEN))
             {
+                lv_obj_set_style_translate_x(keyboard_container, 0, 0);
+            }
+            else if (!from_keyboard)
+            {
+                /* 進場(不是換頁)就直接藏並歸零，不演退場也不留位移 */
+                lv_obj_add_flag(keyboard_container, LV_OBJ_FLAG_HIDDEN);
                 lv_obj_set_style_translate_x(keyboard_container, 0, 0);
             }
             else
@@ -9106,8 +9259,16 @@ static void text_input_bar_drag_event_cb(lv_event_t *e)
     {
         /* 鍵盤站也要能點字移游標,邏輯與語音站一致(founder 2026-08-07)。
            只認短按 —— 往下拖收回輸入模式那條手勢照舊。 */
-        uint32_t idx;
-        if (voice_letter_at(pt, &idx))
+        /* 用**按下**時記下的座標，不能用這裡現讀的 —— SHORT_CLICKED 是放開時才
+           觸發，而 ft3168 在 Up 事件回報的座標是 (0,0)(這顆面板的老毛病，別處已
+           擋過)。現讀會得到 (0,0)，換算成 label 相對座標是負的，
+           lv_label_get_letter_on() 一律回第 0 個字 —— 症狀就是「點哪裡游標都跳到
+           文字最前面」(founder 2026-08-07，[tap] 探針九次全是 (0,0) 坐實)。 */
+        lv_point_t tp = { tib_drag_start_x, tib_drag_start_y };
+        if (tp.x == 0 && tp.y == 0)
+            return; /* 連按下都是幻影座標 → 這一下不算 */
+        uint32_t idx = 0;
+        if (voice_letter_at(tp, &idx))
             voice_set_caret_cp((int)idx);
         return;
     }
@@ -10678,6 +10839,10 @@ void hid_mouse_set_own_bar_hidden(bool hide)
 static void bar_ai_sync_timer_cb(lv_timer_t *t)
 {
     (void)t;
+    /* 鍵盤露出時，把新冒出來、壓在鍵盤上的浮層一律設成按下時放行(見
+       kbd_guard_overlappers 的說明)。放在這支既有的 40ms poll 上，浮層晚一步
+       出現也追得到；沒開鍵盤時第一行就 return，成本可忽略。 */
+    kbd_guard_overlappers();
     /* 直接對齊「那條浮層 bar」的實際可見性(不是清單)：它一現就收自有 bar、一收就還原。
        tap_grace 只橋接「點下到浮層 bar 出現」那短短一段(立刻收後撐住,避免 getter 還沒 true)。 */
     bool engaged = instruction_list_floating_bar_visible();
@@ -10841,6 +11006,11 @@ void lv_create_mouse_screen(lv_obj_t *scr)
     lv_obj_add_flag(bottom_swipe_area, LV_OBJ_FLAG_CLICKABLE);
     lv_obj_add_event_cb(bottom_swipe_area, text_input_bar_cb, LV_EVENT_ALL,
                         NULL);
+    /* 這條 280×50 貼在 y=416..466，與鍵盤最下排重疊 → 鍵盤露出時放行(見
+       chrome_hit_test_cb)。 */
+    lv_obj_add_flag(bottom_swipe_area, LV_OBJ_FLAG_ADV_HITTEST);
+    lv_obj_add_event_cb(bottom_swipe_area, chrome_hit_test_cb, LV_EVENT_HIT_TEST,
+                        NULL);
 
     /* 進輸入用的 keyboard_icon:2026-08-07 founder 從頂部搬到**底部中間**，連同
        「點它 = 進輸入」的行為一起搬。頂部現在專職「下拉開面板 / 按住進飛鼠」，
@@ -10855,6 +11025,11 @@ void lv_create_mouse_screen(lv_obj_t *scr)
     /* 圖本身渲染約 45px,太小不好按(founder 2026-08-07:能按到的範圍要比可視範圍大)。
        ext_click_area 從 12 放大到 34 → 可按範圍約 113px,四周各多出一圈。 */
     lv_obj_set_ext_click_area(s_top_logo, 34);
+    /* 但這圈放大後是 x≈177..289 / y≈375..466 —— 英文空白鍵(y 369..418)只剩最上面
+       6px 露在外面、中文空白鍵(下移到 y 401..451)整顆被埋掉,手感就是「最下排按不到,
+       偶爾才中一次」(founder 2026-08-07 實測 [geo])。鍵盤露出時放行給底下的鍵。 */
+    lv_obj_add_flag(s_top_logo, LV_OBJ_FLAG_ADV_HITTEST);
+    lv_obj_add_event_cb(s_top_logo, chrome_hit_test_cb, LV_EVENT_HIT_TEST, NULL);
     lv_obj_add_event_cb(s_top_logo, bottom_logo_cb, LV_EVENT_CLICKED, NULL);
 
     // === 媒體中心 pull-down panel（從頂部模式切換條往下拉觸發）===
@@ -10868,6 +11043,7 @@ void lv_create_mouse_screen(lv_obj_t *scr)
     // 啟動自有底部 bar 的隱藏同步 poll（instruction_list 浮層 bar 顯示時收掉它）
     if (s_bar_ai_sync_timer == NULL)
         s_bar_ai_sync_timer = lv_timer_create(bar_ai_sync_timer_cb, 40, NULL);
+
 
 
     #if ENABLE_MENU_FEATURE

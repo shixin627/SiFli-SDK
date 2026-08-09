@@ -166,6 +166,7 @@ extern void BLE_LOG_E(const char *format, ...);
     extern void motor_pattern_stop(void);
     extern void motor_pattern_tap(void);
     extern void motor_pattern_air_hint(void); /* 小震 50% 力道:飛鼠觸發提示(founder 2026-07-24) */
+    extern void motor_pattern_key_tick(void); /* 極小震 2.5ms:鍵盤每鍵回饋(founder 2026-08-07) */
 
 
 #ifdef __cplusplus
