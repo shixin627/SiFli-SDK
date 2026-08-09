@@ -103,6 +103,9 @@ extern void animate_to_message_list(void);
 extern void animate_to_ai_page(void);
 extern void animate_to_home_from_ai_page(void);
 extern void animate_to_home_from_notification_center(void);
+/* Instant (no-anim) variant of the above, plus an AI-tileview reset. Post-sleep
+   reset uses it under the black sleep overlay. */
+extern void snap_to_home_from_any_page(void);
 extern void animate_to_home_from_instruction_list(void);
 extern bool get_bluetooth_connection_status(void);
 extern void create_connection_tips(void);

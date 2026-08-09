@@ -75,6 +75,16 @@ static lv_obj_t *sleep_wake_overlay = NULL;
 static volatile bool sleep_fade_done = false;
 static volatile bool sleep_fading_out = false;
 
+/* Sleep-to-watch-face reset (founder 2026-08-06): a short sleep is a glance
+ * interruption — the user wants their page back. A LONG sleep means they walked
+ * away, so the pre-sleep page is stale and waking on it is disorienting; wake on
+ * the watch face instead. This is the cutoff between the two, in ms. Set to 0 to
+ * always restore the pre-sleep page (old behaviour). */
+#define SLEEP_RESET_TO_HOME_MS 5000
+/* Tick (ms) at which the current sleep started; only read on the GUI thread
+ * right after gui_suspend() returns, written on the SUSPEND handler's thread. */
+static volatile uint32_t sleep_enter_ms = 0;
+
 /*Compatible with private lib*/
 uint32_t g_mainmenu[2];
 
@@ -656,6 +666,64 @@ static void start_sleep_fade_out(void)
     lv_anim_start(&a);
 }
 
+#if SLEEP_RESET_TO_HOME_MS
+/* Put the UI back on the watch face after a long sleep. MUST run on the GUI
+ * thread, and is only called from the wake path in app_watch_entry while
+ * sleep_wake_overlay is still opaque — every teardown below is therefore
+ * invisible, which is why they all have to be the INSTANT variants (no slide-out
+ * would ever get to render). */
+static void reset_ui_to_watchface(void)
+{
+    extern bool chat_page_is_open(void);
+    extern void chat_page_close(void);
+    extern bool commu_send_conv_close(void);
+    extern void instruction_list_hide_now(void);
+    extern void check_main_page(void);
+
+    LOG_I("slept %ums (>= %dms): resetting UI to watch face",
+          (unsigned)(rt_tick_get_millisecond() - sleep_enter_ms),
+          SLEEP_RESET_TO_HOME_MS);
+
+    /* 1. lv_layer_top overlays, topmost first. The @-chat room sits ABOVE the
+     *    floating list, and its close tells the phone the conversation ended —
+     *    same order and same protocol call as the back gesture. */
+    if (chat_page_is_open())
+    {
+        commu_send_conv_close();
+        chat_page_close();
+    }
+    instruction_list_hide_now();
+
+    /* 2. Unwind anything stacked on top of Main. gui_app_goback() only QUEUES a
+     *    message to the gui_app task, which is drained by lv_timer_handler on
+     *    this very thread, so pump between hops. Bounded twice over (hops and
+     *    per-hop wait) — this is on the wake path, a stuck app must never hold
+     *    the screen black. */
+    for (int hop = 0; hop < 4 && !gui_app_is_actived(APP_ID_MAIN); hop++)
+    {
+        gui_app_goback();
+        for (int i = 0; i < 12 && !gui_app_is_actived(APP_ID_MAIN); i++)
+        {
+            lv_timer_handler();
+            rt_thread_mdelay(5);
+        }
+    }
+    if (!gui_app_is_actived(APP_ID_MAIN))
+    {
+        /* Gave up: leave the page as-is rather than snap a tileview that isn't
+         * the visible surface. Better a stale page than a broken one. */
+        LOG_W("post-sleep reset: Main did not come back, keeping current page");
+        return;
+    }
+
+    /* 3. Main is on top — snap its tileview home and re-sync the page-state
+     *    flags the gesture/back handlers read. */
+    snap_to_home_from_any_page();
+    screen_rotate_back_to_original_direction();
+    check_main_page();
+}
+#endif /* SLEEP_RESET_TO_HOME_MS */
+
 static void pm_event_handler(gui_pm_event_type_t event)
 {
     extern void dial_header_on_suspend(void);
@@ -669,6 +737,11 @@ static void pm_event_handler(gui_pm_event_type_t event)
            thread (button / gesture / BLE RX), not necessarily the LVGL thread —
            tag which one actually executes the LVGL calls below. */
         LOG_I("[GOV-DIAG] SUSPEND handler thr=%s", rt_thread_self()->name);
+        /* Stamp the sleep start for the post-wake staleness check (see
+         * SLEEP_RESET_TO_HOME_MS). Taken HERE, not in the wake path, because
+         * this is the last point that still runs on every sleep entry —
+         * button-click and inactivity alike. */
+        sleep_enter_ms = rt_tick_get_millisecond();
         dial_header_on_suspend();
         start_sleep_fade_out();
         /* BLE: screen off → drop the link to SLOW idle for standby power.
@@ -959,6 +1032,17 @@ void app_watch_entry(void *parameter)
                 LOG_I("no input:%d", lv_disp_get_inactive_time(NULL));
                 gui_suspend();
                 LOG_I("ui resume");
+#if SLEEP_RESET_TO_HOME_MS
+                /* Woke from a LONG sleep: the pre-sleep page is stale, come back
+                 * on the watch face. Runs here — after gui_suspend() returns but
+                 * before the black overlay is dropped below — so the whole
+                 * unwind happens off-screen. */
+                if ((rt_tick_get_millisecond() - sleep_enter_ms) >=
+                        SLEEP_RESET_TO_HOME_MS)
+                {
+                    reset_ui_to_watchface();
+                }
+#endif /* SLEEP_RESET_TO_HOME_MS */
                 /* force screen to redraw */
                 lv_obj_invalidate(lv_scr_act());
                 /* reset activity timer */
