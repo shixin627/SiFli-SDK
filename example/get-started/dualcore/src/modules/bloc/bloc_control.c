@@ -1053,7 +1053,14 @@ static void fsr_adc_sampler_thread_entry(void *parameter)
 			continue;
 		}
 		g_fsr_adc_latest = fsr_adc_read_value();
-		// LOG_D("FSR ADC: %d (baseline %d)", g_fsr_adc_latest, g_fsr_baseline);
+		/* 每筆取樣的讀值:預設關閉(10Hz 會灌爆 console)。要看時取消註解。
+		   permille = 相對 baseline 的千分比,跟 FSR_*_PERMILLE 門檻同一把尺。
+		   注意用 rt_kprintf 不要用 LOG_I — 本檔的 DBG_LVL 定義排在其他 include
+		   之後,而 rtdbg.h 有 include guard,第一次被拉進來時 DBG_LVL 還沒定義,
+		   落到預設 DBG_WARNING,所以整個檔案的 LOG_I 都不會編進去(下面原本的
+		   "FSR handfree" / "FSR LEFT PRESS" / "FSR baseline calibrated" 同樣是啞的)。 */
+		// rt_kprintf("FSR ADC: %d (baseline %d, %d permille)\n", g_fsr_adc_latest, g_fsr_baseline,
+		//            g_fsr_baseline ? (rt_int32_t)(g_fsr_adc_latest * 1000 / g_fsr_baseline) : 0);
 
 		/* Baseline calibration (boot / on-demand): average a few resting samples,
 		   assuming the FSR is NOT pressed. A reading below FSR_BASELINE_MIN looks
