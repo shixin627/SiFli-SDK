@@ -554,6 +554,15 @@ bool commu_send_conv_list_req(void)
     LOG_I("send conv list req -> %s", ok ? "ok" : "FAILED");
     return ok;
 }
+/* Ask the phone's desktop to create a NEW session. Carries nothing and expects no direct
+   reply — the new row comes back in the ordinary session list (KEY_CONV_LIST). See
+   KEY_CONV_NEW in communicate_parse_skailink.h for why the id never travels on this key. */
+bool commu_send_conv_new(void)
+{
+    bool ok = commu_send_string(SKAI_LINK_COMMAND_ID, KEY_CONV_NEW, "{}");
+    LOG_I("send conv new -> %s", ok ? "ok" : "FAILED");
+    return ok;
+}
 
 /* watch→phone (SKAI_LINK): SkaiApp install/remove result (ADR-0037).
    id is charset-whitelisted upstream ([a-z0-9-]) so raw %s is quote-safe. */

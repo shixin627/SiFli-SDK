@@ -79,13 +79,31 @@ static session_meta_t s_sessions[SESSION_PAGER_MAX];
 static int s_session_count;
 static int s_current; /* index of the centred page */
 
-static lv_obj_t *s_pager;     /* horizontal snap container (owns the pages) */
-static lv_obj_t *s_voice_bar; /* shared bottom voice affordance (tile child, NOT a page child) */
+/* ── Two layers, one tile (2026-08-10 founder) ──
+   LIST is what the tile shows on arrival: the sessions this desktop has, as tappable rows.
+   CHAT replaces it for exactly ONE session once a row is tapped, and the left-edge back
+   swipe returns. They are siblings, not a pager: the old design paged horizontally across
+   sessions, which left no free horizontal axis for a back gesture and opened a conversation
+   just by drifting past it. */
+static lv_obj_t *s_root;      /* the tile child everything else hangs off */
+static lv_obj_t *s_home_tile; /* the tile we were built in — restored to after a pin */
+static lv_obj_t *s_dim;       /* black scrim over the page while the panel comes over it */
+static lv_obj_t *s_list_view; /* LIST layer — vertical column of session rows */
+static lv_obj_t *s_chat_view; /* CHAT layer — one session's transcript (hidden on LIST) */
+static lv_obj_t *s_chat_title;
+static lv_obj_t *s_chat_list; /* the bubble column inside CHAT */
+static bool s_in_chat;
+static lv_obj_t *s_voice_bar; /* shared bottom voice affordance (tile child, NOT a layer child) */
 static lv_obj_t *s_mic_img;
 static lv_obj_t *s_ripple;
-static lv_obj_t *s_transcript;                        /* live V2T text, shown while listening */
-static lv_obj_t *s_page_lists[SESSION_PAGER_MAX];     /* each page's bubble column */
+static lv_obj_t *s_transcript; /* live V2T text, shown while listening */
 static bool s_listening;
+/* Set when the mic on the LIST layer asked for a new session. The desktop answers with an
+   ordinary list push (see KEY_CONV_NEW), so this is what tells sp_apply_list that the row
+   it has never seen before is the one to walk into. */
+static bool s_await_new;
+static char s_known_ids[SESSION_PAGER_MAX][SESSION_ID_LEN];
+static int s_known_count;
 /* The session the watch currently has OPEN on the phone (convOpen sent, no convClose
    yet), "" when none. Exactly one at a time — see lv_session_pager.h. */
 static char s_open_id[SESSION_ID_LEN];
@@ -110,12 +128,14 @@ static sp_msg_t s_pending_msgs[SP_MSG_MAX];
 static int s_pending_msg_count;
 
 /* What the centred page currently HAS drawn — see the redraw skip in sp_apply_state.
-   sp_rebuild_pages must void this: it destroys the bubble columns, so "already drawn"
-   would otherwise leave the fresh (empty) page unpainted until the text next changes. */
+   sp_enter_chat must void this: it clears the bubble column, so "already drawn" would
+   otherwise leave the fresh (empty) room unpainted until the text next changes. */
 static uint64_t s_drawn_sig;
 static int s_drawn_page = -1;
 
-static void sp_open_current(void);
+static void sp_enter_chat(int idx);
+static void sp_leave_chat(void);
+static void sp_rebuild_list(void);
 
 /* ── Voice ripple ────────────────────────────────────────────────────────── */
 
@@ -204,16 +224,28 @@ static void sp_mic_toggle(void)
         sp_stop_and_send();
         return;
     }
-    if (s_open_id[0] == '\0')
+    /* LIST layer: there is no conversation to dictate INTO, so the mic means "start a new
+       one" (founder 2026-08-10). It only asks — the desktop creates the session and the
+       new row arrives in the ordinary list push, which is what walks us into the chat.
+       Dictation is a second, deliberate tap once we're there: auto-arming the mic on a
+       session the user has not seen yet would post their first words into a conversation
+       they never confirmed opened. */
+    if (!s_in_chat)
     {
-        /* Nothing open yet (list still empty, or the open raced the tap) — try again so
-           a tap is never silently dropped. */
-        sp_open_current();
-        if (s_open_id[0] == '\0')
+        s_await_new = true;
+        if (!commu_send_conv_new())
         {
-            LOG_W("mic: no open session, ignoring");
+            s_await_new = false; /* never leave the flag armed on a send that failed */
+            LOG_W("mic: conv_new send failed");
             return;
         }
+        LOG_I("mic: requested a new session");
+        return;
+    }
+    if (s_open_id[0] == '\0')
+    {
+        LOG_W("mic: in chat with no open session, ignoring");
+        return;
     }
     clearVoice2Text();
     voice_provider.start_v2t();
@@ -226,6 +258,55 @@ static void sp_mic_cb(lv_event_t *e)
     if (lv_event_get_code(e) != LV_EVENT_CLICKED)
         return;
     sp_mic_toggle();
+}
+
+/* ── Pinning the page while the panel comes over it ──────────────────────────
+   founder 2026-08-10:「session 頁面不該往下離開，應該要是媒體中心蓋下來，跟錶盤還有通知
+   列表的互動一樣」。The watch face reads that way because its blurred dial (gaus_dial_bg)
+   is a SCREEN-level object that never scrolls — only the face's own contents ride the
+   tileview. This page had everything inside the tile, so the tileview scroll carried it
+   away instead of letting the panel cover it.
+   So for the duration of the pull we re-parent the page (and the voice bar with it — they
+   are one surface) OUT of the tile and onto the tileview's own parent, pushed to the
+   background so the descending panel draws over it. Restored the moment the gesture ends,
+   whichever way it resolves. */
+/* 面板蓋下來時,底下的 session 頁要跟著變暗 —— 錶盤是靠 set_clock_main_status_opa 吃
+   tileview 的 scroll_y 做到的(founder 2026-08-10:「需要像錶盤那樣有個慢慢變黑的背景」)。
+   這裡用同一個訊號源:clock 端在 tileview 的 SCROLL 事件裡換算成 0..204 餵進來,所以
+   拉下與收回兩個方向、手勢與慣性滑行全都自動跟上,不必各自補。 */
+void session_pager_set_dim(lv_opa_t opa)
+{
+    if (s_dim == NULL || !lv_obj_is_valid(s_dim))
+        return;
+    lv_obj_set_style_bg_opa(s_dim, opa, 0);
+    if (opa == LV_OPA_TRANSP)
+        lv_obj_add_flag(s_dim, LV_OBJ_FLAG_HIDDEN);
+    else
+        lv_obj_clear_flag(s_dim, LV_OBJ_FLAG_HIDDEN);
+}
+
+void session_pager_pin_for_panel(lv_obj_t *fixed_parent)
+{
+    if (s_root == NULL || !lv_obj_is_valid(s_root))
+        return;
+    lv_obj_t *dst = (fixed_parent != NULL) ? fixed_parent : s_home_tile;
+    if (dst == NULL || !lv_obj_is_valid(dst))
+        return;
+    if (lv_obj_get_parent(s_root) == dst)
+        return;
+    lv_obj_set_parent(s_root, dst);
+    lv_obj_set_pos(s_root, 0, 0);
+    if (s_voice_bar != NULL && lv_obj_is_valid(s_voice_bar))
+    {
+        lv_obj_set_parent(s_voice_bar, dst);
+        lv_obj_align(s_voice_bar, LV_ALIGN_BOTTOM_MID, 0, 0);
+    }
+    if (fixed_parent != NULL)
+    {
+        /* Below the tileview, so the panel sliding down inside it covers this page. */
+        lv_obj_move_background(s_voice_bar);
+        lv_obj_move_background(s_root);
+    }
 }
 
 /* Live partial transcript, routed here from interact_voice_recognition
@@ -243,7 +324,8 @@ void session_pager_set_transcript(const char *text)
    @-list chat room. */
 bool session_pager_is_open(void)
 {
-    return s_pager != NULL && lv_obj_is_valid(s_pager) && s_visible && s_open_id[0] != '\0';
+    return s_root != NULL && lv_obj_is_valid(s_root) && s_visible && s_in_chat &&
+           s_open_id[0] != '\0';
 }
 
 /* Release-gesture / lift-to-talk entry point, mirroring chat_page_start_voice_input. */
@@ -320,132 +402,280 @@ static void sp_add_bubble(lv_obj_t *list, const char *text, bool from_ai)
         lv_obj_set_style_text_opa(lbl, LV_OPA_70, 0); /* the user's own words sit back */
 }
 
-/* ── Pages ───────────────────────────────────────────────────────────────── */
+/* ── LIST layer ──────────────────────────────────────────────────────────── */
 
-static void sp_build_page(lv_obj_t *pager, const session_meta_t *s, int idx)
+#define SP_ROW_H 76
+#define SP_ROW_RADIUS 18
+#define SP_ROW_BG 0x1C1C1E /* systemGray6 — content layer, no glass (Skaiwalk UI §1.1) */
+#define SP_FONT_ROW_TITLE 19
+#define SP_FONT_ROW_PREVIEW 16
+
+static void sp_row_cb(lv_event_t *e)
 {
-    lv_obj_t *page = lv_obj_create(pager);
-    lv_obj_remove_style_all(page);
-    lv_obj_set_size(page, LV_HOR_RES, LV_VER_RES);
-    lv_obj_clear_flag(page, LV_OBJ_FLAG_SCROLLABLE);
-
-    lv_obj_t *title = lv_label_create(page);
-    lv_label_set_long_mode(title, LV_LABEL_LONG_DOT);
-    lv_obj_set_width(title, LV_HOR_RES - 120);
-    lv_obj_set_style_text_align(title, LV_TEXT_ALIGN_CENTER, 0);
-    lv_obj_set_style_text_color(title, lv_color_hex(0xFFFFFF), 0);
-    sp_set_font(title, SP_FONT_TITLE);
-    lv_label_set_text(title, s->title[0] ? s->title : "Session");
-    lv_obj_align(title, LV_ALIGN_TOP_MID, 0, SP_TITLE_Y);
-
-    lv_obj_t *list = lv_obj_create(page);
-    lv_obj_set_size(list, LV_HOR_RES - SP_LIST_SIDE_PAD, SP_LIST_H);
-    lv_obj_align(list, LV_ALIGN_TOP_MID, 0, SP_LIST_Y);
-    lv_obj_set_style_bg_opa(list, LV_OPA_TRANSP, 0);
-    lv_obj_set_style_border_width(list, 0, 0);
-    lv_obj_set_scroll_dir(list, LV_DIR_VER);
-    lv_obj_set_scrollbar_mode(list, LV_SCROLLBAR_MODE_OFF);
-    /* The bubble column covers nearly the whole page, so a horizontal drag almost always
-       STARTS on it. set_scroll_dir(VER) means the column itself will not move sideways —
-       and with the horizontal chain CLEARED that drag dead-ends here instead of reaching
-       the pager. Founder 2026-08-05: "只能碰最右邊才能左滑…沒辦法在畫面中央直接左右滑" —
-       the only live strip was the 13px of side padding either side of this object. Chain
-       horizontally (LVGL then hands the pager exactly the axis this column refuses). */
-    lv_obj_add_flag(list, LV_OBJ_FLAG_SCROLL_CHAIN_HOR);
-    lv_obj_set_flex_flow(list, LV_FLEX_FLOW_COLUMN);
-    lv_obj_set_style_pad_row(list, 6, 0);
-    lv_obj_set_style_pad_hor(list, 2, 0);
-    if (idx >= 0 && idx < SESSION_PAGER_MAX)
-        s_page_lists[idx] = list;
-
-    /* The preview stands in until this page becomes the open conversation and real turns
-       arrive on KEY_CONV_STATE (which replaces the column wholesale). */
-    if (s->preview[0])
-        sp_add_bubble(list, s->preview, true);
-
-    lv_obj_scroll_to_y(list, LV_COORD_MAX, LV_ANIM_OFF); /* pin to the newest */
+    if (lv_event_get_code(e) != LV_EVENT_CLICKED)
+        return;
+    /* The index rides in user_data rather than being derived from the child order, so a
+       row stays bound to its session even if the column is rebuilt around it. */
+    int idx = (int)(intptr_t)lv_event_get_user_data(e);
+    sp_enter_chat(idx);
 }
 
-/* Send convOpen for the centred page (and convClose for the one being left). The watch
-   keeps exactly ONE conversation open, so these always come in pairs. */
-static void sp_open_current(void)
+static void sp_add_row(lv_obj_t *parent, const session_meta_t *s, int idx)
 {
-    if (s_session_count <= 0 || s_current < 0 || s_current >= s_session_count)
+    lv_obj_t *row = lv_obj_create(parent);
+    lv_obj_remove_style_all(row);
+    lv_obj_set_width(row, lv_pct(100));
+    lv_obj_set_height(row, SP_ROW_H);
+    lv_obj_clear_flag(row, LV_OBJ_FLAG_SCROLLABLE);
+    lv_obj_set_style_bg_color(row, lv_color_hex(SP_ROW_BG), 0);
+    lv_obj_set_style_bg_opa(row, LV_OPA_COVER, 0);
+    lv_obj_set_style_radius(row, SP_ROW_RADIUS, 0);
+    lv_obj_set_style_pad_hor(row, 14, 0);
+    lv_obj_add_flag(row, LV_OBJ_FLAG_CLICKABLE);
+    /* The column scrolls vertically and the rows are the only thing in it, so a row must
+       hand the vertical axis back up — otherwise a drag that starts on a row (i.e. almost
+       every drag) dead-ends and the list cannot be scrolled at all. */
+    lv_obj_add_flag(row, LV_OBJ_FLAG_SCROLL_CHAIN_VER);
+    lv_obj_add_event_cb(row, sp_row_cb, LV_EVENT_CLICKED, (void *)(intptr_t)idx);
+
+    lv_obj_t *title = lv_label_create(row);
+    lv_label_set_long_mode(title, LV_LABEL_LONG_DOT);
+    lv_obj_set_width(title, LV_HOR_RES - SP_LIST_SIDE_PAD - 48);
+    sp_set_font(title, SP_FONT_ROW_TITLE);
+    lv_obj_set_style_text_color(title, lv_color_hex(0xFFFFFF), 0);
+    lv_label_set_text(title, s->title[0] ? s->title : "Session");
+    lv_obj_align(title, LV_ALIGN_TOP_LEFT, 0, 12);
+
+    if (s->preview[0])
+    {
+        lv_obj_t *prev = lv_label_create(row);
+        lv_label_set_long_mode(prev, LV_LABEL_LONG_DOT);
+        lv_obj_set_width(prev, LV_HOR_RES - SP_LIST_SIDE_PAD - 48);
+        sp_set_font(prev, SP_FONT_ROW_PREVIEW);
+        lv_obj_set_style_text_color(prev, lv_color_hex(0xFFFFFF), 0);
+        lv_obj_set_style_text_opa(prev, LV_OPA_60, 0); /* secondaryLabel */
+        lv_label_set_text(prev, s->preview);
+        lv_obj_align(prev, LV_ALIGN_TOP_LEFT, 0, 40);
+    }
+}
+
+static void sp_rebuild_list(void)
+{
+    if (s_list_view == NULL || !lv_obj_is_valid(s_list_view))
         return;
-    const session_meta_t *s = &s_sessions[s_current];
+    lv_obj_clean(s_list_view);
+    for (int i = 0; i < s_session_count; i++)
+        sp_add_row(s_list_view, &s_sessions[i], i);
+    if (s_session_count == 0)
+    {
+        /* Empty state (Skaiwalk UI §4.2): say what the mic below will do rather than
+           leaving a blank tile that reads as "broken" or "still loading". */
+        lv_obj_t *hint = lv_label_create(s_list_view);
+        lv_label_set_long_mode(hint, LV_LABEL_LONG_WRAP);
+        lv_obj_set_width(hint, LV_HOR_RES - SP_LIST_SIDE_PAD - 40);
+        sp_set_font(hint, SP_FONT_ROW_PREVIEW);
+        lv_obj_set_style_text_align(hint, LV_TEXT_ALIGN_CENTER, 0);
+        lv_obj_set_style_text_color(hint, lv_color_hex(0xFFFFFF), 0);
+        lv_obj_set_style_text_opa(hint, LV_OPA_60, 0);
+        lv_label_set_text(hint, "還沒有對話\n按下方麥克風開新的");
+    }
+    lv_obj_scroll_to_y(s_list_view, 0, LV_ANIM_OFF);
+}
+
+/* ── CHAT layer ──────────────────────────────────────────────────────────── */
+
+static void sp_enter_chat(int idx)
+{
+    if (idx < 0 || idx >= s_session_count)
+        return;
+    const session_meta_t *s = &s_sessions[idx];
     if (s->id[0] == '\0')
         return;
-    if (strcmp(s_open_id, s->id) == 0)
-        return; /* already open */
-    if (s_open_id[0] != '\0')
+    s_current = idx;
+
+    if (s_open_id[0] != '\0' && strcmp(s_open_id, s->id) != 0)
         commu_send_conv_close();
-    commu_send_conv_open(s->title, s->id, (uint8_t)s_current);
+    commu_send_conv_open(s->title, s->id, (uint8_t)idx);
     strncpy(s_open_id, s->id, SESSION_ID_LEN - 1);
     s_open_id[SESSION_ID_LEN - 1] = '\0';
-    LOG_I("conv open: %s", s_open_id);
+
+    lv_label_set_text(s_chat_title, s->title[0] ? s->title : "Session");
+    /* Seed with the preview so the room is never blank while KEY_CONV_STATE is in flight;
+       the first real state replaces the column wholesale. */
+    lv_obj_clean(s_chat_list);
+    s_drawn_sig = 0;
+    s_drawn_page = -1;
+    if (s->preview[0])
+        sp_add_bubble(s_chat_list, s->preview, true);
+    lv_obj_scroll_to_y(s_chat_list, LV_COORD_MAX, LV_ANIM_OFF);
+
+    lv_obj_add_flag(s_list_view, LV_OBJ_FLAG_HIDDEN);
+    lv_obj_clear_flag(s_chat_view, LV_OBJ_FLAG_HIDDEN);
+    s_in_chat = true;
+    LOG_I("chat enter [%d]: %s", idx, s_open_id);
 }
 
-static void sp_close_current(void)
+static void sp_leave_chat(void)
 {
-    if (s_open_id[0] == '\0')
+    if (!s_in_chat)
         return;
     if (s_listening)
     {
-        /* Leaving mid-dictation: drop the partial rather than posting it into a
-           conversation the user just walked away from. */
+        /* Backing out mid-dictation drops the partial — the same rule leaving the tile
+           has always applied. */
         sp_set_listening(false);
         voice_provider.auto_stop_listening();
         clearVoice2Text();
     }
-    commu_send_conv_close();
-    LOG_I("conv close: %s", s_open_id);
-    s_open_id[0] = '\0';
+    if (s_open_id[0] != '\0')
+    {
+        commu_send_conv_close();
+        LOG_I("chat leave: %s", s_open_id);
+        s_open_id[0] = '\0';
+    }
+    s_in_chat = false;
+    lv_obj_add_flag(s_chat_view, LV_OBJ_FLAG_HIDDEN);
+    lv_obj_clear_flag(s_list_view, LV_OBJ_FLAG_HIDDEN);
 }
 
-/* Debounced page commit: a fast flick across the pager must not convOpen every page it
-   passes. Only the page the finger LEFT the pager on opens. */
-#define SP_SETTLE_DEBOUNCE_MS 300
-static lv_timer_t *s_settle_timer;
+/* ── Back gesture (CHAT → LIST) ──────────────────────────────────────────────
+   Left-edge right-swipe, the same affordance every other watch overlay uses. It is NOT the
+   tileview's own edge-back: this tile's horizontal axis still has to take the user home
+   from the LIST layer, so the chat room claims the gesture itself and only within the left
+   edge band — a right-drag started anywhere else in the room still falls through.
 
-static void sp_settle_timer_cb(lv_timer_t *t)
+   Why the displacement is accumulated during PRESSING and not read at RELEASE:
+   the touch driver fabricates a release at the ORIGIN when its I2C read fails —
+       E/drv.i2c    tpread: bus err:0, xfer:0/2, i2c_stat:20, i2c_errcode=4
+       E/drv.ft3168 tpread: Error, return Up event, x = 0, y = 0
+   captured on the dev watch 2026-08-10 while founder was testing these very gestures. A
+   handler that measures `release_point - press_point` then computes a large NEGATIVE
+   displacement, so a perfectly good rightward or downward drag fails its threshold and does
+   nothing. Taps were unaffected (CLICKED carries no coordinate) — exactly the asymmetry
+   founder reported: rows tappable, both drags dead. Tracking the furthest offset seen while
+   the finger is still DOWN removes the release coordinate from the decision entirely. */
+#define SP_BACK_EDGE_X 60
+#define SP_BACK_DX 70
+
+static lv_coord_t s_back_x0, s_back_y0, s_back_dx, s_back_dy;
+static bool s_back_armed;
+
+static void sp_chat_back_cb(lv_event_t *e)
 {
-    lv_timer_del(t);
-    s_settle_timer = NULL;
-    sp_open_current();
+    lv_event_code_t code = lv_event_get_code(e);
+    lv_indev_t *indev = lv_indev_get_act();
+    if (indev == NULL)
+        return;
+    lv_point_t pt;
+    lv_indev_get_point(indev, &pt);
+
+    if (code == LV_EVENT_PRESSED)
+    {
+        s_back_x0 = pt.x;
+        s_back_y0 = pt.y;
+        s_back_dx = 0;
+        s_back_dy = 0;
+        s_back_armed = (pt.x <= SP_BACK_EDGE_X);
+        /* LOG_W, not LOG_I: this build's console prints W and E only — a whole round was
+           spent reading an empty capture because the traces were LOG_I (2026-08-10). */
+        LOG_W("[sp-back] pressed x=%d y=%d armed=%d", (int)pt.x, (int)pt.y,
+              (int)s_back_armed);
+    }
+    else if (code == LV_EVENT_PRESSING)
+    {
+        lv_coord_t dx = pt.x - s_back_x0;
+        lv_coord_t dy = pt.y - s_back_y0;
+        if (dx > s_back_dx)
+            s_back_dx = dx; /* furthest RIGHTWARD travel, monotonic */
+        if (LV_ABS(dy) > LV_ABS(s_back_dy))
+            s_back_dy = dy;
+    }
+    else if (code == LV_EVENT_RELEASED || code == LV_EVENT_PRESS_LOST)
+    {
+        LOG_W("[sp-back] release armed=%d dx=%d dy=%d", (int)s_back_armed, (int)s_back_dx,
+              (int)s_back_dy);
+        if (!s_back_armed)
+            return;
+        s_back_armed = false;
+        if (s_back_dx >= SP_BACK_DX && s_back_dx > LV_ABS(s_back_dy))
+            sp_leave_chat();
+    }
 }
 
-static void sp_scroll_end_cb(lv_event_t *e)
-{
-    lv_obj_t *pager = lv_event_get_target(e);
-    if (pager == NULL || !lv_obj_is_valid(pager) || s_session_count <= 0)
-        return;
-    lv_coord_t sx = lv_obj_get_scroll_x(pager);
-    int idx = (sx + LV_HOR_RES / 2) / LV_HOR_RES;
-    if (idx < 0)
-        idx = 0;
-    if (idx >= s_session_count)
-        idx = s_session_count - 1;
-    if (idx == s_current)
-        return;
-    s_current = idx;
-    LOG_I("page settled: %d (%s)", idx, s_sessions[idx].id);
-    if (s_settle_timer != NULL)
-        lv_timer_del(s_settle_timer);
-    s_settle_timer = lv_timer_create(sp_settle_timer_cb, SP_SETTLE_DEBOUNCE_MS, NULL);
-}
+/* ── Pull down → this device's media centre ──────────────────────────────────
+   Founder 2026-08-10: 「從上面往下拉他要拉出我那個設備的媒體中心」— the SAME media page the
+   watch face's top panel already owns, not a second copy, and it must FOLLOW THE FINGER the
+   way pulling it from the dial does (a set_tile_id jump was the first attempt: 「他為什麼是
+   瞬間跳轉?」). So this feeds the clock's own three-phase follow every frame.
+   Gated to a drag that STARTS in the top band, so the session list keeps its own scroll. */
+#define SP_PULL_BAND_Y 70
+#define SP_PULL_DY 70
+#define SP_PULL_SLOP 12 /* 跟錶盤 FACE_SWIPE_SLOP 同量級：確定是往下拉才接管 */
 
-static void sp_rebuild_pages(void)
+static lv_coord_t s_pull_x0, s_pull_y0, s_pull_dx, s_pull_dy;
+static bool s_pull_armed;
+static bool s_pull_following; /* 已經把面板交給手指了（begin 送出過） */
+
+static void sp_pulldown_cb(lv_event_t *e)
 {
-    if (s_pager == NULL || !lv_obj_is_valid(s_pager))
+    lv_event_code_t code = lv_event_get_code(e);
+    lv_indev_t *indev = lv_indev_get_act();
+    if (indev == NULL)
         return;
-    lv_obj_clean(s_pager);
-    memset(s_page_lists, 0, sizeof(s_page_lists));
-    s_drawn_sig = 0; /* the columns just died — nothing is drawn any more */
-    s_drawn_page = -1;
-    for (int i = 0; i < s_session_count; i++)
-        sp_build_page(s_pager, &s_sessions[i], i);
-    s_current = 0;
-    lv_obj_scroll_to_x(s_pager, 0, LV_ANIM_OFF);
+    lv_point_t pt;
+    lv_indev_get_point(indev, &pt);
+
+    if (code == LV_EVENT_PRESSED)
+    {
+        s_pull_x0 = pt.x;
+        s_pull_y0 = pt.y;
+        s_pull_dx = 0;
+        s_pull_dy = 0;
+        s_pull_armed = (pt.y <= SP_PULL_BAND_Y);
+        LOG_W("[sp-pull] pressed x=%d y=%d armed=%d", (int)pt.x, (int)pt.y,
+              (int)s_pull_armed);
+    }
+    else if (code == LV_EVENT_PRESSING)
+    {
+        lv_coord_t dx = pt.x - s_pull_x0;
+        lv_coord_t dy = pt.y - s_pull_y0;
+        if (dy > s_pull_dy)
+            s_pull_dy = dy; /* furthest DOWNWARD travel — see the note above */
+        if (LV_ABS(dx) > LV_ABS(s_pull_dx))
+            s_pull_dx = dx;
+        if (!s_pull_following && s_pull_armed && dy > SP_PULL_SLOP && dy > LV_ABS(dx))
+        {
+            s_pull_following = true;
+            /* Hand the room back first: the panel covers this tile, and a conversation
+               left open behind it would keep claiming the mic. */
+            sp_leave_chat();
+            extern void clock_main_session_panel_follow_begin(void);
+            clock_main_session_panel_follow_begin();
+        }
+        if (s_pull_following)
+        {
+            extern void clock_main_notify_follow_update(lv_coord_t);
+            clock_main_notify_follow_update(dy);
+        }
+    }
+    else if (code == LV_EVENT_RELEASED || code == LV_EVENT_PRESS_LOST)
+    {
+        LOG_W("[sp-pull] release armed=%d follow=%d dx=%d dy=%d", (int)s_pull_armed,
+              (int)s_pull_following, (int)s_pull_dx, (int)s_pull_dy);
+        s_pull_armed = false;
+        if (s_pull_following)
+        {
+            s_pull_following = false;
+            /* Commit through the clock's session-column end: it reads the LIVE scroll
+               position rather than the cumulative dy, so a pull-then-push-back cancels
+               instead of opening, and it lands back in THIS column (2) rather than the
+               watch face's. Velocity comes from the indev, same as the watch-face path. */
+            lv_point_t v;
+            lv_indev_get_vect(indev, &v);
+            extern void clock_main_session_panel_follow_end(lv_coord_t, lv_coord_t);
+            clock_main_session_panel_follow_end(s_pull_dy, v.y);
+        }
+    }
 }
 
 /* ── Visibility ──────────────────────────────────────────────────────────────
@@ -459,9 +689,9 @@ static void sp_rebuild_pages(void)
 static void sp_visibility_timer_cb(lv_timer_t *t)
 {
     (void)t;
-    if (s_pager == NULL || !lv_obj_is_valid(s_pager))
+    if (s_root == NULL || !lv_obj_is_valid(s_root))
         return;
-    bool vis = lv_obj_is_visible(s_pager);
+    bool vis = lv_obj_is_visible(s_root);
     if (vis == s_visible)
         return;
     s_visible = vis;
@@ -479,16 +709,19 @@ static void sp_visibility_timer_cb(lv_timer_t *t)
             extern void instruction_list_bar_set_visible(bool visible);
             instruction_list_bar_set_visible(false);
         }
-        /* Entering the pager: recover a list we may have missed, then open the page the
-           user is looking at. */
+        /* Entering the tile: recover a list we may have missed. NOTHING is opened here —
+           arriving on this tile now lands on the LIST layer, and a conversation is opened
+           only by an explicit row tap. The old build opened whatever page happened to be
+           centred, which is why merely sliding past the tile bound a conversation. */
         commu_send_conv_list_req();
-        sp_open_current();
     }
     else
     {
-        sp_close_current();
+        /* Leaving the tile abandons the room too: the watch holds exactly one open
+           conversation and it must not survive off-screen. */
+        sp_leave_chat();
     }
-    LOG_I("pager visible=%d", (int)vis);
+    LOG_I("session tile visible=%d", (int)vis);
 }
 
 /* ── BLE parse thread ────────────────────────────────────────────────────── */
@@ -646,27 +879,61 @@ static void sp_apply_list(void)
     strncpy(was_open, s_open_id, SESSION_ID_LEN - 1);
     was_open[SESSION_ID_LEN - 1] = '\0';
 
+    /* Which id is NEW in this push, measured against everything we have ever rendered
+       (s_known_ids), not against the immediately-previous list: the desktop may push an
+       interim list between our conv_new and the one carrying the created session, and
+       diffing against the previous push alone would call an unrelated row "new". */
+    int fresh = -1;
+    for (int i = 0; i < count && fresh < 0; i++)
+    {
+        bool seen = false;
+        for (int k = 0; k < s_known_count && !seen; k++)
+            seen = (strcmp(s_known_ids[k], s_pending_sessions[i].id) == 0);
+        if (!seen)
+            fresh = i;
+    }
+
     memcpy(s_sessions, s_pending_sessions, sizeof(s_sessions));
     s_session_count = count;
-    sp_rebuild_pages();
+    sp_rebuild_list();
 
-    /* Re-centre on the session that was open, if it survived the refresh. */
-    if (was_open[0] != '\0')
+    /* Record what we now know about, capped like everything else on this path. */
+    s_known_count = 0;
+    for (int i = 0; i < count && s_known_count < SESSION_PAGER_MAX; i++)
+    {
+        strncpy(s_known_ids[s_known_count], s_sessions[i].id, SESSION_ID_LEN - 1);
+        s_known_ids[s_known_count][SESSION_ID_LEN - 1] = '\0';
+        s_known_count++;
+    }
+
+    /* The mic asked for a new session and here it is — walk straight in (founder: 開新
+       session 之後就在那個聊天室裡). Only when the tile is actually on screen: a list push
+       that lands while the user is on the watch face must not yank them into a room. */
+    if (s_await_new && fresh >= 0 && s_visible)
+    {
+        s_await_new = false;
+        sp_enter_chat(fresh);
+        return;
+    }
+
+    /* A room that is open stays open across a refresh, as long as its session survived. */
+    if (s_in_chat && was_open[0] != '\0')
     {
         for (int i = 0; i < s_session_count; i++)
         {
             if (strcmp(s_sessions[i].id, was_open) == 0)
             {
-                s_current = i;
-                lv_obj_scroll_to_x(s_pager, i * LV_HOR_RES, LV_ANIM_OFF);
-                return; /* still open on the phone — nothing to re-send */
+                s_current = i; /* index may have moved; the id is what we are bound to */
+                return;
             }
         }
-        /* It's gone (session deleted on the desktop): the phone's conversation is stale. */
+        /* It's gone (session deleted on the desktop): the phone's conversation is stale, so
+           drop the room rather than leaving a chat bound to nothing. */
         s_open_id[0] = '\0';
+        s_in_chat = false;
+        lv_obj_add_flag(s_chat_view, LV_OBJ_FLAG_HIDDEN);
+        lv_obj_clear_flag(s_list_view, LV_OBJ_FLAG_HIDDEN);
     }
-    if (s_visible)
-        sp_open_current();
 }
 
 static void sp_apply_state(void)
@@ -679,9 +946,11 @@ static void sp_apply_state(void)
         LOG_D("conv_state for %s ignored (open=%s)", s_pending_sid, s_open_id);
         return;
     }
-    if (s_current < 0 || s_current >= SESSION_PAGER_MAX)
+    /* State only ever paints the CHAT layer; on the LIST layer there is no open
+       conversation for it to belong to. */
+    if (!s_in_chat)
         return;
-    lv_obj_t *list = s_page_lists[s_current];
+    lv_obj_t *list = s_chat_list;
     if (list == NULL || !lv_obj_is_valid(list))
         return;
 
@@ -741,7 +1010,7 @@ void session_pager_apply_pending(void)
 {
     int kind = s_pending_kind;
     s_pending_kind = SP_PENDING_NONE;
-    if (s_pager == NULL || !lv_obj_is_valid(s_pager))
+    if (s_root == NULL || !lv_obj_is_valid(s_root))
         return;
     if (kind == SP_PENDING_LIST)
         sp_apply_list();
@@ -759,31 +1028,114 @@ lv_obj_t *lv_session_pager_create(lv_obj_t *parent)
        A backdrop parented to this TILE travels with the tileview as the tile slides in, which
        is exactly the sideways drift being complained about; the screen-level one never moves
        and only its opacity ramps. app_clock's scroll handler drives it. */
-    lv_obj_t *pager = lv_obj_create(parent);
-    lv_obj_remove_style_all(pager);
-    /* Transparent by design now — the backdrop above owns the pixels. */
-    lv_obj_set_size(pager, LV_HOR_RES, LV_VER_RES);
-    lv_obj_set_pos(pager, 0, 0);
-    lv_obj_add_flag(pager, LV_OBJ_FLAG_SCROLLABLE);
-    lv_obj_set_scroll_dir(pager, LV_DIR_HOR);
-    lv_obj_set_scroll_snap_x(pager, LV_SCROLL_SNAP_START);
-    lv_obj_set_scrollbar_mode(pager, LV_SCROLLBAR_MODE_OFF);
-    lv_obj_set_flex_flow(pager, LV_FLEX_FLOW_ROW);
-    /* Founder rule (2026-08-05): a mid-pager drag belongs to the PAGES, not the tileview.
-       Clearing the chain enforced that — but it also swallowed the drag at the ends, so
-       there was no way back to the watch face at all ("在螢幕左邊緣右滑…也沒辦法回錶盤";
-       the lvsf_gesture edge detector sits UNDER this full-screen object and never sees the
-       press). LVGL's chain already encodes the rule we actually want: a child keeps the
-       gesture while it can still scroll that way, and only hands over once it cannot. So
-       pages 1..N-1 stay the pager's, and a right-drag on page 0 falls through to the
-       tileview — which is exactly "swipe back from the first page". */
-    lv_obj_add_flag(pager, LV_OBJ_FLAG_SCROLL_CHAIN_HOR);
-    lv_obj_add_event_cb(pager, sp_scroll_end_cb, LV_EVENT_SCROLL_END, NULL);
-    s_pager = pager;
+    lv_obj_t *root = lv_obj_create(parent);
+    lv_obj_remove_style_all(root);
+    /* Transparent by design — the backdrop above owns the pixels. */
+    lv_obj_set_size(root, LV_HOR_RES, LV_VER_RES);
+    lv_obj_set_pos(root, 0, 0);
+    lv_obj_clear_flag(root, LV_OBJ_FLAG_SCROLLABLE);
+    s_root = root;
+    s_home_tile = parent; /* where session_pager_pin_for_panel(NULL) puts us back */
 
-    /* Shared voice bar — a TILE child created AFTER the pager, so it floats above the
-       pages and does not scroll with them. One mic, one ripple, one transcript for the
-       whole pager; it acts on whichever session is centred. */
+    /* ── LIST layer ── */
+    lv_obj_t *listv = lv_obj_create(root);
+    lv_obj_remove_style_all(listv);
+    lv_obj_set_size(listv, LV_HOR_RES - SP_LIST_SIDE_PAD, SP_LIST_H);
+    lv_obj_align(listv, LV_ALIGN_TOP_MID, 0, SP_LIST_Y);
+    lv_obj_set_scroll_dir(listv, LV_DIR_VER);
+    lv_obj_set_scrollbar_mode(listv, LV_SCROLLBAR_MODE_OFF);
+    /* Vertical only, and the chain NOT extended horizontally: the tile's horizontal axis
+       belongs to the tileview so a right-drag anywhere on the list still goes home. */
+    lv_obj_set_flex_flow(listv, LV_FLEX_FLOW_COLUMN);
+    lv_obj_set_style_pad_row(listv, 8, 0);
+    s_list_view = listv;
+
+    /* ── CHAT layer (hidden until a row is tapped) ── */
+    lv_obj_t *chat = lv_obj_create(root);
+    lv_obj_remove_style_all(chat);
+    lv_obj_set_size(chat, LV_HOR_RES, LV_VER_RES);
+    lv_obj_set_pos(chat, 0, 0);
+    lv_obj_clear_flag(chat, LV_OBJ_FLAG_SCROLLABLE);
+    lv_obj_add_flag(chat, LV_OBJ_FLAG_HIDDEN);
+    s_chat_view = chat;
+
+    lv_obj_t *ctitle = lv_label_create(chat);
+    lv_label_set_long_mode(ctitle, LV_LABEL_LONG_DOT);
+    lv_obj_set_width(ctitle, LV_HOR_RES - 120);
+    lv_obj_set_style_text_align(ctitle, LV_TEXT_ALIGN_CENTER, 0);
+    lv_obj_set_style_text_color(ctitle, lv_color_hex(0xFFFFFF), 0);
+    sp_set_font(ctitle, SP_FONT_TITLE);
+    lv_label_set_text(ctitle, "");
+    lv_obj_align(ctitle, LV_ALIGN_TOP_MID, 0, SP_TITLE_Y);
+    s_chat_title = ctitle;
+
+    lv_obj_t *clist = lv_obj_create(chat);
+    lv_obj_set_size(clist, LV_HOR_RES - SP_LIST_SIDE_PAD, SP_LIST_H);
+    lv_obj_align(clist, LV_ALIGN_TOP_MID, 0, SP_LIST_Y);
+    lv_obj_set_style_bg_opa(clist, LV_OPA_TRANSP, 0);
+    lv_obj_set_style_border_width(clist, 0, 0);
+    lv_obj_set_scroll_dir(clist, LV_DIR_VER);
+    lv_obj_set_scrollbar_mode(clist, LV_SCROLLBAR_MODE_OFF);
+    lv_obj_set_flex_flow(clist, LV_FLEX_FLOW_COLUMN);
+    lv_obj_set_style_pad_row(clist, 6, 0);
+    lv_obj_set_style_pad_hor(clist, 2, 0);
+    s_chat_list = clist;
+
+    /* ── Gesture catchers ────────────────────────────────────────────────────
+       Both gestures started as event handlers on the CONTAINERS. Neither ever fired the
+       way it needed to: LVGL delivers a press to the TOPMOST object under the finger and
+       picks the SCROLL target by walking up to the first SCROLLABLE ancestor — straight
+       past a clickable non-scrollable catcher. The watch-face tileview therefore claimed
+       the right-drag and the chat room exited to the dial (founder 2026-08-10).
+       A dedicated catcher is this repo's existing answer (app_clock_main.c's
+       face_swipe_catcher). Made SCROLLABLE but refusing the gesture's own axis, with that
+       axis's chain cleared, it is a dead end for exactly that axis — the tileview never
+       sees the drag, so the gesture stays ours. */
+
+    /* Left-edge strip, CHAT only — created after the bubble column so it sits above it. */
+    lv_obj_t *back_edge = lv_obj_create(chat);
+    lv_obj_remove_style_all(back_edge);
+    lv_obj_set_size(back_edge, SP_BACK_EDGE_X, LV_VER_RES);
+    lv_obj_align(back_edge, LV_ALIGN_LEFT_MID, 0, 0);
+    lv_obj_set_style_bg_opa(back_edge, LV_OPA_TRANSP, 0);
+    lv_obj_add_flag(back_edge, LV_OBJ_FLAG_CLICKABLE);
+    lv_obj_add_flag(back_edge, LV_OBJ_FLAG_SCROLLABLE);
+    lv_obj_set_scroll_dir(back_edge, LV_DIR_VER);
+    lv_obj_clear_flag(back_edge, LV_OBJ_FLAG_SCROLL_CHAIN_HOR);
+    lv_obj_set_scrollbar_mode(back_edge, LV_SCROLLBAR_MODE_OFF);
+    lv_obj_add_event_cb(back_edge, sp_chat_back_cb, LV_EVENT_ALL, NULL);
+
+    /* Top band, BOTH layers — a root child created last, so it covers list and chat alike. */
+    lv_obj_t *pull_band = lv_obj_create(root);
+    lv_obj_remove_style_all(pull_band);
+    lv_obj_set_size(pull_band, LV_HOR_RES, SP_PULL_BAND_Y);
+    lv_obj_align(pull_band, LV_ALIGN_TOP_MID, 0, 0);
+    lv_obj_set_style_bg_opa(pull_band, LV_OPA_TRANSP, 0);
+    lv_obj_add_flag(pull_band, LV_OBJ_FLAG_CLICKABLE);
+    lv_obj_add_flag(pull_band, LV_OBJ_FLAG_SCROLLABLE);
+    lv_obj_set_scroll_dir(pull_band, LV_DIR_HOR);
+    lv_obj_clear_flag(pull_band, LV_OBJ_FLAG_SCROLL_CHAIN_VER);
+    lv_obj_set_scrollbar_mode(pull_band, LV_SCROLLBAR_MODE_OFF);
+    lv_obj_add_event_cb(pull_band, sp_pulldown_cb, LV_EVENT_ALL, NULL);
+
+    /* Scrim, created LAST so it covers the page (and the catchers) — driven by
+       session_pager_set_dim. Not clickable: it must never swallow a touch, it is purely
+       a visual, and while it is up the panel over it owns the input anyway. */
+    lv_obj_t *dim = lv_obj_create(root);
+    lv_obj_remove_style_all(dim);
+    lv_obj_set_size(dim, LV_HOR_RES, LV_VER_RES);
+    lv_obj_set_pos(dim, 0, 0);
+    lv_obj_set_style_bg_color(dim, lv_color_hex(0x000000), 0);
+    lv_obj_set_style_bg_opa(dim, LV_OPA_TRANSP, 0);
+    lv_obj_clear_flag(dim, LV_OBJ_FLAG_CLICKABLE);
+    lv_obj_clear_flag(dim, LV_OBJ_FLAG_SCROLLABLE);
+    lv_obj_add_flag(dim, LV_OBJ_FLAG_HIDDEN);
+    s_dim = dim;
+
+    /* Shared voice bar — a TILE child created AFTER both layers, so it floats above them
+       and does not scroll with either. One mic, one ripple, one transcript for the whole
+       tile; what a tap MEANS depends on the layer (new session on LIST, dictate in CHAT —
+       see sp_mic_toggle). */
     lv_obj_t *bar = lv_obj_create(parent);
     lv_obj_remove_style_all(bar);
     lv_obj_set_size(bar, LV_HOR_RES, 96);
@@ -831,9 +1183,13 @@ lv_obj_t *lv_session_pager_create(lv_obj_t *parent)
     s_listening = false;
     s_open_id[0] = '\0';
     s_visible = false;
+    s_in_chat = false;
+    s_await_new = false;
+    s_known_count = 0;
+    sp_rebuild_list();
     lv_timer_create(sp_visibility_timer_cb, SP_VIS_POLL_MS, NULL);
 
-    LOG_I("session pager created (%d sessions)", s_session_count);
+    LOG_I("session list created (%d sessions)", s_session_count);
 
 #ifdef BSP_USING_PC_SIMULATOR
     /* PC sim has no BLE, so the phone never pushes a session list — stand in with a
@@ -849,16 +1205,14 @@ lv_obj_t *lv_session_pager_create(lv_obj_t *parent)
             "這週三個重點：手錶 session pager、relay 穩定性、Windows 焦點修復。要展開哪一項？",
             "缺的是 lv_session_pager.h 的 include path，SConscript 的 Glob 沒收到新目錄。"};
         lv_session_pager_set_sessions(demo_ids, demo_titles, demo_previews, 3);
-        return pager;
+        return root;
     }
 #endif
 
     /* Nothing cached yet — ask the phone for the list. The visibility timer asks again
        on every entry, so a push that arrives while disconnected is never lost for good. */
     commu_send_conv_list_req();
-    if (s_session_count > 0)
-        sp_rebuild_pages();
-    return pager;
+    return root;
 }
 
 void lv_session_pager_set_sessions(const char (*ids)[SESSION_ID_LEN],
@@ -891,7 +1245,7 @@ void lv_session_pager_set_sessions(const char (*ids)[SESSION_ID_LEN],
     }
     s_session_count = count;
     LOG_I("sessions set: %d", count);
-    sp_rebuild_pages();
+    sp_rebuild_list();
 }
 
 const char *lv_session_pager_current_id(void)

@@ -81,6 +81,17 @@ LV_IMG_DECLARE(device_btn);
 
 static lv_obj_t *app_clock_main_status_bar;
 static lv_obj_t *app_clock_main_status_bar_down;
+
+/* 頂部面板的兩個「停車位」(founder 2026-08-10)。
+   面板本體平常掛在 (1,0)（錶盤正上方）；從 session tile (2,1) 下拉時,把面板的所有子
+   物件整批搬到同一欄正上方的 (2,0),這樣下拉就是同一欄的垂直捲動 —— 全程跟手、沒有
+   先跳回錶盤那一下（founder:「按下去的瞬間為什麼會跳到錶盤才能拉下」）。手勢結束或
+   離開面板時再搬回 (1,0),錶盤自己的下拉才不會落空。
+   為什麼是搬子物件而不是搬整個面板:lv_top_panel_create 把設備列 / 圓點 / pager 等
+   直接掛在傳進去的 tile 上,沒有單一 root 可以 reparent。 */
+static lv_obj_t *s_panel_home_tile;    /* (1,0) 錶盤上方 */
+static lv_obj_t *s_panel_session_tile; /* (2,0) session 欄上方 */
+#define SESSION_PANEL_PAGE_INDEX 5     /* 迴圈建了 0..4,這格是之後才加的 → 索引 5 */
 static lv_obj_t *app_clock_ai_status_bar;
 static lv_obj_t *app_clock_device_change_bar;
 static lv_obj_t *status_bar_area_up;
@@ -198,6 +209,103 @@ void clock_main_applist_follow_begin(void)
     if (gaus_dial_bg && lv_obj_is_valid(gaus_dial_bg))
         lv_obj_clear_flag(gaus_dial_bg, LV_OBJ_FLAG_HIDDEN);
     set_clock_main_status_opa(0, false);
+}
+
+/* session tile (2,1) 往下拉 → 頂部面板的媒體頁（founder 2026-08-10）。
+   這兩個 tile 在 tileview 裡不相鄰((2,1) vs (1,0)),所以沒有原生的手指跟隨路徑可走 —
+   先 snap 回 HOME(無動畫,中間那格本來就沒東西可看),再用動畫往上開面板,看起來就是
+   「從這頁把面板拉下來」。落在哪一頁由 lv_top_panel_open_media() 決定,這裡不碰。 */
+/* 開始「從 session tile 下拉頂部面板」的跟手手勢。之後的 update/end 直接用錶盤那組
+   (clock_main_notify_follow_update / _end) —— 同一條 Y 軸、同一個 commit 判準,面板下拉
+   的手感就跟從錶盤拉完全一致(founder 2026-08-10:「我要的是跟我在錶盤拉下通知列表一樣的
+   效果」,原本用 set_tile_id 一次到位所以是瞬移)。
+   殘留:begin 這裡必須把 X 從第 2 欄 snap 回 HOME 欄,因為面板掛在 (1,0),跟 session
+   tile (2,1) 在格子上不相鄰,沒有能同時跟手的路徑。所以手勢一開始的那一瞬間,底下的
+   背景會從 session 列表換成錶面,面板才開始跟著手指下來。要完全無跳,得把面板從
+   tileview 裡搬出來變成浮層 —— 那是另一個範圍的改動,沒有先問過不做。 */
+/* 把面板的子物件整批搬到另一個 tile。取 child 0 反覆搬,所以到達端的順序與來源一致
+   （z-order 保持）。物件指標不會因為換 parent 而失效,lv_top_panel 內部存的那些
+   handle 全部照用。 */
+static void session_panel_move(bool to_session_column)
+{
+    lv_obj_t *src = to_session_column ? s_panel_home_tile : s_panel_session_tile;
+    lv_obj_t *dst = to_session_column ? s_panel_session_tile : s_panel_home_tile;
+    if (!src || !dst || !lv_obj_is_valid(src) || !lv_obj_is_valid(dst) || src == dst)
+        return;
+    while (lv_obj_get_child_cnt(src) > 0)
+        lv_obj_set_parent(lv_obj_get_child(src, 0), dst);
+}
+
+/* 面板不在錶盤那格時,任何「不是停在 session 面板」的 settle 都要把它搬回去,否則
+   錶盤自己的下拉會拉出一格空白。 */
+static void session_panel_park_home(void)
+{
+    if (s_panel_session_tile && lv_obj_is_valid(s_panel_session_tile) &&
+        lv_obj_get_child_cnt(s_panel_session_tile) > 0)
+    {
+        session_panel_move(false);
+    }
+}
+
+/* 面板停在哪一欄,由它「現在在哪一頁」決定(founder 2026-08-10):
+     設備媒體頁 → session 欄 (2,0),往上收回到那台設備的 session 列表
+     通知列表 / 控制中心(手機範疇) → 錶盤欄 (1,0),往上收回到錶盤
+   面板是全螢幕的,而且兩欄的第 0 列都只有它,所以在 row 0 換欄的瞬間畫面完全一樣 —
+   使用者看不到任何位移,只有「往上收會回到哪裡」跟著改變。
+   由 lv_top_panel 在自己換頁 settle 時呼叫。 */
+void clock_main_panel_park_for_page(bool device_page)
+{
+    if (!app_clock_main_status_bar || !lv_obj_is_valid(app_clock_main_status_bar))
+        return;
+    if (!s_panel_home_tile || !s_panel_session_tile)
+        return;
+    bool in_session_col = (lv_obj_get_child_cnt(s_panel_session_tile) > 0);
+    if (device_page == in_session_col)
+        return; /* 已經停對欄 */
+    /* 只有面板正開著(停在第 0 列)才需要換欄;沒開著的話 park 由既有路徑處理。 */
+    if (lv_obj_get_scroll_y(app_clock_main_status_bar) != 0)
+        return;
+    session_panel_move(device_page);
+    lv_obj_set_tile_id(app_clock_main_status_bar, device_page ? 2 : 1, 0, false);
+    LOG_W("[sp-pull] panel parked in %s column", device_page ? "session" : "watchface");
+}
+
+void clock_main_session_panel_follow_begin(void)
+{
+    if (!app_clock_main_status_bar || !lv_obj_is_valid(app_clock_main_status_bar))
+    {
+        LOG_W("[sp-pull] panel follow: no tileview");
+        return;
+    }
+    LOG_W("[sp-pull] panel follow begin");
+    lv_top_panel_open_media(); /* 先把落點設成該設備的媒體頁,再開始跟手 */
+    session_panel_move(true);  /* 面板搬到 (2,0) —— 之後全程只動 scroll_y */
+    /* session 頁釘在 tileview 的父物件上:捲動只帶走面板,頁面留在原地被蓋住
+       (founder:「應該要是媒體中心蓋下來」)。 */
+    {
+        /* = status_bar_bg_main，但那個 static 宣告在本檔更下面；取 tileview 的 parent
+           是同一個物件，還少一個宣告順序的依賴。 */
+        extern void session_pager_pin_for_panel(lv_obj_t * fixed_parent);
+        session_pager_pin_for_panel(lv_obj_get_parent(app_clock_main_status_bar));
+    }
+    lv_obj_clear_flag(app_clock_main_status_bar, LV_OBJ_FLAG_HIDDEN);
+    if (gaus_dial_bg && lv_obj_is_valid(gaus_dial_bg))
+        lv_obj_clear_flag(gaus_dial_bg, LV_OBJ_FLAG_HIDDEN);
+}
+
+/* 放開:跟錶盤那組同一個判準(看放開當下的實際 scroll,不是累計位移),只是 commit 回
+   第 2 欄而不是 HOME 欄。取消的話立刻把面板搬回錶盤那格。 */
+void clock_main_session_panel_follow_end(lv_coord_t dy, lv_coord_t vy)
+{
+    (void)dy;
+    if (!app_clock_main_status_bar || !lv_obj_is_valid(app_clock_main_status_bar))
+        return;
+    lv_coord_t sy = lv_obj_get_scroll_y(app_clock_main_status_bar);
+    bool open_panel = (sy <= LV_VER_RES - LV_VER_RES / 4) || (vy > 6);
+    LOG_W("[sp-pull] follow end sy=%d vy=%d open=%d", (int)sy, (int)vy, (int)open_panel);
+    lv_obj_set_tile_id(app_clock_main_status_bar, 2, open_panel ? 0 : 1, true);
+    if (!open_panel)
+        session_panel_park_home();
 }
 
 void clock_main_applist_follow_update(lv_coord_t dx)
@@ -341,6 +449,30 @@ static void app_clock_main_status_bar_event_cb(lv_event_t *event)
     {
     case LV_EVENT_SCROLL:
     {
+        /* session 欄的變暗（founder 2026-08-10:「需要像錶盤那樣有個慢慢變黑的背景」）。
+           **必須放在這個 case 的最前面**:底下 sx > 466 那條 App List／右欄的分支自己
+           會 break（本檔約 40 行後），我們這一欄的 scroll_x 是 932，永遠先撞上那個
+           早退，寫在 case 結尾的話一次都不會執行。
+           用 scroll_y 當唯一訊號:拉下 / 收回 / 放開後的慣性滑行全部吃得到，不必在手勢
+           與原生捲動兩邊各補一次。466（session 列）→ 0（面板列）對應 0 → 204。 */
+        /* 面板正停在 session 欄 = 我們的下拉/收回進行中,頂部時間的濃度由下面那段
+           垂直換算獨佔。否則後面 sx > 466 的 App List 分支會用水平位移算出滿值再設
+           一次,把我們的淡出蓋掉(founder 2026-08-10:「上面的時間沒有」)。 */
+        bool session_panel_owns_time =
+            (s_panel_session_tile && lv_obj_is_valid(s_panel_session_tile) &&
+             lv_obj_get_child_cnt(s_panel_session_tile) > 0);
+        if (session_panel_owns_time)
+        {
+            lv_coord_t dim_sy = lv_obj_get_scroll_y(obj);
+            if (dim_sy < 0) dim_sy = 0;
+            if (dim_sy > LV_VER_RES) dim_sy = LV_VER_RES;
+            extern void session_pager_set_dim(lv_opa_t opa);
+            session_pager_set_dim((lv_opa_t)((LV_VER_RES - dim_sy) * 204 / LV_VER_RES));
+            /* 頂部時間在 lv_layer_top 的全域列上,畫在所有 tile 之上 —— scrim 是 session
+               頁的子物件,蓋不到它(founder 2026-08-10:「上面的時間沒有變暗」)。跟錶盤
+               路徑一樣另外淡掉它,用同一個 scroll_y 反向換算,兩者才會同步。 */
+            set_instruction_list_time_opa((uint8_t)(dim_sy * 255 / LV_VER_RES));
+        }
         /* App List tile (col 2) reveal: home sits at scroll_x==466; pulling RIGHT
            toward the App List raises scroll_x toward 932. Finger-follow the SAME
            blurred-dial + top time/weather fade-in the left mixed-list reveal uses,
@@ -381,7 +513,8 @@ static void app_clock_main_status_bar_event_cb(lv_event_t *event)
                 lv_coord_t opa = pull * 255 / 466;
                 if (opa > 255) opa = 255;
                 instruction_list_bar_set_blur_amount((uint8_t)opa);
-                set_instruction_list_time_opa((uint8_t)opa);
+                if (!session_panel_owns_time)
+                    set_instruction_list_time_opa((uint8_t)opa);
                 /* Same pull fades in the blurred dial behind the session pager — the SCREEN-LEVEL
                    gaus_dial_bg, exactly as the left action list uses it. It must not be parented
                    to the tile: that travels with the tileview, and the backdrop then drifts
@@ -504,6 +637,21 @@ static void app_clock_main_status_bar_event_cb(lv_event_t *event)
         }
         break;
     }
+    case LV_EVENT_SCROLL_BEGIN:
+    {
+        /* 收回面板是 LVGL 原生捲動((2,0) 是 LV_DIR_VER),不經過我們的下拉手勢,所以
+           session 頁還在自己的 tile 裡、會跟著捲上來 —— founder 2026-08-10:「往上拉
+           回去還是會看到 session 從下面上來」。面板停在 session 欄時(= 面板開著,唯一
+           的去處就是收回去),捲動一開始就把頁面釘住,關閉於是跟開啟對稱:面板走,頁面
+           留在原地。橫向不必擔心:(2,0) 只允許垂直,開著面板時滑不到別欄。 */
+        if (s_panel_session_tile && lv_obj_is_valid(s_panel_session_tile) &&
+            lv_obj_get_child_cnt(s_panel_session_tile) > 0)
+        {
+            extern void session_pager_pin_for_panel(lv_obj_t * fixed_parent);
+            session_pager_pin_for_panel(lv_obj_get_parent(app_clock_main_status_bar));
+        }
+        break;
+    }
     case LV_EVENT_VALUE_CHANGED:
     {
         rt_uint32_t active_pos = (rt_uint32_t)lv_event_get_param(event);
@@ -567,10 +715,36 @@ static void app_clock_main_status_bar_event_cb(lv_event_t *event)
                                              gui_app_is_actived("Main") &&
                                              !lv_top_panel_mouse_mode());
         }
-        /* 頂部面板 settle：進來時刷新設備清單 / 媒體頁 / 底部按鈕狀態。 */
-        lv_top_panel_set_open(active_pos == MAIN_PAGE_TYPE_UP);
-        lv_top_panel_set_backdrop_opa(
-            (active_pos == MAIN_PAGE_TYPE_UP) ? 204 : 0);
+        /* 頂部面板 settle：進來時刷新設備清單 / 媒體頁 / 底部按鈕狀態。
+           面板有兩個可能的落點 —— 錶盤上方 (MAIN_PAGE_TYPE_UP) 與 session 欄上方
+           (SESSION_PANEL_PAGE_INDEX)，兩者是同一個面板實體，只是被搬過去。 */
+        {
+            bool on_panel = (active_pos == MAIN_PAGE_TYPE_UP ||
+                             active_pos == SESSION_PANEL_PAGE_INDEX);
+            lv_top_panel_set_open(on_panel);
+            lv_top_panel_set_backdrop_opa(on_panel ? 204 : 0);
+            /* 停在別的地方就把面板送回錶盤那格：使用者可能從 session 面板一路滑回
+               錶盤，那條路徑不會經過我們的手勢 end，沒有這行錶盤下拉就會是空的。 */
+            if (active_pos != SESSION_PANEL_PAGE_INDEX)
+                session_panel_park_home();
+            /* 手勢結束了 → session 頁回到自己的 tile。釘住只在拖曳期間成立；留著的話
+               它會掛在 tileview 外面,滑到任何一頁都跟著出現。settle 是唯一該解除的
+               時機:animation 還在跑時必須維持釘住,否則頁面會在動畫中途彈位。 */
+            {
+                extern void session_pager_pin_for_panel(lv_obj_t * fixed_parent);
+                extern void session_pager_set_dim(lv_opa_t opa);
+                session_pager_pin_for_panel(NULL);
+                /* 停在 session 面板 = 頁面被完全蓋住,維持全暗；其餘一律清掉,否則
+                   離開之後那層黑會留在 session 頁上。 */
+                session_pager_set_dim(active_pos == SESSION_PANEL_PAGE_INDEX
+                                          ? (lv_opa_t)204
+                                          : LV_OPA_TRANSP);
+                /* 時間跟著 settle 收尾:停在面板 = 全暗(0)。停在別頁不在這裡復原 ——
+                   各頁本來就會自己設定(session 列表那頁設 OPA_100),硬塞會蓋掉它們。 */
+                if (active_pos == SESSION_PANEL_PAGE_INDEX)
+                    set_instruction_list_time_opa(LV_OPA_TRANSP);
+            }
+        }
         {
             /* Right tile = the device control page. Host the mouse behind the
                list while we're on it; tear it down when we leave. Also re-read
@@ -1682,6 +1856,17 @@ void app_clock_main_status_bar_init(lv_obj_t *par)
             lv_obj_set_scrollbar_mode(pages[i], LV_SCROLLBAR_MODE_OFF);
         }
     }
+    /* session 欄正上方的面板停車位 (2,0)。在迴圈之後才加,所以拿到索引 5,既有的
+       MAIN_PAGE_TYPE_*(0..4) 映射完全不動。LV_DIR_VER 只是給原生捲動用;實際下拉由
+       session tile 的 catcher 手動驅動 scroll_y,所以 (2,1) 不用開 LV_DIR_TOP —— 也
+       不該開,否則使用者在列表上隨便往上滑就會把空面板拉出來。 */
+    s_panel_home_tile = pages[MESSAGE_PAGE_INDEX];
+    s_panel_session_tile =
+        lv_tileview_add_tile(app_clock_main_status_bar, 2, 0, LV_DIR_VER);
+    lv_obj_set_size(s_panel_session_tile, LV_HOR_RES_MAX, LV_VER_RES_MAX);
+    lv_obj_set_style_bg_opa(s_panel_session_tile, LV_OPA_TRANSP, 0);
+    lv_obj_set_scrollbar_mode(s_panel_session_tile, LV_SCROLLBAR_MODE_OFF);
+
     lv_obj_set_tile_id(app_clock_main_status_bar, 1, 1, false);
     lv_obj_add_flag(app_clock_main_status_bar, LV_OBJ_FLAG_HIDDEN);
     /* 2026-08-06: 控制中心不再自己佔一個 tile — 它是頂部面板的最左頁，

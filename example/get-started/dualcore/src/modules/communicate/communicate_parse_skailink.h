@@ -233,6 +233,19 @@ extern "C"
              error    = last command failed (detail carries a short reason)
            Pushed on every binding change and as the answer to cmd:"discover". */
         KEY_TV_STATE = 0x23,
+        /* watch→phone (UPLINK): {} — create a NEW desktop session and open it.
+           2026-08-10 (founder): the right tile now shows the session LIST first and the
+           mic on that layer means "start a new conversation", so every other conv key —
+           OPEN / SEND / CLOSE — is unusable here: all three require an id that does not
+           exist yet.
+           The watch deliberately learns nothing back on this key. The phone asks the
+           desktop that supplied the list to create the session, and the desktop's normal
+           convListResult (→ KEY_CONV_LIST 0x20) carries the new row; the watch opens
+           whatever arrived NEWEST-FIRST that it has not seen before. That keeps the new
+           id off this wire entirely — no reply key, no correlation id, no watch-side
+           pending state to leak if the desktop never answers.
+           Keep in lockstep with WatchProtocol.kt/.swift SKAILINK_KEY_CONV_NEW. */
+        KEY_CONV_NEW = 0x24,
     } SKAI_LINK_KEY;
 
     /* Dispatched from communicate_parse.c for cmd_id == SKAI_LINK_COMMAND_ID.

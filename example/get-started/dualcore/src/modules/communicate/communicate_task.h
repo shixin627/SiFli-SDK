@@ -147,6 +147,7 @@ bool commu_send_conv_open(const char *title, const char *id, uint8_t index); /* 
 bool commu_send_conv_send(const char *text);                                 /* -> KEY_CONV_SEND  (0x10) send one turn (mic→V2T transcript) */
 bool commu_send_conv_close(void);                                            /* -> KEY_CONV_CLOSE (0x11) leave the chat room (back) */
 bool commu_send_conv_list_req(void);                                         /* -> KEY_CONV_LIST_REQ (0x21) (re)push the desktop session list */
+bool commu_send_conv_new(void);                                              /* -> KEY_CONV_NEW  (0x24) create a new desktop session (answered by KEY_CONV_LIST) */
 
 /* TV remote (APP_ID_TV_REMOTE) -> KEY_TV_CONTROL (0x22) {"cmd":"<verb>"}.
    Brand-neutral verbs only — power/up/down/left/right/ok/back/home/volumeUp/

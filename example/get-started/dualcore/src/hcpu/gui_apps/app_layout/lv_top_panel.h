@@ -44,6 +44,10 @@ bool lv_top_panel_mouse_mode(void);
 /** 設備清單有變（registry 更新）時重建媒體頁 + 刷新頂部設備名。 */
 void lv_top_panel_refresh_devices(void);
 
+/** 開在「當前 active 設備」的媒體頁（session tile 下拉的落點）。沒有已同步設備時
+    退回通知列表。呼叫端負責把面板本身叫出來。 */
+void lv_top_panel_open_media(void);
+
 /** 通知列表用：手指壓在「中央那張卡」上時關掉面板水平換頁，放開再開。 */
 void lv_top_panel_set_hor_enabled(bool enabled);
 

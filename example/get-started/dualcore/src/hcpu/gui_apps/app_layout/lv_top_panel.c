@@ -556,6 +556,13 @@ static void pager_value_changed_cb(lv_event_t *e)
         /* 通知列表 / 控制中心 = 控制當前連線的手機 */
         hid_mouse_clear_active_device();
     }
+    /* 換頁也換「往上收回哪裡」(founder 2026-08-10):設備媒體頁屬於那台設備,收回去該
+       是它的 session 列表;通知列表 / 控制中心是手機範疇,收回去是錶盤。面板實體因此
+       跟著換欄停放 —— 換欄在畫面上看不出來(兩欄第 0 列都只有這個全螢幕面板)。 */
+    {
+        extern void clock_main_panel_park_for_page(bool device_page);
+        clock_main_panel_park_for_page(page >= PAGE_MEDIA_0);
+    }
     update_device_bar();
 }
 
@@ -595,6 +602,29 @@ void lv_top_panel_refresh_devices(void)
     if (!page_targets_phone())
         hid_mouse_ensure_active_device();
     update_device_bar();
+}
+
+/* 從 session tile 下拉進來時用（founder 2026-08-10）:直接停在「那台設備」的媒體頁,
+   而不是面板預設的通知列表。哪一台 = hid_mouse 的 active device — 媒體中心本來就是
+   照這個索引綁的(rebuild_media_pages / hid_mouse_media_page_bind),所以這裡不能自己
+   另外挑一台,否則下拉看到的會跟頂部設備列寫的名字對不起來。
+   沒有任何已同步設備時退回通知列表 —— 面板照樣打得開,只是沒有媒體頁可停。 */
+void lv_top_panel_open_media(void)
+{
+    rebuild_media_pages();
+    if (s_media_count <= 0)
+    {
+        goto_page(PAGE_MESSAGE, false);
+        LOG_I("[top_panel] open_media: no synced device, staying on messages");
+        return;
+    }
+    hid_mouse_ensure_active_device();
+    int dev = hid_mouse_active_device_index();
+    if (dev < 0 || dev >= s_media_count)
+        dev = 0;
+    goto_page(PAGE_MEDIA_0 + dev, false);
+    update_device_bar();
+    LOG_I("[top_panel] open_media: device %d", dev);
 }
 
 void lv_top_panel_set_open(bool opened)

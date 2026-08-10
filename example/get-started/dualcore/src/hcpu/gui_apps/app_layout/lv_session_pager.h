@@ -47,6 +47,19 @@ extern "C"
     /** The session id of the page currently centred, or NULL when empty. */
     const char *lv_session_pager_current_id(void);
 
+    /* ── 頂部面板從這一頁下拉時的兩個掛鉤（app_clock_status_bar.c 呼叫）──
+       面板是錶盤 tileview 的一格，捲動會把整個 tile 帶走；這兩個函式讓這一頁在面板
+       蓋上來時「留在原地並變暗」，跟錶盤的互動一致。 */
+
+    /** 把這一頁（含底部語音列）暫時移出自己的 tile、釘在 [fixed_parent] 上並壓到最底，
+        於是 tileview 捲動只帶走面板。傳 NULL 放回原本的 tile。只在拖曳期間成立 —— 留著
+        它會掛在 tileview 外面，滑到任何一頁都跟著出現。 */
+    void session_pager_pin_for_panel(lv_obj_t *fixed_parent);
+
+    /** 面板下拉進度 → 這一頁上方黑色 scrim 的濃度（0..204）。由 clock 端在 tileview 的
+        SCROLL 事件裡換算，所以拉下 / 收回 / 慣性滑行都連續。 */
+    void session_pager_set_dim(lv_opa_t opa);
+
     /* The blurred backdrop behind this tile is the clock's screen-level gaus_dial_bg (shared
        with the left action list), ramped by app_clock_status_bar.c's tileview scroll handler.
        The pager owns no backdrop of its own — one parented here would slide with the tile. */
