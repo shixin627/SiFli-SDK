@@ -548,19 +548,41 @@ bool commu_send_conv_close(void)
 /* Ask the phone to (re)push the desktop session list. The Data path has no pull, so the
    session pager sends this on build + on reconnect to recover a list pushed while the
    watch was away. */
-bool commu_send_conv_list_req(void)
+/* [device] NULL/"" = every desktop. */
+bool commu_send_conv_list_req(const char *device)
 {
-    bool ok = commu_send_string(SKAI_LINK_COMMAND_ID, KEY_CONV_LIST_REQ, "{}");
-    LOG_I("send conv list req -> %s", ok ? "ok" : "FAILED");
+    char json[128];
+    if (device != NULL && device[0] != '\0')
+    {
+        int n = rt_snprintf(json, sizeof(json), "{\"device\":\"%s\"}", device);
+        if (n <= 0 || n >= (int)sizeof(json)) return false;
+    }
+    else
+    {
+        rt_strncpy(json, "{}", sizeof(json));
+    }
+    bool ok = commu_send_string(SKAI_LINK_COMMAND_ID, KEY_CONV_LIST_REQ, json);
+    LOG_I("send conv list req dev=%s -> %s", (device && device[0]) ? device : "*",
+          ok ? "ok" : "FAILED");
     return ok;
 }
-/* Ask the phone's desktop to create a NEW session. Carries nothing and expects no direct
-   reply — the new row comes back in the ordinary session list (KEY_CONV_LIST). See
-   KEY_CONV_NEW in communicate_parse_skailink.h for why the id never travels on this key. */
-bool commu_send_conv_new(void)
+/* Ask [device] to create a NEW session. Expects no direct reply — the new row comes back
+   in that desktop's ordinary session list (KEY_CONV_LIST). See KEY_CONV_NEW in
+   communicate_parse_skailink.h for why the new id never travels on this key. */
+bool commu_send_conv_new(const char *device)
 {
-    bool ok = commu_send_string(SKAI_LINK_COMMAND_ID, KEY_CONV_NEW, "{}");
-    LOG_I("send conv new -> %s", ok ? "ok" : "FAILED");
+    if (device == NULL || device[0] == '\0')
+    {
+        /* Refuse rather than let the phone guess: with two desktops online an unaddressed
+           create lands on whichever one it happened to list last. */
+        LOG_W("send conv new: no device, refused");
+        return false;
+    }
+    char json[128];
+    int n = rt_snprintf(json, sizeof(json), "{\"device\":\"%s\"}", device);
+    if (n <= 0 || n >= (int)sizeof(json)) return false;
+    bool ok = commu_send_string(SKAI_LINK_COMMAND_ID, KEY_CONV_NEW, json);
+    LOG_I("send conv new dev=%s -> %s", device, ok ? "ok" : "FAILED");
     return ok;
 }
 

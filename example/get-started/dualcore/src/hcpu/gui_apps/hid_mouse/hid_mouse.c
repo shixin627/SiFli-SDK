@@ -10594,6 +10594,13 @@ bool hid_mouse_device_online(int idx)
     return SkaiWatchSys.device_status[idx] != 0;
 }
 
+const char *hid_mouse_device_id(int idx)
+{
+    if (idx < 0 || idx >= hid_mouse_device_count()) return NULL;
+    const char *id = SkaiWatchSys.device_registry.devices[idx].id;
+    return (id[0] != '\0') ? id : NULL;
+}
+
 /* 頂部下拉的去處覆寫：面板 host 滑鼠模式時，頂部往下拉要拉出「錶盤頂部面板」，
    而不是滑鼠 app 自己那層媒體 tileview（founder 2026-08-06：APP 內上方的媒體
    中心可以不要）。NULL = 維持原本的自有媒體下拉（獨立開 APP_ID_MOUSE 時）。 */

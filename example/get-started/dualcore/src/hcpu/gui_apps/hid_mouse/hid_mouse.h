@@ -118,6 +118,10 @@ void hid_mouse_set_active_device_index(int idx);
 void hid_mouse_switch_active_device(int dir);
 /** 第 idx 台的顯示名稱（RAM 內 device_name），越界回 NULL。 */
 const char *hid_mouse_device_name(int idx);
+/** 第 idx 台的帳號 device id（registry 的 key），越界回 NULL。
+    錶盤右側「一台設備一欄」的 session 列表用它跟手機推來的 KEY_CONV_LIST 對帳 ——
+    名稱會重複也會被使用者改，id 才是同一個身分空間（founder 2026-08-10）。 */
+const char *hid_mouse_device_id(int idx);
 /** 第 idx 台是否在線。 */
 bool hid_mouse_device_online(int idx);
 /** 沒有有效控制目標時挑一台預設（主要→第一個在線→第一台）；registry 空則不動。 */

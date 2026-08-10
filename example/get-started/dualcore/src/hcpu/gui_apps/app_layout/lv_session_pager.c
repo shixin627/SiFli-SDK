@@ -74,10 +74,75 @@ typedef struct
     char text[SP_MSG_LEN];
 } sp_msg_t;
 
-/* ── Committed state (LVGL thread only) ── */
-static session_meta_t s_sessions[SESSION_PAGER_MAX];
-static int s_session_count;
-static int s_current; /* index of the centred page */
+/* ── Committed state (LVGL thread only) ──
+   One list PER DESKTOP. The watch face's right side is heading for one column per device
+   (founder 2026-08-10), and even before that UI exists the storage has to be per-device:
+   a flat list cannot say which desktop a row belongs to, so a second desktop's push would
+   overwrite the first and every convOpen after it would be routed at the wrong machine.
+   `s_dev_shown` is the device the single existing column renders; the column split is a
+   later round. */
+typedef struct
+{
+    char id[SESSION_ID_LEN];
+    char name[SESSION_DEVICE_NAME_LEN];
+    session_meta_t items[SESSION_PAGER_MAX];
+    int count;
+} device_sessions_t;
+
+static device_sessions_t s_devices[SESSION_DEVICE_MAX];
+static int s_device_count;
+static int s_dev_shown; /* index into s_devices — what the column currently shows */
+static int s_current;   /* index into that device's items — the open session */
+
+/* The list for the column the UI is looking at. Never NULL: with nothing stored for that
+   device it answers an empty slot carrying the RIGHT id, so the mic can still create a
+   session on a desktop that has none yet.
+
+   The column is indexed against the DEVICE REGISTRY (hid_mouse_device_id), not against the
+   order lists happened to arrive in. That is what keeps column i, media page i and "the
+   device the panel controls" the same machine by construction — the registry is the one
+   ordering every other surface already uses (founder 2026-08-10: 右邊一台設備一欄，從上面
+   拉下來就是那一台的媒體頁). Matching on name instead would break on rename and duplicates. */
+static device_sessions_t *sp_shown(void)
+{
+    static device_sessions_t scratch;
+    extern const char *hid_mouse_device_id(int idx);
+    extern int hid_mouse_device_count(void);
+
+    const char *want = hid_mouse_device_id(s_dev_shown);
+    if (want != NULL)
+    {
+        for (int i = 0; i < s_device_count; i++)
+        {
+            if (strcmp(s_devices[i].id, want) == 0)
+                return &s_devices[i];
+        }
+        /* A phone older than the per-device contract pushes with NO device, which lands in
+           the empty-id slot. Show it on the first column rather than an empty state: during
+           an OTA window the watch is new and the phone is not, and "my sessions vanished"
+           is a far worse failure than showing the one desktop's list on column 0.
+           (founder 2026-08-10 hit exactly this — new firmware, old APK.) */
+        if (s_dev_shown == 0)
+        {
+            for (int i = 0; i < s_device_count; i++)
+            {
+                if (s_devices[i].id[0] == '\0')
+                    return &s_devices[i];
+            }
+        }
+        /* Registered device we have no list for yet — answer an empty list that still
+           knows WHICH desktop it is, so conv_new/list_req remain addressable. */
+        memset(&scratch, 0, sizeof(scratch));
+        strncpy(scratch.id, want, SESSION_ID_LEN - 1);
+        return &scratch;
+    }
+    /* No registry (or a phone older than the per-device contract): fall back to the single
+       stored list, which is exactly the pre-2026-08-10 behaviour. */
+    if (s_device_count > 0)
+        return &s_devices[0];
+    memset(&scratch, 0, sizeof(scratch));
+    return &scratch;
+}
 
 /* ── Two layers, one tile (2026-08-10 founder) ──
    LIST is what the tile shows on arrival: the sessions this desktop has, as tappable rows.
@@ -120,6 +185,8 @@ static volatile int s_pending_kind;
 
 static session_meta_t s_pending_sessions[SESSION_PAGER_MAX];
 static int s_pending_session_count;
+static char s_pending_dev_id[SESSION_ID_LEN];
+static char s_pending_dev_name[SESSION_DEVICE_NAME_LEN];
 
 static char s_pending_sid[SESSION_ID_LEN];
 static char s_pending_title[SESSION_TITLE_LEN];
@@ -232,8 +299,12 @@ static void sp_mic_toggle(void)
        they never confirmed opened. */
     if (!s_in_chat)
     {
+        /* Address the desktop this column belongs to. Without a device the phone would
+           have to guess, which is wrong the moment a second desktop is online — the send
+           refuses rather than creating a session on the wrong machine. */
+        device_sessions_t *d = sp_shown();
         s_await_new = true;
-        if (!commu_send_conv_new())
+        if (!commu_send_conv_new(d->id))
         {
             s_await_new = false; /* never leave the flag armed on a send that failed */
             LOG_W("mic: conv_new send failed");
@@ -274,6 +345,26 @@ static void sp_mic_cb(lv_event_t *e)
    tileview 的 scroll_y 做到的(founder 2026-08-10:「需要像錶盤那樣有個慢慢變黑的背景」)。
    這裡用同一個訊號源:clock 端在 tileview 的 SCROLL 事件裡換算成 0..204 餵進來,所以
    拉下與收回兩個方向、手勢與慣性滑行全都自動跟上,不必各自補。 */
+/* Which registry device this column is showing. Called by the clock when the watch face
+   settles on a session column; re-renders only when the device actually changes so a
+   settle on the same column never rebuilds the list under the user. */
+void session_pager_set_column(int device_index)
+{
+    if (device_index < 0)
+        device_index = 0;
+    if (device_index == s_dev_shown)
+        return;
+    s_dev_shown = device_index;
+    /* Leaving a column abandons its room: the watch holds exactly one open conversation
+       and it belongs to the device we just walked away from. */
+    sp_leave_chat();
+    s_known_count = 0; /* "seen" ids are per-device — otherwise the new column's rows all
+                          look old and a conv_new there would never be walked into */
+    s_await_new = false;
+    sp_rebuild_list();
+    LOG_I("session column -> device %d (%s)", device_index, sp_shown()->id);
+}
+
 void session_pager_set_dim(lv_opa_t opa)
 {
     if (s_dim == NULL || !lv_obj_is_valid(s_dim))
@@ -464,9 +555,10 @@ static void sp_rebuild_list(void)
     if (s_list_view == NULL || !lv_obj_is_valid(s_list_view))
         return;
     lv_obj_clean(s_list_view);
-    for (int i = 0; i < s_session_count; i++)
-        sp_add_row(s_list_view, &s_sessions[i], i);
-    if (s_session_count == 0)
+    device_sessions_t *d = sp_shown();
+    for (int i = 0; i < d->count; i++)
+        sp_add_row(s_list_view, &d->items[i], i);
+    if (d->count == 0)
     {
         /* Empty state (Skaiwalk UI §4.2): say what the mic below will do rather than
            leaving a blank tile that reads as "broken" or "still loading". */
@@ -486,9 +578,10 @@ static void sp_rebuild_list(void)
 
 static void sp_enter_chat(int idx)
 {
-    if (idx < 0 || idx >= s_session_count)
+    device_sessions_t *d = sp_shown();
+    if (idx < 0 || idx >= d->count)
         return;
-    const session_meta_t *s = &s_sessions[idx];
+    const session_meta_t *s = &d->items[idx];
     if (s->id[0] == '\0')
         return;
     s_current = idx;
@@ -713,7 +806,7 @@ static void sp_visibility_timer_cb(lv_timer_t *t)
            arriving on this tile now lands on the LIST layer, and a conversation is opened
            only by an explicit row tap. The old build opened whatever page happened to be
            centred, which is why merely sliding past the tile bound a conversation. */
-        commu_send_conv_list_req();
+        commu_send_conv_list_req(NULL); /* NULL = every desktop; the watch keeps one list each */
     }
     else
     {
@@ -726,7 +819,8 @@ static void sp_visibility_timer_cb(lv_timer_t *t)
 
 /* ── BLE parse thread ────────────────────────────────────────────────────── */
 
-/* 0x20 — {"sessions":[{id,title,preview}]}. Bounded copies only; no LVGL calls here. */
+/* 0x20 — {"device":{id,name},"sessions":[{id,title,preview}]}. One push per desktop.
+   Bounded copies only; no LVGL calls here. */
 void skai_sessions_on_conv_list(const uint8_t *json, uint16_t length)
 {
     if (json == NULL || length == 0)
@@ -736,6 +830,27 @@ void skai_sessions_on_conv_list(const uint8_t *json, uint16_t length)
     {
         cJSON_Delete(root);
         return;
+    }
+    /* Absent "device" = the single unnamed desktop, i.e. what a pre-2026-08-10 phone
+       sends. Slot it under the empty id so an old phone still fills the one column. */
+    s_pending_dev_id[0] = '\0';
+    s_pending_dev_name[0] = '\0';
+    {
+        cJSON *dev = cJSON_GetObjectItem(root, "device");
+        if (cJSON_IsObject(dev))
+        {
+            cJSON *j_did = cJSON_GetObjectItem(dev, "id");
+            if (cJSON_IsString(j_did))
+                strncpy(s_pending_dev_id, j_did->valuestring, SESSION_ID_LEN - 1);
+            cJSON *j_dname = cJSON_GetObjectItem(dev, "name");
+            if (cJSON_IsString(j_dname))
+                strncpy(s_pending_dev_name, j_dname->valuestring,
+                        SESSION_DEVICE_NAME_LEN - 1);
+        }
+        else if (cJSON_IsString(dev))
+        {
+            strncpy(s_pending_dev_id, dev->valuestring, SESSION_ID_LEN - 1);
+        }
     }
     cJSON *arr = cJSON_GetObjectItem(root, "sessions");
     int count = 0;
@@ -866,10 +981,53 @@ static void sp_apply_list(void)
        every ~1.5s, and the UI frozen under the constant destroy-and-rebuild. An identical
        list is the COMMON case (the phone re-pushes on every reconnect and on every list
        request), so this early-out is the loop's off switch, not an optimisation. */
-    if (count == s_session_count && count > 0 &&
-        memcmp(s_sessions, s_pending_sessions, (size_t)count * sizeof(s_sessions[0])) == 0)
+    /* Which device slot this push belongs to — upsert, never replace the whole table:
+       each desktop pushes its own list independently, so overwriting slot 0 on every
+       arrival would make two desktops fight over one column. */
+    int slot = -1;
+    for (int i = 0; i < s_device_count; i++)
+    {
+        if (strcmp(s_devices[i].id, s_pending_dev_id) == 0)
+        {
+            slot = i;
+            break;
+        }
+    }
+    if (slot < 0)
+    {
+        if (s_device_count >= SESSION_DEVICE_MAX)
+        {
+            LOG_W("conv_list: device table full, dropping %s", s_pending_dev_id);
+            return;
+        }
+        slot = s_device_count++;
+        memset(&s_devices[slot], 0, sizeof(s_devices[slot]));
+        strncpy(s_devices[slot].id, s_pending_dev_id, SESSION_ID_LEN - 1);
+    }
+    strncpy(s_devices[slot].name, s_pending_dev_name, SESSION_DEVICE_NAME_LEN - 1);
+
+    device_sessions_t *dev = &s_devices[slot];
+    bool unchanged = (count == dev->count && count > 0 &&
+                      memcmp(dev->items, s_pending_sessions,
+                             (size_t)count * sizeof(dev->items[0])) == 0);
+    if (unchanged)
     {
         LOG_D("conv_list unchanged (%d sessions) — no rebuild", count);
+        return;
+    }
+    memcpy(dev->items, s_pending_sessions, sizeof(dev->items));
+    dev->count = count;
+
+    /* Only the device the column is showing can change what is on screen. Another
+       desktop's push is stored and nothing else — repainting for it would yank the list
+       out from under the user. */
+    /* Compare IDENTITY, not slot number: the storage slot is arrival order while the column
+       is the registry position — a slot index that happens to equal the column would repaint
+       the wrong device's list. */
+    if (strcmp(dev->id, sp_shown()->id) != 0)
+    {
+        LOG_I("conv_list stored for %s (column shows %s)",
+              dev->name[0] ? dev->name : dev->id, sp_shown()->id);
         return;
     }
 
@@ -893,15 +1051,13 @@ static void sp_apply_list(void)
             fresh = i;
     }
 
-    memcpy(s_sessions, s_pending_sessions, sizeof(s_sessions));
-    s_session_count = count;
     sp_rebuild_list();
 
     /* Record what we now know about, capped like everything else on this path. */
     s_known_count = 0;
     for (int i = 0; i < count && s_known_count < SESSION_PAGER_MAX; i++)
     {
-        strncpy(s_known_ids[s_known_count], s_sessions[i].id, SESSION_ID_LEN - 1);
+        strncpy(s_known_ids[s_known_count], dev->items[i].id, SESSION_ID_LEN - 1);
         s_known_ids[s_known_count][SESSION_ID_LEN - 1] = '\0';
         s_known_count++;
     }
@@ -919,9 +1075,9 @@ static void sp_apply_list(void)
     /* A room that is open stays open across a refresh, as long as its session survived. */
     if (s_in_chat && was_open[0] != '\0')
     {
-        for (int i = 0; i < s_session_count; i++)
+        for (int i = 0; i < dev->count; i++)
         {
-            if (strcmp(s_sessions[i].id, was_open) == 0)
+            if (strcmp(dev->items[i].id, was_open) == 0)
             {
                 s_current = i; /* index may have moved; the id is what we are bound to */
                 return;
@@ -1189,12 +1345,12 @@ lv_obj_t *lv_session_pager_create(lv_obj_t *parent)
     sp_rebuild_list();
     lv_timer_create(sp_visibility_timer_cb, SP_VIS_POLL_MS, NULL);
 
-    LOG_I("session list created (%d sessions)", s_session_count);
+    LOG_I("session list created (%d devices)", s_device_count);
 
 #ifdef BSP_USING_PC_SIMULATOR
     /* PC sim has no BLE, so the phone never pushes a session list — stand in with a
        few so the layout can actually be looked at. Never compiled for the watch. */
-    if (s_session_count == 0)
+    if (s_device_count == 0)
     {
         static const char demo_ids[3][SESSION_ID_LEN] = {
             "conv:hermes:demo-1", "conv:hermes:demo-2", "conv:hermes:demo-3"};
@@ -1211,7 +1367,7 @@ lv_obj_t *lv_session_pager_create(lv_obj_t *parent)
 
     /* Nothing cached yet — ask the phone for the list. The visibility timer asks again
        on every entry, so a push that arrives while disconnected is never lost for good. */
-    commu_send_conv_list_req();
+    commu_send_conv_list_req(NULL); /* NULL = every desktop; the watch keeps one list each */
     return root;
 }
 
@@ -1224,33 +1380,40 @@ void lv_session_pager_set_sessions(const char (*ids)[SESSION_ID_LEN],
         count = 0;
     if (count > SESSION_PAGER_MAX)
         count = SESSION_PAGER_MAX;
-    memset(s_sessions, 0, sizeof(s_sessions));
+    /* Seeds the FIRST device slot — this entry point predates the per-device split and is
+       only used by the PC-sim fixture, which has exactly one imaginary desktop. */
+    if (s_device_count == 0)
+        s_device_count = 1;
+    s_dev_shown = 0;
+    device_sessions_t *dev = &s_devices[0];
+    memset(dev->items, 0, sizeof(dev->items));
     for (int i = 0; i < count; i++)
     {
         if (ids != NULL)
         {
-            strncpy(s_sessions[i].id, ids[i], SESSION_ID_LEN - 1);
-            s_sessions[i].id[SESSION_ID_LEN - 1] = '\0';
+            strncpy(dev->items[i].id, ids[i], SESSION_ID_LEN - 1);
+            dev->items[i].id[SESSION_ID_LEN - 1] = '\0';
         }
         if (titles != NULL)
         {
-            strncpy(s_sessions[i].title, titles[i], SESSION_TITLE_LEN - 1);
-            s_sessions[i].title[SESSION_TITLE_LEN - 1] = '\0';
+            strncpy(dev->items[i].title, titles[i], SESSION_TITLE_LEN - 1);
+            dev->items[i].title[SESSION_TITLE_LEN - 1] = '\0';
         }
         if (previews != NULL)
         {
-            strncpy(s_sessions[i].preview, previews[i], SESSION_PREVIEW_LEN - 1);
-            s_sessions[i].preview[SESSION_PREVIEW_LEN - 1] = '\0';
+            strncpy(dev->items[i].preview, previews[i], SESSION_PREVIEW_LEN - 1);
+            dev->items[i].preview[SESSION_PREVIEW_LEN - 1] = '\0';
         }
     }
-    s_session_count = count;
+    dev->count = count;
     LOG_I("sessions set: %d", count);
     sp_rebuild_list();
 }
 
 const char *lv_session_pager_current_id(void)
 {
-    if (s_session_count <= 0 || s_current < 0 || s_current >= s_session_count)
+    device_sessions_t *d = sp_shown();
+    if (d->count <= 0 || s_current < 0 || s_current >= d->count)
         return NULL;
-    return s_sessions[s_current].id;
+    return d->items[s_current].id;
 }

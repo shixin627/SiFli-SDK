@@ -89,9 +89,17 @@ static lv_obj_t *app_clock_main_status_bar_down;
    離開面板時再搬回 (1,0),錶盤自己的下拉才不會落空。
    為什麼是搬子物件而不是搬整個面板:lv_top_panel_create 把設備列 / 圓點 / pager 等
    直接掛在傳進去的 tile 上,沒有單一 root 可以 reparent。 */
-static lv_obj_t *s_panel_home_tile;    /* (1,0) 錶盤上方 */
-static lv_obj_t *s_panel_session_tile; /* (2,0) session 欄上方 */
-#define SESSION_PANEL_PAGE_INDEX 5     /* 迴圈建了 0..4,這格是之後才加的 → 索引 5 */
+static lv_obj_t *s_panel_home_tile; /* (1,0) 錶盤上方 */
+
+/* 右側「一台設備一欄」(founder 2026-08-10):欄 2+i = 第 i 台設備的 session 列表,
+   正上方 (2+i,0) 是面板停車位 —— 於是每一欄往下拉,拉出來的都是那一欄那台的媒體頁,
+   而且是同一欄的垂直捲動(不跨欄,零跳轉)。
+   欄的順序 = 設備 registry 的順序,跟頂部面板媒體頁的順序是同一份,所以「左右滑媒體頁」
+   與「左右滑 session 欄」天生對得起來,不需要額外的映射表。 */
+#define SESSION_COL_FIRST 2 /* 錶盤是欄 1;右邊從欄 2 開始 */
+static lv_obj_t *s_session_tile[MAX_SYNCED_DEVICES];
+static lv_obj_t *s_panel_park_tile[MAX_SYNCED_DEVICES];
+static int s_panel_parked_col = -1; /* 面板目前停在哪一欄(-1 = 在錶盤那格) */
 static lv_obj_t *app_clock_ai_status_bar;
 static lv_obj_t *app_clock_device_change_bar;
 static lv_obj_t *status_bar_area_up;
@@ -226,25 +234,84 @@ void clock_main_applist_follow_begin(void)
 /* 把面板的子物件整批搬到另一個 tile。取 child 0 反覆搬,所以到達端的順序與來源一致
    （z-order 保持）。物件指標不會因為換 parent 而失效,lv_top_panel 內部存的那些
    handle 全部照用。 */
-static void session_panel_move(bool to_session_column)
+/* 面板現在停在哪一格(NULL = 錶盤那格)。 */
+static lv_obj_t *session_panel_host(void)
 {
-    lv_obj_t *src = to_session_column ? s_panel_home_tile : s_panel_session_tile;
-    lv_obj_t *dst = to_session_column ? s_panel_session_tile : s_panel_home_tile;
+    if (s_panel_parked_col < 0 || s_panel_parked_col >= MAX_SYNCED_DEVICES)
+        return s_panel_home_tile;
+    return s_panel_park_tile[s_panel_parked_col];
+}
+
+/* 把面板的子物件整批搬到第 col 欄的停車位(col < 0 = 搬回錶盤那格)。 */
+static void session_panel_move_to_col(int col)
+{
+    lv_obj_t *src = session_panel_host();
+    lv_obj_t *dst = (col < 0 || col >= MAX_SYNCED_DEVICES) ? s_panel_home_tile
+                                                           : s_panel_park_tile[col];
     if (!src || !dst || !lv_obj_is_valid(src) || !lv_obj_is_valid(dst) || src == dst)
+    {
+        s_panel_parked_col = (col >= 0 && col < MAX_SYNCED_DEVICES) ? col : -1;
         return;
+    }
     while (lv_obj_get_child_cnt(src) > 0)
         lv_obj_set_parent(lv_obj_get_child(src, 0), dst);
+    s_panel_parked_col = (col >= 0 && col < MAX_SYNCED_DEVICES) ? col : -1;
+}
+
+/* hid_mouse.h 在本檔這個位置還沒被 include（它在下方才進來），而 registry 的順序是欄位
+   順序的唯一真相 —— 沿用本檔既有的就地 extern 慣例。 */
+extern int hid_mouse_device_count(void);
+extern int hid_mouse_active_device_index(void);
+
+/* 讓「滑得到的欄數」跟著設備數走。
+   格子是開機時就建滿 MAX_SYNCED_DEVICES 的（tileview 不能事後抽換格子），所以擋住多餘
+   欄位的唯一辦法是改每一格註冊時的方向旗標 —— founder 2026-08-10 實測:只在 settle 裡
+   夾住「顯示哪一台」完全沒用,他一路滑過四欄全是空白背景,因為能不能往右滑是 tileview
+   讀 tile->dir 決定的,跟我們的顯示邏輯無關。
+   最後一欄不給 LV_DIR_RIGHT;第 0 欄保留 LV_DIR_LEFT 回錶盤。設備數會變(配對/離線),
+   所以每次 settle 都重算一次,成本只是幾個賦值。 */
+static void session_cols_apply_dirs(int col_count)
+{
+    for (int c = 0; c < MAX_SYNCED_DEVICES; c++)
+    {
+        lv_dir_t d = LV_DIR_LEFT;
+        if (c + 1 < col_count)
+            d |= LV_DIR_RIGHT;
+        if (s_session_tile[c] && lv_obj_is_valid(s_session_tile[c]))
+            ((lv_tileview_tile_t *)s_session_tile[c])->dir = d;
+        /* 停車位只上下:面板自己的左右換頁是它內部的 pager,不是 tileview 的欄。 */
+        if (s_panel_park_tile[c] && lv_obj_is_valid(s_panel_park_tile[c]))
+            ((lv_tileview_tile_t *)s_panel_park_tile[c])->dir = LV_DIR_VER;
+    }
+}
+
+/* 有幾欄是真的:設備數,但至少 1 —— 一台都沒有時仍留一欄,使用者才有地方看到空狀態
+   和「按麥克風開新的」,而不是右邊整片消失。 */
+static int session_col_count(void)
+{
+    int n = hid_mouse_device_count();
+    if (n < 1) n = 1;
+    if (n > MAX_SYNCED_DEVICES) n = MAX_SYNCED_DEVICES;
+    return n;
 }
 
 /* 面板不在錶盤那格時,任何「不是停在 session 面板」的 settle 都要把它搬回去,否則
    錶盤自己的下拉會拉出一格空白。 */
 static void session_panel_park_home(void)
 {
-    if (s_panel_session_tile && lv_obj_is_valid(s_panel_session_tile) &&
-        lv_obj_get_child_cnt(s_panel_session_tile) > 0)
-    {
-        session_panel_move(false);
-    }
+    if (s_panel_parked_col >= 0)
+        session_panel_move_to_col(-1);
+}
+
+/* 目前捲動位置換算成欄 / 列。tile 加入順序的索引(active_pos)在補了 8 格之後已經沒有
+   可讀性,而格子座標本來就是我們要的語意。 */
+static int session_scroll_col(lv_obj_t *tv)
+{
+    return (int)((lv_obj_get_scroll_x(tv) + LV_HOR_RES / 2) / LV_HOR_RES);
+}
+static int session_scroll_row(lv_obj_t *tv)
+{
+    return (int)((lv_obj_get_scroll_y(tv) + LV_VER_RES / 2) / LV_VER_RES);
 }
 
 /* 面板停在哪一欄,由它「現在在哪一頁」決定(founder 2026-08-10):
@@ -257,17 +324,28 @@ void clock_main_panel_park_for_page(bool device_page)
 {
     if (!app_clock_main_status_bar || !lv_obj_is_valid(app_clock_main_status_bar))
         return;
-    if (!s_panel_home_tile || !s_panel_session_tile)
+    if (!s_panel_home_tile)
         return;
-    bool in_session_col = (lv_obj_get_child_cnt(s_panel_session_tile) > 0);
-    if (device_page == in_session_col)
-        return; /* 已經停對欄 */
     /* 只有面板正開著(停在第 0 列)才需要換欄;沒開著的話 park 由既有路徑處理。 */
     if (lv_obj_get_scroll_y(app_clock_main_status_bar) != 0)
         return;
-    session_panel_move(device_page);
-    lv_obj_set_tile_id(app_clock_main_status_bar, device_page ? 2 : 1, 0, false);
-    LOG_W("[sp-pull] panel parked in %s column", device_page ? "session" : "watchface");
+    /* 設備媒體頁 → 停在「那一台自己的欄」,所以往上收回的是那台的 session 列表。
+       欄號直接取自面板正在顯示的設備索引,跟 registry 同一份順序。 */
+    int want_col = -1;
+    if (device_page)
+    {
+        int dev = hid_mouse_active_device_index();
+        if (dev < 0) dev = 0;
+        if (dev >= session_col_count()) dev = session_col_count() - 1;
+        want_col = dev;
+    }
+    if (want_col == s_panel_parked_col)
+        return; /* 已經停對欄 */
+    session_panel_move_to_col(want_col);
+    lv_obj_set_tile_id(app_clock_main_status_bar,
+                       (uint8_t)((want_col < 0) ? 1 : (SESSION_COL_FIRST + want_col)), 0,
+                       false);
+    LOG_W("[sp-pull] panel parked in col %d", want_col);
 }
 
 void clock_main_session_panel_follow_begin(void)
@@ -277,9 +355,14 @@ void clock_main_session_panel_follow_begin(void)
         LOG_W("[sp-pull] panel follow: no tileview");
         return;
     }
-    LOG_W("[sp-pull] panel follow begin");
-    lv_top_panel_open_media(); /* 先把落點設成該設備的媒體頁,再開始跟手 */
-    session_panel_move(true);  /* 面板搬到 (2,0) —— 之後全程只動 scroll_y */
+    /* 從哪一欄拉的,面板就停到那一欄 —— 於是拉下來的是那一欄那台的媒體頁,收回去也回
+       到同一欄的 session 列表。 */
+    int col = session_scroll_col(app_clock_main_status_bar) - SESSION_COL_FIRST;
+    if (col < 0) col = 0;
+    if (col >= session_col_count()) col = session_col_count() - 1;
+    LOG_W("[sp-pull] panel follow begin col=%d", col);
+    lv_top_panel_open_media_for(col); /* 落點 = 這一欄那台的媒體頁 */
+    session_panel_move_to_col(col);   /* 之後全程只動 scroll_y,不跨欄 */
     /* session 頁釘在 tileview 的父物件上:捲動只帶走面板,頁面留在原地被蓋住
        (founder:「應該要是媒體中心蓋下來」)。 */
     {
@@ -302,8 +385,15 @@ void clock_main_session_panel_follow_end(lv_coord_t dy, lv_coord_t vy)
         return;
     lv_coord_t sy = lv_obj_get_scroll_y(app_clock_main_status_bar);
     bool open_panel = (sy <= LV_VER_RES - LV_VER_RES / 4) || (vy > 6);
-    LOG_W("[sp-pull] follow end sy=%d vy=%d open=%d", (int)sy, (int)vy, (int)open_panel);
-    lv_obj_set_tile_id(app_clock_main_status_bar, 2, open_panel ? 0 : 1, true);
+    /* 停在原來那一欄 —— 面板在 begin 就搬過去了,這裡只決定停第 0 列還是第 1 列。 */
+    int col = (s_panel_parked_col >= 0) ? s_panel_parked_col
+                                        : (session_scroll_col(app_clock_main_status_bar) -
+                                           SESSION_COL_FIRST);
+    if (col < 0) col = 0;
+    LOG_W("[sp-pull] follow end col=%d sy=%d vy=%d open=%d", col, (int)sy, (int)vy,
+          (int)open_panel);
+    lv_obj_set_tile_id(app_clock_main_status_bar, (uint8_t)(SESSION_COL_FIRST + col),
+                       open_panel ? 0 : 1, true);
     if (!open_panel)
         session_panel_park_home();
 }
@@ -458,9 +548,7 @@ static void app_clock_main_status_bar_event_cb(lv_event_t *event)
         /* 面板正停在 session 欄 = 我們的下拉/收回進行中,頂部時間的濃度由下面那段
            垂直換算獨佔。否則後面 sx > 466 的 App List 分支會用水平位移算出滿值再設
            一次,把我們的淡出蓋掉(founder 2026-08-10:「上面的時間沒有」)。 */
-        bool session_panel_owns_time =
-            (s_panel_session_tile && lv_obj_is_valid(s_panel_session_tile) &&
-             lv_obj_get_child_cnt(s_panel_session_tile) > 0);
+        bool session_panel_owns_time = (s_panel_parked_col >= 0);
         if (session_panel_owns_time)
         {
             lv_coord_t dim_sy = lv_obj_get_scroll_y(obj);
@@ -644,8 +732,7 @@ static void app_clock_main_status_bar_event_cb(lv_event_t *event)
            回去還是會看到 session 從下面上來」。面板停在 session 欄時(= 面板開著,唯一
            的去處就是收回去),捲動一開始就把頁面釘住,關閉於是跟開啟對稱:面板走,頁面
            留在原地。橫向不必擔心:(2,0) 只允許垂直,開著面板時滑不到別欄。 */
-        if (s_panel_session_tile && lv_obj_is_valid(s_panel_session_tile) &&
-            lv_obj_get_child_cnt(s_panel_session_tile) > 0)
+        if (s_panel_parked_col >= 0)
         {
             extern void session_pager_pin_for_panel(lv_obj_t * fixed_parent);
             session_pager_pin_for_panel(lv_obj_get_parent(app_clock_main_status_bar));
@@ -716,17 +803,33 @@ static void app_clock_main_status_bar_event_cb(lv_event_t *event)
                                              !lv_top_panel_mouse_mode());
         }
         /* 頂部面板 settle：進來時刷新設備清單 / 媒體頁 / 底部按鈕狀態。
-           面板有兩個可能的落點 —— 錶盤上方 (MAIN_PAGE_TYPE_UP) 與 session 欄上方
-           (SESSION_PANEL_PAGE_INDEX)，兩者是同一個面板實體，只是被搬過去。 */
+           面板有 1+N 個可能的落點 —— 錶盤上方 (1,0) 與每一台設備自己那欄的上方
+           (2+i,0)，全部是同一個面板實體，只是被搬過去。用格子座標判，不用 tile 加入
+           順序的索引：補了 8 格之後那個索引已經沒有可讀性。 */
+        int col_now = session_scroll_col(obj);
+        int row_now = session_scroll_row(obj);
+        /* 設備數會隨配對 / 上下線變動,每次 settle 重算可滑的欄數。 */
+        session_cols_apply_dirs(session_col_count());
+        bool on_session_panel = (row_now == 0 && col_now >= SESSION_COL_FIRST);
+        bool on_session_list = (row_now == 1 && col_now >= SESSION_COL_FIRST);
         {
-            bool on_panel = (active_pos == MAIN_PAGE_TYPE_UP ||
-                             active_pos == SESSION_PANEL_PAGE_INDEX);
+            bool on_panel = (active_pos == MAIN_PAGE_TYPE_UP || on_session_panel);
             lv_top_panel_set_open(on_panel);
             lv_top_panel_set_backdrop_opa(on_panel ? 204 : 0);
             /* 停在別的地方就把面板送回錶盤那格：使用者可能從 session 面板一路滑回
                錶盤，那條路徑不會經過我們的手勢 end，沒有這行錶盤下拉就會是空的。 */
-            if (active_pos != SESSION_PANEL_PAGE_INDEX)
+            if (!on_session_panel)
                 session_panel_park_home();
+            /* 停在第 i 欄 → 那一欄顯示第 i 台的 sessions。換欄會關掉上一欄的對話
+               （手錶同時只開一個），所以只在真的換了設備時才呼叫。 */
+            if (on_session_list || on_session_panel)
+            {
+                int dev = col_now - SESSION_COL_FIRST;
+                if (dev >= session_col_count())
+                    dev = session_col_count() - 1;
+                extern void session_pager_set_column(int device_index);
+                session_pager_set_column(dev);
+            }
             /* 手勢結束了 → session 頁回到自己的 tile。釘住只在拖曳期間成立；留著的話
                它會掛在 tileview 外面,滑到任何一頁都跟著出現。settle 是唯一該解除的
                時機:animation 還在跑時必須維持釘住,否則頁面會在動畫中途彈位。 */
@@ -736,12 +839,10 @@ static void app_clock_main_status_bar_event_cb(lv_event_t *event)
                 session_pager_pin_for_panel(NULL);
                 /* 停在 session 面板 = 頁面被完全蓋住,維持全暗；其餘一律清掉,否則
                    離開之後那層黑會留在 session 頁上。 */
-                session_pager_set_dim(active_pos == SESSION_PANEL_PAGE_INDEX
-                                          ? (lv_opa_t)204
-                                          : LV_OPA_TRANSP);
+                session_pager_set_dim(on_session_panel ? (lv_opa_t)204 : LV_OPA_TRANSP);
                 /* 時間跟著 settle 收尾:停在面板 = 全暗(0)。停在別頁不在這裡復原 ——
                    各頁本來就會自己設定(session 列表那頁設 OPA_100),硬塞會蓋掉它們。 */
-                if (active_pos == SESSION_PANEL_PAGE_INDEX)
+                if (on_session_panel)
                     set_instruction_list_time_opa(LV_OPA_TRANSP);
             }
         }
@@ -1803,8 +1904,11 @@ void app_clock_main_status_bar_init(lv_obj_t *par)
                 /* L/R swap: the (unreachable) instruction_list placeholder moves
                    to the RIGHT (2,1). The Action list reveals from the right edge
                    as a floating overlay now, not via this tile. */
+                /* LV_DIR_HOR，不再只有 LEFT：左邊回錶盤，右邊是下一台設備的 session
+                   欄（founder 2026-08-10：再往左滑就進到第二台）。垂直仍然不開 —— 這一
+                   欄的下拉由 session tile 自己的 catcher 手動驅動。 */
                 pages[i] = lv_tileview_add_tile(app_clock_main_status_bar, 2, 1,
-                                                LV_DIR_LEFT);
+                                                LV_DIR_HOR);
             }
             else if (i == MAIN_PAGE_TYPE_UP)
             {
@@ -1861,11 +1965,30 @@ void app_clock_main_status_bar_init(lv_obj_t *par)
        session tile 的 catcher 手動驅動 scroll_y,所以 (2,1) 不用開 LV_DIR_TOP —— 也
        不該開,否則使用者在列表上隨便往上滑就會把空面板拉出來。 */
     s_panel_home_tile = pages[MESSAGE_PAGE_INDEX];
-    s_panel_session_tile =
-        lv_tileview_add_tile(app_clock_main_status_bar, 2, 0, LV_DIR_VER);
-    lv_obj_set_size(s_panel_session_tile, LV_HOR_RES_MAX, LV_VER_RES_MAX);
-    lv_obj_set_style_bg_opa(s_panel_session_tile, LV_OPA_TRANSP, 0);
-    lv_obj_set_scrollbar_mode(s_panel_session_tile, LV_SCROLLBAR_MODE_OFF);
+    /* 欄 2 的 session tile 就是迴圈裡建好的那格 (2,1);欄 3.. 在這裡補。每一欄都配一個
+       正上方的面板停車位。全部先建滿 MAX_SYNCED_DEVICES —— tileview 的格子不能事後
+       抽換,而設備數是執行期才知道的;多出來的欄由 settle 邏輯擋住不讓停(見
+       session_col_clamp)。 */
+    s_session_tile[0] = pages[INSTRUCTION_LIST_PAGE_INDEX];
+    for (int c = 0; c < MAX_SYNCED_DEVICES; c++)
+    {
+        uint8_t col = (uint8_t)(SESSION_COL_FIRST + c);
+        if (c > 0)
+        {
+            s_session_tile[c] =
+                lv_tileview_add_tile(app_clock_main_status_bar, col, 1, LV_DIR_HOR);
+            lv_obj_set_size(s_session_tile[c], LV_HOR_RES_MAX, LV_VER_RES_MAX);
+            lv_obj_set_style_bg_opa(s_session_tile[c], LV_OPA_TRANSP, 0);
+            lv_obj_set_scrollbar_mode(s_session_tile[c], LV_SCROLLBAR_MODE_OFF);
+        }
+        s_panel_park_tile[c] =
+            lv_tileview_add_tile(app_clock_main_status_bar, col, 0, LV_DIR_VER);
+        lv_obj_set_size(s_panel_park_tile[c], LV_HOR_RES_MAX, LV_VER_RES_MAX);
+        lv_obj_set_style_bg_opa(s_panel_park_tile[c], LV_OPA_TRANSP, 0);
+        lv_obj_set_scrollbar_mode(s_panel_park_tile[c], LV_SCROLLBAR_MODE_OFF);
+    }
+
+    session_cols_apply_dirs(session_col_count()); /* 開機時就把多餘的欄鎖起來 */
 
     lv_obj_set_tile_id(app_clock_main_status_bar, 1, 1, false);
     lv_obj_add_flag(app_clock_main_status_bar, LV_OBJ_FLAG_HIDDEN);

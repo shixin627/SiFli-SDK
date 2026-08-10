@@ -196,16 +196,23 @@ extern "C"
            page reuses KEY_CONV_OPEN/SEND/CLOSE + KEY_CONV_STATE verbatim — these two keys
            only add the LIST that the pager pages over.
            Keep in lockstep with WatchProtocol.kt/.swift SKAILINK_KEY_CONV_LIST(_REQ). ── */
-        /* phone→watch (DOWNLINK): {"sessions":[{"id":"conv:hermes:<id>","title":"...",
-           "preview":"..."}]} — the desktop sessions, newest first, capped by the watch at
-           SESSION_PAGER_MAX. "id" is the SAME identity KEY_CONV_OPEN takes, so committing
-           a page needs no extra resolution step on the phone. "preview" is the last turn's
-           text, shown as the page's standing bubble until that page becomes the open
-           conversation and real turns arrive on KEY_CONV_STATE. */
+        /* phone→watch (DOWNLINK): {"device":{"id":"...","name":"..."},
+             "sessions":[{"id":"conv:hermes:<id>","title":"...","preview":"..."}]}
+           ONE PUSH PER DESKTOP — the watch upserts by device id and keeps a list per
+           device, because the watch face's right side is one COLUMN per desktop (founder
+           2026-08-10: 往左滑一次是第一台電腦的 sessions，再往左滑是第二台，每一欄從上面
+           拉下來就是那一台的媒體頁). A single flat list could never say which desktop a
+           row belongs to, so a second desktop would silently overwrite the first.
+           Sessions are newest first, capped by the watch at SESSION_PAGER_MAX; devices at
+           SESSION_DEVICE_MAX. "id" is the SAME identity KEY_CONV_OPEN takes. "preview" is
+           the last turn's text, shown until that session is opened and real turns arrive
+           on KEY_CONV_STATE.
+           COMPATIBILITY: "device" absent = the single unnamed desktop (slot 0), which is
+           exactly what the pre-2026-08-10 phone sends. */
         KEY_CONV_LIST = 0x20,
-        /* watch→phone (UPLINK): {} — (re)send the session list. Sent when the pager tile
-           is built and whenever the watch reconnects; the Data path has no pull, so this
-           is the watch's only way to recover a list it missed while disconnected. */
+        /* watch→phone (UPLINK): {} for every desktop, or {"device":"<id>"} for one.
+           Sent when the tile is built and whenever the watch reconnects; the Data path has
+           no pull, so this is the watch's only way to recover a list it missed. */
         KEY_CONV_LIST_REQ = 0x21,
         /* ── TV remote (APP_ID_TV_REMOTE). The watch has no IP stack, so the TV app is a
            pure input surface: it emits BRAND-NEUTRAL verbs and the phone owns discovery,
@@ -233,13 +240,17 @@ extern "C"
              error    = last command failed (detail carries a short reason)
            Pushed on every binding change and as the answer to cmd:"discover". */
         KEY_TV_STATE = 0x23,
-        /* watch→phone (UPLINK): {} — create a NEW desktop session and open it.
+        /* watch→phone (UPLINK): {"device":"<id>"} — create a NEW session ON THAT DESKTOP
+           and open it.
            2026-08-10 (founder): the right tile now shows the session LIST first and the
            mic on that layer means "start a new conversation", so every other conv key —
            OPEN / SEND / CLOSE — is unusable here: all three require an id that does not
            exist yet.
-           The watch deliberately learns nothing back on this key. The phone asks the
-           desktop that supplied the list to create the session, and the desktop's normal
+           The device is NAMED rather than inferred: the phone used to resolve "which
+           desktop" from whichever list it pushed last, which is unanswerable once two
+           desktops are online (founder 2026-08-10 拍板帶 device id).
+           The watch deliberately learns nothing back on this key. The phone asks that
+           desktop to create the session, and the desktop's normal
            convListResult (→ KEY_CONV_LIST 0x20) carries the new row; the watch opens
            whatever arrived NEWEST-FIRST that it has not seen before. That keeps the new
            id off this wire entirely — no reply key, no correlation id, no watch-side

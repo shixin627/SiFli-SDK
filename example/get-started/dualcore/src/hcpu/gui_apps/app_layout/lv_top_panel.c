@@ -609,7 +609,7 @@ void lv_top_panel_refresh_devices(void)
    照這個索引綁的(rebuild_media_pages / hid_mouse_media_page_bind),所以這裡不能自己
    另外挑一台,否則下拉看到的會跟頂部設備列寫的名字對不起來。
    沒有任何已同步設備時退回通知列表 —— 面板照樣打得開,只是沒有媒體頁可停。 */
-void lv_top_panel_open_media(void)
+void lv_top_panel_open_media_for(int device_index)
 {
     rebuild_media_pages();
     if (s_media_count <= 0)
@@ -618,13 +618,28 @@ void lv_top_panel_open_media(void)
         LOG_I("[top_panel] open_media: no synced device, staying on messages");
         return;
     }
-    hid_mouse_ensure_active_device();
-    int dev = hid_mouse_active_device_index();
+    int dev = device_index;
     if (dev < 0 || dev >= s_media_count)
-        dev = 0;
+    {
+        /* 指定的欄還沒有對應的媒體頁(設備剛消失/還沒同步) → 退回目前控制中的那台,
+           而不是硬停在 0:停錯台比停在「使用者本來就在控制的那台」更難解釋。 */
+        hid_mouse_ensure_active_device();
+        dev = hid_mouse_active_device_index();
+        if (dev < 0 || dev >= s_media_count)
+            dev = 0;
+    }
+    /* 拉出來就控制那一台 —— 跟使用者在面板裡左右滑到那頁的效果一致。 */
+    if (hid_mouse_active_device_index() != dev)
+        hid_mouse_set_active_device_index(dev);
     goto_page(PAGE_MEDIA_0 + dev, false);
     update_device_bar();
     LOG_I("[top_panel] open_media: device %d", dev);
+}
+
+void lv_top_panel_open_media(void)
+{
+    hid_mouse_ensure_active_device();
+    lv_top_panel_open_media_for(hid_mouse_active_device_index());
 }
 
 void lv_top_panel_set_open(bool opened)

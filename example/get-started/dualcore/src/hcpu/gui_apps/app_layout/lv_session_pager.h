@@ -29,6 +29,10 @@ extern "C"
 
 /* Bounded like every other watch-side list — no heap on the BLE parse path. */
 #define SESSION_PAGER_MAX 8
+/* One desktop per column on the watch face's right side (founder 2026-08-10). Four is what
+   the top panel's media pages already cap at (MAX_SYNCED_DEVICES), so the two stay in step. */
+#define SESSION_DEVICE_MAX 4
+#define SESSION_DEVICE_NAME_LEN 32
 #define SESSION_ID_LEN 64
 #define SESSION_TITLE_LEN 48
 #define SESSION_PREVIEW_LEN 128
