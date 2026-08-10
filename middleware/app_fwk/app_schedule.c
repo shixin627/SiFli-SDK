@@ -1459,12 +1459,13 @@ static uint32_t app_run(rt_mailbox_t msg_mbx, const _intent *i, uint32_t tick)
     gui_app_msg_t *p_msg = (gui_app_msg_t *) app_sche_malloc(sizeof(gui_app_msg_t));
     if (NULL == p_msg)
     {
-        app_sche_assert("Malloc msg fail.");
+        /* Out of heap: bail out NOW. The assert below only logs, so the original
+         * code fell through to p_msg->tick = tick and dereferenced NULL. */
+        app_sche_e("Malloc msg fail, dropped RUN_APP_I.");
+        return 0;
     }
-    else
-    {
-        rt_memcpy(&p_msg->content.intnt, i, sizeof(_intent));
-    }
+
+    rt_memcpy(&p_msg->content.intnt, i, sizeof(_intent));
 
     p_msg->tick = tick;
     p_msg->msg_id = GUI_APP_MSG_RUN_APP_I;
@@ -1474,7 +1475,13 @@ static uint32_t app_run(rt_mailbox_t msg_mbx, const _intent *i, uint32_t tick)
 
     if (err != RT_EOK)
     {
-        app_sche_assert("send to gui_app_mbx err:%d", err);
+        /* Mailbox full: DROP instead of asserting. This is the second copy of the
+         * gui_app_mbx send path (the first is send_msg_to_gui_app_task in
+         * gui_app_fwk.c, fixed in 4dca1cd12); it feeds the SAME mailbox, so a
+         * message flood crashes the watch here too if it keeps asserting. Free the
+         * copy we allocated so a full mailbox does not also leak. */
+        app_sche_e("gui_app_mbx full, dropped RUN_APP_I (err %d)", err);
+        app_sche_free(p_msg);
     }
     else
     {
