@@ -418,6 +418,30 @@ static void motion_detection_process(signed short *accRawData)
  * @param now Current time
  * @param accData Accelerometer data
  */
+/**
+ * Fill the health accelerometer ring and nothing else.
+ *
+ * Exists for the screen-off HR burst. The whole accelerometer data path is shut
+ * down in standby for power (`on_lcpu_sleep_mode_changed` un-routes DRDY and
+ * leaves the FIFO disarmed), which starved BOTH the in-tree motion compensation
+ * and the vendor's own — the Goodix algorithm reads this same ring, so it has
+ * been running blind to motion since 2026-05-11 whenever the screen was off.
+ *
+ * The awake path cannot simply be re-used there: the gyro is suspended in
+ * standby, so running handle_imu_data() would feed the Mahony fusion a dead gyro
+ * and corrupt the orientation that wrist-wake depends on, and it would also run
+ * gesture detection at times the design deliberately keeps it off. This does the
+ * one thing the HR estimator needs.
+ */
+void feed_health_accel_only(Vector3 *accData)
+{
+    signed short raw[3];
+    raw[0] = accData->x * HEALTH_ALGO_RATIO;
+    raw[1] = accData->y * HEALTH_ALGO_RATIO;
+    raw[2] = accData->z * HEALTH_ALGO_RATIO;
+    add_to_gsensor_fifo(raw);
+}
+
 void handle_motion_data_in_25hz(rt_tick_t now, Vector3 *accData)
 {
     signed short accRawData[3] = {0};

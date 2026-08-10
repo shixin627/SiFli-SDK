@@ -13,6 +13,9 @@ extern "C"
     void calibrate_global_attitude(void);
     extern void process_ppg_rawdata(uint32_t rawdata);
     extern int handle_imu_data(float hz, Vector3 *accData, Vector3 *gyroData);
+    /* Ring-only accel feed for the screen-off HR burst; see the .c for why the
+       awake path cannot be reused there. */
+    extern void feed_health_accel_only(Vector3 *accData);
     /* Legacy AHRS-only update for the screen-off FIFO drain path. No longer
        armed (gyro suspended in DARK, FIFO watermark INT off); retained only
        because bmi270_drain_fifo_to_ahrs() in the sensor driver references

@@ -180,6 +180,11 @@ int bmi270_set_drdy_int_routing(int en);
    close to (target_period_seconds * ODR * 13). Returns 0 / -1. */
 int bmi270_set_fifo_wm_int(int en, uint16_t wm_bytes);
 
+/* Re-route accel DRDY for the duration of a screen-off HR burst so the health
+   accel ring is written; standby otherwise leaves it frozen. Pair every
+   enable with a disable. */
+int bmi270_set_hr_accel_stream(int en);
+
 /* Read everything currently sitting in the BMI270 FIFO, replay every
    accel+gyro pair through redirect_sensor_data() + imu_data_fetch() +
    handle_imu_data() so the AHRS sees the same stream it would have seen

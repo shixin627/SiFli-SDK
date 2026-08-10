@@ -983,6 +983,32 @@ bool power_opt_mode(void)
     return accel_gyro_dev_info.power_mode == BMI2_POWER_OPT_MODE;
 }
 
+
+/* ---- accelerometer for the screen-off HR burst -----------------------------
+ *
+ * Standby shuts the accelerometer data path down entirely (DRDY un-routed, FIFO
+ * disarmed) to save power, and HR bursts run in standby. The consequence went
+ * unnoticed for three months: BOTH the in-tree motion compensation and the
+ * vendor's own read gsensor_fifo_buffer, and nothing writes it in that mode, so
+ * neither has ever seen wrist movement while the screen was off.
+ *
+ * This re-routes DRDY for the duration of a burst only. Cost is bounded by the
+ * burst: 25 Hz wakeups for ~40 s out of every 3-10 minutes. Callers MUST pair
+ * enable with disable — leaving it on holds the LCPU awake at 25 Hz forever.
+ */
+static volatile int s_hr_accel_stream = 0;
+
+int bmi270_set_hr_accel_stream(int en)
+{
+    if (s_hr_accel_stream == (en ? 1 : 0)) return 0;
+    s_hr_accel_stream = en ? 1 : 0;
+    /* Only touch the routing while asleep. Awake, DRDY is already routed for
+       the normal path and un-routing it here would kill gesture detection. */
+    if (is_sleep_mode())
+        return bmi270_set_drdy_int_routing(en ? 1 : 0);
+    return 0;
+}
+
 static void bmi270_acc_gyro_evt_handler()
 {
     /* Status of api are returned to this variable. */
@@ -996,6 +1022,21 @@ static void bmi270_acc_gyro_evt_handler()
     {
         local_watch_accel = redirect_sensor_data(&sensor_data.acc);
         local_watch_gyro = redirect_sensor_data(&sensor_data.gyr);
+        /* Screen-off HR burst: fill the health accel ring and stop there.
+           The gyro is suspended in standby, so the normal path would drive the
+           Mahony fusion with a dead gyro and wreck the orientation wrist-wake
+           relies on. It would also run gesture detection at a time the power
+           design deliberately keeps it off. @ref bmi270_set_hr_accel_stream */
+        if (s_hr_accel_stream && is_sleep_mode())
+        {
+            if (imu_data_fetch(&watch_sensor.imu_data) == RT_EOK)
+            {
+    #ifdef BSP_USING_GESTURE_DETECT
+                feed_health_accel_only(&watch_sensor.imu_data.acce);
+    #endif
+            }
+            return;
+        }
         if (imu_data_fetch(&watch_sensor.imu_data) == RT_EOK)
         {
     #if ENABLE_IMU_SEM_FIFO

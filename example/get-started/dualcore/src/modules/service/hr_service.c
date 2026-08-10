@@ -1729,6 +1729,10 @@ static void bg_hr_finish_burst(void)
         bg_hr_win_tick_ms = rt_tick_get_millisecond();
     }
     if (bg_hr_sample_timer) rt_timer_stop(bg_hr_sample_timer);
+    {
+        extern int bmi270_set_hr_accel_stream(int en);
+        (void)bmi270_set_hr_accel_stream(0);   /* pairs with bg_hr_start_burst */
+    }
     /* Only power down if no foreground (Exercise app) subscriber needs PPG.
        There is a tiny (two-statement) window where a subscribe on the ds_proc
        thread could flip ref_count between this read and hr_set_power(0); the
@@ -2013,6 +2017,13 @@ void hr_service_set_hr_continuous(bool enable)
            not do. Nothing is published for the partial burst -- correct, since
            it never completed. */
         if (bg_hr_sample_timer) rt_timer_stop(bg_hr_sample_timer);
+        {
+            /* This path abandons a burst WITHOUT bg_hr_finish_burst(), so the
+               accel stream has to be released here as well or it stays on for
+               good. */
+            extern int bmi270_set_hr_accel_stream(int en);
+            (void)bmi270_set_hr_accel_stream(0);
+        }
         bg_hr_bursting = RT_FALSE;
         if (bg_hr_period_timer) rt_timer_stop(bg_hr_period_timer);
 
@@ -2133,6 +2144,13 @@ static void bg_hr_period_cb(void *param)
     /* Open in HR mode (GH30X_FUNCTION_HR), the same path the foreground HR
        subscribe uses; hr_set_power(1) would open NORMAL = HRV, which never
        yields a BPM for gh3018_get_hr(). Power-down at burst end stays hr_set_power(0). */
+    /* Wake the accelerometer for the burst. Standby leaves it fully shut down,
+       which is why the motion compensation — ours and the vendor's, they read
+       the same ring — has never seen a moving wrist at night. Paired with the
+       disable in bg_hr_finish_burst; leaving it on would hold the LCPU at 25 Hz
+       wakeups indefinitely. */
+    extern int bmi270_set_hr_accel_stream(int en);
+    (void)bmi270_set_hr_accel_stream(1);
     hr_control_mode(RT_SENSOR_POWER_HIGH);
     rt_timer_start(bg_hr_sample_timer);
 }
