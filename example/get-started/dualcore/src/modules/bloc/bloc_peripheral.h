@@ -239,7 +239,9 @@ extern void drv_reboot(void);
      * bloc_peripheral.c; sampling thread that consumes these lives in
      * bloc_control.c. */
     void fsr_adc_init(void);
-    rt_uint32_t fsr_adc_read_value(void);
+    /* 成功回 RT_EOK 並寫入 *value;讀到驅動的無效哨兵值(見 .c)回 -RT_EIO,
+     * 此時 *value 不動 — 呼叫端要丟棄這一輪,不要拿去比門檻或餵 baseline 校準。 */
+    rt_err_t fsr_adc_read_value(rt_uint32_t *value);
 #endif
 #endif
 #ifdef __cplusplus

@@ -1006,6 +1006,9 @@ static bool fsr_mouse_app_is_foreground(void)
 }
 
 static volatile rt_uint32_t g_fsr_adc_latest = 0;
+/* 開機至今被丟棄的無效樣本數。用 `fsr` 指令看 — 有頻率才判斷得出這個 glitch
+   要不要往下追根因(ADC 與電池共用、通道切換未穩定…),不必開 10Hz 的 log。 */
+static volatile rt_uint32_t g_fsr_adc_dropped = 0;
 static rt_thread_t fsr_adc_sampler_thread = RT_NULL;
 
 /* Press detection is RELATIVE to an auto-captured resting baseline, as a
@@ -1052,7 +1055,18 @@ static void fsr_adc_sampler_thread_entry(void *parameter)
 			rt_thread_mdelay(1000);
 			continue;
 		}
-		g_fsr_adc_latest = fsr_adc_read_value();
+		/* 無效樣本(ADC 回報輸入過壓,見 fsr_adc_read_value)整輪丟棄。不更新
+		   g_fsr_adc_latest、不比門檻、更重要的是不餵 baseline 校準 — 哨兵值
+		   50000 遠大於 FSR_BASELINE_MIN,會被當成合法靜置樣本平均進去,8 筆混
+		   一筆就足以把 baseline 從 18000 拉到 ~22000,之後所有門檻等比例歪掉。 */
+		rt_uint32_t fsr_sample;
+		if (fsr_adc_read_value(&fsr_sample) != RT_EOK)
+		{
+			g_fsr_adc_dropped++;
+			rt_thread_mdelay(100);
+			continue;
+		}
+		g_fsr_adc_latest = fsr_sample;
 		/* 每筆取樣的讀值:預設關閉(10Hz 會灌爆 console)。要看時取消註解。
 		   permille = 相對 baseline 的千分比,跟 FSR_*_PERMILLE 門檻同一把尺。
 		   注意用 rt_kprintf 不要用 LOG_I — 本檔的 DBG_LVL 定義排在其他 include
@@ -1187,10 +1201,11 @@ MSH_CMD_EXPORT(fsr_recal, "recapture FSR mouse resting baseline (keep finger off
 static int fsr(int argc, char **argv)
 {
 	rt_int32_t base = (rt_int32_t)g_fsr_baseline;
-	rt_kprintf("FSR v=%d base=%d  light on/off=%d/%d  heavy on/off=%d/%d\n",
+	rt_kprintf("FSR v=%d base=%d  light on/off=%d/%d  heavy on/off=%d/%d  dropped=%d\n",
 	           g_fsr_adc_latest, base,
 	           base * FSR_LIGHT_ON_PERMILLE / 1000, base * FSR_LIGHT_OFF_PERMILLE / 1000,
-	           base * FSR_HEAVY_ON_PERMILLE / 1000, base * FSR_HEAVY_OFF_PERMILLE / 1000);
+	           base * FSR_HEAVY_ON_PERMILLE / 1000, base * FSR_HEAVY_OFF_PERMILLE / 1000,
+	           g_fsr_adc_dropped);
 	return 0;
 }
 MSH_CMD_EXPORT(fsr, "print current FSR ADC value, baseline and thresholds");

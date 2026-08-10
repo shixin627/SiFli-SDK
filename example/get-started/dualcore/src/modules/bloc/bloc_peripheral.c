@@ -399,11 +399,25 @@ void fsr_adc_init(void)
     }
 }
 
-rt_uint32_t fsr_adc_read_value(void)
+/* drv_adc.c 在單次轉換的原始值超過校正上限時(輸入電壓過高)會塞 *value = 50000
+   ("output 5v as invalid voltage")並回 RT_ERROR。但 rt_adc_read() 把 convert()
+   的回傳碼整個丟掉、只回 value,所以那個 RT_ERROR 到不了這裡 — 唯一拿得到的訊號
+   就是這個哨兵值本身。50000 mV 是真實電路不可能出現的讀值。 */
+        #define FSR_ADC_INVALID_MV 50000
+
+rt_err_t fsr_adc_read_value(rt_uint32_t *value)
 {
+    RT_ASSERT(value != NULL);
+
     if (fsr_adc_dev == NULL)
-        return 0;
-    return rt_adc_read((rt_adc_device_t)fsr_adc_dev, FSR_ADC_CHANNEL);
+        return -RT_EIO;
+
+    rt_uint32_t v = rt_adc_read((rt_adc_device_t)fsr_adc_dev, FSR_ADC_CHANNEL);
+    if (v >= FSR_ADC_INVALID_MV)
+        return -RT_EIO;
+
+    *value = v;
+    return RT_EOK;
 }
 
 static int fsr_adc_hw_init(void)
