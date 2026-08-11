@@ -302,7 +302,7 @@ def _parse_provision_reply(line, action, nonce):
     }
 
 
-def uart_provision_request(port, action, emit, timeout=5):
+def uart_provision_request(port, action, emit, timeout=20):
     """Request current/provisioned BLE identity over the HCPU production UART."""
     try:
         import serial
@@ -310,6 +310,10 @@ def uart_provision_request(port, action, emit, timeout=5):
         raise RuntimeError(
             "缺少 pyserial，請執行：py -3 -m pip install pyserial") from e
 
+    # 20s, not 5: an idle watch answers MAC in ~0.3s, but one that has just
+    # finished the板級篩檢 stress run can take far longer to write NVDS, and
+    # MAC is the one command that must not be resent — a timeout there fails
+    # the whole release rather than retrying.
     nonce = secrets.token_hex(4).upper()
     command = ("SKAI_PROVISION %s %s\n" % (action, nonce)).encode("ascii")
     deadline = time.monotonic() + timeout
