@@ -92,7 +92,7 @@ static lv_obj_t *app_clock_main_status_bar_down;
    = 進入該台的滑鼠模式（lv_top_panel_mouse_enter,控制目標在 settle 時已由
    media_col_bind 選好）。founder 2026-08-11 R2:「我是要從下往上拉出滑鼠頁面」
    —— 第一版放在上方,改到下方。退出 = 滑鼠頁頂部下拉
-   (clock_main_mouse_exit_to_media),落回同一台的媒體頁。
+   (clock_main_mouse_pulldown_reveal),落回同一台的媒體頁。
    合併後的 session 列表搬到左側 (0,1),見 lv_session_pager.c。 */
 #define MEDIA_COL_FIRST 2 /* 錶盤是欄 1;右邊從欄 2 開始 */
 static lv_obj_t *s_media_tile[MAX_SYNCED_DEVICES];      /* (2+c,1) 媒體欄 */
@@ -396,37 +396,30 @@ void clock_main_media_cols_refresh(void)
     }
 }
 
-/* 滑鼠模式頂部下拉的落點(founder 2026-08-11 R2:「抓著上面往下把滑鼠頁面拉掉,
-   顯示下面的媒體頁面」):退出滑鼠、直接落回目前控制那台的媒體欄。由
-   lv_top_panel 的 pulldown cb 以 async 呼叫(不能在 hid_mouse 自己的事件裡拆它)。 */
-void clock_main_mouse_exit_to_media(void)
+/* 滑鼠模式頂部下拉(founder 2026-08-11 R2/R4:「抓著上面往下把滑鼠頁面拉掉,顯示
+   下面的媒體頁面」)。
+   R3 的做法(async 退出+吞 press)在真機仍會拉出通知面板:destroy 讓 indev reset,
+   把 wait_release 也清掉,殘餘拖曳照樣被 tileview 用舊的四向 scroll_dir 接走。
+   改用**跟舊面板 reveal 完全同一套交棒機制**(該機制在真機驗證過):下拉判定當下
+   **不拆滑鼠**,只把主 tileview 亮在該欄的滑鼠停車格 (col,2) —— hid_mouse 的頂
+   部帶沒有 PRESS_LOCK,press 下一 tick 自然轉給 tileview,往下拖就是停車格→媒體
+   頁的**原生跟手**。settle 落在媒體頁(row 1)才真正退出滑鼠模式;落回停車格 =
+   取消,tileview 收回、滑鼠模式原樣繼續。 */
+static bool s_mouse_pull_reveal = false; /* reveal 的 snap settle 與取消 settle 區分用 */
+
+void clock_main_mouse_pulldown_reveal(void)
 {
-    extern void lv_top_panel_mouse_exit(void);
+    if (!app_clock_main_status_bar || !lv_obj_is_valid(app_clock_main_status_bar))
+        return;
     int dev = hid_mouse_active_device_index();
     int col = MEDIA_COL_FIRST + ((dev >= 0) ? dev + 1 : 0);
     if (col >= MEDIA_COL_FIRST + media_col_count())
         col = MEDIA_COL_FIRST;
-    lv_top_panel_mouse_exit();
-    if (!app_clock_main_status_bar || !lv_obj_is_valid(app_clock_main_status_bar))
-        return;
-    /* settle(VALUE_CHANGED)自己會跑 per-page 收尾:進滑鼠時已 settle 回 HOME(1),
-       媒體欄的 active_pos 必不等於 1,不用手動戳 middle_layer_tileview_index。 */
-    lv_obj_set_tile_id(app_clock_main_status_bar, (uint8_t)col, 1, false);
+    s_mouse_pull_reveal = true; /* set_tile_id 會同步發 settle,先立旗 */
+    lv_obj_set_tile_id(app_clock_main_status_bar, (uint8_t)col, 2, false);
     lv_obj_clear_flag(app_clock_main_status_bar, LV_OBJ_FLAG_HIDDEN);
-    /* 手指此刻多半還按著(這是下拉手勢的中段)。兩件事必須立刻做,否則殘餘的
-       拖曳被 tileview 接走:它手上的 scroll_dir 還是**進滑鼠前 HOME 那次 settle
-       套上的四向**(lv_tileview 在 press 期間不重讀 tile->dir),往下拖就滑進根本
-       不存在的 (col,0) 空格,settle 再吸到最近的 (1,0) —— founder R3 實測:
-       「往下拉變成拉出通知列表」。
-       1) 吞掉這根手指剩下的行程(直到放開都不再派發);
-       2) 把 scroll_dir 當場重設成媒體欄自己的方向。 */
-    for (lv_indev_t *ind = lv_indev_get_next(NULL); ind != NULL;
-         ind = lv_indev_get_next(ind))
-        lv_indev_wait_release(ind);
-    clock_main_media_cols_refresh(); /* 內含「當場重設 act tile 的 scroll_dir」 */
-    if (gaus_dial_bg && lv_obj_is_valid(gaus_dial_bg))
-        lv_obj_clear_flag(gaus_dial_bg, LV_OBJ_FLAG_HIDDEN);
-    LOG_W("[media-col] mouse exit -> col %d", col);
+    clock_main_media_cols_refresh(); /* 當場套上停車格的 LV_DIR_TOP */
+    LOG_W("[media-col] mouse pulldown reveal at col %d", col);
 }
 
 /* 目前捲動位置換算成欄 / 列（tile 加入順序的 active_pos 在補格之後沒有可讀性）。 */
@@ -711,11 +704,31 @@ static void app_clock_main_status_bar_event_cb(lv_event_t *event)
         }
 
         /* ADR-0020 R2:媒體欄**往上拉** settle 在下方停車位 = 進入該欄那台的滑鼠
-           模式。先 bind 選台(進入後 app_route 才指對機器),圖層亮起後把 tileview
-           收回錶盤並隱藏 —— 滑鼠模式是全螢幕圖層接管;退出 = 滑鼠頁頂部下拉
-           (clock_main_mouse_exit_to_media),落回同一台的媒體欄。 */
+           模式。R4:已在滑鼠模式時,停車位的 settle 是「下拉退出」流程的一部分 ——
+           reveal 的 snap settle(保持顯示,等 press 交棒給 tileview 跟手)或使用者
+           取消(收回 tileview,滑鼠模式原樣繼續),都不能再走進入路徑。 */
         if (on_mouse_park)
         {
+            if (lv_top_panel_mouse_mode())
+            {
+                if (s_mouse_pull_reveal)
+                {
+                    /* reveal 剛 snap 進來:維持顯示,等原生跟手拖曳。 */
+                    s_mouse_pull_reveal = false;
+                }
+                else
+                {
+                    /* 下拉不到門檻放開 = 取消:收回 tileview,繼續滑鼠模式。 */
+                    middle_layer_tileview_index = 255;
+                    lv_obj_set_tile_id(obj, 1, 1, false);
+                    lv_obj_add_flag(app_clock_main_status_bar, LV_OBJ_FLAG_HIDDEN);
+                    if (gaus_dial_bg && lv_obj_is_valid(gaus_dial_bg))
+                        lv_obj_add_flag(gaus_dial_bg, LV_OBJ_FLAG_HIDDEN);
+                    LOG_W("[media-col] mouse pulldown cancelled");
+                }
+                check_main_page();
+                break;
+            }
             media_col_bind(col_now);
             lv_top_panel_mouse_enter();
             middle_layer_tileview_index = 255; /* 下次 settle 一定重跑收尾 */
@@ -725,6 +738,16 @@ static void app_clock_main_status_bar_event_cb(lv_event_t *event)
                 lv_obj_add_flag(gaus_dial_bg, LV_OBJ_FLAG_HIDDEN);
             check_main_page();
             break;
+        }
+
+        /* R4:settle 在媒體頁而滑鼠模式還開著 = 下拉退出 commit —— 現在才真正拆
+           滑鼠圖層(press 早已交棒給 tileview,hid_mouse 不在事件鏈上,可安全拆)。 */
+        if (on_media_col && lv_top_panel_mouse_mode())
+        {
+            extern void lv_top_panel_mouse_exit(void);
+            s_mouse_pull_reveal = false;
+            lv_top_panel_mouse_exit();
+            LOG_W("[media-col] mouse exit -> col %d", col_now);
         }
 
         if (middle_layer_tileview_index == active_pos)

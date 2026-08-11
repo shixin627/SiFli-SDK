@@ -41,7 +41,7 @@ bool lv_top_panel_mouse_mode(void);
 void lv_top_panel_mouse_enter(void);
 
 /** 退出滑鼠模式（拆圖層 + 還原邊緣 zone）。落回哪一頁由呼叫端決定 ——
-    滑鼠頁頂部下拉走 clock_main_mouse_exit_to_media()。 */
+    滑鼠頁頂部下拉走 clock_main_mouse_pulldown_reveal()。 */
 void lv_top_panel_mouse_exit(void);
 
 /** 設備清單有變（registry 更新）→ 轉發給錶盤重算右側媒體欄。 */

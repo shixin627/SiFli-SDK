@@ -45,20 +45,13 @@ static bool s_opened = false;
 /* 滑鼠模式圖層                                                                */
 /* -------------------------------------------------------------------------- */
 
-/* 滑鼠模式時「頂部往下拉」= 退出滑鼠、露出底下那台的媒體頁(founder 2026-08-11
-   R2:「抓著上面往下把滑鼠頁面拉掉」)。這個 cb 是從 hid_mouse 自己的事件
-   handler 裡呼叫的,而退出會 hid_mouse_destroy() —— 在人家的 callback 裡把它
-   自己拆掉是 UAF,所以 async 丟到下一輪 lv_timer_handler 再做。 */
-static void mouse_exit_async_cb(void *unused)
-{
-    (void)unused;
-    extern void clock_main_mouse_exit_to_media(void);
-    clock_main_mouse_exit_to_media();
-}
-
+/* 滑鼠模式時「頂部往下拉」= 把該欄媒體頁跟手拉下來、settle 才退出滑鼠
+   (founder 2026-08-11 R2/R4)。reveal 本身不拆任何東西,直接同步呼叫安全;
+   真正的退出由 clock 的 settle handler 做(那時 press 已交棒給 tileview)。 */
 static void panel_reveal_cb(void)
 {
-    lv_async_call(mouse_exit_async_cb, NULL);
+    extern void clock_main_mouse_pulldown_reveal(void);
+    clock_main_mouse_pulldown_reveal();
 }
 
 static void mouse_layer_ensure(void)
@@ -258,7 +251,7 @@ lv_obj_t *lv_top_panel_create(lv_obj_t *tile, lv_obj_t *layer_parent)
     s_tile = tile;
 
     /* 通知列表直接鋪滿 tile —— 沒有 pager、沒有設備列。滑鼠模式的退出走
-       「滑鼠頁頂部下拉」(clock_main_mouse_exit_to_media),面板不再放 Exit 鈕。 */
+       「滑鼠頁頂部下拉」(clock_main_mouse_pulldown_reveal),面板不再放 Exit 鈕。 */
     lv_message_list_layout_create(tile);
 
     LOG_I("[top_panel] created (notification-only, ADR-0020)");
