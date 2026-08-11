@@ -146,7 +146,12 @@ def step_flash_and_test(board, flash_port, hcpu_port, skip_hwtest):
             attempt, "（EnterDebugMode 常見於第一次），重試…" if attempt == 1
             else "。"))
     else:
-        return fail("刷機失敗，請看 %s\\ImgBurn.log。" % build_dir)
+        # Two EnterDebugMode failures in a row almost always means the watch is
+        # not running, not that the port or the fixture is wrong — chasing the
+        # port first has cost real time here.
+        return fail("刷機失敗（%s\\ImgBurn.log）。連兩次 EnterDebugMode 失敗"
+                    "通常是手錶沒起來：請先確認手錶開機／斷電重上，再重跑；"
+                    "不要先去改 COM port。" % build_dir)
     emit("=== 刷機完成 ===")
 
     if skip_hwtest:
