@@ -47,6 +47,7 @@ static bool s_work_valid = false;
 
 static void stage_reset(void);      /* defined with the staging state below */
 static void track_reset(void);      /* defined with the tracker at the end  */
+static void track_age_burst(void);  /* ditto                                */
 
 void hr_autocorr_reset(void)
 {
@@ -58,7 +59,21 @@ void hr_autocorr_reset(void)
        call a genuine fresh batch stale — or, worse, call a frozen ring fresh
        because the restart happened to change it once. */
     stage_reset();
-    track_reset();
+    /* The TRACKER deliberately survives. This is called at every burst start to
+       drop the correlation window — samples from before the LED powered up are
+       not a heartbeat — but a heart rate does not reset when the LED goes off.
+       Ten minutes ago is excellent prior information for now.
+     *
+     * Clearing it here cost real readings: the tracker needs TRACK_WARMUP
+     * consistent values before it may act, so wiping it every ~10 minutes left
+     * the first few windows of EVERY burst unprotected. That is exactly where
+     * a 30 bpm window on 2026-08-11 (wrist at 56) and a 32 and a 106 on
+     * 2026-08-10 slipped through — all of them at warm < 3.
+     *
+     * Staleness is handled instead by counting bursts that produce nothing:
+     * a watch taken off runs bursts that all refuse, and the baseline expires
+     * on its own. */
+    track_age_burst();
 }
 
 static void push_sample(uint32_t ppg, int16_t ax, int16_t ay, int16_t az)
@@ -142,6 +157,12 @@ static void stage_reset(void)
     s_batch_stale = false;
     s_batch_judged = false;
     memset(s_stale_bits, 0, sizeof(s_stale_bits));
+}
+
+void hr_autocorr_forget(void)
+{
+    hr_autocorr_reset();
+    track_reset();
 }
 
 void hr_autocorr_stage_begin(void)
@@ -763,11 +784,28 @@ static uint16_t s_track_base_q4;    /* Q4 so the /4 EMA does not quantise away  
 static uint8_t  s_track_warm;
 static uint8_t  s_track_miss;
 
+static uint8_t  s_track_dry_bursts;  /* bursts in a row with no accepted value */
+
+#define TRACK_DRY_MAX     6         /* ~1 hour of bursts before the baseline is
+                                       considered too old to trust */
+
 static void track_reset(void)
 {
     s_track_base_q4 = 0;
     s_track_warm = 0;
     s_track_miss = 0;
+    s_track_dry_bursts = 0;
+}
+
+/* Called once per burst boundary. The baseline survives a burst, but not an
+   indefinite run of bursts that produce nothing — that is what a watch sitting
+   on a desk looks like, and its owner's resting rate from an hour ago is no
+   longer a safe prior for whoever picks it up next. */
+static void track_age_burst(void)
+{
+    if (s_track_base_q4 == 0) return;
+    if (s_track_dry_bursts < 255) s_track_dry_bursts++;
+    if (s_track_dry_bursts > TRACK_DRY_MAX) track_reset();
 }
 
 static uint8_t track_apply(uint8_t bpm)
@@ -779,6 +817,7 @@ static uint8_t track_apply(uint8_t bpm)
         return 0;
     }
     s_track_miss = 0;
+    s_track_dry_bursts = 0;
 
     int32_t out = bpm;
     int32_t base = (int32_t)s_track_base_q4 >> 4;

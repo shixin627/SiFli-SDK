@@ -51,6 +51,14 @@ extern "C" {
  *  before a power cycle would be correlated against fresh ones. */
 void hr_autocorr_reset(void);
 
+/** Drop EVERYTHING, tracker baseline included.
+ *
+ * hr_autocorr_reset() deliberately keeps the baseline — it runs at every burst
+ * boundary and a heart rate does not reset when the LED goes off. This is for
+ * the cases where the prior genuinely stops applying: the watch coming off a
+ * wrist, or a test that needs each window judged on its own. */
+void     hr_autocorr_forget(void);
+
 /** Append raw channel-0 PPG samples (17-bit, straight from the FIFO hook).
  *  Accelerometer is recorded as zero for these, which disables motion
  *  compensation for the window — use hr_autocorr_feed_frame where the aligned
