@@ -508,10 +508,79 @@ static void sp_append_actions(lv_obj_t *view)
     }
 }
 
-/** actions 清單有更新(手機推播 0x65/0x6B 落地)時由 instruction list 呼叫。 */
+/* ── ADR-0020 R8:左頁顯示的就是**原本的浮動 actions 清單本體**(founder 附圖:
+   黑底、文字置中、右緣圓形圖標輪播、底部麥克風)。session 以 '@' item 塞進那份
+   清單,點了走既有 '@' 路徑(conv_open + chat_page);這裡的自有列表/聊天層退役成
+   隱藏備援。upsert/移除都有變動才 refresh,避免 refresh→hook→inject 迴圈。 */
+static void sp_inject_sessions_into_actions(void)
+{
+    extern void add_or_update_custom_instruction(const char *id, const char *title,
+                                                 const char *trigger_type,
+                                                 uint32_t interval_sec, bool enabled,
+                                                 uint32_t version, const char *open_app);
+    extern void set_instruction_category(const char *id, char cat);
+    extern void remove_custom_instruction(const char *id);
+    extern void refresh_custom_instructions(void);
+    extern uint8_t return_total_list_count(void);
+    extern const char *instruction_list_export_id(uint8_t i);
+    extern const char *instruction_list_export_title(uint8_t i);
+
+    bool changed = false;
+
+    /* 移除:清單裡 conv: 開頭、但儲存裡已不存在的(桌面刪了 session)。 */
+    for (int i = (int)return_total_list_count() - 1; i >= 0; i--)
+    {
+        const char *iid = instruction_list_export_id((uint8_t)i);
+        if (iid == NULL || strncmp(iid, "conv:", 5) != 0)
+            continue;
+        bool still = false;
+        for (int d = 0; d < s_device_count && !still; d++)
+            for (int k = 0; k < s_devices[d].count && !still; k++)
+                still = (strcmp(s_devices[d].items[k].id, iid) == 0);
+        if (!still)
+        {
+            remove_custom_instruction(iid);
+            changed = true;
+        }
+    }
+
+    /* upsert:每台每筆;title 沒變就不動(add_or_update 恆觸發重繪成本)。 */
+    for (int d = 0; d < s_device_count; d++)
+    {
+        for (int k = 0; k < s_devices[d].count; k++)
+        {
+            const session_meta_t *s = &s_devices[d].items[k];
+            const char *title = s->title[0] ? s->title : "Session";
+            bool same = false;
+            uint8_t n = return_total_list_count();
+            for (uint8_t i = 0; i < n; i++)
+            {
+                const char *iid = instruction_list_export_id(i);
+                const char *it = instruction_list_export_title(i);
+                if (iid && it && strcmp(iid, s->id) == 0 && strcmp(it, title) == 0)
+                {
+                    same = true;
+                    break;
+                }
+            }
+            if (!same)
+            {
+                add_or_update_custom_instruction(s->id, title, "", 0, false, 0, "");
+                changed = true;
+            }
+            set_instruction_category(s->id, '@'); /* 冪等 */
+        }
+    }
+
+    if (changed)
+        refresh_custom_instructions();
+}
+
+/** actions 清單有更新(手機推播 0x65/0x6B 落地)時由 instruction list 呼叫:
+    把 session 重新注入(replace-all 會把它們洗掉)。 */
 void session_list_actions_changed(void)
 {
-    sp_rebuild_list();
+    sp_inject_sessions_into_actions();
 }
 
 /* 合併重建:全設備的 sessions 收成一份,有 ts 就按 ts 由新到舊,沒 ts 的
@@ -992,16 +1061,21 @@ static void sp_apply_list(void)
     memcpy(dev->items, s_pending_sessions, sizeof(dev->items));
     dev->count = count;
 
-    /* 合併視圖:任何一台的更新都重畫整份列表(量級 32 列,便宜)。在聊天室裡也照畫 ——
-       列表藏在底下,回列表時已是新的。 */
+    /* 合併視圖(隱藏備援)重畫 + 把 session 注入浮動 actions 清單(左頁的真身)。 */
     sp_rebuild_list();
+    sp_inject_sessions_into_actions();
 
     /* The mic asked for a new session and here it is — walk straight in (founder:
-       開新 session 之後就在那個聊天室裡). Only when the tile is on screen. */
+       開新 session 之後就在那個聊天室裡). Only when the tile is on screen.
+       R8:聊天室 = chat_page(與點 '@' item 同一條路),不再用自有 chat 層;
+       不設 s_open_id,0x12 才會路由給 chat_page。 */
     if (s_await_new && fresh >= 0 && s_visible)
     {
         s_await_new = false;
-        sp_enter_chat(slot, fresh);
+        const session_meta_t *ns = &dev->items[fresh];
+        commu_send_conv_open(ns->title, ns->id, 0);
+        extern void chat_page_open(const char *title, const char *icon_src);
+        chat_page_open(ns->title[0] ? ns->title : "Session", NULL);
         return;
     }
 
@@ -1137,6 +1211,9 @@ lv_obj_t *lv_session_pager_create(lv_obj_t *parent)
     lv_obj_set_scrollbar_mode(view, LV_SCROLLBAR_MODE_OFF);
     lv_obj_set_flex_flow(view, LV_FLEX_FLOW_COLUMN);
     lv_obj_set_style_pad_row(view, 8, 0);
+    /* R8:左頁的真身是浮動 actions 清單(session 已注入那份);這份自有列表退役成
+       隱藏備援,避免拉頁過程先閃一版舊樣式。 */
+    lv_obj_add_flag(view, LV_OBJ_FLAG_HIDDEN);
     s_list_view = view;
 
     /* ── CHAT layer (hidden until a row is tapped) ── */
@@ -1192,6 +1269,9 @@ lv_obj_t *lv_session_pager_create(lv_obj_t *parent)
     lv_obj_set_size(bar, LV_HOR_RES, 96);
     lv_obj_align(bar, LV_ALIGN_BOTTOM_MID, 0, 0);
     lv_obj_clear_flag(bar, LV_OBJ_FLAG_SCROLLABLE);
+    /* R8:麥克風入口改用浮動清單自己的 pill(session-page 模式下 tap=開新
+       session);這條自有語音列一併退役隱藏。 */
+    lv_obj_add_flag(bar, LV_OBJ_FLAG_HIDDEN);
     s_voice_bar = bar;
 
     lv_obj_t *ripple = lv_obj_create(bar);

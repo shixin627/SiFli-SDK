@@ -10199,15 +10199,8 @@ static void bottom_logo_cb(lv_event_t *e)
         return;
     if (current_hid_mode == HID_MODE_KEYBOARD)
         return; /* 已經在輸入畫面 */
-    /* founder 2026-08-11 R7:hosted 滑鼠頁底部這張圖已是 skaibar_img,tap = 開
-       「目前控制那台」的新 session(退滑鼠→左頁→conv_new→walk-in;async,見
-       clock_main_open_device_session)。standalone 保持原本的進輸入。 */
-    if (s_hosted_by_pager)
-    {
-        extern void clock_main_open_device_session(void);
-        clock_main_open_device_session();
-        return;
-    }
+    /* founder 2026-08-11 R8:底部這張圖(hosted 顯示 skaibar_img)tap = 開**原本
+       按鍵盤那個輸入模式** —— 只換圖,行為不變(R7 一度改成開 session,改回)。 */
     /* 2026-08-07 founder:「叫出輸入模式時可以看到他從下面出來嗎」——可以,
        start_trackpad_to_kbd_expand_anim() 這條進場動畫本來就寫好了(輸入框從
        底部那條 176×31 的 bar 長出來、下半部 translate_y 由下往上、350ms

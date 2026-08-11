@@ -794,14 +794,27 @@ static void app_clock_main_status_bar_event_cb(lv_event_t *event)
            settle 無效)。 */
         clock_main_media_cols_refresh();
 
-        /* Global input bar (lv_layer_top):只在錶盤(HOME)顯示 —— 左頁有自己的
-           麥克風,媒體欄/面板/控制頁都不要。gui_app gate:通知詳情等 app 蓋在錶
-           盤上時 settle 回 HOME 不能把 bar 疊上去。 */
+        /* Global input bar (lv_layer_top):錶盤(HOME)與左頁都要 —— R8:左頁的
+           內容就是這個浮動清單本體(session 已注入),settle 進左頁直接把它請出來,
+           離開時收掉(瀏覽態的 close;輸入框由 close_ai_on_leave 收)。
+           gui_app gate:通知詳情等 app 蓋在錶盤上時 settle 回 HOME 不能把 bar
+           疊上去。 */
         {
             extern void instruction_list_bar_set_visible(bool visible);
-            instruction_list_bar_set_visible(active_pos == MAIN_PAGE_TYPE_HOME &&
-                                             gui_app_is_actived("Main") &&
-                                             !lv_top_panel_mouse_mode());
+            extern void instruction_list_set_session_page_mode(bool on);
+            extern void instruction_list_open_browse(void);
+            extern bool instruction_list_is_visible(void);
+            extern void close_ai_widget(void);
+            bool on_left_page = (active_pos == MAIN_PAGE_TYPE_RIGHT);
+            instruction_list_set_session_page_mode(on_left_page);
+            instruction_list_bar_set_visible(
+                ((active_pos == MAIN_PAGE_TYPE_HOME && gui_app_is_actived("Main")) ||
+                 on_left_page) &&
+                !lv_top_panel_mouse_mode());
+            if (on_left_page)
+                instruction_list_open_browse();
+            else if (instruction_list_is_visible())
+                close_ai_widget(); /* 離開左頁:瀏覽態清單滑出收掉 */
         }
 
         {

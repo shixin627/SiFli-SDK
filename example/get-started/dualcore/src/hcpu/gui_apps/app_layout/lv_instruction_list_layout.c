@@ -329,6 +329,22 @@ const char *instruction_list_export_title(uint8_t i)
     return list_items[i].title;
 }
 
+const char *instruction_list_export_id(uint8_t i)
+{
+    if (i >= list_item_count)
+        return NULL;
+    return list_items[i].id;
+}
+
+/* ADR-0020 R8:左頁(合併 session+actions)顯示的就是這個浮動清單本體。這個旗標
+   由 clock 在左頁 settle 進出時設定;開著時麥克風 pill 的 tap = 開新 session
+   (交回 session pager 的 conv_new),不是開 AI 輸入框。 */
+static bool s_session_page_mode = false;
+void instruction_list_set_session_page_mode(bool on)
+{
+    s_session_page_mode = on;
+}
+
 const void *instruction_list_export_icon(uint8_t i)
 {
     if (i >= list_item_count)
@@ -3392,6 +3408,15 @@ static void mic_bar_event_cb(lv_event_t *evt)
     if (s_mic_lp_consumed)
     {
         s_mic_lp_consumed = false;
+        return;
+    }
+    /* ADR-0020 R8:左頁 session 檢視中,麥克風 = 直接開新 session(founder R6:
+       「點麥克風也是直接去開新的 session」)。清單推回來後 session pager 自動
+       走進聊天室。 */
+    if (s_session_page_mode)
+    {
+        extern void session_list_open_new_for_device(const char *device_id);
+        session_list_open_new_for_device(NULL);
         return;
     }
     /* Toggle by the box's ACTUAL visibility, not the is_open flag — the flag can
