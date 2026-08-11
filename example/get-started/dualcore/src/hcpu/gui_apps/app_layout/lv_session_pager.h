@@ -64,9 +64,13 @@ extern "C"
         SCROLL 事件裡換算，所以拉下 / 收回 / 慣性滑行都連續。 */
     void session_pager_set_dim(lv_opa_t opa);
 
-    /** 錶盤停在右側第 [device_index] 欄時呼叫：切換顯示哪一台的 sessions，並把這一份
-        session UI 搬進 [column_tile]（UI 只有一份，不搬過去那一欄就是空格子）。 */
+    /** 錶盤停在右側第 [device_index] 欄時呼叫：切換顯示哪一台的 sessions，並把聊天層 /
+        麥克風列 / scrim 搬進 [column_tile]（那三者一次只有一欄用得到，所以不複製）。 */
     void session_pager_set_column(int device_index, lv_obj_t *column_tile);
+
+    /** 把第 [idx] 欄的 tile 交給 pager，讓它在裡面建**那一欄自己的**列表。每欄一份是為了
+        拖曳中就能看到隔壁欄的內容 —— 共用一份的話，滑過去只會看到空格子。 */
+    void lv_session_pager_attach_column(int idx, lv_obj_t *tile);
 
     /* The blurred backdrop behind this tile is the clock's screen-level gaus_dial_bg (shared
        with the left action list), ramped by app_clock_status_bar.c's tileview scroll handler.

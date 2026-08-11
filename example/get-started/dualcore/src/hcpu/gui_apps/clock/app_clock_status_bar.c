@@ -270,6 +270,44 @@ extern int hid_mouse_active_device_index(void);
    讀 tile->dir 決定的,跟我們的顯示邏輯無關。
    最後一欄不給 LV_DIR_RIGHT;第 0 欄保留 LV_DIR_LEFT 回錶盤。設備數會變(配對/離線),
    所以每次 settle 都重算一次,成本只是幾個賦值。 */
+static int session_col_count(void);
+static void session_cols_apply_dirs(int col_count);
+
+/* 更新旗標,並**當場**把捲動方向重設到 tileview 上。
+   為什麼不能只改 tile->dir 就算了:lv_tileview 的 SCROLL_END 是
+       dir = tile->dir;  →  lv_event_send(VALUE_CHANGED);  →  lv_obj_set_scroll_dir(obj, dir);
+   它在發事件**之前**就把 dir 複製進區域變數,所以我們在 VALUE_CHANGED 裡改到的值,這一次
+   settle 根本用不到 —— 永遠慢一拍。開機當下 BLE 還沒好(log 有 conv list req FAILED),
+   設備數是 1,第 0 欄因此沒開右邊,之後即使算出 2 也套不進去,使用者就是滑不到第二欄
+   (founder 2026-08-11:「不能到第1頁」)。 */
+static void session_cols_refresh(void)
+{
+    int col_count = session_col_count();
+    static int s_last_logged = -1;
+    if (col_count != s_last_logged)
+    {
+        s_last_logged = col_count;
+        LOG_W("[sp-col] reachable session columns = %d (devices=%d)", col_count,
+              hid_mouse_device_count());
+    }
+    session_cols_apply_dirs(col_count);
+    /* 重設當前 tile 的方向:上面那段時序讓 tileview 手上握著舊值,不重設的話新旗標要等
+       下一次 settle 才生效,而使用者正是因為滑不動才沒有下一次 settle。 */
+    if (app_clock_main_status_bar && lv_obj_is_valid(app_clock_main_status_bar))
+    {
+        lv_obj_t *act = lv_tileview_get_tile_act(app_clock_main_status_bar);
+        if (act != NULL && lv_obj_is_valid(act))
+            lv_obj_set_scroll_dir(app_clock_main_status_bar,
+                                  ((lv_tileview_tile_t *)act)->dir);
+    }
+}
+
+/** 設備清單有變 / session 列表有更新時呼叫：右側可滑的欄數跟著設備數走。 */
+void clock_main_session_cols_refresh(void)
+{
+    session_cols_refresh();
+}
+
 static void session_cols_apply_dirs(int col_count)
 {
     for (int c = 0; c < MAX_SYNCED_DEVICES; c++)
@@ -548,18 +586,54 @@ static void app_clock_main_status_bar_event_cb(lv_event_t *event)
         /* 面板正停在 session 欄 = 我們的下拉/收回進行中,頂部時間的濃度由下面那段
            垂直換算獨佔。否則後面 sx > 466 的 App List 分支會用水平位移算出滿值再設
            一次,把我們的淡出蓋掉(founder 2026-08-10:「上面的時間沒有」)。 */
-        bool session_panel_owns_time = (s_panel_parked_col >= 0);
+        /* 右側整區(每一欄 session 與其面板)一律不顯示頂部時間 —— founder 2026-08-11:
+           「上面都不要顯示時間好了」。這條旗標同時擋掉後面 sx > 466 那段 App List 分支,
+           它會依水平位移把時間設成滿值;不擋的話滑進第一欄的瞬間時間會閃一下。 */
+        bool session_panel_owns_time =
+            (s_panel_parked_col >= 0) || (lv_obj_get_scroll_x(obj) > LV_HOR_RES);
         if (session_panel_owns_time)
+            set_instruction_list_time_opa(LV_OPA_TRANSP);
+        if (s_panel_parked_col >= 0)
         {
             lv_coord_t dim_sy = lv_obj_get_scroll_y(obj);
             if (dim_sy < 0) dim_sy = 0;
             if (dim_sy > LV_VER_RES) dim_sy = LV_VER_RES;
             extern void session_pager_set_dim(lv_opa_t opa);
-            session_pager_set_dim((lv_opa_t)((LV_VER_RES - dim_sy) * 204 / LV_VER_RES));
-            /* 頂部時間在 lv_layer_top 的全域列上,畫在所有 tile 之上 —— scrim 是 session
-               頁的子物件,蓋不到它(founder 2026-08-10:「上面的時間沒有變暗」)。跟錶盤
-               路徑一樣另外淡掉它,用同一個 scroll_y 反向換算,兩者才會同步。 */
-            set_instruction_list_time_opa((uint8_t)(dim_sy * 255 / LV_VER_RES));
+            /* 上限 90（≈35%）而不是 204。scrim 是全螢幕黑幕、蓋在模糊底圖之上,而面板本身
+               是透明的 —— 拉到 204 等於把「透過面板看到的背景」整片壓黑,使用者看到的就是
+               「只有變暗、沒有模糊」,直到 settle 把頁面連同 scrim 收回 tile 之後模糊才突然
+               冒出來(founder 2026-08-11)。降到 90 兩者才能並存:頁面仍隨手指變暗,模糊也還
+               透得出來。這是個可調的美術值,不是推導出來的常數。 */
+            /* 上限 90(≈35%)。2026-08-11 A/B 實測:scrim 全關之後模糊仍然不出現,所以
+               「拉的過程看不到模糊」與 scrim 無關 —— 是別的圖層蓋住它(未解,見 runlog)。
+               scrim 保留在 founder 要的「隨手指慢慢變黑」上。 */
+            session_pager_set_dim((lv_opa_t)((LV_VER_RES - dim_sy) * 90 / LV_VER_RES));
+            /* 模糊底圖在這裡**不動**。它是 session 頁自己的背景,停在這一欄時本來就是滿
+               濃度;把它接上下拉進度是我 2026-08-11 的過度修正 —— 一開始拉的瞬間濃度掉到
+               接近 0,背景就整片消失、露出後面的錶盤(founder:「原本session頁面的背景會
+               突然消失顯示成錶盤」)。會跟著手指變的是 scrim(頁面變暗)和面板本身。
+               仍要壓住的是水平那段:它每幀用固定的水平位移把濃度寫回去,是另一個方向的
+               干擾,gate 在下面 sx > 466 的分支裡。 */
+            if (gaus_dial_bg && lv_obj_is_valid(gaus_dial_bg))
+                lv_obj_clear_flag(gaus_dial_bg, LV_OBJ_FLAG_HIDDEN);
+            /* 一次性 trace:模糊底圖在下拉當下到底是什麼狀態。連兩輪憑推理修錯方向
+               (先接漸變 → 背景消失露出錶盤;再完全不碰 → 拉的過程沒有模糊),所以把
+               bg_opa / img_opa / hidden 直接印出來再決定。每次下拉只印一次。 */
+            {
+                static bool s_logged_this_pull = false;
+                if (dim_sy >= LV_VER_RES - 40)
+                    s_logged_this_pull = false; /* 回到頁面頂端 = 下一次下拉重新印 */
+                else if (!s_logged_this_pull)
+                {
+                    s_logged_this_pull = true;
+                    LOG_W("[sp-blur] sy=%d bg_opa=%d img_opa=%d hidden=%d", (int)dim_sy,
+                          (int)lv_obj_get_style_bg_opa(gaus_dial_bg, LV_PART_MAIN),
+                          (int)(gaus_dial_img && lv_obj_is_valid(gaus_dial_img)
+                                    ? lv_obj_get_style_img_opa(gaus_dial_img, LV_PART_MAIN)
+                                    : -1),
+                          (int)lv_obj_has_flag(gaus_dial_bg, LV_OBJ_FLAG_HIDDEN));
+                }
+            }
         }
         /* App List tile (col 2) reveal: home sits at scroll_x==466; pulling RIGHT
            toward the App List raises scroll_x toward 932. Finger-follow the SAME
@@ -600,7 +674,12 @@ static void app_clock_main_status_bar_event_cb(lv_event_t *event)
                 lv_coord_t pull = sx - 466; /* 0..466 */
                 lv_coord_t opa = pull * 255 / 466;
                 if (opa > 255) opa = 255;
-                instruction_list_bar_set_blur_amount((uint8_t)opa);
+                /* 面板在 session 欄跟手時,模糊 / 時間 / scrim 三者由上面那段的垂直進度
+                   獨佔。這個函式內部就是在設模糊圖的濃度,而這裡的 opa 是用**水平**位移
+                   算的 —— 我們這一欄垂直下拉時 scroll_x 不動,於是它每一幀都把垂直漸變
+                   覆寫回同一個值,模糊就變成「放手才整張出現」(founder 2026-08-11)。 */
+                if (s_panel_parked_col < 0)
+                    instruction_list_bar_set_blur_amount((uint8_t)opa);
                 if (!session_panel_owns_time)
                     set_instruction_list_time_opa((uint8_t)opa);
                 /* Same pull fades in the blurred dial behind the session pager — the SCREEN-LEVEL
@@ -609,7 +688,9 @@ static void app_clock_main_status_bar_event_cb(lv_event_t *event)
                    sideways with the page instead of sitting still (founder 2026-08-05). Black
                    underlay + blurred image ramp together, so the dial dissolves into the blur
                    rather than the page arriving on a hard cut. */
-                if (gaus_dial_bg && lv_obj_is_valid(gaus_dial_bg))
+                /* 面板正在這一欄跟手時,模糊底圖歸上面那段的垂直進度管 —— 這裡是用水平
+                   位移算的,而垂直下拉時 scroll_x 不動,寫下去等於把它凍在原值。 */
+                if (s_panel_parked_col < 0 && gaus_dial_bg && lv_obj_is_valid(gaus_dial_bg))
                 {
                     lv_obj_clear_flag(gaus_dial_bg, LV_OBJ_FLAG_HIDDEN);
                     lv_obj_set_style_bg_opa(gaus_dial_bg, (lv_opa_t)opa, 0);
@@ -808,8 +889,9 @@ static void app_clock_main_status_bar_event_cb(lv_event_t *event)
            順序的索引：補了 8 格之後那個索引已經沒有可讀性。 */
         int col_now = session_scroll_col(obj);
         int row_now = session_scroll_row(obj);
-        /* 設備數會隨配對 / 上下線變動,每次 settle 重算可滑的欄數。 */
-        session_cols_apply_dirs(session_col_count());
+        /* 設備數會隨配對 / 上下線變動,每次 settle 重算可滑的欄數(並當場重設方向 ——
+           光改 tile->dir 對這一次 settle 是無效的,見 session_cols_refresh 的說明)。 */
+        session_cols_refresh();
         bool on_session_panel = (row_now == 0 && col_now >= SESSION_COL_FIRST);
         bool on_session_list = (row_now == 1 && col_now >= SESSION_COL_FIRST);
         {
@@ -842,7 +924,7 @@ static void app_clock_main_status_bar_event_cb(lv_event_t *event)
                 session_pager_pin_for_panel(NULL);
                 /* 停在 session 面板 = 頁面被完全蓋住,維持全暗；其餘一律清掉,否則
                    離開之後那層黑會留在 session 頁上。 */
-                session_pager_set_dim(on_session_panel ? (lv_opa_t)204 : LV_OPA_TRANSP);
+                session_pager_set_dim(on_session_panel ? (lv_opa_t)90 : LV_OPA_TRANSP);
                 /* 時間跟著 settle 收尾:停在面板 = 全暗(0)。停在別頁不在這裡復原 ——
                    各頁本來就會自己設定(session 列表那頁設 OPA_100),硬塞會蓋掉它們。 */
                 if (on_session_panel)
@@ -915,13 +997,24 @@ static void app_clock_main_status_bar_event_cb(lv_event_t *event)
             lv_obj_clear_flag(myLancher[app_index_message].pagetileview,
                               LV_OBJ_FLAG_HIDDEN);
             lv_obj_clear_flag(gaus_dial_bg, LV_OBJ_FLAG_HIDDEN);
-            if (active_pos == MAIN_PAGE_TYPE_LEFT)
+            /* 頂部時間在**任何一欄** session 列表上都要顯示。原本只認
+               MAIN_PAGE_TYPE_LEFT —— 那是 tile 加入順序的索引 2,也就是只有第 0 欄;
+               後面新增的欄拿到索引 5 以後,全部掉進 else 被設成 0,於是滑到第二台的
+               列表時上面的時間就不見了(founder 2026-08-11)。用格子座標判,跟這個
+               handler 裡其他 session 欄的判斷同一套。 */
+            /* session 欄一律不顯示時間（founder 2026-08-11:「上面都不要顯示時間好了」）。
+               MAIN_PAGE_TYPE_LEFT 就是第 0 欄，跟其他欄一視同仁。 */
+            set_instruction_list_time_opa(LV_OPA_0);
+            /* 停在 session 欄時的模糊狀態,用來跟下拉當下的 [sp-blur] 對照 —— 兩者數值
+               的差,就是「拉下去模糊就不見」的原因。 */
+            if (on_session_list && gaus_dial_bg && lv_obj_is_valid(gaus_dial_bg))
             {
-                set_instruction_list_time_opa(LV_OPA_100);
-            }
-            else
-            {
-                set_instruction_list_time_opa(LV_OPA_0);
+                LOG_W("[sp-blur] REST bg_opa=%d img_opa=%d hidden=%d",
+                      (int)lv_obj_get_style_bg_opa(gaus_dial_bg, LV_PART_MAIN),
+                      (int)(gaus_dial_img && lv_obj_is_valid(gaus_dial_img)
+                                ? lv_obj_get_style_img_opa(gaus_dial_img, LV_PART_MAIN)
+                                : -1),
+                      (int)lv_obj_has_flag(gaus_dial_bg, LV_OBJ_FLAG_HIDDEN));
             }
             if (active_pos == MAIN_PAGE_TYPE_UP)
             {
@@ -1722,6 +1815,14 @@ static void set_clock_main_status_opa(uint8_t opa, bool mask)
     (void)mask;
     if (lv_obj_is_valid(gaus_dial_img))
     {
+        /* 診斷用(2026-08-11):模糊圖在下拉過程中「應該是 255 卻看不到」,而這個 setter 是
+           全檔唯一改它濃度的入口。只在值真的變動時印,所以拉一次最多幾行。 */
+        static int s_last = -1;
+        if ((int)opa != s_last)
+        {
+            s_last = (int)opa;
+            LOG_W("[sp-blur] img_opa -> %d", (int)opa);
+        }
         lv_obj_set_style_img_opa(gaus_dial_img, opa,
                                  LV_PART_MAIN | LV_STATE_DEFAULT);
     }
@@ -1991,7 +2092,7 @@ void app_clock_main_status_bar_init(lv_obj_t *par)
         lv_obj_set_scrollbar_mode(s_panel_park_tile[c], LV_SCROLLBAR_MODE_OFF);
     }
 
-    session_cols_apply_dirs(session_col_count()); /* 開機時就把多餘的欄鎖起來 */
+    session_cols_refresh(); /* 開機時就把多餘的欄鎖起來(設備到齊後會再刷一次) */
 
     lv_obj_set_tile_id(app_clock_main_status_bar, 1, 1, false);
     lv_obj_add_flag(app_clock_main_status_bar, LV_OBJ_FLAG_HIDDEN);
@@ -2015,6 +2116,13 @@ void app_clock_main_status_bar_init(lv_obj_t *par)
        one-line change here. */
     extern lv_obj_t *lv_session_pager_create(lv_obj_t * parent);
     lv_session_pager_create(pages[INSTRUCTION_LIST_PAGE_INDEX]);
+    /* 每一欄各自建一份列表 —— 拖曳到隔壁欄時它已經畫好了。聊天層 / 麥克風 / scrim 仍是
+       單一份,由 session_pager_set_column 跟著停下來的那一欄搬。 */
+    {
+        extern void lv_session_pager_attach_column(int idx, lv_obj_t * tile);
+        for (int c = 0; c < MAX_SYNCED_DEVICES; c++)
+            lv_session_pager_attach_column(c, s_session_tile[c]);
+    }
     /* 上 tile = 頂部面板（控制中心 ← 通知列表 → 各設備媒體中心 + 固定的頂部
        設備列 / 底部按鈕）。通知列表與控制中心都由面板內部建立。 */
     LOG_I("clock_status_bar: before top_panel_create");
