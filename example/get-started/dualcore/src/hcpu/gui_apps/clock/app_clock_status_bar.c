@@ -413,6 +413,17 @@ void clock_main_mouse_exit_to_media(void)
        媒體欄的 active_pos 必不等於 1,不用手動戳 middle_layer_tileview_index。 */
     lv_obj_set_tile_id(app_clock_main_status_bar, (uint8_t)col, 1, false);
     lv_obj_clear_flag(app_clock_main_status_bar, LV_OBJ_FLAG_HIDDEN);
+    /* 手指此刻多半還按著(這是下拉手勢的中段)。兩件事必須立刻做,否則殘餘的
+       拖曳被 tileview 接走:它手上的 scroll_dir 還是**進滑鼠前 HOME 那次 settle
+       套上的四向**(lv_tileview 在 press 期間不重讀 tile->dir),往下拖就滑進根本
+       不存在的 (col,0) 空格,settle 再吸到最近的 (1,0) —— founder R3 實測:
+       「往下拉變成拉出通知列表」。
+       1) 吞掉這根手指剩下的行程(直到放開都不再派發);
+       2) 把 scroll_dir 當場重設成媒體欄自己的方向。 */
+    for (lv_indev_t *ind = lv_indev_get_next(NULL); ind != NULL;
+         ind = lv_indev_get_next(ind))
+        lv_indev_wait_release(ind);
+    clock_main_media_cols_refresh(); /* 內含「當場重設 act tile 的 scroll_dir」 */
     if (gaus_dial_bg && lv_obj_is_valid(gaus_dial_bg))
         lv_obj_clear_flag(gaus_dial_bg, LV_OBJ_FLAG_HIDDEN);
     LOG_W("[media-col] mouse exit -> col %d", col);
@@ -690,6 +701,14 @@ static void app_clock_main_status_bar_event_cb(lv_event_t *event)
         int row_now = media_scroll_row(obj);
         bool on_media_col = (row_now == 1 && col_now >= MEDIA_COL_FIRST);
         bool on_mouse_park = (row_now == 2 && col_now >= MEDIA_COL_FIRST);
+
+        /* 護欄:媒體欄的 row 0 沒有格子(停車位在 row 2)。stale scroll_dir 之類的
+           殘餘拖曳若把捲動帶到那裡,settle 會吸去別的欄 —— 直接彈回該欄媒體頁。 */
+        if (row_now == 0 && col_now >= MEDIA_COL_FIRST)
+        {
+            lv_obj_set_tile_id(obj, (uint8_t)col_now, 1, true);
+            break;
+        }
 
         /* ADR-0020 R2:媒體欄**往上拉** settle 在下方停車位 = 進入該欄那台的滑鼠
            模式。先 bind 選台(進入後 app_route 才指對機器),圖層亮起後把 tileview
