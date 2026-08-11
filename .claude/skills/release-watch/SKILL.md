@@ -28,14 +28,15 @@ gh workflow run watch-release.yml --repo shixin627/SiFli-SDK
 Inputs: `version` (**留空 = 讀 OSS `skaiwatch/<board>/info.json` 的版號 +1**),
 `board` (`sf32lb56-watch` 量產 / `sf32lb56w-watch` 開發機), `notes`,
 `with_watchface`, `flash` (預設 true；`-f flash=false` = 只編譯打包),
-`flash_port` (default **COM3**), `hcpu_port` (default **COM4**), `skip_hwtest`,
+`flash_port` (default COM4), `hcpu_port` (default COM3), `skip_hwtest`,
 `upload`.
 
-The bench wiring is the reverse of what `release_gui.py` assumes: the boot ROM
-answers `EnterDebugMode` on **COM3**, and `hcpu_port_from_flash()` would derive
-COM2. Always pass both ports; never rely on the derivation. A flash that dies
-with repeated `EnterDebugMode error` while still logging `uart comN open
-success` means the port is wrong, not the fixture.
+**A failed flash wedges the watch, and a wedged watch lies about which port is
+which.** After `DownLoadUart fail`, the next attempt fails too — sometimes on
+the *other* port, and `EnterDebugMode success` can even appear on the HCPU port.
+So never diagnose port order from a failed run: power-cycle the watch first,
+then test once. The bench wiring is 燒錄 COM4 / 指令 COM3 (confirmed by
+flashing from `release_gui.bat`).
 
 Never express "build only" by blanking `flash_port` — `gh` drops empty `-f`
 values and the workflow default (COM4) takes over, i.e. it flashes anyway.
