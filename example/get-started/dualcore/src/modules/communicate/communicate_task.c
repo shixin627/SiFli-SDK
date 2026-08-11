@@ -562,7 +562,8 @@ bool commu_send_conv_list_req(const char *device)
         rt_strncpy(json, "{}", sizeof(json));
     }
     bool ok = commu_send_string(SKAI_LINK_COMMAND_ID, KEY_CONV_LIST_REQ, json);
-    LOG_I("send conv list req dev=%s -> %s", (device && device[0]) ? device : "*",
+    /* LOG_W: 這台 dev 錶只印 W/E,而「手錶到底有沒有問」是 per-device 斷點診斷的第一格。 */
+    LOG_W("send conv list req dev=%s -> %s", (device && device[0]) ? device : "*",
           ok ? "ok" : "FAILED");
     return ok;
 }

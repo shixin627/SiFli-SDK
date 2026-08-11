@@ -103,6 +103,40 @@ static int s_current;   /* index into that device's items — the open session *
    device the panel controls" the same machine by construction — the registry is the one
    ordering every other surface already uses (founder 2026-08-10: 右邊一台設備一欄，從上面
    拉下來就是那一台的媒體頁). Matching on name instead would break on rename and duplicates. */
+/* The stored list for the device that owns COLUMN [col]. Same identity rule as sp_shown —
+   the registry position is the column, and the id is what the stored lists are keyed by. */
+static device_sessions_t *sp_for_column(int col)
+{
+    static device_sessions_t scratch;
+    extern const char *hid_mouse_device_id(int idx);
+
+    const char *want = hid_mouse_device_id(col);
+    if (want != NULL)
+    {
+        for (int i = 0; i < s_device_count; i++)
+        {
+            if (strcmp(s_devices[i].id, want) == 0)
+                return &s_devices[i];
+        }
+        /* Legacy push (no device on the wire) belongs to the first column — see sp_shown. */
+        if (col == 0)
+        {
+            for (int i = 0; i < s_device_count; i++)
+            {
+                if (s_devices[i].id[0] == '\0')
+                    return &s_devices[i];
+            }
+        }
+        memset(&scratch, 0, sizeof(scratch));
+        strncpy(scratch.id, want, SESSION_ID_LEN - 1);
+        return &scratch;
+    }
+    if (col == 0 && s_device_count > 0)
+        return &s_devices[0];
+    memset(&scratch, 0, sizeof(scratch));
+    return &scratch;
+}
+
 static device_sessions_t *sp_shown(void)
 {
     static device_sessions_t scratch;
@@ -153,7 +187,16 @@ static device_sessions_t *sp_shown(void)
 static lv_obj_t *s_root;      /* the tile child everything else hangs off */
 static lv_obj_t *s_home_tile; /* the tile we were built in — restored to after a pin */
 static lv_obj_t *s_dim;       /* black scrim over the page while the panel comes over it */
-static lv_obj_t *s_list_view; /* LIST layer — vertical column of session rows */
+
+/* ONE LIST PER COLUMN, but one chat room / mic / scrim for all of them.
+   The lists must be per-column because they are what the user sees WHILE DRAGGING between
+   desktops — a single shared list can only ever be in one tile, so the column being dragged
+   toward renders empty until the drag settles (founder 2026-08-11 first saw this as "第二欄
+   還是空的"). Everything else is single: only the settled column can own a conversation, the
+   mic, or the panel scrim, so those follow the settled column instead of being duplicated
+   four times. */
+static lv_obj_t *s_list_view[SESSION_DEVICE_MAX];
+static int s_list_col_count;
 static lv_obj_t *s_chat_view; /* CHAT layer — one session's transcript (hidden on LIST) */
 static lv_obj_t *s_chat_title;
 static lv_obj_t *s_chat_list; /* the bubble column inside CHAT */
@@ -183,6 +226,24 @@ static bool s_visible; /* pager tile on screen (tracked by the visibility timer)
 #define SP_PENDING_STATE 2
 static volatile int s_pending_kind;
 
+/* ONE PENDING SLOT PER DESKTOP.
+   A single shared buffer loses a push whenever two desktops answer close together — measured
+   113 ms apart on real hardware (2026-08-11), which is the normal case because the phone asks
+   them all at once. The LVGL thread only ever saw the LAST arrival, so one column was always
+   painted from stale data and the user read it as "the other column is empty until I stop
+   dragging". Keyed by device id so a desktop's re-push overwrites only its own slot. */
+typedef struct
+{
+    volatile int ready; /* published LAST, after the payload is fully written */
+    char dev_id[SESSION_ID_LEN];
+    char dev_name[SESSION_DEVICE_NAME_LEN];
+    session_meta_t sessions[SESSION_PAGER_MAX];
+    int count;
+} pending_list_t;
+
+static pending_list_t s_pending_lists[SESSION_DEVICE_MAX];
+
+/* Working copies the LVGL-thread apply path reads (filled from the slot it is draining). */
 static session_meta_t s_pending_sessions[SESSION_PAGER_MAX];
 static int s_pending_session_count;
 static char s_pending_dev_id[SESSION_ID_LEN];
@@ -203,6 +264,7 @@ static int s_drawn_page = -1;
 static void sp_enter_chat(int idx);
 static void sp_leave_chat(void);
 static void sp_rebuild_list(void);
+static lv_obj_t *sp_visible_list(void);
 
 /* ── Voice ripple ────────────────────────────────────────────────────────── */
 
@@ -348,10 +410,31 @@ static void sp_mic_cb(lv_event_t *e)
 /* Which registry device this column is showing. Called by the clock when the watch face
    settles on a session column; re-renders only when the device actually changes so a
    settle on the same column never rebuilds the list under the user. */
-void session_pager_set_column(int device_index)
+void session_pager_set_column(int device_index, lv_obj_t *column_tile)
 {
     if (device_index < 0)
         device_index = 0;
+    /* MOVE THE UI INTO THAT COLUMN'S TILE.
+       There is one session UI, built into the first column's tile. Switching columns used to
+       only re-resolve WHICH device's rows to draw — so the rows were rebuilt correctly (the
+       trace even reported rows=3) but kept rendering in column 0's tile, and the column the
+       user had swiped to was an empty grid cell. founder 2026-08-11: 「第二欄還是空的」.
+       Re-parenting is what actually puts it on screen. It also keeps s_home_tile honest, so
+       the panel pin/unpin restores into the column we are actually on. */
+    if (column_tile != NULL && lv_obj_is_valid(column_tile) && column_tile != s_home_tile)
+    {
+        s_home_tile = column_tile;
+        if (s_root != NULL && lv_obj_is_valid(s_root))
+        {
+            lv_obj_set_parent(s_root, column_tile);
+            lv_obj_set_pos(s_root, 0, 0);
+        }
+        if (s_voice_bar != NULL && lv_obj_is_valid(s_voice_bar))
+        {
+            lv_obj_set_parent(s_voice_bar, column_tile);
+            lv_obj_align(s_voice_bar, LV_ALIGN_BOTTOM_MID, 0, 0);
+        }
+    }
     if (device_index == s_dev_shown)
         return;
     s_dev_shown = device_index;
@@ -362,7 +445,8 @@ void session_pager_set_column(int device_index)
                           look old and a conv_new there would never be walked into */
     s_await_new = false;
     sp_rebuild_list();
-    LOG_I("session column -> device %d (%s)", device_index, sp_shown()->id);
+    LOG_W("session column -> %d id=%s rows=%d (devices stored=%d)", device_index,
+          sp_shown()->id, sp_shown()->count, s_device_count);
 }
 
 void session_pager_set_dim(lv_opa_t opa)
@@ -385,6 +469,17 @@ void session_pager_pin_for_panel(lv_obj_t *fixed_parent)
         return;
     if (lv_obj_get_parent(s_root) == dst)
         return;
+
+    /* THE LIST MUST COME TOO. Since the lists became per-column they live in the column's
+       tile, not inside s_root — so pinning only s_root left the list behind and the tileview
+       carried it away under the descending panel: the page slid down again instead of being
+       covered (founder 2026-08-11:「session會往下離開了，我要的是媒體頁面蓋上來」). */
+    lv_obj_t *list = sp_visible_list();
+    if (list != NULL && lv_obj_is_valid(list))
+    {
+        lv_obj_set_parent(list, dst);
+        lv_obj_align(list, LV_ALIGN_TOP_MID, 0, SP_LIST_Y);
+    }
     lv_obj_set_parent(s_root, dst);
     lv_obj_set_pos(s_root, 0, 0);
     if (s_voice_bar != NULL && lv_obj_is_valid(s_voice_bar))
@@ -394,9 +489,21 @@ void session_pager_pin_for_panel(lv_obj_t *fixed_parent)
     }
     if (fixed_parent != NULL)
     {
-        /* Below the tileview, so the panel sliding down inside it covers this page. */
-        lv_obj_move_background(s_voice_bar);
+        /* All three below the tileview so the panel sliding down inside it covers them, and
+           in this order bottom-up — list, mic, then s_root — so the scrim (inside s_root)
+           still darkens the list rather than sitting under it. move_background pushes to
+           index 0, so the LAST call ends up lowest. */
         lv_obj_move_background(s_root);
+        if (s_voice_bar != NULL && lv_obj_is_valid(s_voice_bar))
+            lv_obj_move_background(s_voice_bar);
+        if (list != NULL && lv_obj_is_valid(list))
+            lv_obj_move_background(list);
+    }
+    else
+    {
+        /* Back in the column tile the list was appended LAST, i.e. above s_root — which would
+           put the chat room and the scrim underneath it. Re-assert s_root on top. */
+        lv_obj_move_foreground(s_root);
     }
 }
 
@@ -550,19 +657,22 @@ static void sp_add_row(lv_obj_t *parent, const session_meta_t *s, int idx)
     }
 }
 
-static void sp_rebuild_list(void)
+static void sp_rebuild_column(int col)
 {
-    if (s_list_view == NULL || !lv_obj_is_valid(s_list_view))
+    if (col < 0 || col >= SESSION_DEVICE_MAX)
         return;
-    lv_obj_clean(s_list_view);
-    device_sessions_t *d = sp_shown();
+    lv_obj_t *view = s_list_view[col];
+    if (view == NULL || !lv_obj_is_valid(view))
+        return;
+    lv_obj_clean(view);
+    device_sessions_t *d = sp_for_column(col);
     for (int i = 0; i < d->count; i++)
-        sp_add_row(s_list_view, &d->items[i], i);
+        sp_add_row(view, &d->items[i], i);
     if (d->count == 0)
     {
         /* Empty state (Skaiwalk UI §4.2): say what the mic below will do rather than
            leaving a blank tile that reads as "broken" or "still loading". */
-        lv_obj_t *hint = lv_label_create(s_list_view);
+        lv_obj_t *hint = lv_label_create(view);
         lv_label_set_long_mode(hint, LV_LABEL_LONG_WRAP);
         lv_obj_set_width(hint, LV_HOR_RES - SP_LIST_SIDE_PAD - 40);
         sp_set_font(hint, SP_FONT_ROW_PREVIEW);
@@ -571,7 +681,42 @@ static void sp_rebuild_list(void)
         lv_obj_set_style_text_opa(hint, LV_OPA_60, 0);
         lv_label_set_text(hint, "還沒有對話\n按下方麥克風開新的");
     }
-    lv_obj_scroll_to_y(s_list_view, 0, LV_ANIM_OFF);
+    lv_obj_scroll_to_y(view, 0, LV_ANIM_OFF);
+}
+
+/* Every column, so the one being dragged toward is already painted before it settles. */
+static void sp_rebuild_list(void)
+{
+    for (int c = 0; c < s_list_col_count; c++)
+        sp_rebuild_column(c);
+}
+
+/* The list of the column currently on screen — what enter/leave chat shows and hides. */
+static lv_obj_t *sp_visible_list(void)
+{
+    if (s_dev_shown < 0 || s_dev_shown >= SESSION_DEVICE_MAX)
+        return NULL;
+    return s_list_view[s_dev_shown];
+}
+
+/** Give the pager column [idx]'s tile so it can build that column's own list into it.
+    Called once per column by the clock right after the tileview is built. */
+void lv_session_pager_attach_column(int idx, lv_obj_t *tile)
+{
+    if (idx < 0 || idx >= SESSION_DEVICE_MAX || tile == NULL || !lv_obj_is_valid(tile))
+        return;
+    lv_obj_t *view = lv_obj_create(tile);
+    lv_obj_remove_style_all(view);
+    lv_obj_set_size(view, LV_HOR_RES - SP_LIST_SIDE_PAD, SP_LIST_H);
+    lv_obj_align(view, LV_ALIGN_TOP_MID, 0, SP_LIST_Y);
+    lv_obj_set_scroll_dir(view, LV_DIR_VER);
+    lv_obj_set_scrollbar_mode(view, LV_SCROLLBAR_MODE_OFF);
+    lv_obj_set_flex_flow(view, LV_FLEX_FLOW_COLUMN);
+    lv_obj_set_style_pad_row(view, 8, 0);
+    s_list_view[idx] = view;
+    if (idx + 1 > s_list_col_count)
+        s_list_col_count = idx + 1;
+    sp_rebuild_column(idx);
 }
 
 /* ── CHAT layer ──────────────────────────────────────────────────────────── */
@@ -602,7 +747,11 @@ static void sp_enter_chat(int idx)
         sp_add_bubble(s_chat_list, s->preview, true);
     lv_obj_scroll_to_y(s_chat_list, LV_COORD_MAX, LV_ANIM_OFF);
 
-    lv_obj_add_flag(s_list_view, LV_OBJ_FLAG_HIDDEN);
+    {
+        lv_obj_t *lv = sp_visible_list();
+        if (lv != NULL && lv_obj_is_valid(lv))
+            lv_obj_add_flag(lv, LV_OBJ_FLAG_HIDDEN);
+    }
     lv_obj_clear_flag(s_chat_view, LV_OBJ_FLAG_HIDDEN);
     s_in_chat = true;
     LOG_I("chat enter [%d]: %s", idx, s_open_id);
@@ -628,7 +777,11 @@ static void sp_leave_chat(void)
     }
     s_in_chat = false;
     lv_obj_add_flag(s_chat_view, LV_OBJ_FLAG_HIDDEN);
-    lv_obj_clear_flag(s_list_view, LV_OBJ_FLAG_HIDDEN);
+    {
+        lv_obj_t *lv = sp_visible_list();
+        if (lv != NULL && lv_obj_is_valid(lv))
+            lv_obj_clear_flag(lv, LV_OBJ_FLAG_HIDDEN);
+    }
 }
 
 /* ── Back gesture (CHAT → LIST) ──────────────────────────────────────────────
@@ -832,24 +985,36 @@ void skai_sessions_on_conv_list(const uint8_t *json, uint16_t length)
         return;
     }
     /* Absent "device" = the single unnamed desktop, i.e. what a pre-2026-08-10 phone
-       sends. Slot it under the empty id so an old phone still fills the one column. */
-    s_pending_dev_id[0] = '\0';
-    s_pending_dev_name[0] = '\0';
+       sends. Slot it under the empty id so an old phone still fills the one column.
+       Parsed into LOCALS, not shared statics: two desktops answer within ~100 ms and both
+       arrive on this same thread, so anything shared here is a lost push. */
+    char dev_id[SESSION_ID_LEN];
+    char dev_name[SESSION_DEVICE_NAME_LEN];
+    session_meta_t parsed[SESSION_PAGER_MAX];
+    memset(parsed, 0, sizeof(parsed));
+    dev_id[0] = '\0';
+    dev_name[0] = '\0';
     {
         cJSON *dev = cJSON_GetObjectItem(root, "device");
         if (cJSON_IsObject(dev))
         {
             cJSON *j_did = cJSON_GetObjectItem(dev, "id");
             if (cJSON_IsString(j_did))
-                strncpy(s_pending_dev_id, j_did->valuestring, SESSION_ID_LEN - 1);
+            {
+                strncpy(dev_id, j_did->valuestring, SESSION_ID_LEN - 1);
+                dev_id[SESSION_ID_LEN - 1] = '\0';
+            }
             cJSON *j_dname = cJSON_GetObjectItem(dev, "name");
             if (cJSON_IsString(j_dname))
-                strncpy(s_pending_dev_name, j_dname->valuestring,
-                        SESSION_DEVICE_NAME_LEN - 1);
+            {
+                strncpy(dev_name, j_dname->valuestring, SESSION_DEVICE_NAME_LEN - 1);
+                dev_name[SESSION_DEVICE_NAME_LEN - 1] = '\0';
+            }
         }
         else if (cJSON_IsString(dev))
         {
-            strncpy(s_pending_dev_id, dev->valuestring, SESSION_ID_LEN - 1);
+            strncpy(dev_id, dev->valuestring, SESSION_ID_LEN - 1);
+            dev_id[SESSION_ID_LEN - 1] = '\0';
         }
     }
     cJSON *arr = cJSON_GetObjectItem(root, "sessions");
@@ -864,23 +1029,62 @@ void skai_sessions_on_conv_list(const uint8_t *json, uint16_t length)
             cJSON *j_id = cJSON_GetObjectItem(it, "id");
             if (!cJSON_IsString(j_id) || j_id->valuestring[0] == '\0')
                 continue; /* a row with no identity can never be opened — drop it */
-            memset(&s_pending_sessions[count], 0, sizeof(s_pending_sessions[count]));
-            strncpy(s_pending_sessions[count].id, j_id->valuestring, SESSION_ID_LEN - 1);
+            strncpy(parsed[count].id, j_id->valuestring, SESSION_ID_LEN - 1);
             cJSON *j_title = cJSON_GetObjectItem(it, "title");
             if (cJSON_IsString(j_title))
-                strncpy(s_pending_sessions[count].title, j_title->valuestring,
-                        SESSION_TITLE_LEN - 1);
+                strncpy(parsed[count].title, j_title->valuestring, SESSION_TITLE_LEN - 1);
             cJSON *j_prev = cJSON_GetObjectItem(it, "preview");
             if (cJSON_IsString(j_prev))
-                strncpy(s_pending_sessions[count].preview, j_prev->valuestring,
-                        SESSION_PREVIEW_LEN - 1);
+                strncpy(parsed[count].preview, j_prev->valuestring, SESSION_PREVIEW_LEN - 1);
             count++;
         }
     }
     cJSON_Delete(root);
-    s_pending_session_count = count;
-    s_pending_kind = SP_PENDING_LIST; /* publish LAST */
-    LOG_I("conv_list rx: %d sessions", count);
+    /* Park it in THIS DESKTOP's own slot. The old code wrote one shared buffer and published
+       a single "there is a list pending" flag, so with two desktops answering ~113 ms apart
+       the second overwrote the first before the LVGL thread ever ran — one column was then
+       always painted from a push that never arrived. */
+    {
+        int slot = -1;
+        for (int i = 0; i < SESSION_DEVICE_MAX; i++)
+        {
+            if (s_pending_lists[i].ready && strcmp(s_pending_lists[i].dev_id, dev_id) == 0)
+            {
+                slot = i; /* this desktop re-pushed before we drained — replace its own slot */
+                break;
+            }
+        }
+        if (slot < 0)
+        {
+            for (int i = 0; i < SESSION_DEVICE_MAX; i++)
+            {
+                if (!s_pending_lists[i].ready)
+                {
+                    slot = i;
+                    break;
+                }
+            }
+        }
+        if (slot < 0)
+        {
+            LOG_W("conv_list rx: pending full, dropping %s", dev_id);
+            cJSON_Delete(root);
+            return;
+        }
+        pending_list_t *p = &s_pending_lists[slot];
+        p->ready = 0; /* stop a drain from reading a half-written payload */
+        strncpy(p->dev_id, dev_id, SESSION_ID_LEN - 1);
+        p->dev_id[SESSION_ID_LEN - 1] = '\0';
+        strncpy(p->dev_name, dev_name, SESSION_DEVICE_NAME_LEN - 1);
+        p->dev_name[SESSION_DEVICE_NAME_LEN - 1] = '\0';
+        memcpy(p->sessions, parsed, sizeof(p->sessions));
+        p->count = count;
+        p->ready = 1; /* publish LAST */
+        /* LOG_W: 這台 dev 錶的 console 只印 W/E,per-device 這條路要能在真機上判讀
+           「有沒有收到第二台的推播」,靠 LOG_I 等於沒有 trace。 */
+        LOG_W("conv_list rx: dev=%s name=%s sessions=%d -> pending[%d]", dev_id, dev_name,
+              count, slot);
+    }
 
     lvgl_msg_t msg = {.type = LVGL_MSG_TYPE_REFRESH_SESSIONS};
     lvgl_send_msg(msg);
@@ -1005,6 +1209,12 @@ static void sp_apply_list(void)
         strncpy(s_devices[slot].id, s_pending_dev_id, SESSION_ID_LEN - 1);
     }
     strncpy(s_devices[slot].name, s_pending_dev_name, SESSION_DEVICE_NAME_LEN - 1);
+    /* 收到某台的列表 = 那台確實在線,順手讓錶盤重算可滑的欄數。設備 registry 的更新與
+       session 列表是兩條獨立的路,只靠其中一條會有「有資料但滑不過去」的空窗。 */
+    {
+        extern void clock_main_session_cols_refresh(void);
+        clock_main_session_cols_refresh();
+    }
 
     device_sessions_t *dev = &s_devices[slot];
     bool unchanged = (count == dev->count && count > 0 &&
@@ -1021,13 +1231,34 @@ static void sp_apply_list(void)
     /* Only the device the column is showing can change what is on screen. Another
        desktop's push is stored and nothing else — repainting for it would yank the list
        out from under the user. */
+    /* Repaint the column that OWNS this device, whichever column the user is on. Each column
+       has its own list now, and that list is what the user sees while DRAGGING toward it —
+       so a push for another desktop must still land, or that column stays empty until it is
+       settled on (founder 2026-08-11: 「第二次滑進去後也是定位完才出現」). Skipping it was
+       right only while all columns shared one list. */
+    {
+        extern const char *hid_mouse_device_id(int idx);
+        extern int hid_mouse_device_count(void);
+        for (int c = 0; c < hid_mouse_device_count() && c < SESSION_DEVICE_MAX; c++)
+        {
+            const char *cid = hid_mouse_device_id(c);
+            if (cid != NULL && strcmp(cid, dev->id) == 0)
+            {
+                sp_rebuild_column(c);
+                LOG_W("conv_list painted slot=%d id=%s on column %d", slot, dev->id, c);
+                break;
+            }
+        }
+    }
+
     /* Compare IDENTITY, not slot number: the storage slot is arrival order while the column
        is the registry position — a slot index that happens to equal the column would repaint
-       the wrong device's list. */
+       the wrong device's list. Below here is only about the column the user is ON: the open
+       room and the walk-into-a-new-session hand-off. */
     if (strcmp(dev->id, sp_shown()->id) != 0)
     {
-        LOG_I("conv_list stored for %s (column shows %s)",
-              dev->name[0] ? dev->name : dev->id, sp_shown()->id);
+        LOG_W("conv_list stored slot=%d id=%s (column %d shows id=%s)", slot, dev->id,
+              s_dev_shown, sp_shown()->id);
         return;
     }
 
@@ -1051,7 +1282,7 @@ static void sp_apply_list(void)
             fresh = i;
     }
 
-    sp_rebuild_list();
+    /* (the column itself was already repainted above, for every device not just this one) */
 
     /* Record what we now know about, capped like everything else on this path. */
     s_known_count = 0;
@@ -1088,7 +1319,11 @@ static void sp_apply_list(void)
         s_open_id[0] = '\0';
         s_in_chat = false;
         lv_obj_add_flag(s_chat_view, LV_OBJ_FLAG_HIDDEN);
-        lv_obj_clear_flag(s_list_view, LV_OBJ_FLAG_HIDDEN);
+        {
+            lv_obj_t *lv = sp_visible_list();
+            if (lv != NULL && lv_obj_is_valid(lv))
+                lv_obj_clear_flag(lv, LV_OBJ_FLAG_HIDDEN);
+        }
     }
 }
 
@@ -1168,9 +1403,26 @@ void session_pager_apply_pending(void)
     s_pending_kind = SP_PENDING_NONE;
     if (s_root == NULL || !lv_obj_is_valid(s_root))
         return;
-    if (kind == SP_PENDING_LIST)
+
+    /* Drain EVERY desktop that has something waiting, not one — this callback runs once per
+       LVGL message and two desktops answer nearly together, so a single-shot drain would
+       leave the other one parked until some later, unrelated refresh. */
+    for (int i = 0; i < SESSION_DEVICE_MAX; i++)
+    {
+        if (!s_pending_lists[i].ready)
+            continue;
+        pending_list_t *p = &s_pending_lists[i];
+        strncpy(s_pending_dev_id, p->dev_id, SESSION_ID_LEN - 1);
+        s_pending_dev_id[SESSION_ID_LEN - 1] = '\0';
+        strncpy(s_pending_dev_name, p->dev_name, SESSION_DEVICE_NAME_LEN - 1);
+        s_pending_dev_name[SESSION_DEVICE_NAME_LEN - 1] = '\0';
+        memcpy(s_pending_sessions, p->sessions, sizeof(s_pending_sessions));
+        s_pending_session_count = p->count;
+        p->ready = 0; /* released BEFORE the apply, so a re-push mid-apply is not lost */
         sp_apply_list();
-    else if (kind == SP_PENDING_STATE)
+    }
+
+    if (kind == SP_PENDING_STATE)
         sp_apply_state();
 }
 
@@ -1190,21 +1442,20 @@ lv_obj_t *lv_session_pager_create(lv_obj_t *parent)
     lv_obj_set_size(root, LV_HOR_RES, LV_VER_RES);
     lv_obj_set_pos(root, 0, 0);
     lv_obj_clear_flag(root, LV_OBJ_FLAG_SCROLLABLE);
+    /* NOT clickable. This is a bare container for the chat room / catchers / scrim, and since
+       the lists became per-column it is a SIBLING of the list, re-parented in later — so it
+       is drawn ON TOP of it. lv_obj_create hands out CLICKABLE by default (remove_style_all
+       only drops styles, not flags), which made this transparent full-screen object swallow
+       every tap and no session row could be opened on any column (founder 2026-08-11:
+       「兩邊的session都不能點進去了」). Its children that need touches set their own flag. */
+    lv_obj_clear_flag(root, LV_OBJ_FLAG_CLICKABLE);
     s_root = root;
     s_home_tile = parent; /* where session_pager_pin_for_panel(NULL) puts us back */
 
-    /* ── LIST layer ── */
-    lv_obj_t *listv = lv_obj_create(root);
-    lv_obj_remove_style_all(listv);
-    lv_obj_set_size(listv, LV_HOR_RES - SP_LIST_SIDE_PAD, SP_LIST_H);
-    lv_obj_align(listv, LV_ALIGN_TOP_MID, 0, SP_LIST_Y);
-    lv_obj_set_scroll_dir(listv, LV_DIR_VER);
-    lv_obj_set_scrollbar_mode(listv, LV_SCROLLBAR_MODE_OFF);
-    /* Vertical only, and the chain NOT extended horizontally: the tile's horizontal axis
-       belongs to the tileview so a right-drag anywhere on the list still goes home. */
-    lv_obj_set_flex_flow(listv, LV_FLEX_FLOW_COLUMN);
-    lv_obj_set_style_pad_row(listv, 8, 0);
-    s_list_view = listv;
+    /* NO list layer here — the lists belong to the COLUMNS (lv_session_pager_attach_column),
+       so the column being dragged toward is already painted before the drag settles. This
+       root only carries what exactly one column can own at a time: the chat room, the
+       gesture catchers and the scrim. */
 
     /* ── CHAT layer (hidden until a row is tapped) ── */
     lv_obj_t *chat = lv_obj_create(root);

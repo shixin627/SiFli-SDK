@@ -602,6 +602,12 @@ void lv_top_panel_refresh_devices(void)
     if (!page_targets_phone())
         hid_mouse_ensure_active_device();
     update_device_bar();
+    /* 設備數變了 → 錶盤右側可滑的 session 欄數跟著變。不在這裡刷的話，新配對的那台要
+       等下一次 settle 才滑得到，而使用者正是因為滑不動才沒有下一次 settle。 */
+    {
+        extern void clock_main_session_cols_refresh(void);
+        clock_main_session_cols_refresh();
+    }
 }
 
 /* 從 session tile 下拉進來時用（founder 2026-08-10）:直接停在「那台設備」的媒體頁,
