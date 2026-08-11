@@ -318,6 +318,26 @@ uint8_t return_total_list_count(void)
     return list_item_count;
 }
 
+/* ── ADR-0020 匯出:左頁(合併 session 列表)在自己的捲動容器裡畫 actions 區段。
+   資料與執行路徑都留在本檔;左頁只讀 title/icon、點擊轉發 activate_index。
+   回傳的指標指向 list_items[] 靜態儲存 —— LVGL 單執行緒,讀取期間不會被
+   BLE thread 改寫(推播走 pending → LVGL thread apply)。 */
+const char *instruction_list_export_title(uint8_t i)
+{
+    if (i >= list_item_count)
+        return NULL;
+    return list_items[i].title;
+}
+
+const void *instruction_list_export_icon(uint8_t i)
+{
+    if (i >= list_item_count)
+        return NULL;
+    if (list_items[i].img_path[0] != '\0')
+        return list_items[i].img_path; /* lv_img_set_src 認得檔案路徑字串 */
+    return list_items[i].icon;         /* 資源指標,可為 NULL */
+}
+
 typedef struct
 {
     lv_obj_t *list;
@@ -5182,20 +5202,10 @@ static void flash_instruction_label(lv_obj_t *label)
     lv_timer_set_repeat_count(t, 1);
 }
 
-static void list_item_click_event_cb(lv_event_t *evt)
+/* 執行一個 list item(點擊本體)。從浮層的 click cb 與 ADR-0020 左頁的
+   instruction_list_activate_index 兩條路進來,行為完全一致。 */
+static void list_item_activate(list_item_t *item)
 {
-    list_item_t *item = (list_item_t *)evt->user_data;
-    lv_obj_t *obj = evt->target;
-    /* A horizontal swipe (the left-to-close flick, or a right flick) also lands a
-       CLICKED on the item: the list scrolls vertically only, so a horizontal drag
-       never "loses" the press and LVGL fires CLICKED on release. The list's
-       GESTURE handler latches s_list_horiz_swipe for exactly this — ignore the
-       click so swipe-right-to-close doesn't ALSO select the item. (A flag, not
-       lv_indev_get_gesture_dir, because gesture_dir lingers after the swipe and
-       would then wrongly suppress the NEXT genuine tap.) */
-    if (s_list_horiz_swipe)
-        return;
-    LOG_D("ID: %s,obj:%p", item->id, obj);
 
     /* A tapped @-contact opens the in-watch chat room (mirror the desktop @-contact
        tap). The merged mixed list has no separate @ view, so this keys off the tapped
@@ -5301,6 +5311,30 @@ static void list_item_click_event_cb(lv_event_t *evt)
     {
         on_item_tap(item);
     }
+}
+
+static void list_item_click_event_cb(lv_event_t *evt)
+{
+    list_item_t *item = (list_item_t *)evt->user_data;
+    /* A horizontal swipe (the left-to-close flick, or a right flick) also lands a
+       CLICKED on the item: the list scrolls vertically only, so a horizontal drag
+       never "loses" the press and LVGL fires CLICKED on release. The list's
+       GESTURE handler latches s_list_horiz_swipe for exactly this — ignore the
+       click so swipe-right-to-close doesn't ALSO select the item. (A flag, not
+       lv_indev_get_gesture_dir, because gesture_dir lingers after the swipe and
+       would then wrongly suppress the NEXT genuine tap.) */
+    if (s_list_horiz_swipe)
+        return;
+    LOG_D("ID: %s", item->id);
+    list_item_activate(item);
+}
+
+/** ADR-0020:左頁 actions 區段的點擊入口。 */
+void instruction_list_activate_index(uint8_t i)
+{
+    if (i >= list_item_count)
+        return;
+    list_item_activate(&list_items[i]);
 }
 
 static bool tap_to_open_control = false;
@@ -6844,6 +6878,13 @@ void refresh_custom_instructions(void)
     LOG_I("[RCK] F refresh tail reached (done)");
     LOG_D("refresh_custom_instructions: %d items total", list_item_count);
     s_in_refresh_scroll = false;
+
+    /* ADR-0020:左頁的 actions 區段從 list_items[] 匯出 —— 清單落地後叫它重畫。
+       這裡已經在 LVGL thread、且過了 debounce,不會抖。 */
+    {
+        extern void session_list_actions_changed(void);
+        session_list_actions_changed();
+    }
 }
 
 void update_instruction_image(const char *id, const char *path)
