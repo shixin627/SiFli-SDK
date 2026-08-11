@@ -589,7 +589,12 @@ static void clock_change_page(char *clk_id)
     }
     else if (strcmp(clk_id, "JW_wf4") == 0)
     {
-        set_clock_main_status_img(&gaus_clock4_bg);
+        /* 2026-08-09: gaus_clock4_bg 佔 image 46.6 KB,而自 8/4 上游 merge 起
+           image 已經逼近 main 分割上限(0x280000),dev build 因此編不出來
+           (超出約 8 KB)。改用與 wf2 / wf3 相同的預設背景把那 46.6 KB 讓出來
+           —— 圖檔還在 src/hcpu/resource/images/common/large_ezip/,要復原就是
+           把這行改回 &gaus_clock4_bg。 */
+        set_clock_main_status_img(GAUS_DEFAULT_PICTURE);
     }
     else if (strcmp(clk_id, "JW_wf5") == 0)
     {
