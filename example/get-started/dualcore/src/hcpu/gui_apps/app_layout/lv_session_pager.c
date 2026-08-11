@@ -216,26 +216,6 @@ static void sp_stop_and_send(void)
     }
 }
 
-/* 合併列表沒有「這一欄的設備」了 —— LIST 層麥克風開新 session 的目標設備:
-   目前控制中的那台(registry active),沒有就 registry 第 0 台,再沒有就
-   已存列表的第 0 台。多台在線時哪台該收 conv_new 是 open question,先跟
-   媒體欄的 active 語意對齊(runlog 2026-08-11 記帳)。 */
-static const char *sp_new_session_target(void)
-{
-    extern const char *hid_mouse_device_id(int idx);
-    extern int hid_mouse_active_device_index(void);
-    extern int hid_mouse_device_count(void);
-    const char *id = NULL;
-    int a = hid_mouse_active_device_index();
-    if (a >= 0)
-        id = hid_mouse_device_id(a);
-    if (id == NULL && hid_mouse_device_count() > 0)
-        id = hid_mouse_device_id(0);
-    if (id == NULL && s_device_count > 0)
-        id = s_devices[0].id;
-    return id;
-}
-
 static void sp_mic_toggle(void)
 {
     if (s_listening)
@@ -243,27 +223,19 @@ static void sp_mic_toggle(void)
         sp_stop_and_send();
         return;
     }
-    /* LIST layer: the mic means "start a new session" (founder 2026-08-10 / ADR-0020:
-       麥克風留在列表層). It only asks — the desktop creates the session and the new
-       row arrives in the ordinary list push, which is what walks us into the chat. */
+    /* LIST layer(founder 2026-08-11 R2):開新對話**先以手機 AI 聊天為主** ——
+       開 skaibar 的 AI 輸入框(語音 → 手機 Skai,V2T_INTENT_SKAIBAR 那整套),
+       不再對桌面發 conv_new。輸入框活在 lv_layer_top 的浮層上,左頁平時把那層
+       關著,先亮層再開框;框關掉後由 visibility timer 把層收回去(不然 skaibar
+       pill 會疊在我們自己的麥克風上)。0x24/conv_new 管線保留,之後要「挑一台
+       桌面開 session」再接回來。 */
     if (!s_in_chat)
     {
-        const char *target = sp_new_session_target();
-        if (target == NULL || target[0] == '\0')
-        {
-            LOG_W("mic: no desktop to create a session on");
-            return;
-        }
-        s_await_new = true;
-        strncpy(s_await_dev_id, target, SESSION_ID_LEN - 1);
-        s_await_dev_id[SESSION_ID_LEN - 1] = '\0';
-        if (!commu_send_conv_new(target))
-        {
-            s_await_new = false; /* never leave the flag armed on a failed send */
-            LOG_W("mic: conv_new send failed");
-            return;
-        }
-        LOG_I("mic: requested a new session on %s", target);
+        extern void instruction_list_bar_set_visible(bool visible);
+        extern void animate_open_ai_widget(void);
+        instruction_list_bar_set_visible(true);
+        animate_open_ai_widget(); /* 內含 BT gate:沒手機會顯示連線提示 */
+        LOG_W("mic: opening phone-AI input (skaibar)");
         return;
     }
     if (s_open_id[0] == '\0')
@@ -705,6 +677,17 @@ static void sp_visibility_timer_cb(lv_timer_t *t)
     if (s_root == NULL || !lv_obj_is_valid(s_root))
         return;
     bool vis = lv_obj_is_visible(s_root);
+    /* 手機 AI 輸入框(麥克風開的,活在 lv_layer_top)關閉後把浮層收回去 ——
+       留著的話 skaibar pill 會浮在左頁我們自己的麥克風上。500ms 一次、
+       idempotent;框開著或浮動清單還在時不動。 */
+    if (vis)
+    {
+        extern bool get_is_open_instruction_list_ai(void);
+        extern bool instruction_list_is_visible(void);
+        extern void instruction_list_bar_set_visible(bool visible);
+        if (!get_is_open_instruction_list_ai() && !instruction_list_is_visible())
+            instruction_list_bar_set_visible(false);
+    }
     if (vis == s_visible)
         return;
     s_visible = vis;

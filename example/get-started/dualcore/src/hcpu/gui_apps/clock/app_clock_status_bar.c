@@ -66,6 +66,8 @@ typedef enum
 LV_IMG_DECLARE(sun);
 LV_IMG_DECLARE(mouse_mode_icon);
 LV_IMG_DECLARE(device_btn);
+LV_IMG_DECLARE(img_left_arrow);
+LV_IMG_DECLARE(img_right_arrow);
 
 #define NOTIFICATION_ITEM_WIDTH 360
 #define NOTIFICATION_ITEM_HEIGHT 90
@@ -86,13 +88,23 @@ static lv_obj_t *app_clock_main_status_bar_down;
    之前的 per-device session 列表）:
      欄 2       = 手機自己的媒體中心（控制目標 = 手機,active device 清空）
      欄 2+1+i   = 第 i 台桌面設備的媒體中心（registry 順序）
-   每一欄正上方 (col,0) 是「滑鼠入口停車位」:往下拉 settle 在那裡 = 進入該台的
-   滑鼠模式（lv_top_panel_mouse_enter,控制目標在 settle 時已由 media_col_bind
-   選好）。合併後的 session 列表搬到左側 (0,1),見 lv_session_pager.c。 */
+   每一欄**正下方** (col,2) 是「滑鼠入口停車位」:從媒體頁往上拉、settle 在那裡
+   = 進入該台的滑鼠模式（lv_top_panel_mouse_enter,控制目標在 settle 時已由
+   media_col_bind 選好）。founder 2026-08-11 R2:「我是要從下往上拉出滑鼠頁面」
+   —— 第一版放在上方,改到下方。退出 = 滑鼠頁頂部下拉
+   (clock_main_mouse_exit_to_media),落回同一台的媒體頁。
+   合併後的 session 列表搬到左側 (0,1),見 lv_session_pager.c。 */
 #define MEDIA_COL_FIRST 2 /* 錶盤是欄 1;右邊從欄 2 開始 */
 static lv_obj_t *s_media_tile[MAX_SYNCED_DEVICES];      /* (2+c,1) 媒體欄 */
 static lv_obj_t *s_media_page[MAX_SYNCED_DEVICES];      /* hid_mouse_media_page_create */
-static lv_obj_t *s_mouse_park_tile[MAX_SYNCED_DEVICES]; /* (2+c,0) 滑鼠入口 */
+static lv_obj_t *s_mouse_park_tile[MAX_SYNCED_DEVICES]; /* (2+c,2) 滑鼠入口 */
+/* 每欄頂部的設備列(founder R2:「像之前那樣上面顯示設備名稱跟左右箭頭」——
+   復刻舊頂部面板那組:圓點 + 名稱 + 兩顆箭頭)。每欄自帶一份,建在 tile 裡,
+   內容由 media_col_headers_refresh 依 registry / 連線狀態刷新。 */
+static lv_obj_t *s_media_dot[MAX_SYNCED_DEVICES];
+static lv_obj_t *s_media_name[MAX_SYNCED_DEVICES];
+static lv_obj_t *s_media_arr_l[MAX_SYNCED_DEVICES];
+static lv_obj_t *s_media_arr_r[MAX_SYNCED_DEVICES];
 static lv_obj_t *app_clock_ai_status_bar;
 static lv_obj_t *app_clock_device_change_bar;
 static lv_obj_t *status_bar_area_up;
@@ -250,14 +262,116 @@ static void media_cols_apply_dirs(int col_count)
 {
     for (int c = 0; c < MAX_SYNCED_DEVICES; c++)
     {
-        lv_dir_t d = LV_DIR_LEFT | LV_DIR_TOP; /* 回錶盤方向 + 下拉滑鼠入口 */
+        /* LEFT = 回錶盤方向;BOTTOM = 往上拉出下方的滑鼠入口(founder R2)。 */
+        lv_dir_t d = LV_DIR_LEFT | LV_DIR_BOTTOM;
         if (c + 1 < col_count)
             d |= LV_DIR_RIGHT;
         if (s_media_tile[c] && lv_obj_is_valid(s_media_tile[c]))
             ((lv_tileview_tile_t *)s_media_tile[c])->dir = d;
+        /* 停車位只准往上收回媒體頁(settle 在這裡本來就立刻切進滑鼠圖層)。 */
         if (s_mouse_park_tile[c] && lv_obj_is_valid(s_mouse_park_tile[c]))
-            ((lv_tileview_tile_t *)s_mouse_park_tile[c])->dir = LV_DIR_VER;
+            ((lv_tileview_tile_t *)s_mouse_park_tile[c])->dir = LV_DIR_TOP;
     }
+}
+
+/* ── 媒體欄頂部設備列(復刻舊頂部面板那組,座標同 DEV_DOT_Y/DEV_LABEL_Y/
+   DEV_ARROW_DX/DEV_ARROW_Y = 26/40/117/42)── */
+extern const char *hid_mouse_device_name(int idx);
+extern bool hid_mouse_device_online(int idx);
+
+static void media_col_headers_refresh(void)
+{
+    int count = media_col_count();
+    for (int c = 0; c < MAX_SYNCED_DEVICES; c++)
+    {
+        if (s_media_name[c] == NULL || !lv_obj_is_valid(s_media_name[c]))
+            continue;
+        const char *name;
+        bool online;
+        if (c == 0)
+        {
+            name = LV_EXT_STR_GET_BY_KEY(connected_phone, "Phone");
+            online = get_bluetooth_connection_status();
+        }
+        else
+        {
+            name = hid_mouse_device_name(c - 1);
+            online = hid_mouse_device_online(c - 1);
+        }
+        lv_label_set_text(s_media_name[c], (name && name[0]) ? name : "");
+        if (s_media_dot[c] && lv_obj_is_valid(s_media_dot[c]))
+            lv_obj_set_style_bg_color(s_media_dot[c],
+                                      online ? lv_color_hex(0x4CAF50)
+                                             : lv_color_hex(0xFF3B30),
+                                      0);
+        /* 不循環(沿用舊面板規則):到底那一側的箭頭消失。左端(欄 2 = 手機)
+           左箭頭也收掉 —— 回錶盤走原生左滑,不用箭頭。 */
+        if (s_media_arr_l[c] && lv_obj_is_valid(s_media_arr_l[c]))
+        {
+            if (c > 0) lv_obj_clear_flag(s_media_arr_l[c], LV_OBJ_FLAG_HIDDEN);
+            else lv_obj_add_flag(s_media_arr_l[c], LV_OBJ_FLAG_HIDDEN);
+        }
+        if (s_media_arr_r[c] && lv_obj_is_valid(s_media_arr_r[c]))
+        {
+            if (c + 1 < count) lv_obj_clear_flag(s_media_arr_r[c], LV_OBJ_FLAG_HIDDEN);
+            else lv_obj_add_flag(s_media_arr_r[c], LV_OBJ_FLAG_HIDDEN);
+        }
+    }
+}
+
+/* 箭頭 = 走一格到隔壁欄(原生動畫換頁,settle 自己收尾)。user_data = 目標欄。 */
+static void media_arrow_cb(lv_event_t *e)
+{
+    int target_col = (int)(intptr_t)lv_event_get_user_data(e);
+    int count = media_col_count();
+    if (target_col < MEDIA_COL_FIRST || target_col >= MEDIA_COL_FIRST + count)
+        return;
+    if (app_clock_main_status_bar && lv_obj_is_valid(app_clock_main_status_bar))
+        lv_obj_set_tile_id(app_clock_main_status_bar, (uint8_t)target_col, 1, true);
+}
+
+static void media_col_header_build(int c)
+{
+    lv_obj_t *tile = s_media_tile[c];
+    if (tile == NULL || !lv_obj_is_valid(tile))
+        return;
+
+    s_media_dot[c] = lv_obj_create(tile);
+    lv_obj_remove_style_all(s_media_dot[c]);
+    lv_obj_set_size(s_media_dot[c], 10, 10);
+    lv_obj_align(s_media_dot[c], LV_ALIGN_TOP_MID, 0, 26);
+    lv_obj_set_style_radius(s_media_dot[c], LV_RADIUS_CIRCLE, 0);
+    lv_obj_set_style_bg_opa(s_media_dot[c], LV_OPA_COVER, 0);
+    lv_obj_set_style_bg_color(s_media_dot[c], lv_color_hex(0x4CAF50), 0);
+    lv_obj_clear_flag(s_media_dot[c], LV_OBJ_FLAG_CLICKABLE);
+
+    s_media_name[c] = lv_label_create(tile);
+    lv_obj_set_width(s_media_name[c], 200);
+    lv_label_set_long_mode(s_media_name[c], LV_LABEL_LONG_DOT);
+    lv_obj_set_style_text_align(s_media_name[c], LV_TEXT_ALIGN_CENTER, 0);
+    lv_obj_set_style_text_color(s_media_name[c], lv_color_hex(0xFFFFFF), 0);
+    lv_obj_set_style_text_opa(s_media_name[c], LV_OPA_80, 0);
+    lv_label_set_text(s_media_name[c], "");
+    lv_obj_align(s_media_name[c], LV_ALIGN_TOP_MID, 0, 40);
+    lv_obj_clear_flag(s_media_name[c], LV_OBJ_FLAG_CLICKABLE);
+
+    s_media_arr_l[c] = lv_img_create(tile);
+    lv_img_set_src(s_media_arr_l[c], &img_left_arrow);
+    lv_obj_align(s_media_arr_l[c], LV_ALIGN_TOP_MID, -117, 42);
+    lv_obj_add_flag(s_media_arr_l[c], LV_OBJ_FLAG_CLICKABLE);
+    lv_obj_set_ext_click_area(s_media_arr_l[c], 24);
+    lv_obj_add_event_cb(s_media_arr_l[c], media_arrow_cb, LV_EVENT_CLICKED,
+                        (void *)(intptr_t)(MEDIA_COL_FIRST + c - 1));
+    lv_obj_add_flag(s_media_arr_l[c], LV_OBJ_FLAG_HIDDEN);
+
+    s_media_arr_r[c] = lv_img_create(tile);
+    lv_img_set_src(s_media_arr_r[c], &img_right_arrow);
+    lv_obj_align(s_media_arr_r[c], LV_ALIGN_TOP_MID, 117, 42);
+    lv_obj_add_flag(s_media_arr_r[c], LV_OBJ_FLAG_CLICKABLE);
+    lv_obj_set_ext_click_area(s_media_arr_r[c], 24);
+    lv_obj_add_event_cb(s_media_arr_r[c], media_arrow_cb, LV_EVENT_CLICKED,
+                        (void *)(intptr_t)(MEDIA_COL_FIRST + c + 1));
+    lv_obj_add_flag(s_media_arr_r[c], LV_OBJ_FLAG_HIDDEN);
 }
 
 /** 設備清單有變時呼叫:右側可滑的媒體欄數跟著設備數走。 */
@@ -272,6 +386,7 @@ void clock_main_media_cols_refresh(void)
               hid_mouse_device_count());
     }
     media_cols_apply_dirs(col_count);
+    media_col_headers_refresh();
     if (app_clock_main_status_bar && lv_obj_is_valid(app_clock_main_status_bar))
     {
         lv_obj_t *act = lv_tileview_get_tile_act(app_clock_main_status_bar);
@@ -279,6 +394,28 @@ void clock_main_media_cols_refresh(void)
             lv_obj_set_scroll_dir(app_clock_main_status_bar,
                                   ((lv_tileview_tile_t *)act)->dir);
     }
+}
+
+/* 滑鼠模式頂部下拉的落點(founder 2026-08-11 R2:「抓著上面往下把滑鼠頁面拉掉,
+   顯示下面的媒體頁面」):退出滑鼠、直接落回目前控制那台的媒體欄。由
+   lv_top_panel 的 pulldown cb 以 async 呼叫(不能在 hid_mouse 自己的事件裡拆它)。 */
+void clock_main_mouse_exit_to_media(void)
+{
+    extern void lv_top_panel_mouse_exit(void);
+    int dev = hid_mouse_active_device_index();
+    int col = MEDIA_COL_FIRST + ((dev >= 0) ? dev + 1 : 0);
+    if (col >= MEDIA_COL_FIRST + media_col_count())
+        col = MEDIA_COL_FIRST;
+    lv_top_panel_mouse_exit();
+    if (!app_clock_main_status_bar || !lv_obj_is_valid(app_clock_main_status_bar))
+        return;
+    /* settle(VALUE_CHANGED)自己會跑 per-page 收尾:進滑鼠時已 settle 回 HOME(1),
+       媒體欄的 active_pos 必不等於 1,不用手動戳 middle_layer_tileview_index。 */
+    lv_obj_set_tile_id(app_clock_main_status_bar, (uint8_t)col, 1, false);
+    lv_obj_clear_flag(app_clock_main_status_bar, LV_OBJ_FLAG_HIDDEN);
+    if (gaus_dial_bg && lv_obj_is_valid(gaus_dial_bg))
+        lv_obj_clear_flag(gaus_dial_bg, LV_OBJ_FLAG_HIDDEN);
+    LOG_W("[media-col] mouse exit -> col %d", col);
 }
 
 /* 目前捲動位置換算成欄 / 列（tile 加入順序的 active_pos 在補格之後沒有可讀性）。 */
@@ -552,11 +689,12 @@ static void app_clock_main_status_bar_event_cb(lv_event_t *event)
         int col_now = media_scroll_col(obj);
         int row_now = media_scroll_row(obj);
         bool on_media_col = (row_now == 1 && col_now >= MEDIA_COL_FIRST);
-        bool on_mouse_park = (row_now == 0 && col_now >= MEDIA_COL_FIRST);
+        bool on_mouse_park = (row_now == 2 && col_now >= MEDIA_COL_FIRST);
 
-        /* ADR-0020:媒體欄往下拉 settle 在停車位 = 進入該欄那台的滑鼠模式。
-           先 bind 選台(進入後 app_route 才指對機器),圖層亮起後把 tileview 收回
-           錶盤並隱藏 —— 滑鼠模式是全螢幕圖層接管,上緣下拉可再叫回面板。 */
+        /* ADR-0020 R2:媒體欄**往上拉** settle 在下方停車位 = 進入該欄那台的滑鼠
+           模式。先 bind 選台(進入後 app_route 才指對機器),圖層亮起後把 tileview
+           收回錶盤並隱藏 —— 滑鼠模式是全螢幕圖層接管;退出 = 滑鼠頁頂部下拉
+           (clock_main_mouse_exit_to_media),落回同一台的媒體欄。 */
         if (on_mouse_park)
         {
             media_col_bind(col_now);
@@ -1655,18 +1793,20 @@ void app_clock_main_status_bar_init(lv_obj_t *par)
             lv_obj_set_style_bg_opa(s_media_tile[c], LV_OPA_TRANSP, 0);
             lv_obj_set_scrollbar_mode(s_media_tile[c], LV_SCROLLBAR_MODE_OFF);
         }
+        /* 滑鼠入口停車位在**下方** (col,2) —— founder R2:從媒體頁往上拉出滑鼠。 */
         s_mouse_park_tile[c] =
-            lv_tileview_add_tile(app_clock_main_status_bar, col, 0, LV_DIR_VER);
+            lv_tileview_add_tile(app_clock_main_status_bar, col, 2, LV_DIR_TOP);
         lv_obj_set_size(s_mouse_park_tile[c], LV_HOR_RES_MAX, LV_VER_RES_MAX);
         lv_obj_set_style_bg_opa(s_mouse_park_tile[c], LV_OPA_TRANSP, 0);
         lv_obj_set_scrollbar_mode(s_mouse_park_tile[c], LV_SCROLLBAR_MODE_OFF);
 
         /* 媒體頁常駐建在每一欄裡(內容輕:曲名 + 控制鈕);曲名路由由 settle 的
-           media_col_bind 綁到當前欄。 */
+           media_col_bind 綁到當前欄。頂部設備列(圓點/名稱/箭頭)蓋在其上。 */
         {
             extern lv_obj_t *hid_mouse_media_page_create(lv_obj_t *parent);
             s_media_page[c] = hid_mouse_media_page_create(s_media_tile[c]);
         }
+        media_col_header_build(c);
 
         /* 滑鼠入口停車位的預覽:黑底 + 滑鼠圖示。settle 在這格的瞬間會切換成
            真正的滑鼠模式圖層(同為黑底,視覺上是原地亮起)。 */

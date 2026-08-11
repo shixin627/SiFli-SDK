@@ -36,9 +36,13 @@ void lv_top_panel_set_open(bool opened);
 /** 目前是否在滑鼠模式（底下不是錶盤）。錶盤側的手勢 gate 用。 */
 bool lv_top_panel_mouse_mode(void);
 
-/** 進入滑鼠模式（ADR-0020：右側媒體欄下拉 settle 時由 clock 呼叫）。
-    控制目標（該台設備 / 手機）由呼叫端先選好。 */
+/** 進入滑鼠模式（ADR-0020 R2：媒體欄**往上拉** settle 在下方停車位時由 clock
+    呼叫）。控制目標（該台設備 / 手機）由呼叫端先選好。 */
 void lv_top_panel_mouse_enter(void);
+
+/** 退出滑鼠模式（拆圖層 + 還原邊緣 zone）。落回哪一頁由呼叫端決定 ——
+    滑鼠頁頂部下拉走 clock_main_mouse_exit_to_media()。 */
+void lv_top_panel_mouse_exit(void);
 
 /** 設備清單有變（registry 更新）→ 轉發給錶盤重算右側媒體欄。 */
 void lv_top_panel_refresh_devices(void);

@@ -27,13 +27,7 @@ extern void clock_main_panel_reveal(void);
 extern void clock_main_status_bar_to_front(void);
 extern void display_status_bar_area(uint32_t idx, bool display);
 
-#define PANEL_BTN_SIZE 80
-#define PANEL_BTN_MARGIN 18
-
 static lv_obj_t *s_tile = NULL; /* (1,0) — 面板唯一的家（ADR-0020 起不再換欄停放） */
-
-static lv_obj_t *s_btn = NULL;      /* 滑鼠模式專用 Exit 鈕；非滑鼠模式隱藏 */
-static lv_obj_t *s_btn_label = NULL;
 
 static lv_obj_t *s_mouse_layer = NULL;
 /* 滑鼠模式下拉面板時的黑色半透明底（蓋在觸控板上、面板之下）。錶盤那邊由
@@ -47,17 +41,24 @@ static bool s_mouse_mode = false;
 static bool s_mouse_reveal_pending = false;
 static bool s_opened = false;
 
-static void update_bottom_btn(void);
-
 /* -------------------------------------------------------------------------- */
 /* 滑鼠模式圖層                                                                */
 /* -------------------------------------------------------------------------- */
 
-/* 滑鼠模式時「頂部往下拉」的去處：hid_mouse 頂部區判定為下拉後呼叫這裡，
-   把主 tileview 亮出來，press 下一 tick 就轉給它原生跟手。 */
+/* 滑鼠模式時「頂部往下拉」= 退出滑鼠、露出底下那台的媒體頁(founder 2026-08-11
+   R2:「抓著上面往下把滑鼠頁面拉掉」)。這個 cb 是從 hid_mouse 自己的事件
+   handler 裡呼叫的,而退出會 hid_mouse_destroy() —— 在人家的 callback 裡把它
+   自己拆掉是 UAF,所以 async 丟到下一輪 lv_timer_handler 再做。 */
+static void mouse_exit_async_cb(void *unused)
+{
+    (void)unused;
+    extern void clock_main_mouse_exit_to_media(void);
+    clock_main_mouse_exit_to_media();
+}
+
 static void panel_reveal_cb(void)
 {
-    clock_main_panel_reveal();
+    lv_async_call(mouse_exit_async_cb, NULL);
 }
 
 static void mouse_layer_ensure(void)
@@ -150,7 +151,6 @@ static void mouse_layer_set(bool on)
         }
         LOG_I("[top_panel] mouse mode OFF");
     }
-    update_bottom_btn();
 }
 
 bool lv_top_panel_mouse_mode(void) { return s_mouse_mode; }
@@ -177,27 +177,10 @@ void lv_top_panel_mouse_enter(void)
     lv_async_call(mouse_activate_async_cb, NULL);
 }
 
-/* -------------------------------------------------------------------------- */
-/* 底部 Exit 鈕（滑鼠模式限定）                                                 */
-/* -------------------------------------------------------------------------- */
-
-static void update_bottom_btn(void)
+/** 退出滑鼠模式（拆圖層 + 還原邊緣 zone）。落回哪一頁由呼叫端決定。 */
+void lv_top_panel_mouse_exit(void)
 {
-    if (s_btn == NULL || !lv_obj_is_valid(s_btn))
-        return;
-    if (s_mouse_mode)
-        lv_obj_clear_flag(s_btn, LV_OBJ_FLAG_HIDDEN);
-    else
-        lv_obj_add_flag(s_btn, LV_OBJ_FLAG_HIDDEN);
-}
-
-static void bottom_btn_cb(lv_event_t *e)
-{
-    (void)e;
-    if (!s_mouse_mode)
-        return;
     mouse_layer_set(false);
-    app_clock_status_bar_return_home();
 }
 
 /* -------------------------------------------------------------------------- */
@@ -253,7 +236,6 @@ void lv_top_panel_set_open(bool opened)
         }
         return;
     }
-    update_bottom_btn();
 }
 
 void lv_top_panel_deinit(void)
@@ -267,7 +249,6 @@ void lv_top_panel_deinit(void)
     s_backdrop = NULL;
     s_layer_parent = NULL;
     s_tile = NULL;
-    s_btn = s_btn_label = NULL;
     s_opened = false;
 }
 
@@ -276,28 +257,9 @@ lv_obj_t *lv_top_panel_create(lv_obj_t *tile, lv_obj_t *layer_parent)
     s_layer_parent = layer_parent;
     s_tile = tile;
 
-    /* 通知列表直接鋪滿 tile —— 沒有 pager、沒有設備列。 */
+    /* 通知列表直接鋪滿 tile —— 沒有 pager、沒有設備列。滑鼠模式的退出走
+       「滑鼠頁頂部下拉」(clock_main_mouse_exit_to_media),面板不再放 Exit 鈕。 */
     lv_message_list_layout_create(tile);
-
-    /* 滑鼠模式限定的 Exit 鈕（平時隱藏，面板乾乾淨淨只有通知）。 */
-    s_btn = lv_obj_create(tile);
-    lv_obj_remove_style_all(s_btn);
-    lv_obj_set_size(s_btn, PANEL_BTN_SIZE, PANEL_BTN_SIZE);
-    lv_obj_align(s_btn, LV_ALIGN_BOTTOM_MID, 0, -PANEL_BTN_MARGIN);
-    lv_obj_set_style_radius(s_btn, LV_RADIUS_CIRCLE, LV_PART_MAIN);
-    lv_obj_set_style_bg_color(s_btn, lv_color_hex(0xFF3B30), LV_PART_MAIN);
-    lv_obj_set_style_bg_opa(s_btn, LV_OPA_COVER, LV_PART_MAIN);
-    lv_obj_clear_flag(s_btn, LV_OBJ_FLAG_SCROLLABLE);
-    lv_obj_clear_flag(s_btn, LV_OBJ_FLAG_PRESS_LOCK);
-    lv_obj_add_flag(s_btn, LV_OBJ_FLAG_CLICKABLE);
-    lv_obj_add_flag(s_btn, LV_OBJ_FLAG_HIDDEN);
-    lv_obj_add_event_cb(s_btn, bottom_btn_cb, LV_EVENT_CLICKED, NULL);
-
-    s_btn_label = lv_label_create(s_btn);
-    lv_label_set_text(s_btn_label, "Exit");
-    lv_obj_set_style_text_color(s_btn_label, lv_color_hex(0xFFFFFF), 0);
-    lv_obj_center(s_btn_label);
-    lv_obj_clear_flag(s_btn_label, LV_OBJ_FLAG_CLICKABLE);
 
     LOG_I("[top_panel] created (notification-only, ADR-0020)");
     return tile;
