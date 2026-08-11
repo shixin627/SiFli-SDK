@@ -39,11 +39,14 @@ on:
         type: boolean
         default: true
       flash_port:
-        description: "燒錄 COM"
-        default: "COM4"
+        # Verified on the bench: the boot ROM answers EnterDebugMode on COM3,
+        # never on COM4. Note this is the reverse of release_gui's
+        # "HCPU = 燒錄 COM - 1" guess, so both ports are always passed.
+        description: "燒錄 COM（boot ROM download）"
+        default: "COM3"
       hcpu_port:
         description: "HCPU 篩檢/下指令 COM"
-        default: "COM3"
+        default: "COM4"
       skip_hwtest:
         description: "刷機後跳過板級篩檢與 BLE 測試"
         type: boolean
