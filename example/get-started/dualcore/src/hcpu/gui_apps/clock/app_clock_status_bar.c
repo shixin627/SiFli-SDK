@@ -827,8 +827,11 @@ static void app_clock_main_status_bar_event_cb(lv_event_t *event)
                 int dev = col_now - SESSION_COL_FIRST;
                 if (dev >= session_col_count())
                     dev = session_col_count() - 1;
-                extern void session_pager_set_column(int device_index);
-                session_pager_set_column(dev);
+                extern void session_pager_set_column(int device_index, lv_obj_t * tile);
+                /* 把那一欄的 tile 一起交出去 —— session UI 只有一份,不搬過去的話使用者
+                   滑到的就是一格空格子(founder 2026-08-11 實測第二欄全空)。 */
+                session_pager_set_column(
+                    dev, (dev >= 0 && dev < MAX_SYNCED_DEVICES) ? s_session_tile[dev] : NULL);
             }
             /* 手勢結束了 → session 頁回到自己的 tile。釘住只在拖曳期間成立；留著的話
                它會掛在 tileview 外面,滑到任何一頁都跟著出現。settle 是唯一該解除的

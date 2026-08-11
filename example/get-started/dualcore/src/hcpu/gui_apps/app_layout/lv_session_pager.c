@@ -348,10 +348,31 @@ static void sp_mic_cb(lv_event_t *e)
 /* Which registry device this column is showing. Called by the clock when the watch face
    settles on a session column; re-renders only when the device actually changes so a
    settle on the same column never rebuilds the list under the user. */
-void session_pager_set_column(int device_index)
+void session_pager_set_column(int device_index, lv_obj_t *column_tile)
 {
     if (device_index < 0)
         device_index = 0;
+    /* MOVE THE UI INTO THAT COLUMN'S TILE.
+       There is one session UI, built into the first column's tile. Switching columns used to
+       only re-resolve WHICH device's rows to draw — so the rows were rebuilt correctly (the
+       trace even reported rows=3) but kept rendering in column 0's tile, and the column the
+       user had swiped to was an empty grid cell. founder 2026-08-11: 「第二欄還是空的」.
+       Re-parenting is what actually puts it on screen. It also keeps s_home_tile honest, so
+       the panel pin/unpin restores into the column we are actually on. */
+    if (column_tile != NULL && lv_obj_is_valid(column_tile) && column_tile != s_home_tile)
+    {
+        s_home_tile = column_tile;
+        if (s_root != NULL && lv_obj_is_valid(s_root))
+        {
+            lv_obj_set_parent(s_root, column_tile);
+            lv_obj_set_pos(s_root, 0, 0);
+        }
+        if (s_voice_bar != NULL && lv_obj_is_valid(s_voice_bar))
+        {
+            lv_obj_set_parent(s_voice_bar, column_tile);
+            lv_obj_align(s_voice_bar, LV_ALIGN_BOTTOM_MID, 0, 0);
+        }
+    }
     if (device_index == s_dev_shown)
         return;
     s_dev_shown = device_index;
@@ -362,7 +383,8 @@ void session_pager_set_column(int device_index)
                           look old and a conv_new there would never be walked into */
     s_await_new = false;
     sp_rebuild_list();
-    LOG_I("session column -> device %d (%s)", device_index, sp_shown()->id);
+    LOG_W("session column -> %d id=%s rows=%d (devices stored=%d)", device_index,
+          sp_shown()->id, sp_shown()->count, s_device_count);
 }
 
 void session_pager_set_dim(lv_opa_t opa)
@@ -880,7 +902,10 @@ void skai_sessions_on_conv_list(const uint8_t *json, uint16_t length)
     cJSON_Delete(root);
     s_pending_session_count = count;
     s_pending_kind = SP_PENDING_LIST; /* publish LAST */
-    LOG_I("conv_list rx: %d sessions", count);
+    /* LOG_W: 這台 dev 錶的 console 只印 W/E,per-device 這條路要能在真機上判讀
+       「有沒有收到第二台的推播」,靠 LOG_I 等於沒有 trace。 */
+    LOG_W("conv_list rx: dev=%s name=%s sessions=%d", s_pending_dev_id, s_pending_dev_name,
+          count);
 
     lvgl_msg_t msg = {.type = LVGL_MSG_TYPE_REFRESH_SESSIONS};
     lvgl_send_msg(msg);
@@ -1026,10 +1051,11 @@ static void sp_apply_list(void)
        the wrong device's list. */
     if (strcmp(dev->id, sp_shown()->id) != 0)
     {
-        LOG_I("conv_list stored for %s (column shows %s)",
-              dev->name[0] ? dev->name : dev->id, sp_shown()->id);
+        LOG_W("conv_list stored slot=%d id=%s (column %d shows id=%s)", slot, dev->id,
+              s_dev_shown, sp_shown()->id);
         return;
     }
+    LOG_W("conv_list painted slot=%d id=%s on column %d", slot, dev->id, s_dev_shown);
 
     /* Remember what was open so a list refresh doesn't silently drop the conversation
        out from under the user. */
