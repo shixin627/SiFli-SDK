@@ -422,6 +422,38 @@ void clock_main_mouse_pulldown_reveal(void)
     LOG_W("[media-col] mouse pulldown reveal at col %d", col);
 }
 
+/* 滑鼠頁底部 skaibar tap(founder 2026-08-11 R6):開「目前控制那台」的新 session,
+   UI 同左頁 —— 退出滑鼠、切到左頁 (0,1)、對那台發 conv_new;清單推回來後
+   session pager 自動 walk-in 進聊天室。從 hid_mouse 的事件鏈進來,退出會拆它
+   自己 → async 到下一輪再做。 */
+static void open_device_session_async_cb(void *unused)
+{
+    (void)unused;
+    extern void lv_top_panel_mouse_exit(void);
+    extern void session_list_open_new_for_device(const char *device_id);
+    extern const char *hid_mouse_device_id(int idx);
+    /* 先記下目標再退出(registry 是全域資料,退出不清 active,但保險起見先取)。 */
+    int dev = hid_mouse_active_device_index();
+    const char *dev_id = (dev >= 0) ? hid_mouse_device_id(dev) : NULL;
+    session_list_open_new_for_device(dev_id); /* NULL = 預設目標(active/第0台) */
+    lv_top_panel_mouse_exit();
+    if (!app_clock_main_status_bar || !lv_obj_is_valid(app_clock_main_status_bar))
+        return;
+    extern void session_list_reset_scroll(void);
+    session_list_reset_scroll();
+    lv_obj_set_tile_id(app_clock_main_status_bar, 0, 1, false); /* 左頁 */
+    lv_obj_clear_flag(app_clock_main_status_bar, LV_OBJ_FLAG_HIDDEN);
+    if (gaus_dial_bg && lv_obj_is_valid(gaus_dial_bg))
+        lv_obj_clear_flag(gaus_dial_bg, LV_OBJ_FLAG_HIDDEN);
+    LOG_W("[media-col] skaibar tap -> new session on %s",
+          dev_id ? dev_id : "(default)");
+}
+
+void clock_main_open_device_session(void)
+{
+    lv_async_call(open_device_session_async_cb, NULL);
+}
+
 /* 目前捲動位置換算成欄 / 列（tile 加入順序的 active_pos 在補格之後沒有可讀性）。 */
 static int media_scroll_col(lv_obj_t *tv)
 {

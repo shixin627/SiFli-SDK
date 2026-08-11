@@ -216,6 +216,55 @@ static void sp_stop_and_send(void)
     }
 }
 
+/* LIST 層麥克風/滑鼠頁 skaibar 開新 session 的目標:目前控制中的那台(registry
+   active),沒有就 registry 第 0 台,再沒有就已存列表的第 0 台。 */
+static const char *sp_new_session_target(void)
+{
+    extern const char *hid_mouse_device_id(int idx);
+    extern int hid_mouse_active_device_index(void);
+    extern int hid_mouse_device_count(void);
+    const char *id = NULL;
+    int a = hid_mouse_active_device_index();
+    if (a >= 0)
+        id = hid_mouse_device_id(a);
+    if (id == NULL && hid_mouse_device_count() > 0)
+        id = hid_mouse_device_id(0);
+    if (id == NULL && s_device_count > 0)
+        id = s_devices[0].id;
+    return id;
+}
+
+/* 對 [dev_id] 開新 session 並武裝 walk-in:清單推回來、看到沒見過的 id 就自動
+   走進聊天室(sp_apply_list)。dev_id NULL = 用預設目標。 */
+static bool sp_request_new_session(const char *dev_id)
+{
+    if (dev_id == NULL || dev_id[0] == '\0')
+        dev_id = sp_new_session_target();
+    if (dev_id == NULL || dev_id[0] == '\0')
+    {
+        LOG_W("conv_new: no device to create a session on");
+        return false;
+    }
+    s_await_new = true;
+    strncpy(s_await_dev_id, dev_id, SESSION_ID_LEN - 1);
+    s_await_dev_id[SESSION_ID_LEN - 1] = '\0';
+    if (!commu_send_conv_new(dev_id))
+    {
+        s_await_new = false; /* never leave the flag armed on a failed send */
+        LOG_W("conv_new send failed");
+        return false;
+    }
+    LOG_W("conv_new requested on %s", dev_id);
+    return true;
+}
+
+/** 滑鼠頁底部 skaibar tap(founder 2026-08-11 R6):開「那台設備」的新 session,
+    UI 與左頁 session 一樣 —— 呼叫端先把畫面切到左頁,清單推回來就 walk-in。 */
+void session_list_open_new_for_device(const char *device_id)
+{
+    sp_request_new_session(device_id);
+}
+
 static void sp_mic_toggle(void)
 {
     if (s_listening)
@@ -223,19 +272,11 @@ static void sp_mic_toggle(void)
         sp_stop_and_send();
         return;
     }
-    /* LIST layer(founder 2026-08-11 R2):開新對話**先以手機 AI 聊天為主** ——
-       開 skaibar 的 AI 輸入框(語音 → 手機 Skai,V2T_INTENT_SKAIBAR 那整套),
-       不再對桌面發 conv_new。輸入框活在 lv_layer_top 的浮層上,左頁平時把那層
-       關著,先亮層再開框;框關掉後由 visibility timer 把層收回去(不然 skaibar
-       pill 會疊在我們自己的麥克風上)。0x24/conv_new 管線保留,之後要「挑一台
-       桌面開 session」再接回來。 */
+    /* LIST layer(founder 2026-08-11 R6:「點麥克風也是直接去開新的 session」):
+       直接對目標設備發 conv_new,清單推回來自動走進新聊天室。 */
     if (!s_in_chat)
     {
-        extern void instruction_list_bar_set_visible(bool visible);
-        extern void animate_open_ai_widget(void);
-        instruction_list_bar_set_visible(true);
-        animate_open_ai_widget(); /* 內含 BT gate:沒手機會顯示連線提示 */
-        LOG_W("mic: opening phone-AI input (skaibar)");
+        sp_request_new_session(NULL);
         return;
     }
     if (s_open_id[0] == '\0')
@@ -348,14 +389,69 @@ static void sp_add_bubble(lv_obj_t *list, const char *text, bool from_ai)
 
 /* ── Merged LIST layer ───────────────────────────────────────────────────── */
 
-/* 通知卡樣式(ADR-0020:「用現在通知列表的 UI」):深色圓角卡 + 標題 + 預覽,
-   右上角小字設備名(founder:副標小字、不分組、按時間混排)。 */
-#define SP_ROW_H 92
+/* founder 2026-08-11 R6:「session ui 要跟本來的 actions ui 長得一樣」——
+   session 列與 actions 列共用同一種緊湊列樣式(icon + 標題,同高同底色),
+   不再是大卡片。preview 捨棄;來源設備名保留為右側小字(R1 決策 #3)。 */
+#define SP_ROW_H 68
 #define SP_ROW_RADIUS 18
 #define SP_ROW_BG 0x1C1C1E /* systemGray6 — content layer, no glass (Skaiwalk UI §1.1) */
 #define SP_FONT_ROW_TITLE 19
-#define SP_FONT_ROW_PREVIEW 16
 #define SP_FONT_ROW_DEVICE 13
+
+/* 兩個區段共用的緊湊列。icon_src 可為 NULL(純文字);right_tag 可為 NULL。 */
+static lv_obj_t *sp_add_compact_row(lv_obj_t *parent, const void *icon_src,
+                                    const char *title_text, const char *right_tag,
+                                    lv_event_cb_t cb, void *user_data)
+{
+    lv_obj_t *row = lv_obj_create(parent);
+    lv_obj_remove_style_all(row);
+    lv_obj_set_width(row, lv_pct(100));
+    lv_obj_set_height(row, SP_ROW_H);
+    lv_obj_clear_flag(row, LV_OBJ_FLAG_SCROLLABLE);
+    lv_obj_set_style_bg_color(row, lv_color_hex(SP_ROW_BG), 0);
+    lv_obj_set_style_bg_opa(row, LV_OPA_60, 0);
+    lv_obj_set_style_radius(row, SP_ROW_RADIUS, 0);
+    lv_obj_set_style_pad_hor(row, 14, 0);
+    lv_obj_add_flag(row, LV_OBJ_FLAG_CLICKABLE);
+    /* Hand the vertical axis back up — otherwise a drag that starts on a row (i.e.
+       almost every drag) dead-ends and the list cannot be scrolled at all. */
+    lv_obj_add_flag(row, LV_OBJ_FLAG_SCROLL_CHAIN_VER);
+    lv_obj_add_event_cb(row, cb, LV_EVENT_CLICKED, user_data);
+
+    lv_coord_t text_x = 0;
+    if (icon_src != NULL)
+    {
+        lv_obj_t *icon = lv_img_create(row);
+        lv_img_set_src(icon, icon_src);
+        lv_img_set_zoom(icon, 128); /* 80px 源圖 → ~40px */
+        lv_obj_align(icon, LV_ALIGN_LEFT_MID, -14, 0);
+        lv_obj_clear_flag(icon, LV_OBJ_FLAG_CLICKABLE);
+        text_x = 44;
+    }
+
+    lv_obj_t *lbl = lv_label_create(row);
+    lv_label_set_long_mode(lbl, LV_LABEL_LONG_DOT);
+    lv_obj_set_width(lbl, LV_HOR_RES - SP_LIST_SIDE_PAD - 60 - text_x -
+                              (right_tag ? 80 : 0));
+    sp_set_font(lbl, SP_FONT_ROW_TITLE);
+    lv_obj_set_style_text_color(lbl, lv_color_hex(0xFFFFFF), 0);
+    lv_label_set_text(lbl, title_text);
+    lv_obj_align(lbl, LV_ALIGN_LEFT_MID, text_x, 0);
+
+    if (right_tag != NULL && right_tag[0])
+    {
+        lv_obj_t *dev = lv_label_create(row);
+        lv_label_set_long_mode(dev, LV_LABEL_LONG_DOT);
+        lv_obj_set_width(dev, 76);
+        sp_set_font(dev, SP_FONT_ROW_DEVICE);
+        lv_obj_set_style_text_align(dev, LV_TEXT_ALIGN_RIGHT, 0);
+        lv_obj_set_style_text_color(dev, lv_color_hex(0xFFFFFF), 0);
+        lv_obj_set_style_text_opa(dev, LV_OPA_40, 0); /* tertiaryLabel */
+        lv_label_set_text(dev, right_tag);
+        lv_obj_align(dev, LV_ALIGN_RIGHT_MID, 0, 0);
+    }
+    return row;
+}
 
 static void sp_row_cb(lv_event_t *e)
 {
@@ -368,55 +464,9 @@ static void sp_row_cb(lv_event_t *e)
 static void sp_add_row(lv_obj_t *parent, int slot, int idx)
 {
     const session_meta_t *s = &s_devices[slot].items[idx];
-    lv_obj_t *row = lv_obj_create(parent);
-    lv_obj_remove_style_all(row);
-    lv_obj_set_width(row, lv_pct(100));
-    lv_obj_set_height(row, SP_ROW_H);
-    lv_obj_clear_flag(row, LV_OBJ_FLAG_SCROLLABLE);
-    lv_obj_set_style_bg_color(row, lv_color_hex(SP_ROW_BG), 0);
-    lv_obj_set_style_bg_opa(row, LV_OPA_COVER, 0);
-    lv_obj_set_style_radius(row, SP_ROW_RADIUS, 0);
-    lv_obj_set_style_pad_hor(row, 14, 0);
-    lv_obj_add_flag(row, LV_OBJ_FLAG_CLICKABLE);
-    /* Hand the vertical axis back up — otherwise a drag that starts on a row (i.e.
-       almost every drag) dead-ends and the list cannot be scrolled at all. */
-    lv_obj_add_flag(row, LV_OBJ_FLAG_SCROLL_CHAIN_VER);
-    lv_obj_add_event_cb(row, sp_row_cb, LV_EVENT_CLICKED,
-                        (void *)(intptr_t)(((uint32_t)slot << 8) | (uint32_t)idx));
-
-    lv_obj_t *title = lv_label_create(row);
-    lv_label_set_long_mode(title, LV_LABEL_LONG_DOT);
-    lv_obj_set_width(title, LV_HOR_RES - SP_LIST_SIDE_PAD - 140);
-    sp_set_font(title, SP_FONT_ROW_TITLE);
-    lv_obj_set_style_text_color(title, lv_color_hex(0xFFFFFF), 0);
-    lv_label_set_text(title, s->title[0] ? s->title : "Session");
-    lv_obj_align(title, LV_ALIGN_TOP_LEFT, 0, 12);
-
-    /* 來源設備 —— 副標小字,右上角(founder 2026-08-11)。 */
-    if (s_devices[slot].name[0])
-    {
-        lv_obj_t *dev = lv_label_create(row);
-        lv_label_set_long_mode(dev, LV_LABEL_LONG_DOT);
-        lv_obj_set_width(dev, 110);
-        sp_set_font(dev, SP_FONT_ROW_DEVICE);
-        lv_obj_set_style_text_align(dev, LV_TEXT_ALIGN_RIGHT, 0);
-        lv_obj_set_style_text_color(dev, lv_color_hex(0xFFFFFF), 0);
-        lv_obj_set_style_text_opa(dev, LV_OPA_40, 0); /* tertiaryLabel */
-        lv_label_set_text(dev, s_devices[slot].name);
-        lv_obj_align(dev, LV_ALIGN_TOP_RIGHT, 0, 15);
-    }
-
-    if (s->preview[0])
-    {
-        lv_obj_t *prev = lv_label_create(row);
-        lv_label_set_long_mode(prev, LV_LABEL_LONG_DOT);
-        lv_obj_set_width(prev, LV_HOR_RES - SP_LIST_SIDE_PAD - 48);
-        sp_set_font(prev, SP_FONT_ROW_PREVIEW);
-        lv_obj_set_style_text_color(prev, lv_color_hex(0xFFFFFF), 0);
-        lv_obj_set_style_text_opa(prev, LV_OPA_60, 0); /* secondaryLabel */
-        lv_label_set_text(prev, s->preview);
-        lv_obj_align(prev, LV_ALIGN_TOP_LEFT, 0, 48);
-    }
+    sp_add_compact_row(parent, NULL, s->title[0] ? s->title : "Session",
+                       s_devices[slot].name, sp_row_cb,
+                       (void *)(intptr_t)(((uint32_t)slot << 8) | (uint32_t)idx));
 }
 
 /* ── Actions 區段(接在 session 列表下方,ADR-0020)──
@@ -453,39 +503,9 @@ static void sp_append_actions(lv_obj_t *view)
         const char *title = instruction_list_export_title(i);
         if (title == NULL || title[0] == '\0')
             continue;
-        lv_obj_t *row = lv_obj_create(view);
-        lv_obj_remove_style_all(row);
-        lv_obj_set_width(row, lv_pct(100));
-        lv_obj_set_height(row, 68);
-        lv_obj_clear_flag(row, LV_OBJ_FLAG_SCROLLABLE);
-        lv_obj_set_style_bg_color(row, lv_color_hex(SP_ROW_BG), 0);
-        lv_obj_set_style_bg_opa(row, LV_OPA_60, 0); /* 比 session 卡輕一階 */
-        lv_obj_set_style_radius(row, SP_ROW_RADIUS, 0);
-        lv_obj_set_style_pad_hor(row, 14, 0);
-        lv_obj_add_flag(row, LV_OBJ_FLAG_CLICKABLE);
-        lv_obj_add_flag(row, LV_OBJ_FLAG_SCROLL_CHAIN_VER);
-        lv_obj_add_event_cb(row, sp_action_row_cb, LV_EVENT_CLICKED,
-                            (void *)(intptr_t)i);
-
-        lv_coord_t text_x = 0;
-        const void *icon_src = instruction_list_export_icon(i);
-        if (icon_src != NULL)
-        {
-            lv_obj_t *icon = lv_img_create(row);
-            lv_img_set_src(icon, icon_src);
-            lv_img_set_zoom(icon, 128); /* 80px 源圖 → ~40px */
-            lv_obj_align(icon, LV_ALIGN_LEFT_MID, -14, 0);
-            lv_obj_clear_flag(icon, LV_OBJ_FLAG_CLICKABLE);
-            text_x = 44;
-        }
-
-        lv_obj_t *lbl = lv_label_create(row);
-        lv_label_set_long_mode(lbl, LV_LABEL_LONG_DOT);
-        lv_obj_set_width(lbl, LV_HOR_RES - SP_LIST_SIDE_PAD - 60 - text_x);
-        sp_set_font(lbl, SP_FONT_ROW_TITLE);
-        lv_obj_set_style_text_color(lbl, lv_color_hex(0xFFFFFF), 0);
-        lv_label_set_text(lbl, title);
-        lv_obj_align(lbl, LV_ALIGN_LEFT_MID, text_x, 0);
+        /* R6:與 session 列共用同一個 builder —— 兩個區段長得一模一樣。 */
+        sp_add_compact_row(view, instruction_list_export_icon(i), title, NULL,
+                           sp_action_row_cb, (void *)(intptr_t)i);
     }
 }
 
@@ -545,7 +565,7 @@ static void sp_rebuild_list(void)
         lv_obj_t *hint = lv_label_create(s_list_view);
         lv_label_set_long_mode(hint, LV_LABEL_LONG_WRAP);
         lv_obj_set_width(hint, LV_HOR_RES - SP_LIST_SIDE_PAD - 40);
-        sp_set_font(hint, SP_FONT_ROW_PREVIEW);
+        sp_set_font(hint, SP_FONT_TRANSCRIPT);
         lv_obj_set_style_text_align(hint, LV_TEXT_ALIGN_CENTER, 0);
         lv_obj_set_style_text_color(hint, lv_color_hex(0xFFFFFF), 0);
         lv_obj_set_style_text_opa(hint, LV_OPA_60, 0);

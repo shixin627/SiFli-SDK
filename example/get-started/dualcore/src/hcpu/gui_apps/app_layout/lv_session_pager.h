@@ -52,6 +52,10 @@ extern "C"
     /** actions 清單有更新(手機推播落地)時由 instruction list 呼叫,重畫合併列表。 */
     void session_list_actions_changed(void);
 
+    /** 對 [device_id] 開新 session 並武裝 walk-in(清單推回來自動進聊天室)。
+        滑鼠頁底部 skaibar tap 用;呼叫端負責把畫面切到左頁。 */
+    void session_list_open_new_for_device(const char *device_id);
+
     /* ── Voice, mirroring lv_chat_page.h's chat_page_* trio ── */
 
     /** True while the tile is on screen with a session open — voice belongs here. */

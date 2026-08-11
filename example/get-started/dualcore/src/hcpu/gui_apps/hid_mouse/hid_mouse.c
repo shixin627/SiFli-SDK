@@ -7546,9 +7546,15 @@ static void create_trackpad_mode_ui(lv_obj_t *parent)
     lv_obj_set_style_pad_all(trackpad_mic_btn, 0, LV_PART_MAIN);
     lv_obj_clear_flag(trackpad_mic_btn, LV_OBJ_FLAG_SCROLLABLE);
     lv_obj_clear_flag(trackpad_mic_btn, LV_OBJ_FLAG_CLICKABLE);
-    /* 底部的 skaibar_img 已移除(founder 2026-08-03):語音輸入改由鍵盤模式的第四站進入,
-       這條 bar 不再是入口,留著一張看得到卻沒作用的圖只會誤導。容器本身保留 —— 底部
-       bar 的多工提示/手勢狀態機還掛在上面。 */
+    /* skaibar_img 回歸(founder 2026-08-11 R6,推翻 2026-08-03 的移除):底部 bar 又是
+       入口了 —— tap = 開「目前控制那台」的新 session(hid_mouse_toggle_lift_input_panel
+       的開分支改走 session,見該函式)。 */
+    {
+        lv_obj_t *bar_img = lv_img_create(trackpad_mic_btn);
+        lv_img_set_src(bar_img, &skaibar_img);
+        lv_obj_center(bar_img);
+        lv_obj_clear_flag(bar_img, LV_OBJ_FLAG_CLICKABLE);
+    }
 
     #if SHOW_SCROLL_ZONE_DEBUG
     {
@@ -10829,8 +10835,19 @@ void hid_mouse_toggle_lift_input_panel(void)
     extern bool instruction_list_lift_input_view_open(void);
     if (instruction_list_lift_input_view_open())
     {
+        /* 面板開著時 tap 仍是它唯一的取消出口(wrist-drop 不關面板)。 */
         extern void instruction_list_close_lift_input_view(void);
         instruction_list_close_lift_input_view();
+        return;
+    }
+    /* founder 2026-08-11 R6:tap = 開「目前控制那台」的新 session,UI 同左頁
+       session(聊天室)。導頁+開 session 由 clock 端做(要退出滑鼠模式,不能在
+       自己的事件鏈裡拆自己 → 那邊走 async)。立起姿態仍走 open_skaibar_from_pose,
+       輸入面板功能不受影響。 */
+    if (s_hosted_by_pager)
+    {
+        extern void clock_main_open_device_session(void);
+        clock_main_open_device_session();
         return;
     }
     open_skaibar_from_pose();
