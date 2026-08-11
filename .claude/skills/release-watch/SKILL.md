@@ -76,14 +76,19 @@ also in `_watch_build.log`, flashing errors in
 `self-hosted, Windows, X64, watch-bench`. (`C:\actions-runner` is a separate
 runner bound to `shixin627/SkaiLink`; one runner serves one repo.)
 
-Not installed as a Windows service — start it and leave the window open:
+Installed as a Windows service, start type Automatic, running as
+`DESKTOP-QNDMPS1\skaiwalk` — **not** the default NETWORK SERVICE account, which
+cannot reach the Keil licence or `C:\dev\env_latest`. Nothing to start by hand,
+and it survives a reboot.
 
 ```bash
-cd /c/actions-runner-sifli && ./run.cmd
+powershell -Command "Get-Service actions.runner.shixin627-SiFli-SDK.skaiwalk-watch-bench"
 ```
 
-If the runner shows `offline` in the Actions settings page, that window is not
-running — a dispatched workflow will just queue forever.
+BLE works from this service despite it running in session 0 — verified end to
+end (advertising + GATT read), so there is no reason to move it back to a
+desktop session. If the runner shows `offline`, the service is stopped; a
+dispatched workflow will just queue forever.
 
 `workflow_dispatch` only appears once `watch-release.yml` is on the default
 branch, so commit and push it before the first trigger.
