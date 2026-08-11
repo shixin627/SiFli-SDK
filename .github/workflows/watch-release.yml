@@ -1,0 +1,101 @@
+name: Watch Release
+
+# Runs the whole release flow on the bench PC (self-hosted runner):
+# RELEASE mode + version -> Keil build -> package -> flash the watch ->
+# board screening (UART) -> upload to Aliyun OSS.
+#
+# No BLE test / MAC provisioning here: a release verifies firmware, and
+# re-provisioning would burn a new BLE MAC on an already-shipped watch.
+# Production 配號 stays in release_gui.py.
+#
+# There is deliberately no actions/checkout: the toolchain (SiFli env, Keil),
+# the watch fixture and the OSS credentials all live in the working tree at
+# WATCH_REPO, and a fresh clone would rebuild ~2.5 MB of firmware from zero.
+# The commit that was actually released is recorded in the run summary.
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "發布版號 X.Y.Z"
+        required: true
+      board:
+        description: "晶片型號"
+        type: choice
+        default: sf32lb56-watch
+        options: [sf32lb56-watch, sf32lb56w-watch]
+      notes:
+        description: "發布介紹（info.json description）"
+        default: ""
+      with_watchface:
+        description: "包含錶面 watchface"
+        type: boolean
+        default: false
+      flash_port:
+        description: "燒錄 COM（留空 = 只編譯，不刷機、不實機測試）"
+        default: "COM4"
+      hcpu_port:
+        description: "HCPU 篩檢/下指令 COM（留空 = 燒錄 COM 減一）"
+        default: "COM3"
+      skip_hwtest:
+        description: "刷機後跳過板級篩檢"
+        type: boolean
+        default: false
+      upload:
+        description: "上傳 info.json + watchOS.zip 到阿里雲 OSS"
+        type: boolean
+        default: false
+
+# One watch, one set of COM ports: never let two releases run at once.
+concurrency:
+  group: watch-bench
+  cancel-in-progress: false
+
+jobs:
+  release:
+    runs-on: [self-hosted, windows, watch-bench]
+    timeout-minutes: 60
+    env:
+      WATCH_REPO: C:\skaiwalk\SiFli-SDK
+      PYTHONUTF8: "1"
+      PYTHONIOENCODING: utf-8
+
+    steps:
+      - name: Record working tree state
+        working-directory: ${{ env.WATCH_REPO }}
+        run: |
+          $sha = git rev-parse HEAD
+          $dirty = git status --short
+          "## Watch release ${{ inputs.version }} (${{ inputs.board }})" | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Append -Encoding utf8
+          "- commit: ``$sha``" | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Append -Encoding utf8
+          if ($dirty) {
+            "- working tree is DIRTY:" | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Append -Encoding utf8
+            '```' + "`n$dirty`n" + '```' | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Append -Encoding utf8
+          }
+
+      - name: Build, flash, test and publish
+        working-directory: ${{ env.WATCH_REPO }}\example\get-started\dualcore\project\hcpu
+        run: |
+          $flags = @()
+          if ('${{ inputs.with_watchface }}' -eq 'true') { $flags += '--with-watchface' }
+          if ('${{ inputs.skip_hwtest }}'   -eq 'true') { $flags += '--skip-hwtest' }
+          if ('${{ inputs.upload }}'        -eq 'true') { $flags += '--upload' }
+          py -3 release_ci.py `
+            --version '${{ inputs.version }}' `
+            --board '${{ inputs.board }}' `
+            --notes '${{ inputs.notes }}' `
+            --flash-port '${{ inputs.flash_port }}' `
+            --hcpu-port '${{ inputs.hcpu_port }}' `
+            @flags
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+      - name: Upload release artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: watch-${{ inputs.version }}-${{ inputs.board }}
+          if-no-files-found: warn
+          path: |
+            ${{ env.WATCH_REPO }}\example\get-started\dualcore\project\hcpu\watchOS.zip
+            ${{ env.WATCH_REPO }}\example\get-started\dualcore\project\hcpu\info.json
+            ${{ env.WATCH_REPO }}\example\get-started\dualcore\project\hcpu\_watch_build.log
