@@ -3,7 +3,8 @@ name: release-watch
 description: >
   Trigger the watch firmware release via GitHub Actions on the bench PC
   (self-hosted runner): RELEASE mode + version → Keil build → package →
-  flash the watch → 板級篩檢（UART）→ 上傳阿里雲 OSS. Use when the user
+  flash the watch → 板級篩檢（UART）→ BLE 配號與連線測試 → 上傳阿里雲 OSS.
+  Use when the user
   says "發布手錶韌體", "release 1.2.3", "跑發布流程", "出一版", "release
   watch firmware", or wants the release_gui.py flow run from CI instead of
   clicking through the Tk window.
@@ -55,9 +56,12 @@ also in `_watch_build.log`, flashing errors in
   `git rev-parse HEAD` and any dirty files — check it before publishing.
 - **No `set_build_mode.py dev` afterwards.** The tree is left in RELEASE mode;
   switch back in the GUI (「切換到開發模式」) before resuming development.
-- **No BLE test, no MAC 配號.** A release verifies firmware; re-provisioning
-  would burn a new BLE MAC on a watch that already has one. Production 配號
-  and the RSSI/GATT test stay in `release_gui.py`.
+- **No RSSI gate.** The BLE step assigns a new MAC and verifies advertising +
+  GATT, but signal strength is not a pass/fail criterion — the threshold is
+  pinned to -100 dBm. The calibrated 治具 threshold stays in `release_gui.py`.
+- **The BLE step writes a new MAC on every flashed run.** That is intended for
+  bench/產線 use; it is not something to run against a watch already in a
+  user's hands.
 
 ## The bench runner
 

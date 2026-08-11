@@ -4,9 +4,9 @@
 release_ci.py — headless release runner for GitHub Actions (self-hosted).
 
 Same flow as release_gui.py, no Tk: set RELEASE mode + version -> build ->
-package -> info.json -> watchOS.zip -> (optional) flash + board screening ->
-(optional) OSS upload. No BLE test and no MAC provisioning: those belong to
-production 配號 and stay in the GUI.
+package -> info.json -> watchOS.zip -> (optional) flash + board screening +
+BLE 配號/連線測試 -> (optional) OSS upload. The BLE step ignores signal
+strength; it only checks that the watch advertises and answers over GATT.
 
 All logic is imported from release_gui / set_build_mode; this file only
 sequences the steps and turns any failure into a non-zero exit code.
@@ -30,6 +30,13 @@ sys.path.insert(0, SCRIPT_DIR)
 import release_gui as rg  # noqa: E402  (sibling module; all the real logic)
 
 PY = sys.executable
+
+# Signal strength is not a release criterion — only "can it be seen and talked
+# to". -100 dBm is the weakest threshold release_gui accepts, so the RSSI gate
+# never trips while the advertising/GATT checks still run.
+# ponytail: a floor, not a real bypass — a watch that advertises but reports no
+# RSSI at all would still fail. Add a skip flag in release_gui if that shows up.
+BLE_RSSI_IGNORE = -100
 
 
 def emit(text):
@@ -133,7 +140,7 @@ def step_flash_and_test(board, flash_port, hcpu_port, skip_hwtest):
     emit("=== 刷機完成 ===")
 
     if skip_hwtest:
-        emit("（依參數跳過板級篩檢）")
+        emit("（依參數跳過板級篩檢與 BLE 測試）")
         return 0
 
     rg.wait_for_system_boot(rg.POST_FLASH_BOOT_WAIT_SECONDS, emit)
@@ -145,9 +152,13 @@ def step_flash_and_test(board, flash_port, hcpu_port, skip_hwtest):
     if not ok:
         return fail("板級篩檢失敗：%s" % detail)
     emit("=== 板級篩檢通過 ===")
-    # No BLE test and no MAC provisioning here on purpose: a release is a
-    # firmware check, and re-provisioning would burn a new BLE MAC on a watch
-    # that already has one. Production 配號 stays in release_gui.py.
+
+    emit("=== BLE 配號、advertising、連線讀取 Battery Level ===")
+    mac, result = rg.run_ble_provisioning_test(
+        hcpu_port, BLE_RSSI_IGNORE, emit, board, version,
+        generate_new_mac=True)
+    emit("=== BLE 測試通過：MAC=%s RSSI=%d dBm（不設門檻）Battery=%d%% ===" % (
+        mac, result["rssi"], result["battery_level"]))
     return 0
 
 

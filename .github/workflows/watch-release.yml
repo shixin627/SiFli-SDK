@@ -2,11 +2,11 @@ name: Watch Release
 
 # Runs the whole release flow on the bench PC (self-hosted runner):
 # RELEASE mode + version -> Keil build -> package -> flash the watch ->
-# board screening (UART) -> upload to Aliyun OSS.
+# board screening (UART) -> BLE 配號 + 連線測試 -> upload to Aliyun OSS.
 #
-# No BLE test / MAC provisioning here: a release verifies firmware, and
-# re-provisioning would burn a new BLE MAC on an already-shipped watch.
-# Production 配號 stays in release_gui.py.
+# The BLE step assigns a new MAC and then verifies advertising + GATT. Signal
+# strength is not gated: the RSSI threshold is pinned to the weakest value the
+# helper accepts, so a weak-but-working watch still passes.
 #
 # There is deliberately no actions/checkout: the toolchain (SiFli env, Keil),
 # the watch fixture and the OSS credentials all live in the working tree at
@@ -45,7 +45,7 @@ on:
         description: "HCPU 篩檢/下指令 COM"
         default: "COM3"
       skip_hwtest:
-        description: "刷機後跳過板級篩檢"
+        description: "刷機後跳過板級篩檢與 BLE 測試"
         type: boolean
         default: false
       upload:
