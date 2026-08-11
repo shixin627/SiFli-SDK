@@ -7546,15 +7546,8 @@ static void create_trackpad_mode_ui(lv_obj_t *parent)
     lv_obj_set_style_pad_all(trackpad_mic_btn, 0, LV_PART_MAIN);
     lv_obj_clear_flag(trackpad_mic_btn, LV_OBJ_FLAG_SCROLLABLE);
     lv_obj_clear_flag(trackpad_mic_btn, LV_OBJ_FLAG_CLICKABLE);
-    /* skaibar_img 回歸(founder 2026-08-11 R6,推翻 2026-08-03 的移除):底部 bar 又是
-       入口了 —— tap = 開「目前控制那台」的新 session(hid_mouse_toggle_lift_input_panel
-       的開分支改走 session,見該函式)。 */
-    {
-        lv_obj_t *bar_img = lv_img_create(trackpad_mic_btn);
-        lv_img_set_src(bar_img, &skaibar_img);
-        lv_obj_center(bar_img);
-        lv_obj_clear_flag(bar_img, LV_OBJ_FLAG_CLICKABLE);
-    }
+    /* 底部的入口圖在 s_top_logo(hosted 模式顯示 skaibar_img,見其建立處);這個
+       容器只承載底部 bar 的多工提示/手勢狀態機,不再放第二張圖。 */
 
     #if SHOW_SCROLL_ZONE_DEBUG
     {
@@ -10206,6 +10199,15 @@ static void bottom_logo_cb(lv_event_t *e)
         return;
     if (current_hid_mode == HID_MODE_KEYBOARD)
         return; /* 已經在輸入畫面 */
+    /* founder 2026-08-11 R7:hosted 滑鼠頁底部這張圖已是 skaibar_img,tap = 開
+       「目前控制那台」的新 session(退滑鼠→左頁→conv_new→walk-in;async,見
+       clock_main_open_device_session)。standalone 保持原本的進輸入。 */
+    if (s_hosted_by_pager)
+    {
+        extern void clock_main_open_device_session(void);
+        clock_main_open_device_session();
+        return;
+    }
     /* 2026-08-07 founder:「叫出輸入模式時可以看到他從下面出來嗎」——可以,
        start_trackpad_to_kbd_expand_anim() 這條進場動畫本來就寫好了(輸入框從
        底部那條 176×31 的 bar 長出來、下半部 translate_y 由下往上、350ms
@@ -10835,19 +10837,8 @@ void hid_mouse_toggle_lift_input_panel(void)
     extern bool instruction_list_lift_input_view_open(void);
     if (instruction_list_lift_input_view_open())
     {
-        /* 面板開著時 tap 仍是它唯一的取消出口(wrist-drop 不關面板)。 */
         extern void instruction_list_close_lift_input_view(void);
         instruction_list_close_lift_input_view();
-        return;
-    }
-    /* founder 2026-08-11 R6:tap = 開「目前控制那台」的新 session,UI 同左頁
-       session(聊天室)。導頁+開 session 由 clock 端做(要退出滑鼠模式,不能在
-       自己的事件鏈裡拆自己 → 那邊走 async)。立起姿態仍走 open_skaibar_from_pose,
-       輸入面板功能不受影響。 */
-    if (s_hosted_by_pager)
-    {
-        extern void clock_main_open_device_session(void);
-        clock_main_open_device_session();
         return;
     }
     open_skaibar_from_pose();
@@ -11042,8 +11033,20 @@ void lv_create_mouse_screen(lv_obj_t *scr)
        所以圖上的 tap 歸自己、圖以外的那條 280×50 仍舊是 skaibar 的 tap/長按。
        zoom 180 = 手寫頁頂部同款(64×64 原圖，渲染 ~45px)。 */
     s_top_logo = lv_img_create(bg);
-    lv_img_set_src(s_top_logo, &keyboard_icon);
-    lv_img_set_zoom(s_top_logo, 180);
+    /* founder 2026-08-11 R7:hosted(錶盤媒體欄進來的)滑鼠頁,底部鍵盤圖換成
+       skaibar_img,tap = 開「目前控制那台」的新 session(bottom_logo_cb 分流)。
+       standalone APP_ID_MOUSE 保持鍵盤圖 = 進輸入。skaibar_img 176x31 原尺寸
+       就是設計大小,不套鍵盤圖的 zoom。 */
+    if (s_pulldown_cb != NULL)
+    {
+        lv_img_set_src(s_top_logo, &skaibar_img);
+        lv_img_set_zoom(s_top_logo, 256);
+    }
+    else
+    {
+        lv_img_set_src(s_top_logo, &keyboard_icon);
+        lv_img_set_zoom(s_top_logo, 180);
+    }
     lv_obj_align(s_top_logo, LV_ALIGN_BOTTOM_MID, 0, -12);
     lv_obj_add_flag(s_top_logo, LV_OBJ_FLAG_CLICKABLE);
     /* 圖本身渲染約 45px,太小不好按(founder 2026-08-07:能按到的範圍要比可視範圍大)。

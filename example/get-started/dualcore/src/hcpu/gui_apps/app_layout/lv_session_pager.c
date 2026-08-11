@@ -418,31 +418,30 @@ static lv_obj_t *sp_add_compact_row(lv_obj_t *parent, const void *icon_src,
     lv_obj_add_flag(row, LV_OBJ_FLAG_SCROLL_CHAIN_VER);
     lv_obj_add_event_cb(row, cb, LV_EVENT_CLICKED, user_data);
 
-    lv_coord_t text_x = 0;
+    /* founder 2026-08-11 R7:「之前的 actions 列表那樣,中間是文字、右邊是圖標」
+       —— 標題置中,icon 靠右;session 沒有 icon,右側放小字設備名(同一個位置)。 */
+    lv_obj_t *lbl = lv_label_create(row);
+    lv_label_set_long_mode(lbl, LV_LABEL_LONG_DOT);
+    lv_obj_set_width(lbl, LV_HOR_RES - SP_LIST_SIDE_PAD - 150);
+    sp_set_font(lbl, SP_FONT_ROW_TITLE);
+    lv_obj_set_style_text_align(lbl, LV_TEXT_ALIGN_CENTER, 0);
+    lv_obj_set_style_text_color(lbl, lv_color_hex(0xFFFFFF), 0);
+    lv_label_set_text(lbl, title_text);
+    lv_obj_align(lbl, LV_ALIGN_CENTER, 0, 0);
+
     if (icon_src != NULL)
     {
         lv_obj_t *icon = lv_img_create(row);
         lv_img_set_src(icon, icon_src);
         lv_img_set_zoom(icon, 128); /* 80px 源圖 → ~40px */
-        lv_obj_align(icon, LV_ALIGN_LEFT_MID, -14, 0);
+        lv_obj_align(icon, LV_ALIGN_RIGHT_MID, 8, 0);
         lv_obj_clear_flag(icon, LV_OBJ_FLAG_CLICKABLE);
-        text_x = 44;
     }
-
-    lv_obj_t *lbl = lv_label_create(row);
-    lv_label_set_long_mode(lbl, LV_LABEL_LONG_DOT);
-    lv_obj_set_width(lbl, LV_HOR_RES - SP_LIST_SIDE_PAD - 60 - text_x -
-                              (right_tag ? 80 : 0));
-    sp_set_font(lbl, SP_FONT_ROW_TITLE);
-    lv_obj_set_style_text_color(lbl, lv_color_hex(0xFFFFFF), 0);
-    lv_label_set_text(lbl, title_text);
-    lv_obj_align(lbl, LV_ALIGN_LEFT_MID, text_x, 0);
-
-    if (right_tag != NULL && right_tag[0])
+    else if (right_tag != NULL && right_tag[0])
     {
         lv_obj_t *dev = lv_label_create(row);
         lv_label_set_long_mode(dev, LV_LABEL_LONG_DOT);
-        lv_obj_set_width(dev, 76);
+        lv_obj_set_width(dev, 70);
         sp_set_font(dev, SP_FONT_ROW_DEVICE);
         lv_obj_set_style_text_align(dev, LV_TEXT_ALIGN_RIGHT, 0);
         lv_obj_set_style_text_color(dev, lv_color_hex(0xFFFFFF), 0);
