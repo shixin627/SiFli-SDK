@@ -135,7 +135,17 @@ def step_flash_and_test(board, flash_port, hcpu_port, skip_hwtest):
                     % build_dir)
 
     emit("=== 燒錄韌體：%s → %s ===" % (board, flash_port))
-    if run(rg.flash_command(flash_port), cwd=build_dir) != 0:
+    # The first download regularly dies in the boot-ROM handshake
+    # ("EnterDebugMode error") even though the COM port opened fine; a fresh
+    # invocation of the vendor tool goes through. Its own internal retry at the
+    # same baud is not enough — the whole process has to start over.
+    for attempt in (1, 2):
+        if run(rg.flash_command(flash_port), cwd=build_dir) == 0:
+            break
+        emit("刷機第 %d 次失敗%s" % (
+            attempt, "（EnterDebugMode 常見於第一次），重試…" if attempt == 1
+            else "。"))
+    else:
         return fail("刷機失敗，請看 %s\\ImgBurn.log。" % build_dir)
     emit("=== 刷機完成 ===")
 
