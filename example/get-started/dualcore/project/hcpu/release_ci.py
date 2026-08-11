@@ -20,6 +20,7 @@ the artifacts local.
 
 import os
 import sys
+import json
 import argparse
 import subprocess
 
@@ -47,6 +48,28 @@ def run(cmd, cwd=None, extra_env=None):
 def fail(message):
     emit("!! %s" % message)
     return 1
+
+
+def next_version_from_oss():
+    """Published version on OSS + 1 revision. Errors out rather than guessing:
+    silently falling back to the local header could re-publish a version that
+    already exists on OSS."""
+    published = rg.oss.get_object(
+        rg.oss.load_credentials(), rg.oss.info_json_key(rg.read_board()))
+    if published is None:
+        raise RuntimeError(
+            "OSS 上還沒有 info.json，第一次發布請用 --version 明確指定版號。")
+    version = json.loads(published.decode("utf-8")).get("version", "")
+    if not rg.VER_RE.match(version):
+        raise RuntimeError("OSS info.json 的版號格式無法解析：%r" % version)
+    major, minor, revision = version.split(".")
+    following = "%s.%s.%d" % (major, minor, int(revision) + 1)
+    emit("OSS 上已發布 %s，本次發布 %s" % (version, following))
+
+    _, local, _ = rg.read_status()
+    if local != following:
+        emit("（本機目前版號 %s，將被覆寫為 %s）" % (local, following))
+    return following
 
 
 def step_release_mode(version):
@@ -146,7 +169,8 @@ def step_upload():
 
 def parse_args(argv):
     p = argparse.ArgumentParser(description=__doc__)
-    p.add_argument("--version", required=True, help="發布版號 X.Y.Z")
+    p.add_argument("--version", default="", help="發布版號 X.Y.Z，"
+                   "留空 = 讀 OSS 上已發布的版號 +1")
     p.add_argument("--board", default=rg.DEFAULT_BOARD,
                    choices=[b for _, b in rg.BOARD_CHOICES])
     p.add_argument("--notes", default="", help="info.json description")
@@ -165,7 +189,8 @@ def resolve_ports(args):
     Pure on purpose — nothing here writes to the tree or touches a COM port,
     so selftest() can exercise it without running a release.
     """
-    if not rg.VER_RE.match(args.version):
+    # An empty --version is resolved from OSS later; only a typo'd one is bad.
+    if args.version and not rg.VER_RE.match(args.version):
         return None, None, "版號格式錯誤：%s（需 X.Y.Z）" % args.version
     if not args.flash_port:
         return "", "", None
@@ -200,6 +225,8 @@ def selftest():
     # COM4 with no --hcpu-port derives COM3.
     assert check("--version", "1.2.3", "--flash-port", "com4") == (
         "COM4", "COM3", None)
+    # Empty --version is legal: it means "resolve from OSS".
+    assert check() == ("", "", None), "auto version must pass validation"
     print("release_ci selftest: OK")
     return 0
 
@@ -211,7 +238,8 @@ def main(argv=None):
         return fail(error)
 
     try:
-        rc = step_release_mode(args.version)
+        version = args.version or next_version_from_oss()
+        rc = step_release_mode(version)
         if rc:
             return rc
         rc = step_build(args.board, args.notes, args.with_watchface)
@@ -233,7 +261,7 @@ def main(argv=None):
     except Exception as e:
         return fail("%s: %s" % (e.__class__.__name__, e))
 
-    emit("=== 發布流程完成：%s %s ===" % (args.board, args.version))
+    emit("=== 發布流程完成：%s %s ===" % (args.board, version))
     return 0
 
 

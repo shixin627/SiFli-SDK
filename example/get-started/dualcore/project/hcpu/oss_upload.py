@@ -245,6 +245,41 @@ def put_object(creds, key, local_path, date=None, content_type=None,
         raise OssError("連線失敗: %s" % e.reason)
 
 
+def get_object(creds, key):
+    """GET bucket/key. Returns the body as bytes, or None if it does not exist.
+
+    Signed rather than plain-HTTP so it keeps working if the bucket is private.
+    """
+    key = key.lstrip("/")
+    date = formatdate(usegmt=True)
+    sts = build_string_to_sign("GET", "", "", date, creds["bucket"], key)
+
+    headers = {
+        "Authorization": "OSS %s:%s" % (
+            creds["access_key_id"], sign(creds["access_key_secret"], sts)),
+        "Date": date,
+    }
+    if creds.get("security_token"):
+        headers["x-oss-security-token"] = creds["security_token"]
+
+    if _urlreq is None:
+        raise OssError("此 Python 缺少 urllib,無法下載。")
+    req = _urlreq.Request(
+        "https://%s.%s/%s" % (creds["bucket"], creds["endpoint"], key),
+        method="GET")
+    for k, v in headers.items():
+        req.add_header(k, v)
+    try:
+        with _urlreq.urlopen(req, timeout=60) as resp:
+            return resp.read()
+    except _urlerr.HTTPError as e:
+        if e.code == 404:
+            return None
+        raise OssError("下載失敗 HTTP %s: %s" % (e.code, e.reason))
+    except _urlerr.URLError as e:
+        raise OssError("連線失敗: %s" % e.reason)
+
+
 # --- release-specific key helpers ---------------------------------------
 
 def info_json_key(board):

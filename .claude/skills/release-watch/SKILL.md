@@ -17,17 +17,22 @@ which imports `release_gui` and sequences its functions.
 
 ## Trigger
 
-Ask the user for the version (required). Everything else has a default; only
-ask if they mention it. Then:
+Every input has a default, so a plain release needs no arguments at all — the
+version comes from OSS:
 
 ```bash
-gh workflow run watch-release.yml --repo shixin627/SiFli-SDK -f version=1.2.3
+gh workflow run watch-release.yml --repo shixin627/SiFli-SDK
 ```
 
-Inputs: `version`, `board` (`sf32lb56-watch` 量產 / `sf32lb56w-watch` 開發機),
-`notes`, `with_watchface`, `flash_port` (燒錄，default COM4, **empty = build
-only, no flashing**), `hcpu_port` (下指令/篩檢，default COM3), `skip_hwtest`,
+Inputs: `version` (**留空 = 讀 OSS `skaiwatch/<board>/info.json` 的版號 +1**),
+`board` (`sf32lb56-watch` 量產 / `sf32lb56w-watch` 開發機), `notes`,
+`with_watchface`, `flash` (預設 true；`-f flash=false` = 只編譯打包),
+`flash_port` (default COM4), `hcpu_port` (default COM3), `skip_hwtest`,
 `upload`.
+
+Never express "build only" by blanking `flash_port` — `gh` drops empty `-f`
+values and the workflow default (COM4) takes over, i.e. it flashes anyway.
+Use `-f flash=false`.
 
 Flashing and OSS upload change hardware / publish externally — **confirm both
 with the user before triggering**.
