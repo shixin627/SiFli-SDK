@@ -92,15 +92,29 @@ void hr_autocorr_stage_push(int16_t ax, int16_t ay, int16_t az);
  * staged above, in order, so each PPG frame pairs with the accel sample the
  * vendor driver considers contemporaneous.
  *
- * Motion is the failure this exists for. On 2026-08-06 the watch read correctly
- * all night — 53-72 bpm against a reference watch's 48-90 — and then, once the
- * wearer got up, reported 218, 195, 171 and 165 bpm. Converted to frequency
- * those are 3.63, 3.25, 2.85 and 2.75 Hz: hand-movement rates. Wrist motion
- * couples into the optical path, and an estimator that simply finds the
- * strongest period cannot tell a periodic wrist from a periodic heart.
+ * CORRECTION 2026-08-11 — read this before trusting the motion story.
  *
- * The accelerometer can: the artefact is a filtered copy of it. See the NLMS
- * stage in hr_autocorr.c.
+ * This comment used to say the 218/195/171/165 bpm readings of 2026-08-06 were
+ * motion: converted to frequency they are 3.63/3.25/2.85/2.75 Hz, which are
+ * hand-movement rates. That was a plausible story fitted to four numbers, not
+ * evidence, and the waveforms contradict it. Of the twelve captured windows
+ * that reported >=95 bpm, TEN have a monotone decaying autocorrelation with no
+ * peak anywhere. Motion does the opposite — a swinging wrist ADDS a periodic
+ * component and would show a peak. A plain decay is what a weak or badly
+ * coupled pulse looks like, and the estimator was taking the shoulder of it.
+ *
+ * What actually removed those readings was the periodicity check (rule 0 in
+ * hr_autocorr_test.py), not compensation. Measured after it shipped: 2026-08-10
+ * peaked at 88 bpm and 2026-08-11 at 90, while the activity gate below opened
+ * on 3.5% of records — i.e. the compensation was almost never running.
+ *
+ * The NLMS stage below is therefore NOT the fix for that problem, and must not
+ * be described as one. It remains because wrist motion genuinely does couple
+ * into the optical path and a future exercise mode will need it — but its
+ * benefit on real wrist data is UNMEASURED, and its activity threshold was
+ * calibrated against synthetic motion roughly thirty times larger than what a
+ * real wrist produces through this pipeline (synthetic weakest case 1620, real
+ * awake P95 = 48).
  */
 void hr_autocorr_feed_frame(uint32_t ppg);
 
