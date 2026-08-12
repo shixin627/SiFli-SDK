@@ -6537,28 +6537,27 @@ static void create_list_items_ui(lv_obj_t *list, uint8_t start_idx,
                 lv_obj_add_flag(app_label[i], LV_OBJ_FLAG_OVERFLOW_VISIBLE);
                 lv_obj_t *sub = lv_label_create(app_label[i]);
                 lv_label_set_long_mode(sub, LV_LABEL_LONG_DOT);
-                lv_obj_set_width(sub, 160);
                 lv_font_t *f = lvsf_get_font_from_size(13);
                 if (f != NULL)
                     lv_obj_set_style_text_font(sub, f, 0);
-                lv_obj_set_style_text_align(sub, LV_TEXT_ALIGN_RIGHT, 0);
                 lv_obj_set_style_text_color(sub, lv_color_hex(0xFFFFFF), 0);
                 lv_obj_set_style_text_opa(sub, LV_OPA_40, 0); /* 小小半透明 */
                 lv_label_set_text(sub, dev_name);
                 lv_obj_clear_flag(sub, LV_OBJ_FLAG_CLICKABLE);
-                /* R14:R13 的固定 translate_x(166) 配靠左文字,實機文字仍畫在框
-                   右端(text_align LEFT 沒生效)跑到 icon。改回靠右畫(確定會
-                   render 的路徑),推移量按實際文字寬計算:文字右端 = 標題右緣
-                   + min(文字寬,框寬) + 6,即文字正好從標題右緣外 6px 起。 */
-                lv_obj_align(sub, LV_ALIGN_BOTTOM_RIGHT, 0, 0);
-                if (f != NULL)
+                /* R15:text_align 在這條 label 路徑不生效(R13/R14 兩輪實證,
+                   短字串會飄在 160px 框中段),定位不能靠它。改讓框寬=文字寬
+                   (SIZE_CONTENT 後 update_layout 取實寬,>160 才鎖寬截斷),
+                   框貼哪文字就在哪:BOTTOM_RIGHT 錨 + translate_x = 框寬+6,
+                   文字起點 = 該行標題右緣外 6px、下緣持平。 */
+                lv_obj_update_layout(sub);
+                lv_coord_t tw = lv_obj_get_width(sub);
+                if (tw > 160)
                 {
-                    lv_point_t sz;
-                    lv_txt_get_size(&sz, dev_name, f, 0, 0, LV_COORD_MAX,
-                                    LV_TEXT_FLAG_NONE);
-                    lv_coord_t tw = (sz.x > 160) ? 160 : sz.x;
-                    lv_obj_set_style_translate_x(sub, tw + 6, 0);
+                    lv_obj_set_width(sub, 160);
+                    tw = 160;
                 }
+                lv_obj_align(sub, LV_ALIGN_BOTTOM_RIGHT, 0, 0);
+                lv_obj_set_style_translate_x(sub, tw + 6, 0);
             }
         }
 
