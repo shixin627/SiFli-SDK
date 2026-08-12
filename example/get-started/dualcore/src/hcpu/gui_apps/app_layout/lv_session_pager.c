@@ -577,15 +577,24 @@ static void sp_inject_sessions_into_actions(void)
     }
     for (int o = 0; o < cnt; o++)
     {
-        const session_meta_t *s = &s_devices[order[o].slot].items[order[o].idx];
-        const char *title = s->title[0] ? s->title : "Session";
+        const device_sessions_t *dv = &s_devices[order[o].slot];
+        const session_meta_t *s = &dv->items[order[o].idx];
+        /* R10(founder):顯示標題帶上來源設備 —— 「標題 · 設備名」。輪播項只有
+           一個 label,併進標題最直接;點進聊天室的標頭也跟著標明來源。
+           LIST_ITEM_TITLE_LEN=64,超長由 add_or_update 的 strncpy 截斷。 */
+        char disp[96];
+        if (dv->name[0])
+            rt_snprintf(disp, sizeof(disp), "%s · %s",
+                        s->title[0] ? s->title : "Session", dv->name);
+        else
+            rt_snprintf(disp, sizeof(disp), "%s", s->title[0] ? s->title : "Session");
         bool same = false;
         uint8_t n = return_total_list_count();
         for (uint8_t i = 0; i < n; i++)
         {
             const char *iid = instruction_list_export_id(i);
             const char *it = instruction_list_export_title(i);
-            if (iid && it && strcmp(iid, s->id) == 0 && strcmp(it, title) == 0)
+            if (iid && it && strcmp(iid, s->id) == 0 && strncmp(it, disp, 63) == 0)
             {
                 same = true;
                 break;
@@ -593,7 +602,7 @@ static void sp_inject_sessions_into_actions(void)
         }
         if (!same)
         {
-            add_or_update_custom_instruction(s->id, title, "", 0, false, 0, "");
+            add_or_update_custom_instruction(s->id, disp, "", 0, false, 0, "");
             changed = true;
         }
         set_instruction_category(s->id, '@'); /* 冪等 */
