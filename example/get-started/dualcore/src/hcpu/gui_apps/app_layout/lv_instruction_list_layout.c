@@ -6541,16 +6541,24 @@ static void create_list_items_ui(lv_obj_t *list, uint8_t start_idx,
                 lv_font_t *f = lvsf_get_font_from_size(13);
                 if (f != NULL)
                     lv_obj_set_style_text_font(sub, f, 0);
-                lv_obj_set_style_text_align(sub, LV_TEXT_ALIGN_LEFT, 0);
+                lv_obj_set_style_text_align(sub, LV_TEXT_ALIGN_RIGHT, 0);
                 lv_obj_set_style_text_color(sub, lv_color_hex(0xFFFFFF), 0);
                 lv_obj_set_style_text_opa(sub, LV_OPA_40, 0); /* 小小半透明 */
                 lv_label_set_text(sub, dev_name);
                 lv_obj_clear_flag(sub, LV_OBJ_FLAG_CLICKABLE);
-                /* R13:副標下緣與標題文字下緣持平,整框推出標題右緣外 6px
-                   (框寬固定 160,BOTTOM_RIGHT 錨 + translate_x = 160+6,
-                   文字靠左起排),不壓標題尾字。OUT_* 對子物件不可靠不用。 */
+                /* R14:R13 的固定 translate_x(166) 配靠左文字,實機文字仍畫在框
+                   右端(text_align LEFT 沒生效)跑到 icon。改回靠右畫(確定會
+                   render 的路徑),推移量按實際文字寬計算:文字右端 = 標題右緣
+                   + min(文字寬,框寬) + 6,即文字正好從標題右緣外 6px 起。 */
                 lv_obj_align(sub, LV_ALIGN_BOTTOM_RIGHT, 0, 0);
-                lv_obj_set_style_translate_x(sub, 166, 0);
+                if (f != NULL)
+                {
+                    lv_point_t sz;
+                    lv_txt_get_size(&sz, dev_name, f, 0, 0, LV_COORD_MAX,
+                                    LV_TEXT_FLAG_NONE);
+                    lv_coord_t tw = (sz.x > 160) ? 160 : sz.x;
+                    lv_obj_set_style_translate_x(sub, tw + 6, 0);
+                }
             }
         }
 
