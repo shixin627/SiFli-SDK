@@ -1303,12 +1303,19 @@ static void scroll_list(lv_obj_t *obj, int16_t drift)
             }
             if (brightness != last_brightness[i])
             {
-                // 使用顏色深淺代替透明度，創建從白色到灰色的漸變
-                lv_color_t text_color =
-                    lv_color_make(brightness, brightness, brightness);
+                /* R12(founder):換回**真透明度**。當年 SDK 的 per-label text_opa
+                   會互相干擾(同容器的文字設一個全部跟著動),才改用顏色深淺仿
+                   透明;SDK 已再更新,改回 text_opa 上機實測。字色固定白(建立
+                   處設一次),這裡只動 opa。 */
                 if (app_label[i] != NULL && lv_obj_is_valid(app_label[i]))
                 {
-                    lv_obj_set_style_text_color(app_label[i], text_color, 0);
+                    lv_obj_set_style_text_opa(app_label[i], brightness, 0);
+                    /* conv: item 的右下角設備副標(子 label)跟著同步淡出,
+                       基準 40%(255*0.4≈102),否則遠處的副標會比標題還亮。 */
+                    lv_obj_t *sub = lv_obj_get_child(app_label[i], 0);
+                    if (sub != NULL && lv_obj_is_valid(sub))
+                        lv_obj_set_style_text_opa(
+                            sub, (lv_opa_t)(((uint16_t)brightness * 102) / 255), 0);
                 }
                 if (switch_objs[i] != NULL && lv_obj_is_valid(switch_objs[i]))
                 {
@@ -6539,7 +6546,11 @@ static void create_list_items_ui(lv_obj_t *list, uint8_t start_idx,
                 lv_obj_set_style_text_opa(sub, LV_OPA_40, 0); /* 小小半透明 */
                 lv_label_set_text(sub, dev_name);
                 lv_obj_clear_flag(sub, LV_OBJ_FLAG_CLICKABLE);
-                lv_obj_align(sub, LV_ALIGN_OUT_BOTTOM_RIGHT, 0, 0);
+                /* R12:OUT_BOTTOM_RIGHT 配 lv_obj_align 在子物件上不可靠(實機跑
+                   到右上角還壓到標題)。改錨在父 label 右下角 + translate 往下推
+                   出下緣,位置是確定性的。 */
+                lv_obj_align(sub, LV_ALIGN_BOTTOM_RIGHT, 0, 0);
+                lv_obj_set_style_translate_y(sub, 18, 0);
             }
         }
 
