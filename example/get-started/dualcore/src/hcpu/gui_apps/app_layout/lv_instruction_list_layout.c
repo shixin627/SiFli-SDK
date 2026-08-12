@@ -4188,6 +4188,13 @@ static void inst_list_slide_out_done_cb(lv_anim_t *a)
             snap_to_home_from_any_page();
         }
     }
+    /* R33:清單已經完全收起來了 —— 把列的物件也還給 heap,不要整天掛在 HIDDEN 底下
+       佔位(session 注入後這是幾十 KB 的量級,而滑鼠頁/退出滑鼠頁那一刻常常只差這一
+       口氣就 `sys memory is full!`)。下次開清單 ensure_ui 會用最新資料重建。 */
+    {
+        extern void instruction_list_release_ui(void);
+        instruction_list_release_ui();
+    }
     {
         extern void check_main_page(void);
         check_main_page();
@@ -6859,6 +6866,18 @@ void refresh_custom_instructions(void)
         LOG_W("[R30] refresh skipped: list objects gone (torn down)");
         return;
     }
+
+    /* R33:列的 UI 被 release 掉時(滑鼠頁佔著 heap)**不要重建**。桌面 push-on-change
+       隨時可能送 0x20 進來,一重建就把 R32 讓出的記憶體又吃回去 —— 而退出滑鼠頁那
+       一刻是全域用量最高峰(滑鼠圖層還在,又要亮出 tileview/媒體頁),實測就是在那裡
+       `sys memory is full!`。資料已經寫進 list_items[],下次開清單時 ensure_ui 會
+       重建成最新內容,什麼都不會漏。 */
+    extern bool instruction_list_ui_is_released(void);
+    if (instruction_list_ui_is_released())
+    {
+        LOG_W("[R33] refresh deferred: list UI released (mouse page owns the heap)");
+        return;
+    }
     open_scroll_motor = false;
     if (p_instruction_list_layout == NULL ||
         p_instruction_list_layout->list == NULL)
@@ -8470,6 +8489,12 @@ void instruction_list_ensure_ui(void)
 void instruction_list_mark_ui_rebuilt(void)
 {
     s_list_ui_released = false;
+}
+
+/** R33:目前列的 UI 是不是處於已釋放狀態(refresh 用來決定要不要重建)。 */
+bool instruction_list_ui_is_released(void)
+{
+    return s_list_ui_released;
 }
 
 /************************ (C) COPYRIGHT Skaiwalk Technology *******END OF
