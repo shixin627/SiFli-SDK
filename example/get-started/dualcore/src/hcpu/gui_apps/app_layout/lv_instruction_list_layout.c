@@ -4096,6 +4096,17 @@ static void inst_list_slide_out_done_cb(lv_anim_t *a)
             lv_obj_add_flag(s_global_bar_layer, LV_OBJ_FLAG_HIDDEN);
         { extern void hid_mouse_set_own_bar_hidden(bool); hid_mouse_set_own_bar_hidden(false); } /* 浮層 bar 收→當幀還原滑鼠自有 bar */
     }
+    /* 2026-08-12 卡死修:清單「真正 HIDDEN」是這一刻(動畫跑完),但關閉路徑
+       (back 手勢 close_ai_widget + R16 snap_to_home、或電腦刪 session 觸發的
+       refresh)常在清單還在滑出、is_visible() 仍 true 時就跑過 check_main_page,
+       把 _at_instruction_list latch 成 true → 邊緣區(通知/媒體/控制中心手勢)被
+       關掉後沒人再 poll,回到錶盤看得到畫面卻四向全滑不出。清單此刻已藏,補跑一次
+       重評估讓 latch 翻回 false、display_gesture_detect_objs/status_bar_area 重新
+       開放邊緣區。 */
+    {
+        extern void check_is_at_instruction_list(void);
+        check_is_at_instruction_list();
+    }
 }
 
 /* ---- watch-face right-edge left-pull → finger-reveal the list (L/R swap) ----
@@ -6731,6 +6742,18 @@ void refresh_custom_instructions(void)
     /* 滑出關閉動畫進行中:擋退出途中的 UI 重繪(本地 restore 與手機 replace-all 重推的共同出口)。
        flag 在滑出結束、列表已 HIDDEN 後才清 → gate 只在列表可見的滑出過程生效。 */
     if (s_list_sliding_out) return;
+
+    /* R21:背景刷新(桌面刪 session 等)絕對不可以改變「清單是不是開著」——
+       instruction_list_is_visible() 是 check_is_at_instruction_list 的判定來源,
+       被刷新過程意外掀開就會把 _at_instruction_list 閂成 true、四條邊緣 zone 關掉,
+       畫面明明在錶盤卻只剩 app 返回鍵(=R16 那個假錶盤,換成背景刷新觸發)。
+       進場記下 hidden,出場照原樣還原。 */
+    bool r21_was_hidden =
+        p_instruction_list_layout != NULL &&
+        p_instruction_list_layout->p_instruction_list_bg != NULL &&
+        lv_obj_is_valid(p_instruction_list_layout->p_instruction_list_bg) &&
+        lv_obj_has_flag(p_instruction_list_layout->p_instruction_list_bg,
+                        LV_OBJ_FLAG_HIDDEN);
     open_scroll_motor = false;
     if (p_instruction_list_layout == NULL ||
         p_instruction_list_layout->list == NULL)
@@ -6980,6 +7003,24 @@ void refresh_custom_instructions(void)
     {
         extern void session_list_actions_changed(void);
         session_list_actions_changed();
+    }
+
+    /* R21:還原進場時的 hidden(見函式開頭),再讓狀態機重新評估一次 ——
+       刷新若在背景把清單掀開又蓋回,latch 仍可能停在錯值,check_main_page
+       是四條邊緣 zone 顯示狀態的唯一 owner,補跑一次就自癒。 */
+    if (r21_was_hidden && p_instruction_list_layout != NULL &&
+        p_instruction_list_layout->p_instruction_list_bg != NULL &&
+        lv_obj_is_valid(p_instruction_list_layout->p_instruction_list_bg) &&
+        !lv_obj_has_flag(p_instruction_list_layout->p_instruction_list_bg,
+                         LV_OBJ_FLAG_HIDDEN))
+    {
+        lv_obj_add_flag(p_instruction_list_layout->p_instruction_list_bg,
+                        LV_OBJ_FLAG_HIDDEN);
+        LOG_W("[R21] refresh re-hid the list (was hidden on entry)");
+    }
+    {
+        extern void check_main_page(void);
+        check_main_page();
     }
 }
 
