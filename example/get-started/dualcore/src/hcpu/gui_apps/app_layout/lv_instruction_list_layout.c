@@ -6758,6 +6758,9 @@ static void create_list_items_ui(lv_obj_t *list, uint8_t start_idx,
 }
 
 static rt_tick_t s_last_refresh_tick = 0;
+/* R42:這次 refresh 是「原樣重建」(ensure_ui 把 release 掉的列建回來)還是「內容變了」。
+   原樣重建不可以作廢影像快取,否則每次進場都要重新解碼 NAND 上的圖。 */
+static bool s_restore_rebuild = false;
 static lv_timer_t *s_pending_refresh_timer = NULL;
 /* s_in_refresh_scroll is declared earlier in the file (near the forward
    decls for list_window_scroll_event_cb) so the scroll handler can read
@@ -6970,12 +6973,22 @@ void refresh_custom_instructions(void)
        cache invalidation (deferring it here is safer than calling LVGL APIs
        on KE_EVT2's 4KB stack). When the phone replaces an existing image at
        the same path, we need this flush so lv_img_set_src below picks up the
-       new pixels rather than a stale cached entry. */
-    for (uint8_t i = 0; i < list_item_count; i++)
+       new pixels rather than a stale cached entry.
+
+       R42(founder:「文字進來但 icon 是空的,晚一點才出現」):**restore 型重建不要
+       作廢快取**。R33 起清單一關就釋放列物件,再開時 ensure_ui 重建 —— 資料一個
+       字都沒變,卻把每張圖的解碼結果丟掉,於是每次進場都要重新從 NAND 讀圖解碼,
+       文字先到、圖標慢半拍。作廢只對「內容真的換了」的刷新有意義(手機換圖),
+       ensure_ui 這條路徑跳過。 */
+    if (!s_restore_rebuild)
     {
-        if (list_items[i].img_path[0] != '\0')
-            lv_img_cache_invalidate_src(list_items[i].img_path);
+        for (uint8_t i = 0; i < list_item_count; i++)
+        {
+            if (list_items[i].img_path[0] != '\0')
+                lv_img_cache_invalidate_src(list_items[i].img_path);
+        }
     }
+    s_restore_rebuild = false;
 
     /* R32:走到這裡就是要完整 teardown+rebuild,不管先前是不是被 release 過。 */
     {
@@ -8501,6 +8514,8 @@ void instruction_list_ensure_ui(void)
         lv_timer_del(s_pending_refresh_timer);
         s_pending_refresh_timer = NULL;
     }
+    /* R42:原樣重建 —— 資料沒變,別把圖的解碼結果丟掉(見 refresh 內的說明)。 */
+    s_restore_rebuild = true;
     refresh_custom_instructions();
 }
 
