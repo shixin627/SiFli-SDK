@@ -112,6 +112,10 @@ typedef struct
     char title[LIST_ITEM_TITLE_LEN];
     const char *icon;      // icon resource pointer, can be NULL
     char img_path[64];     // file-based image path for instructions
+    /* R44:這張圖的檔案內容真的換過(update_instruction_image),下次 refresh 要丟掉它的
+       解碼快取。手機每次開清單都會 replace-all 重推一份**內容相同**的清單,那種情況不
+       該丟 —— 丟了就得重讀 NAND 重解碼,使用者看到「文字先進來、右邊圖標晚一拍」。 */
+    bool img_dirty;
     lv_obj_t *widget;      // app widget obj, NULL for instructions
     bool is_instruction;   // true = custom instruction, false = app
     bool is_interval;      // for instructions: has toggle switch
@@ -6976,15 +6980,23 @@ void refresh_custom_instructions(void)
 
        R42(founder:「文字進來但 icon 是空的,晚一點才出現」):**restore 型重建不要
        作廢快取**。R33 起清單一關就釋放列物件,再開時 ensure_ui 重建 —— 資料一個
-       字都沒變,卻把每張圖的解碼結果丟掉,於是每次進場都要重新從 NAND 讀圖解碼,
-       文字先到、圖標慢半拍。作廢只對「內容真的換了」的刷新有意義(手機換圖),
-       ensure_ui 這條路徑跳過。 */
+       字都沒變,卻把每張圖的解碼結果丟掉。
+
+       R44(founder 給的決定性線索:「從左邊邊緣滑不會消失,從中間往右滑就會先消失後面
+       才出現」):那是兩條不同路徑 —— 左緣拖曳是浮層直接開;中間往右滑會 settle 到左
+       頁,而 settle 會讓手機把整份 actions **replace-all 重推**一次。重推的內容通常
+       一模一樣,卻走「內容變了」這條路把所有圖的快取丟光 → 重讀 NAND、重解碼 → 圖標
+       慢一拍。所以作廢範圍縮到「這一項的圖檔真的被換過」(update_instruction_image
+       設 img_dirty),而不是「有人重建了清單」。 */
     if (!s_restore_rebuild)
     {
         for (uint8_t i = 0; i < list_item_count; i++)
         {
-            if (list_items[i].img_path[0] != '\0')
+            if (list_items[i].img_dirty && list_items[i].img_path[0] != '\0')
+            {
                 lv_img_cache_invalidate_src(list_items[i].img_path);
+                list_items[i].img_dirty = false;
+            }
         }
     }
     s_restore_rebuild = false;
@@ -7250,6 +7262,9 @@ void update_instruction_image(const char *id, const char *path)
     strncpy(list_items[idx].img_path, img_path,
             sizeof(list_items[idx].img_path) - 1);
     list_items[idx].img_path[sizeof(list_items[idx].img_path) - 1] = '\0';
+    /* R44:這裡是「圖真的換了」的唯一入口(手機下載完新 icon 覆寫同一路徑),所以只有
+       這些項目需要在下次 refresh 丟掉解碼快取。見 refresh 內的說明。 */
+    list_items[idx].img_dirty = true;
 
     /* LVGL ops only on the LVGL thread.
        BLE notify (parse_notify) and file-receive callback (bloc_filesystem)
