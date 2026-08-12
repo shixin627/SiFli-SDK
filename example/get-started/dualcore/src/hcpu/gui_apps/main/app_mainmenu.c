@@ -298,6 +298,13 @@ void check_is_at_instruction_list(void)
                (tile_at_left || instruction_list_is_visible());
     if (yes != _at_instruction_list)
     {
+        /* R22 診斷(founder:桌面新增/刪除 session 後變假錶盤):這個 latch 一旦
+           誤成 true 就會關掉四條邊緣 zone。翻轉當下把兩個子條件都印出來,才知道
+           是「浮動清單被掀開」還是「tileview 停在左格」害的。 */
+        LOG_W("[ATINST] %d->%d tile_at_left=%d visible=%d idx=%d ai=%d",
+              (int)_at_instruction_list, (int)yes, (int)tile_at_left,
+              (int)instruction_list_is_visible(),
+              (int)get_middle_layer_tileview_index(), (int)_at_ai_interface);
         _at_instruction_list = yes;
         if (_at_instruction_list)
         {
@@ -501,6 +508,14 @@ void check_is_at_home(void)
                !lv_top_panel_mouse_mode();
     if (yes != _at_home)
     {
+        /* R22 診斷:假錶盤 = 畫面是錶盤但 _at_home 為 false(四條 zone 不開)。
+           翻轉當下印出每個否決條件,直接看是誰把它壓住。 */
+        LOG_W("[ATHOME] %d->%d inst=%d msg=%d cc=%d mouse=%d ai=%d speech=%d "
+              "devpage=%d hosted=%d",
+              (int)_at_home, (int)yes, (int)_at_instruction_list, (int)_at_message,
+              (int)_at_control_center, (int)_at_mouse_mode, (int)_at_ai_interface,
+              (int)_at_speech_interface, (int)on_device_page,
+              (int)lv_top_panel_mouse_mode());
         _at_home = yes;
         /* R3 stage3: the left-edge right-pull reveal overlay is live only on the
            watch face — enable on entry, disable on every leave. Mirror gate to the
