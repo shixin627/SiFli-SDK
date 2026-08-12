@@ -802,6 +802,13 @@ static void app_clock_main_status_bar_event_cb(lv_event_t *event)
                lv_obj_class_init_obj;founder 2026-08-12「從媒體頁往上滑進滑鼠頁就
                當機」)。 */
             clock_main_conv_poll_set(false);
+            /* R32:滑鼠頁要一大塊 heap,而浮動清單即使 HIDDEN 也把每一列的 LVGL 物件
+               全留著(session 注入後列數翻倍,錶盤閒置只剩 ~40KB)。先把列的 UI 釋放
+               —— 資料不動,下次開清單由 instruction_list_ensure_ui 原路重建。 */
+            {
+                extern void instruction_list_release_ui(void);
+                instruction_list_release_ui();
+            }
             lv_top_panel_mouse_enter();
             middle_layer_tileview_index = 255; /* 下次 settle 一定重跑收尾 */
             lv_obj_set_tile_id(obj, 1, 1, false);

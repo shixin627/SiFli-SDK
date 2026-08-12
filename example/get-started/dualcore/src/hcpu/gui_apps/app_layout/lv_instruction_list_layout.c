@@ -404,24 +404,13 @@ bool instruction_list_order_conv_items(const char *const *ids, uint8_t n)
     return changed;
 }
 
-void instruction_list_move_conv_items_first(void)
-{
-    static list_item_t s_reorder_tmp[MAX_LIST_ITEMS];
-    if (list_item_count <= 1)
-        return;
-    uint8_t n = 0;
-    for (uint8_t i = 0; i < list_item_count; i++)
-        if (strncmp(list_items[i].id, "conv:", 5) == 0)
-            s_reorder_tmp[n++] = list_items[i];
-    if (n == 0 || n == list_item_count)
-        return;
-    for (uint8_t i = 0; i < list_item_count; i++)
-        if (strncmp(list_items[i].id, "conv:", 5) != 0)
-            s_reorder_tmp[n++] = list_items[i];
-    memcpy(list_items, s_reorder_tmp, sizeof(list_item_t) * list_item_count);
-}
+/* R31:`instruction_list_move_conv_items_first` 在 R27 被 order_conv_items 取代後成了
+   孤兒,但它那份 `static list_item_t[MAX_LIST_ITEMS]`(~7.8KB)還是佔著 SRAM —— 而
+   SRAM 少一塊就是 heap 少一塊。這台只剩 ~38KB heap,進滑鼠頁的大配置失敗就 NULL
+   deref 當機,所以把重複的那份刪掉,只留 order_conv_items 的暫存。 */
 
-/* instruction_list_focus_first_action 在檔尾(它用到的定位 statics 宣告在後段)。 */
+/* instruction_list_focus_first_action 在檔尾(它用到的定位 statics 宣告在後段)。
+   R32 的 release/ensure 也在檔尾 —— 它們要 p_instruction_list_layout(宣告在後面)。 */
 
 const void *instruction_list_export_icon(uint8_t i)
 {
@@ -4487,6 +4476,12 @@ void instruction_list_open_browse(void)
     lv_obj_t *list_bg = p_instruction_list_layout->p_instruction_list_bg;
     if (!list_bg || !lv_obj_is_valid(list_bg))
         return;
+    /* R32:進滑鼠頁時把列的 UI 釋放掉換 heap,這裡是開清單的共同入口 —— 先原路
+       重建回來(沒被 release 過就是 no-op)。 */
+    {
+        extern void instruction_list_ensure_ui(void);
+        instruction_list_ensure_ui();
+    }
     /* Only when parked & hidden — already up (browse/open) or sliding shut: leave it. */
     if (s_left_closing || !lv_obj_has_flag(list_bg, LV_OBJ_FLAG_HIDDEN))
         return;
@@ -6955,6 +6950,12 @@ void refresh_custom_instructions(void)
             lv_img_cache_invalidate_src(list_items[i].img_path);
     }
 
+    /* R32:走到這裡就是要完整 teardown+rebuild,不管先前是不是被 release 過。 */
+    {
+        extern void instruction_list_mark_ui_rebuilt(void);
+        instruction_list_mark_ui_rebuilt();
+    }
+
     lv_obj_t *list = p_instruction_list_layout->list;
 
     /* 先刪除舊的指示點（它們是 bg 的子物件，lv_obj_clean(list) 不會刪到） */
@@ -8411,6 +8412,64 @@ rt_int32_t instruction_list_deinit(void)
     LOG_I("instruction_list_deinit");
     pause_instruction_list = true;
     return RT_EOK;
+}
+
+/* ── R32:列 UI 的釋放 / 重建 ────────────────────────────────────────────────
+   浮動清單的 LVGL 物件在錶盤閒置時也一直常駐(它只是 HIDDEN),每一列要
+   item/touch/label/dot_bg/frame/icon 好幾個 —— session 注入後列數翻倍,heap 只剩
+   ~40KB,進 hosted 滑鼠頁那一大塊配置就失敗 → lv_obj_create 回 NULL →
+   lv_obj_class_init_obj 解 NULL 父物件 hard fault(founder 2026-08-12「從媒體頁往上
+   滑進滑鼠頁就當機」,連兩版都當)。release 只拆「列的 UI」,資料 list_items[] 不動,
+   下次開清單前 ensure 走 refresh 原路重建。 */
+static bool s_list_ui_released = false;
+
+void instruction_list_release_ui(void)
+{
+    if (p_instruction_list_layout == NULL || s_list_ui_released)
+        return;
+    lv_obj_t *list = p_instruction_list_layout->list;
+    if (list == NULL || !lv_obj_is_valid(list))
+        return;
+    /* dots 是 bg 的子物件,lv_obj_clean(list) 不會清到 —— 跟 refresh 的拆除段同序:
+       先刪 dot_bg(其 children = frame + icon 一起走),立刻 NULL 掉 handle 陣列,再
+       clean list。順序反了會在 DELETE 的同步回呼裡踩到已釋放的 dot(既有註解記錄
+       過 DACCVIOL)。 */
+    for (uint8_t i = 0; i < MAX_LIST_ITEMS; i++)
+    {
+        if (p_instruction_list_layout->indicator_dots_bg[i] != NULL &&
+            lv_obj_is_valid(p_instruction_list_layout->indicator_dots_bg[i]))
+            lv_obj_del(p_instruction_list_layout->indicator_dots_bg[i]);
+        p_instruction_list_layout->indicator_dots_bg[i] = NULL;
+        p_instruction_list_layout->indicator_dots[i] = NULL;
+        app_icon_shadow[i] = NULL;
+    }
+    lv_obj_clean(list);
+    for (uint8_t i = 0; i < MAX_LIST_ITEMS; i++)
+    {
+        app_icon[i] = NULL;
+        app_widget[i] = NULL;
+        touch_obj[i] = NULL;
+        app_label[i] = NULL;
+        switch_objs[i] = NULL;
+        p_instruction_list_layout->p_app_indicator_btn[i] = NULL;
+    }
+    s_list_ui_released = true;
+    LOG_W("[R32] list UI released (rebuilds on next open)");
+}
+
+/** 開清單前呼叫:被 release 過就原路重建(no-op if never released)。 */
+void instruction_list_ensure_ui(void)
+{
+    if (!s_list_ui_released)
+        return;
+    s_list_ui_released = false;
+    refresh_custom_instructions();
+}
+
+/** refresh 走到完整 rebuild 時清旗標(它自己就是重建路徑)。 */
+void instruction_list_mark_ui_rebuilt(void)
+{
+    s_list_ui_released = false;
 }
 
 /************************ (C) COPYRIGHT Skaiwalk Technology *******END OF
