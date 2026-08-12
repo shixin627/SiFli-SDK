@@ -967,6 +967,10 @@ void skai_sessions_on_conv_list(const uint8_t *json, uint16_t length)
         p->ready = 1; /* publish LAST */
         LOG_W("conv_list rx: dev=%s name=%s sessions=%d -> pending[%d]", dev_id, dev_name,
               count, slot);
+        /* R28 診斷:排序吃的是 ts,所以把每一筆收到的 ts 印出來 —— 桌面漏送 / 送 0 的話
+           排序怎麼改都不會對(founder 2026-08-12「新增的還是在舊的上面」)。穩定後移除。 */
+        for (int di = 0; di < count; di++)
+            LOG_W("  [ts] %u %s", (unsigned)parsed[di].ts, parsed[di].title);
     }
 
     lvgl_msg_t msg = {.type = LVGL_MSG_TYPE_REFRESH_SESSIONS};

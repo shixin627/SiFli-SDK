@@ -257,6 +257,10 @@ static lv_obj_t *switch_objs[MAX_LIST_ITEMS]; // toggle switches for any item
 /* 縮放曲線指數：1.0 = 線性、2.0 = 平方（中央放大效果突出，邊緣下降快）、
  * 3.0 = 立方（更陡峭）。值越大，「中央 dot 顯著大、其他 dot 都很小」越明顯 */
 #define DOT_ZOOM_EXPONENT 2.0f
+/* R29:session 列右緣的來源設備名(取代圓框裡的 icon)最大寬度。選中時 app_icon_frame
+   以 DOT_ICON_SCALE * DOT_BIG_PROPORTION 放大置中在 DOT_BG_SIZE 的 dot_bg 裡,名字
+   要**置中且不超出框**,所以留一點內距,超過就 … 截斷。 */
+#define CONV_NAME_MAX_W 88
 
 #define ARRAY_SIZE(arr) (sizeof(arr) / sizeof((arr)[0]))
 
@@ -911,16 +915,21 @@ static void create_indicator_dots(lv_obj_t *parent)
                 lv_label_set_text(name, dev_name);
                 lv_obj_clear_flag(name, LV_OBJ_FLAG_CLICKABLE);
                 lv_obj_add_flag(name, LV_OBJ_FLAG_EVENT_BUBBLE);
-                /* R18(founder):超過原本 icon 圖的寬(100px)就 … 截斷。只在超
-                   寬時才鎖寬走 LONG_DOT(截斷後文字填滿框,無對齊歧義);短的
-                   維持框寬=文字寬,免踩 text_align 不生效的雷(R13-R15)。 */
+                /* R18(founder):超過就 … 截斷。只在超寬時才鎖寬走 LONG_DOT(截斷後
+                   文字填滿框,無對齊歧義);短的維持框寬=文字寬,免踩 text_align 不
+                   生效的雷(R13-R15)。
+                   R29(founder:「設備名稱要剛好在 app_icon_frame 中間,長度也不能
+                   超過」):選中框 app_icon_frame 跟 dot img 一樣 center 在 dot_bg,
+                   所以名字改 **LV_ALIGN_CENTER**(原本靠右對齊,會偏出框外);寬度上
+                   限縮到框內 CONV_NAME_MAX_W,超過就 … 。框寬=文字寬時置中框=置中
+                   文字,截斷時文字填滿框也仍置中,兩種情況都不依賴 text_align。 */
                 lv_obj_update_layout(name);
-                if (lv_obj_get_width(name) > 100)
+                if (lv_obj_get_width(name) > CONV_NAME_MAX_W)
                 {
                     lv_label_set_long_mode(name, LV_LABEL_LONG_DOT);
-                    lv_obj_set_width(name, 100);
+                    lv_obj_set_width(name, CONV_NAME_MAX_W);
                 }
-                lv_obj_align(name, LV_ALIGN_RIGHT_MID, 0, 0);
+                lv_obj_align(name, LV_ALIGN_CENTER, 0, 0);
             }
         }
 
@@ -1543,8 +1552,14 @@ static void scroll_list(lv_obj_t *obj, int16_t drift)
                     if (app_label[i] != NULL && lv_obj_is_valid(app_label[i]))
                         lv_obj_clear_flag(app_label[i], LV_OBJ_FLAG_HIDDEN);
                 }
+                /* R28(founder:「選到 session 的地方也要有 app_icon_frame 圖片出現」):
+                   選中框(app_icon_shadow)本來只給「有 icon」的項目顯示,而 conv: 的
+                   session 右緣放的是設備名文字、沒有 icon,所以選到時什麼都不亮。conv
+                   項一併放行 —— 框是 dot_bg 的第一個 child、設備名 label 後加,所以
+                   框在底、名字在上。 */
                 if ((list_items[i].icon != NULL ||
-                     list_items[i].img_path[0] != '\0') &&
+                     list_items[i].img_path[0] != '\0' ||
+                     strncmp(list_items[i].id, "conv:", 5) == 0) &&
                     app_icon_shadow[i] != NULL &&
                     lv_obj_is_valid(app_icon_shadow[i]))
                     lv_obj_clear_flag(app_icon_shadow[i], LV_OBJ_FLAG_HIDDEN);
@@ -1553,8 +1568,11 @@ static void scroll_list(lv_obj_t *obj, int16_t drift)
             }
             else
             {
+                /* R28:離開選中一併收框(判定條件要跟上面顯示那支對稱,否則 conv 項的
+                   框亮了就再也收不掉)。 */
                 if ((list_items[i].icon != NULL ||
-                     list_items[i].img_path[0] != '\0') &&
+                     list_items[i].img_path[0] != '\0' ||
+                     strncmp(list_items[i].id, "conv:", 5) == 0) &&
                     app_icon_shadow[i] != NULL &&
                     lv_obj_is_valid(app_icon_shadow[i]))
                     lv_obj_add_flag(app_icon_shadow[i], LV_OBJ_FLAG_HIDDEN);
@@ -6832,6 +6850,20 @@ void refresh_custom_instructions(void)
         lv_obj_is_valid(p_instruction_list_layout->p_instruction_list_bg) &&
         lv_obj_has_flag(p_instruction_list_layout->p_instruction_list_bg,
                         LV_OBJ_FLAG_HIDDEN);
+
+    /* R30:重建會在 list / bg 底下**建立子物件**,父物件若已被拆掉(滑鼠圖層接管、
+       app 切換),lv_obj_class_init_obj → lv_obj_mark_layout_as_dirty 會踩到已釋放
+       記憶體 → hard fault(2026-08-12 從媒體頁進滑鼠頁時,R25 的輪詢在背景觸發重建
+       打中的就是這個)。NULL 檢查不夠,物件是被 del 掉、指標還在,要 lv_obj_is_valid。 */
+    if (p_instruction_list_layout == NULL ||
+        p_instruction_list_layout->list == NULL ||
+        !lv_obj_is_valid(p_instruction_list_layout->list) ||
+        p_instruction_list_layout->p_instruction_list_bg == NULL ||
+        !lv_obj_is_valid(p_instruction_list_layout->p_instruction_list_bg))
+    {
+        LOG_W("[R30] refresh skipped: list objects gone (torn down)");
+        return;
+    }
     open_scroll_motor = false;
     if (p_instruction_list_layout == NULL ||
         p_instruction_list_layout->list == NULL)

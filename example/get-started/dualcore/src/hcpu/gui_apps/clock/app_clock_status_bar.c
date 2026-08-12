@@ -794,6 +794,14 @@ static void app_clock_main_status_bar_event_cb(lv_event_t *event)
                 break;
             }
             media_col_bind(col_now);
+            /* R30:進 hosted 滑鼠模式**一定要先停掉 conv 輪詢**。這條分支提早 break,
+               不會走到下面那段左頁進出的 poll on/off,所以 R25 的 5s 輪詢會活著跟進
+               滑鼠模式;之後回來的 0x20 觸發 refresh_custom_instructions 去重建指令
+               清單 UI,但滑鼠圖層接管後那些父物件已經不在了 → 在失效父物件下建立子
+               物件,hard fault(mem manage,PC=lv_obj_mark_layout_as_dirty,LR=
+               lv_obj_class_init_obj;founder 2026-08-12「從媒體頁往上滑進滑鼠頁就
+               當機」)。 */
+            clock_main_conv_poll_set(false);
             lv_top_panel_mouse_enter();
             middle_layer_tileview_index = 255; /* 下次 settle 一定重跑收尾 */
             lv_obj_set_tile_id(obj, 1, 1, false);
