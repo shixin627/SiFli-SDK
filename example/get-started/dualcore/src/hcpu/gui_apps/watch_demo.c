@@ -147,8 +147,15 @@ static void handle_back_event(bool is_button)
                chat so it reveals the WATCH FACE directly, not the list (founder 2026-06-29). */
             extern void instruction_list_hide_now(void);
             instruction_list_hide_now();
+            /* ADR-0020 R16:清單如今從左頁 (0,1) 開,tileview 還停在那個空左格 —
+               不搬回 HOME 的話畫面像錶盤但 check_is_at_home 不成立,四向面板拉
+               不出來、左緣只剩 app 返回鍵。趁 chat 面板還蓋著先 INSTANT 搬回
+               (settle handler 跑左頁離場收尾),再關 chat 直接露出真錶盤。 */
+            extern void snap_to_home_from_any_page(void);
+            if (!is_at_home())
+                snap_to_home_from_any_page();
             chat_page_close();
-            LOG_I("ESC in chat page => hide list + close chat => home");
+            LOG_I("ESC in chat page => hide list + snap home + close chat");
             return;
         }
     }
@@ -205,6 +212,11 @@ static void handle_back_event(bool is_button)
             clock_on_resume();
             extern void close_ai_widget(void);
             close_ai_widget();
+            /* ADR-0020 R16:瀏覽態清單若是從左頁開的,關掉後別停在空左格
+               (同 chat 返回的處理,錶盤四向手勢才會活回來)。 */
+            extern void snap_to_home_from_any_page(void);
+            if (!is_at_home())
+                snap_to_home_from_any_page();
             screen_rotate_back_to_original_direction();
             LOG_D("ESC in instruction list (close floating browse)");
         }
