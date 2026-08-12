@@ -743,12 +743,14 @@ static void update_indicator_dots_position(int input_value)
         lv_obj_set_style_img_opa(p_instruction_list_layout->indicator_dots[i],
                                  opacity, 0);
         /* R17:conv 列的設備名 label(dot_bg 第 3 個 child)跟 dot 同步淡出。
-           label 不吃 zoom(EPIC label 特性),只同步 opa。 */
+           label 不吃 zoom(EPIC label 特性),只同步 opa。
+           R19(founder):設備名整體再暗一點 —— 基準 55%(dot 全亮時 ≈ 140)。 */
         {
             lv_obj_t *name = lv_obj_get_child(
                 p_instruction_list_layout->indicator_dots_bg[i], 2);
             if (name != NULL && lv_obj_is_valid(name))
-                lv_obj_set_style_text_opa(name, opacity, 0);
+                lv_obj_set_style_text_opa(
+                    name, (lv_opa_t)(((uint16_t)opacity * 140) / 255), 0);
         }
 
         /* 用指數曲線 ratio^N 取代線性 ratio：N>1 時，中央 dot 大幅放大，
