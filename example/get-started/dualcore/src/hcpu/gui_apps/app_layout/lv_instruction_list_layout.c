@@ -8490,6 +8490,17 @@ void instruction_list_ensure_ui(void)
     if (!s_list_ui_released)
         return;
     s_list_ui_released = false;
+    /* R41(founder:「左邊的 icon 還是進去才出現,第一次進去沒問題第二次才會」):
+       refresh 有 500ms trailing-edge 去抖 —— 第二次進場的重建請求常常剛好落在
+       前一次刷新的去抖窗內,被推遲到 550ms 後才真的建,於是清單先是空的、圖標才
+       浮出來。這裡是「使用者正要看到清單」的當下,不能等:清掉去抖時間戳與待辦
+       timer,強制這一次同步重建。 */
+    s_last_refresh_tick = 0;
+    if (s_pending_refresh_timer != NULL)
+    {
+        lv_timer_del(s_pending_refresh_timer);
+        s_pending_refresh_timer = NULL;
+    }
     refresh_custom_instructions();
 }
 
