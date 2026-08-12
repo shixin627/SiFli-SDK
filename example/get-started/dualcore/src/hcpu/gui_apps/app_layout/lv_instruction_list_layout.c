@@ -857,7 +857,15 @@ static void create_indicator_dots(lv_obj_t *parent)
                 lv_label_set_text(name, dev_name);
                 lv_obj_clear_flag(name, LV_OBJ_FLAG_CLICKABLE);
                 lv_obj_add_flag(name, LV_OBJ_FLAG_EVENT_BUBBLE);
+                /* R18(founder):超過原本 icon 圖的寬(100px)就 … 截斷。只在超
+                   寬時才鎖寬走 LONG_DOT(截斷後文字填滿框,無對齊歧義);短的
+                   維持框寬=文字寬,免踩 text_align 不生效的雷(R13-R15)。 */
                 lv_obj_update_layout(name);
+                if (lv_obj_get_width(name) > 100)
+                {
+                    lv_label_set_long_mode(name, LV_LABEL_LONG_DOT);
+                    lv_obj_set_width(name, 100);
+                }
                 lv_obj_align(name, LV_ALIGN_RIGHT_MID, 0, 0);
             }
         }
