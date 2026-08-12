@@ -4108,7 +4108,27 @@ static void inst_list_slide_out_done_cb(lv_anim_t *a)
        的進場分支(display_status_bar_area(0..3,true) / reveal overlay)。只翻
        _at_instruction_list 的話 _at_home 仍卡 false —— 畫面回到錶盤、手勢全死,
        左緣還留著 app 返回鍵。改叫 check_main_page():它依序重評 message /
-       instruction_list / control_center / home,順序本身就是相依順序。 */
+       instruction_list / control_center / home,順序本身就是相依順序。
+       R24(真兇,診斷坐實):log 顯示 `[ATINST] 1->0 visible=0 idx=4` 之後**沒有**
+       `[ATHOME] 0->1` —— 清單滑掉了,但 **tileview 還停在左頁
+       (idx=MAIN_PAGE_TYPE_RIGHT=4)**。左格透明所以看起來像回到錶盤,可是
+       check_is_at_home 的 on_device_page 判定直接把 idx==4 當「非錶盤」否決,
+       四條 zone 永遠不開。R16 只在 chat 返回 / ESC 關清單兩條路徑補了
+       snap_to_home,「人在左頁直接把清單滑掉」這條沒有;這裡是所有關閉路徑的
+       共同出口,還停在左頁就 snap 回 HOME(INSTANT,走 set_tile_id 讓 settle
+       收尾照跑),再重評狀態機。hosted 滑鼠模式的 tileview 由滑鼠圖層自己管,
+       不要碰。 */
+    {
+        extern uint8_t get_middle_layer_tileview_index(void);
+        extern void snap_to_home_from_any_page(void);
+        extern bool lv_top_panel_mouse_mode(void);
+        if (!lv_top_panel_mouse_mode() &&
+            get_middle_layer_tileview_index() == MAIN_PAGE_TYPE_RIGHT)
+        {
+            LOG_W("[R24] list hidden but tileview parked at left -> snap home");
+            snap_to_home_from_any_page();
+        }
+    }
     {
         extern void check_main_page(void);
         check_main_page();
