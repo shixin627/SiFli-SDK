@@ -818,6 +818,11 @@ static void app_clock_main_status_bar_event_cb(lv_event_t *event)
                    往上捲才看到)。 */
                 extern void instruction_list_focus_first_action(void);
                 instruction_list_focus_first_action();
+                /* R20:桌面刪 session 不會主動推 0x20 —— 進左頁重拉一次
+                   (舊 session pager tile 的同款機制,它退役後這條斷了),
+                   注入層收到新清單會把已刪的 conv 項移除。 */
+                extern bool commu_send_conv_list_req(const char *device);
+                commu_send_conv_list_req(NULL);
             }
             else if (instruction_list_is_visible())
                 close_ai_widget(); /* 離開左頁:瀏覽態清單滑出收掉 */
