@@ -212,6 +212,13 @@ void clock_main_applist_follow_begin(void)
 /* ---- 左頁（合併 session + actions）finger-follow（向右滑 route）------------ *
  * ADR-0020:左頁從 reveal 浮層改成實體 tile (0,1),向右滑改走原生語意的跟手:
  * HOME 在 scroll_x==466,左頁在 0,dx>0(向右拖)把 scroll_x 往 0 壓。 */
+/* R45(founder:「中間往右滑沒有像邊緣滑動一樣拉出左側列表,而是用動畫的方式讓列表向右
+   彈出」):這條路徑本來只讓 **tileview** 跟手,而左格是空的透明格 —— 使用者看到的清單
+   其實是 lv_layer_top 上的浮層,它要等 settle 之後才由 instruction_list_open_browse()
+   用動畫飛進來,所以是「先拖了個空的、放手才彈出清單」。左緣那條之所以順,是因為它直接
+   讓**清單本體**跟手(instruction_list_reveal_drag_*)。這裡把同一組跟手一起帶上:
+   tileview 照舊(左頁的 settle 狀態機、session 模式、輪詢都掛在它上面),清單同步跟著
+   手指移動,放手時兩者一起 commit/取消,兩條入口的手感就一致了。 */
 void clock_main_leftpage_follow_begin(void)
 {
     if (!app_clock_main_status_bar || !lv_obj_is_valid(app_clock_main_status_bar))
@@ -223,6 +230,11 @@ void clock_main_leftpage_follow_begin(void)
     if (gaus_dial_bg && lv_obj_is_valid(gaus_dial_bg))
         lv_obj_clear_flag(gaus_dial_bg, LV_OBJ_FLAG_HIDDEN);
     set_clock_main_status_opa(0, false);
+    /* 清單同步從左邊緣park好,接下來跟著手指進來(from_left=true:與手指方向一致)。 */
+    {
+        extern void instruction_list_reveal_drag_begin_ex(bool from_left, char filter);
+        instruction_list_reveal_drag_begin_ex(true, 0);
+    }
 }
 
 void clock_main_leftpage_follow_update(lv_coord_t dx)
@@ -233,6 +245,10 @@ void clock_main_leftpage_follow_update(lv_coord_t dx)
     if (sx < 0) sx = 0;
     if (sx > LV_HOR_RES) sx = LV_HOR_RES;
     lv_obj_scroll_to_x(app_clock_main_status_bar, sx, LV_ANIM_OFF);
+    {
+        extern void instruction_list_reveal_drag_update(lv_coord_t dx);
+        instruction_list_reveal_drag_update(dx);
+    }
 }
 
 void clock_main_leftpage_follow_end(lv_coord_t dx, lv_coord_t vx)
@@ -240,6 +256,12 @@ void clock_main_leftpage_follow_end(lv_coord_t dx, lv_coord_t vx)
     if (!app_clock_main_status_bar || !lv_obj_is_valid(app_clock_main_status_bar))
         return;
     bool open_it = (dx >= LV_HOR_RES / 4) || (vx > 6);
+    /* 清單先收尾(它自己用同一組門檻決定 commit / 彈回),再讓 tileview 落位;順序反過來
+       的話 settle 會先跑 open_browse,和清單自己的收尾動畫打架。 */
+    {
+        extern void instruction_list_reveal_drag_end(lv_coord_t dx, lv_coord_t vx);
+        instruction_list_reveal_drag_end(dx, vx);
+    }
     lv_obj_set_tile_id(app_clock_main_status_bar, open_it ? 0 : 1, 1, true);
 }
 
