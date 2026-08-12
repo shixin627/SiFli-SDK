@@ -742,6 +742,14 @@ static void update_indicator_dots_position(int input_value)
 
         lv_obj_set_style_img_opa(p_instruction_list_layout->indicator_dots[i],
                                  opacity, 0);
+        /* R17:conv 列的設備名 label(dot_bg 第 3 個 child)跟 dot 同步淡出。
+           label 不吃 zoom(EPIC label 特性),只同步 opa。 */
+        {
+            lv_obj_t *name = lv_obj_get_child(
+                p_instruction_list_layout->indicator_dots_bg[i], 2);
+            if (name != NULL && lv_obj_is_valid(name))
+                lv_obj_set_style_text_opa(name, opacity, 0);
+        }
 
         /* 用指數曲線 ratio^N 取代線性 ratio：N>1 時，中央 dot 大幅放大，
          * 邊緣 dot 快速縮小，視覺上中央更突出 */
@@ -825,6 +833,33 @@ static void create_indicator_dots(lv_obj_t *parent)
         {
             /* Instructions without icon: show frame only */
             lv_img_set_src(dot, &app_icon_frame);
+        }
+
+        /* R17(founder):session 列的右緣不要圓框,改直接顯示來源設備名(取代
+           R11-R15 的標題右下角小副標)。dot img 保留但藏起來(位置/zoom 迴圈
+           仍對 img 操作,label 不能頂替它),設備名 label 掛在 dot_bg 上、右緣
+           對齊往左長(框寬=文字寬,R15 教訓:別靠 text_align),淡出在
+           update_indicator_dots_position 跟 dot 同步。 */
+        if (strncmp(list_items[i].id, "conv:", 5) == 0)
+        {
+            extern const char *session_list_device_name_for(const char *conv_id);
+            extern lv_font_t *lvsf_get_font_from_size(uint16_t size);
+            const char *dev_name = session_list_device_name_for(list_items[i].id);
+            if (dev_name != NULL && dev_name[0])
+            {
+                lv_obj_add_flag(dot, LV_OBJ_FLAG_HIDDEN);
+                lv_obj_add_flag(dot_bg, LV_OBJ_FLAG_OVERFLOW_VISIBLE);
+                lv_obj_t *name = lv_label_create(dot_bg);
+                lv_font_t *f = lvsf_get_font_from_size(18);
+                if (f != NULL)
+                    lv_obj_set_style_text_font(name, f, 0);
+                lv_obj_set_style_text_color(name, lv_color_hex(0xFFFFFF), 0);
+                lv_label_set_text(name, dev_name);
+                lv_obj_clear_flag(name, LV_OBJ_FLAG_CLICKABLE);
+                lv_obj_add_flag(name, LV_OBJ_FLAG_EVENT_BUBBLE);
+                lv_obj_update_layout(name);
+                lv_obj_align(name, LV_ALIGN_RIGHT_MID, 0, 0);
+            }
         }
 
         p_instruction_list_layout->indicator_dots_bg[i] = dot_bg;
@@ -1310,12 +1345,6 @@ static void scroll_list(lv_obj_t *obj, int16_t drift)
                 if (app_label[i] != NULL && lv_obj_is_valid(app_label[i]))
                 {
                     lv_obj_set_style_text_opa(app_label[i], brightness, 0);
-                    /* conv: item 的右下角設備副標(子 label)跟著同步淡出,
-                       基準 40%(255*0.4≈102),否則遠處的副標會比標題還亮。 */
-                    lv_obj_t *sub = lv_obj_get_child(app_label[i], 0);
-                    if (sub != NULL && lv_obj_is_valid(sub))
-                        lv_obj_set_style_text_opa(
-                            sub, (lv_opa_t)(((uint16_t)brightness * 102) / 255), 0);
                 }
                 if (switch_objs[i] != NULL && lv_obj_is_valid(switch_objs[i]))
                 {
@@ -6524,42 +6553,8 @@ static void create_list_items_ui(lv_obj_t *list, uint8_t start_idx,
                                    LV_EXT_FONT_GET(get_system_font_size(1)), 0);
         lv_obj_set_style_text_color(app_label[i], lv_color_hex(0xFFFFFF), 0);
 
-        /* R11(founder):session item(conv:)在標題右下角掛一顆小字半透明的來源
-           設備名。做成標題 label 的**子物件**,跟著標題的置中/動畫一起走;畫在
-           標題框外側,父 label 要 OVERFLOW_VISIBLE 才不會被裁掉。 */
-        if (strncmp(list_items[i].id, "conv:", 5) == 0)
-        {
-            extern const char *session_list_device_name_for(const char *conv_id);
-            extern lv_font_t *lvsf_get_font_from_size(uint16_t size);
-            const char *dev_name = session_list_device_name_for(list_items[i].id);
-            if (dev_name != NULL && dev_name[0])
-            {
-                lv_obj_add_flag(app_label[i], LV_OBJ_FLAG_OVERFLOW_VISIBLE);
-                lv_obj_t *sub = lv_label_create(app_label[i]);
-                lv_label_set_long_mode(sub, LV_LABEL_LONG_DOT);
-                lv_font_t *f = lvsf_get_font_from_size(13);
-                if (f != NULL)
-                    lv_obj_set_style_text_font(sub, f, 0);
-                lv_obj_set_style_text_color(sub, lv_color_hex(0xFFFFFF), 0);
-                lv_obj_set_style_text_opa(sub, LV_OPA_40, 0); /* 小小半透明 */
-                lv_label_set_text(sub, dev_name);
-                lv_obj_clear_flag(sub, LV_OBJ_FLAG_CLICKABLE);
-                /* R15:text_align 在這條 label 路徑不生效(R13/R14 兩輪實證,
-                   短字串會飄在 160px 框中段),定位不能靠它。改讓框寬=文字寬
-                   (SIZE_CONTENT 後 update_layout 取實寬,>160 才鎖寬截斷),
-                   框貼哪文字就在哪:BOTTOM_RIGHT 錨 + translate_x = 框寬+6,
-                   文字起點 = 該行標題右緣外 6px、下緣持平。 */
-                lv_obj_update_layout(sub);
-                lv_coord_t tw = lv_obj_get_width(sub);
-                if (tw > 160)
-                {
-                    lv_obj_set_width(sub, 160);
-                    tw = 160;
-                }
-                lv_obj_align(sub, LV_ALIGN_BOTTOM_RIGHT, 0, 0);
-                lv_obj_set_style_translate_x(sub, tw + 6, 0);
-            }
-        }
+        /* R17(founder):標題右下角的設備名小副標退場 —— 設備名改顯示在右緣
+           dot 輪播的位置(create_indicator_dots 的 conv 分支),字級加大。 */
 
         /* For instructions with interval, create switch and position label left
          */
