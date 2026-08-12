@@ -544,8 +544,11 @@ static void sp_inject_sessions_into_actions(void)
         }
     }
 
-    /* upsert:按 ts 新→舊(首次注入的順序就是清單順序);title 沒變就不動
-       (add_or_update 恆觸發重繪成本)。 */
+    /* upsert:按 ts **舊→新**(注入順序 = 清單由上而下的順序,所以最新的落在 session
+       段最下面、緊鄰下方的 actions —— founder 2026-08-12:「希望它是按照時間最新的在
+       最下面」;R9 起 conv 段整段在 actions 上方,進場落點又在第一個 action,於是最新
+       的 session 就在視線起點正上方,往上捲是愈舊)。title 沒變就不動(add_or_update
+       恆觸發重繪成本)。無 ts 的(舊韌體/桌面沒給)ts=0,排在最上面=最舊,合理。 */
     struct
     {
         uint8_t slot;
@@ -563,8 +566,9 @@ static void sp_inject_sessions_into_actions(void)
         }
     for (int i = 1; i < cnt; i++)
     {
+        /* stable insertion, ts 小(舊)者在前 → 最新的排在最後 = 清單最下面 */
         int j = i;
-        while (j > 0 && order[j - 1].ts < order[j].ts)
+        while (j > 0 && order[j - 1].ts > order[j].ts)
         {
             uint8_t t_slot = order[j].slot, t_idx = order[j].idx;
             uint32_t t_ts = order[j].ts;
