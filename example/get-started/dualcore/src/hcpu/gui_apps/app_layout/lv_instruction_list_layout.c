@@ -6541,16 +6541,16 @@ static void create_list_items_ui(lv_obj_t *list, uint8_t start_idx,
                 lv_font_t *f = lvsf_get_font_from_size(13);
                 if (f != NULL)
                     lv_obj_set_style_text_font(sub, f, 0);
-                lv_obj_set_style_text_align(sub, LV_TEXT_ALIGN_RIGHT, 0);
+                lv_obj_set_style_text_align(sub, LV_TEXT_ALIGN_LEFT, 0);
                 lv_obj_set_style_text_color(sub, lv_color_hex(0xFFFFFF), 0);
                 lv_obj_set_style_text_opa(sub, LV_OPA_40, 0); /* 小小半透明 */
                 lv_label_set_text(sub, dev_name);
                 lv_obj_clear_flag(sub, LV_OBJ_FLAG_CLICKABLE);
-                /* R12:OUT_BOTTOM_RIGHT 配 lv_obj_align 在子物件上不可靠(實機跑
-                   到右上角還壓到標題)。改錨在父 label 右下角 + translate 往下推
-                   出下緣,位置是確定性的。 */
+                /* R13:副標下緣與標題文字下緣持平,整框推出標題右緣外 6px
+                   (框寬固定 160,BOTTOM_RIGHT 錨 + translate_x = 160+6,
+                   文字靠左起排),不壓標題尾字。OUT_* 對子物件不可靠不用。 */
                 lv_obj_align(sub, LV_ALIGN_BOTTOM_RIGHT, 0, 0);
-                lv_obj_set_style_translate_y(sub, 18, 0);
+                lv_obj_set_style_translate_x(sub, 166, 0);
             }
         }
 
