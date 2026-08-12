@@ -620,6 +620,38 @@ static uint16_t bg_opa_3 = LV_OPA_50;
 static uint8_t middle_layer_tileview_index = 255;
 static uint8_t ai_interface_tileview_index = 0;
 
+/* R25:停在左頁(session/actions)時每 5s 跟所有桌面重拉一次 conv list。桌面刪除 /
+   新增 session 不會主動推 0x20,只在進頁時拉一次的話,人停在頁面上就永遠看不到
+   變動(founder 2026-08-12)。離開頁面立刻停,不在背景燒 BLE。注入層 upsert/移除
+   都有 changed-guard,清單沒變不會重繪。 */
+#define CONV_POLL_PERIOD_MS 5000
+static lv_timer_t *s_conv_poll_timer = NULL;
+
+static void conv_poll_timer_cb(lv_timer_t *t)
+{
+    (void)t;
+    extern bool commu_send_conv_list_req(const char *device);
+    commu_send_conv_list_req(NULL); /* NULL = 每一台桌面 */
+}
+
+void clock_main_conv_poll_set(bool on)
+{
+    if (on)
+    {
+        extern bool commu_send_conv_list_req(const char *device);
+        commu_send_conv_list_req(NULL); /* 進頁先拉一次,不等第一個 tick */
+        if (s_conv_poll_timer == NULL)
+            s_conv_poll_timer =
+                lv_timer_create(conv_poll_timer_cb, CONV_POLL_PERIOD_MS, NULL);
+        return;
+    }
+    if (s_conv_poll_timer != NULL)
+    {
+        lv_timer_del(s_conv_poll_timer);
+        s_conv_poll_timer = NULL;
+    }
+}
+
 static void app_clock_main_status_bar_event_cb(lv_event_t *event)
 {
     lv_obj_t *obj = lv_event_get_target(event);
@@ -820,12 +852,20 @@ static void app_clock_main_status_bar_event_cb(lv_event_t *event)
                 instruction_list_focus_first_action();
                 /* R20:桌面刪 session 不會主動推 0x20 —— 進左頁重拉一次
                    (舊 session pager tile 的同款機制,它退役後這條斷了),
-                   注入層收到新清單會把已刪的 conv 項移除。 */
-                extern bool commu_send_conv_list_req(const char *device);
-                commu_send_conv_list_req(NULL);
+                   注入層收到新清單會把已刪的 conv 項移除。
+                   R25(founder:「在 session 列表那邊的時候他不會更新」):進頁只拉
+                   一次,人停在頁面上時桌面的新增/刪除就看不到。桌面端沒有變動推播
+                   (要三平台改 wire),先在手錶側補輪詢:停在左頁每 5s 重拉一次,
+                   離開就停。注入層有 changed-guard,沒變動不會重繪/不會抖。 */
+                clock_main_conv_poll_set(true);
             }
             else if (instruction_list_is_visible())
+            {
+                clock_main_conv_poll_set(false);
                 close_ai_widget(); /* 離開左頁:瀏覽態清單滑出收掉 */
+            }
+            else
+                clock_main_conv_poll_set(false);
         }
 
         {
