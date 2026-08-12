@@ -4188,13 +4188,12 @@ static void inst_list_slide_out_done_cb(lv_anim_t *a)
             snap_to_home_from_any_page();
         }
     }
-    /* R33:清單已經完全收起來了 —— 把列的物件也還給 heap,不要整天掛在 HIDDEN 底下
-       佔位(session 注入後這是幾十 KB 的量級,而滑鼠頁/退出滑鼠頁那一刻常常只差這一
-       口氣就 `sys memory is full!`)。下次開清單 ensure_ui 會用最新資料重建。 */
-    {
-        extern void instruction_list_release_ui(void);
-        instruction_list_release_ui();
-    }
+    /* R43:R33 曾在這裡「一關清單就釋放列物件」,為的是擠出 heap 給滑鼠頁。但滑鼠頁
+       OOM 的真兇後來量出來是**鍵盤模式 UI 的 38KB**(R40 改成延遲建立就解決了),所以
+       這個釋放只剩代價:每次開清單都要重建整份列,使用者看到的就是「文字先進來、icon
+       晚半秒才出現」(founder 連續三輪回報)。改回常駐 —— 滑鼠模式那條路徑仍會
+       release(見 app_clock_status_bar 進滑鼠模式處),真正需要記憶體的時候才付這個
+       代價。 */
     {
         extern void check_main_page(void);
         check_main_page();
