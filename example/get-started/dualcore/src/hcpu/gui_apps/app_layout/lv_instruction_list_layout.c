@@ -348,6 +348,58 @@ void instruction_list_set_session_page_mode(bool on)
 /* R9(founder:「actions 在下面」):把 conv: 開頭的 session item 穩定移到清單
    前段,actions 落在後段。static 暫存 —— list_item_t ~260B x30 ≈ 7.8KB,放
    LVGL thread 的堆疊太肥。呼叫端(session pager 注入)接著自己 refresh。 */
+/* R27:把 conv: 段**強制排成 ids[] 給的順序**(其餘 actions 維持原順序、整段在後)。
+   為什麼需要這支:`add_or_update_custom_instruction` 對已存在的 id 只更新內容,
+   **位置原地不動**;`instruction_list_move_conv_items_first` 又是穩定分段。所以注入端
+   改排序(R26 ts 由新→舊改舊→新)只對「這次才第一次出現」的 session 生效,早就在清單裡
+   的仍停在當初插入的位置 —— founder 2026-08-12:「最新的還是在最上面沒有在下面」。
+   回傳是否真的動過順序,讓呼叫端只在有變時才 refresh(避免每次輪詢都重繪)。 */
+bool instruction_list_order_conv_items(const char *const *ids, uint8_t n)
+{
+    static list_item_t s_order_tmp[MAX_LIST_ITEMS];
+    if (list_item_count == 0)
+        return false;
+    uint8_t w = 0;
+    /* 1) 依 ids[] 指定的順序收 conv 項 */
+    for (uint8_t k = 0; k < n && w < MAX_LIST_ITEMS; k++)
+    {
+        if (ids[k] == NULL || ids[k][0] == '\0')
+            continue;
+        for (uint8_t i = 0; i < list_item_count; i++)
+        {
+            if (strncmp(list_items[i].id, "conv:", 5) == 0 &&
+                strcmp(list_items[i].id, ids[k]) == 0)
+            {
+                s_order_tmp[w++] = list_items[i];
+                break;
+            }
+        }
+    }
+    /* 2) ids[] 沒點到的 conv 項(理論上不該有)接在後面,維持原相對順序 */
+    for (uint8_t i = 0; i < list_item_count && w < MAX_LIST_ITEMS; i++)
+    {
+        if (strncmp(list_items[i].id, "conv:", 5) != 0)
+            continue;
+        bool taken = false;
+        for (uint8_t k = 0; k < w; k++)
+            if (strcmp(s_order_tmp[k].id, list_items[i].id) == 0) { taken = true; break; }
+        if (!taken)
+            s_order_tmp[w++] = list_items[i];
+    }
+    /* 3) actions 等非 conv 項,原順序,整段在 conv 之後 */
+    for (uint8_t i = 0; i < list_item_count && w < MAX_LIST_ITEMS; i++)
+        if (strncmp(list_items[i].id, "conv:", 5) != 0)
+            s_order_tmp[w++] = list_items[i];
+    if (w != list_item_count)
+        return false; /* 數不對就別動整份清單(寧可順序舊,也不要掉項目) */
+    bool changed = false;
+    for (uint8_t i = 0; i < list_item_count; i++)
+        if (strcmp(s_order_tmp[i].id, list_items[i].id) != 0) { changed = true; break; }
+    if (changed)
+        memcpy(list_items, s_order_tmp, sizeof(list_item_t) * list_item_count);
+    return changed;
+}
+
 void instruction_list_move_conv_items_first(void)
 {
     static list_item_t s_reorder_tmp[MAX_LIST_ITEMS];

@@ -605,13 +605,22 @@ static void sp_inject_sessions_into_actions(void)
         set_instruction_category(s->id, '@'); /* 冪等 */
     }
 
-    if (changed)
+    /* R27:每次注入都把 conv 段**強制排成上面算好的 ts 舊→新順序**。只靠 upsert 的呼叫
+       順序不夠 —— add_or_update 對已存在的 id 位置原地不動,所以早就在清單裡的 session
+       會停在第一次插入時的位置(founder:改了排序但「最新的還是在最上面」)。這支自己回報
+       有沒有真的動到順序,沒動就不 refresh,輪詢才不會每 5s 重繪。 */
     {
-        /* R9(founder:「actions 在下面」):session 移到清單前段、actions 在後。 */
-        extern void instruction_list_move_conv_items_first(void);
-        instruction_list_move_conv_items_first();
-        refresh_custom_instructions();
+        extern bool instruction_list_order_conv_items(const char *const *ids, uint8_t n);
+        const char *ids[SESSION_DEVICE_MAX * SESSION_PAGER_MAX];
+        uint8_t idn = 0;
+        for (int o = 0; o < cnt && idn < (uint8_t)(sizeof(ids) / sizeof(ids[0])); o++)
+            ids[idn++] = s_devices[order[o].slot].items[order[o].idx].id;
+        if (instruction_list_order_conv_items(ids, idn))
+            changed = true;
     }
+
+    if (changed)
+        refresh_custom_instructions();
 }
 
 /** actions 清單有更新(手機推播 0x65/0x6B 落地)時由 instruction list 呼叫:
