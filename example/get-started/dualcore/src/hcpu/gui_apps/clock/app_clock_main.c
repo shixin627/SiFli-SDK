@@ -589,7 +589,12 @@ static void clock_change_page(char *clk_id)
     }
     else if (strcmp(clk_id, "JW_wf4") == 0)
     {
-        set_clock_main_status_img(&gaus_clock4_bg);
+        /* 2026-08-09: gaus_clock4_bg 佔 image 46.6 KB,而自 8/4 上游 merge 起
+           image 已經逼近 main 分割上限(0x280000),dev build 因此編不出來
+           (超出約 8 KB)。改用與 wf2 / wf3 相同的預設背景把那 46.6 KB 讓出來
+           —— 圖檔還在 src/hcpu/resource/images/common/large_ezip/,要復原就是
+           把這行改回 &gaus_clock4_bg。 */
+        set_clock_main_status_img(GAUS_DEFAULT_PICTURE);
     }
     else if (strcmp(clk_id, "JW_wf5") == 0)
     {
@@ -1387,14 +1392,15 @@ static void face_swipe_catcher_cb(lv_event_t *e)
         lv_coord_t slop = s_face_shake_armed ? FACE_SHAKE_SLOP : FACE_SWIPE_SLOP;
         if (!s_face_swipe_locked && LV_ABS(dx) > slop && LV_ABS(dx) > LV_ABS(dy))
         {
-            /* Clearly-horizontal pull → claim it.
-               rightward = skaibar mixed list; leftward = App List. */
+            /* Clearly-horizontal pull → claim it. ADR-0020:
+               rightward = 左頁(合併 session + actions, (0,1) tile);
+               leftward  = 右側媒體欄(手機媒體中心起頭)。 */
             if (dx > 0)
             {
-                extern void instruction_list_reveal_drag_begin_ex(bool, char);
+                extern void clock_main_leftpage_follow_begin(void);
                 s_face_swipe_locked = true;
                 s_face_swipe_route = 1;
-                instruction_list_reveal_drag_begin_ex(true, 0);
+                clock_main_leftpage_follow_begin();
             }
             else
             {
@@ -1404,12 +1410,10 @@ static void face_swipe_catcher_cb(lv_event_t *e)
                 clock_main_applist_follow_begin();
             }
         }
-        else if (!s_face_swipe_locked && dy > slop && LV_ABS(dy) > LV_ABS(dx))
+        else if (!s_face_swipe_locked && LV_ABS(dy) > slop && LV_ABS(dy) > LV_ABS(dx))
         {
-            /* 只認**往下**拉（dy > slop，不是 |dy|）：控制中心 2026-08-06 搬進
-               頂部面板之後，錶盤下面已經沒有頁了，往上拉不該有任何反應
-               （founder）。原本兩個方向都 claim，往上拉會 claim 之後跟著空滑
-               再彈回去 —— 看起來就像「有反應但沒東西」。 */
+            /* ADR-0020:垂直雙向都認 —— 往下拉開通知面板,往上拉開下方的
+               控制中心 + App List 頁(2026-08-06 拿掉的 DOWN 頁恢復)。 */
             extern void clock_main_notify_follow_begin(void);
             s_face_swipe_locked = true;
             s_face_swipe_route = 3;
@@ -1421,8 +1425,8 @@ static void face_swipe_catcher_cb(lv_event_t *e)
         }
         if (s_face_swipe_locked && s_face_swipe_route == 1)
         {
-            extern void instruction_list_reveal_drag_update(lv_coord_t);
-            instruction_list_reveal_drag_update(dx);
+            extern void clock_main_leftpage_follow_update(lv_coord_t);
+            clock_main_leftpage_follow_update(dx);
         }
         else if (s_face_swipe_locked && s_face_swipe_route == 2)
         {
@@ -1442,8 +1446,8 @@ static void face_swipe_catcher_cb(lv_event_t *e)
             lv_coord_t dx = pt.x - s_face_swipe_start_x;
             lv_point_t v;
             lv_indev_get_vect(indev, &v);
-            extern void instruction_list_reveal_drag_end(lv_coord_t, lv_coord_t);
-            instruction_list_reveal_drag_end(dx, v.x);
+            extern void clock_main_leftpage_follow_end(lv_coord_t, lv_coord_t);
+            clock_main_leftpage_follow_end(dx, v.x);
         }
         else if (s_face_swipe_locked && s_face_swipe_route == 2)
         {

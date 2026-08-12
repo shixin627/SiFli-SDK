@@ -380,6 +380,8 @@ static bool mode_swipe_is_commit = false;
 // 每個 mode 用一個 480×480 透明容器包，切換時整組移動
 static lv_obj_t *mode_container[HID_MODE_COUNT] = {NULL};
 static void apply_hid_mode(hid_mode_t mode);
+/* R40:鍵盤模式 UI 延遲建立(38KB,見 mode_set_visible 的說明)。 */
+static void kbd_ensure_built(void);
 
 // keyboard mode 下半部 mic 區前置宣告
 static void create_kbd_mic_section(lv_obj_t *parent);
@@ -607,6 +609,8 @@ static void bar_ai_on_tap(void); /* fwd：tap 當下立刻收自有底部 bar（
 
 // Keyboard mode 下半部 mic 區（mic 按鈕 + 右側鍵盤按鈕，跟 keyboard 互換顯示）
 static lv_obj_t *kbd_mic_section = NULL;
+/* R40:鍵盤模式 UI 是否已建(延遲建立,38KB)。teardown 時歸 false。 */
+static bool s_kbd_ui_built = false;
 static lv_obj_t *kbd_mic_section_mic_btn = NULL;
 static lv_obj_t *kbd_mic_section_mic_img = NULL; // 中央 mic icon，V2T 開關時切圖
 static lv_obj_t *kbd_mic_section_mic_pulse = NULL; // V2T active 時的脈衝圓
@@ -7185,6 +7189,14 @@ static void kbd_mode_extras_sync(void)
 
 static void mode_set_visible(hid_mode_t mode, bool visible)
 {
+    /* R40:鍵盤模式那一整套 UI 改成**第一次真的要顯示時才建**。量測結果:滑鼠圖層
+       共 41.7KB,其中 create_keyboard_mode_ui 一支就 38KB(trackpad 只有 3.6KB)——
+       而從媒體欄進來的人用的是 trackpad,鍵盤常常整個 session 都沒用到。這 38KB 正
+       是「進滑鼠頁只剩 6KB、退出時亮 tileview 就 sys memory is full」的元凶。
+       這裡是所有進鍵盤路徑(apply_hid_mode / expand 動畫 / 直接 set_visible)的共同
+       關卡,掛在這一個點就全覆蓋。 */
+    if (mode == HID_MODE_KEYBOARD && visible)
+        kbd_ensure_built();
     if (mode_container[mode] && lv_obj_is_valid(mode_container[mode]))
     {
         if (visible)
@@ -7546,9 +7558,8 @@ static void create_trackpad_mode_ui(lv_obj_t *parent)
     lv_obj_set_style_pad_all(trackpad_mic_btn, 0, LV_PART_MAIN);
     lv_obj_clear_flag(trackpad_mic_btn, LV_OBJ_FLAG_SCROLLABLE);
     lv_obj_clear_flag(trackpad_mic_btn, LV_OBJ_FLAG_CLICKABLE);
-    /* 底部的 skaibar_img 已移除(founder 2026-08-03):語音輸入改由鍵盤模式的第四站進入,
-       這條 bar 不再是入口,留著一張看得到卻沒作用的圖只會誤導。容器本身保留 —— 底部
-       bar 的多工提示/手勢狀態機還掛在上面。 */
+    /* 底部的入口圖在 s_top_logo(hosted 模式顯示 skaibar_img,見其建立處);這個
+       容器只承載底部 bar 的多工提示/手勢狀態機,不再放第二張圖。 */
 
     #if SHOW_SCROLL_ZONE_DEBUG
     {
@@ -7643,6 +7654,24 @@ static void keyboard_mode_container_hit_test_cb(lv_event_t *e)
         is_point_in_right_arc(info->point) ||
         is_point_in_center_scroll_zone(info->point))
         info->res = false;
+}
+
+/* R40:第一次要顯示鍵盤模式時才建它的 UI(38KB)。所有進鍵盤的路徑都會經過
+   mode_set_visible(HID_MODE_KEYBOARD, true),那裡是唯一呼叫點。 */
+static void create_keyboard_mode_ui(lv_obj_t *parent);
+
+static void kbd_ensure_built(void)
+{
+    if (s_kbd_ui_built)
+        return;
+    lv_obj_t *kc = mode_container[HID_MODE_KEYBOARD];
+    if (kc == NULL || !lv_obj_is_valid(kc))
+        return;
+    s_kbd_ui_built = true; /* 先立旗:建構過程若間接再進來,不會遞迴重建 */
+    extern void clock_main_heap_log(const char *tag);
+    clock_main_heap_log("kbd-build:before");
+    create_keyboard_mode_ui(kc);
+    clock_main_heap_log("kbd-build:after");
 }
 
 static void create_keyboard_mode_ui(lv_obj_t *parent)
@@ -10200,6 +10229,8 @@ static void bottom_logo_cb(lv_event_t *e)
         return;
     if (current_hid_mode == HID_MODE_KEYBOARD)
         return; /* 已經在輸入畫面 */
+    /* founder 2026-08-11 R8:底部這張圖(hosted 顯示 skaibar_img)tap = 開**原本
+       按鍵盤那個輸入模式** —— 只換圖,行為不變(R7 一度改成開 session,改回)。 */
     /* 2026-08-07 founder:「叫出輸入模式時可以看到他從下面出來嗎」——可以,
        start_trackpad_to_kbd_expand_anim() 這條進場動畫本來就寫好了(輸入框從
        底部那條 176×31 的 bar 長出來、下半部 translate_y 由下往上、350ms
@@ -10899,10 +10930,19 @@ void lv_create_mouse_screen(lv_obj_t *scr)
         lv_obj_clear_flag(mode_container[i], LV_OBJ_FLAG_CLICKABLE);
     }
 
+    /* R39 診斷:量到滑鼠圖層整層要 ~41.7KB,而進來前只剩 ~47KB —— 退出時要同時亮
+       tileview 就爆。先切開看是誰吃的(trackpad / keyboard 兩段最大),別再猜。
+       穩定後連同其他 [heap] 診斷一起移除。 */
+    extern void clock_main_heap_log(const char *tag);
+    clock_main_heap_log("mouse-ui:containers");
+
     // === Per-mode UI ===
     // 加新元件改下面兩個函式
     create_trackpad_mode_ui(mode_container[HID_MODE_TRACKPAD]);
-    create_keyboard_mode_ui(mode_container[HID_MODE_KEYBOARD]);
+    clock_main_heap_log("mouse-ui:trackpad");
+    /* R40:鍵盤那 38KB 不在這裡建 —— 第一次切進鍵盤模式時由 mode_set_visible →
+       kbd_ensure_built() 建(整個 session 沒用到鍵盤就完全不花)。 */
+    s_kbd_ui_built = false;
 
     // === Cross-mode UI（跨 mode 共用元件）===
     // 向右返回 hint：螢幕左側中央，預設隱藏；超過拖曳門檻會顯示成圓 + 左箭頭
@@ -11025,8 +11065,20 @@ void lv_create_mouse_screen(lv_obj_t *scr)
        所以圖上的 tap 歸自己、圖以外的那條 280×50 仍舊是 skaibar 的 tap/長按。
        zoom 180 = 手寫頁頂部同款(64×64 原圖，渲染 ~45px)。 */
     s_top_logo = lv_img_create(bg);
-    lv_img_set_src(s_top_logo, &keyboard_icon);
-    lv_img_set_zoom(s_top_logo, 180);
+    /* founder 2026-08-11 R7:hosted(錶盤媒體欄進來的)滑鼠頁,底部鍵盤圖換成
+       skaibar_img,tap = 開「目前控制那台」的新 session(bottom_logo_cb 分流)。
+       standalone APP_ID_MOUSE 保持鍵盤圖 = 進輸入。skaibar_img 176x31 原尺寸
+       就是設計大小,不套鍵盤圖的 zoom。 */
+    if (s_pulldown_cb != NULL)
+    {
+        lv_img_set_src(s_top_logo, &skaibar_img);
+        lv_img_set_zoom(s_top_logo, 256);
+    }
+    else
+    {
+        lv_img_set_src(s_top_logo, &keyboard_icon);
+        lv_img_set_zoom(s_top_logo, 180);
+    }
     lv_obj_align(s_top_logo, LV_ALIGN_BOTTOM_MID, 0, -12);
     lv_obj_add_flag(s_top_logo, LV_OBJ_FLAG_CLICKABLE);
     /* 圖本身渲染約 45px,太小不好按(founder 2026-08-07:能按到的範圍要比可視範圍大)。
@@ -11039,13 +11091,14 @@ void lv_create_mouse_screen(lv_obj_t *scr)
     lv_obj_add_event_cb(s_top_logo, chrome_hit_test_cb, LV_EVENT_HIT_TEST, NULL);
     lv_obj_add_event_cb(s_top_logo, bottom_logo_cb, LV_EVENT_CLICKED, NULL);
 
-    // === 媒體中心 pull-down panel（從頂部模式切換條往下拉觸發）===
-    /* 頂部面板 host 模式（s_pulldown_cb 已裝，見 hid_mouse_set_pulldown_cb）不建
-       這層：媒體中心與設備切換都由錶盤頂部面板提供，重複一份只會兩邊打架又吃 RAM
-       （founder 2026-08-06：「APP 內上方的媒體中心可以不要」）。獨立開 APP_ID_MOUSE
-       時 cb 為 NULL，行為與從前完全相同。 */
-    if (s_pulldown_cb == NULL)
-        create_media_center_panel(bg);
+    /* === APP 內建的媒體中心下拉層:整個退役 ==========================================
+       2026-08-06 已先對「面板 host 模式」停建(founder:「APP 內上方的媒體中心可以不
+       要」);ADR-0020 之後媒體中心是錶盤右側每台設備一欄的常駐頁,獨立開 APP_ID_MOUSE
+       時同樣隨時滑得到,所以這一份就是純重複 —— founder 2026-08-12:「滑鼠 app 本來上
+       面是不是還有一個媒體頁面?如果還有的話把那個拿掉,現在有外面的那個就夠了」。
+       連帶好處是 heap:這台只剩 ~40KB,整層 tileview+兩個全螢幕 tile+控制列不再常駐。
+       所有 media_tileview 的使用點本來就都有 NULL 防護(它在 host 模式下一直是 NULL),
+       所以不建它不需要其他改動;offline overlay 取 host 也有 fallback。 */
 
     // 啟動自有底部 bar 的隱藏同步 poll（instruction_list 浮層 bar 顯示時收掉它）
     if (s_bar_ai_sync_timer == NULL)
@@ -11132,6 +11185,7 @@ void hid_mouse_build_ui(lv_obj_t *scr)
     if (scr == lv_scr_act())
         cust_trans_anim_config(CUST_ANIM_TYPE_1, NULL);
     lv_create_mouse_screen(scr);
+    { extern void clock_main_heap_log(const char *tag); clock_main_heap_log("mouse-ui:done"); }
     s_ui_host = scr;
 }
 
@@ -11340,6 +11394,7 @@ void hid_mouse_destroy(void)
     handfree = false;
 
     // Keyboard mode 下半部 mic 區清理
+    s_kbd_ui_built = false; /* R40:圖層拆了,下次進鍵盤要重建 */
     kbd_mic_section = NULL;
     kbd_mic_section_mic_btn = NULL;
     kbd_mic_section_mic_img = NULL;

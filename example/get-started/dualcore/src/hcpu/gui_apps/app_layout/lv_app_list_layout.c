@@ -376,6 +376,48 @@ lv_obj_t *lv_app_list_layout_create(lv_obj_t *parent)
     return container;
 }
 
+/* ADR-0020:App List 以「區段」形式嵌進控制中心的捲動容器(下方上拉頁)。
+   自己不捲動 —— 高度 = 內容高,捲動交給外層 parent;也不掛 arc_scroll
+   (外層是複合頁,弧捲的 slot 對位在這裡沒有意義,先用觸控捲動)。 */
+lv_obj_t *lv_app_list_layout_create_embedded(lv_obj_t *parent, lv_coord_t y_top)
+{
+    uint8_t count = APP_LIST_COUNT;
+    uint8_t rows = (count + APP_LIST_COLS - 1) / APP_LIST_COLS;
+
+    lv_obj_t *container = lv_obj_create(parent);
+    lv_obj_remove_style_all(container);
+    lv_obj_set_size(container, LV_HOR_RES, rows * APP_LIST_CELL_H + 40);
+    lv_obj_set_pos(container, 0, y_top);
+    lv_obj_clear_flag(container, LV_OBJ_FLAG_SCROLLABLE);
+
+    for (uint8_t i = 0; i < count; i++)
+    {
+        uint8_t row = i / APP_LIST_COLS;
+        uint8_t col = i % APP_LIST_COLS;
+
+        lv_obj_t *cell = lv_obj_create(container);
+        lv_obj_remove_style_all(cell);
+        lv_obj_set_size(cell, APP_LIST_CELL_W, APP_LIST_CELL_H);
+        lv_obj_clear_flag(cell, LV_OBJ_FLAG_SCROLLABLE);
+        lv_obj_set_pos(cell, APP_LIST_PAD_H + col * APP_LIST_CELL_W,
+                       row * APP_LIST_CELL_H);
+
+        lv_obj_t *icon = lv_img_create(cell);
+        lv_img_set_src(icon, get_app_list_icon(APP_LIST_ITEMS[i]));
+        lv_img_set_zoom(icon, 330);
+        lv_obj_center(icon);
+
+        lv_obj_add_flag(cell, LV_OBJ_FLAG_CLICKABLE);
+        /* 垂直軸交還外層,拖曳從 cell 上開始也能捲動整頁。 */
+        lv_obj_add_flag(cell, LV_OBJ_FLAG_SCROLL_CHAIN_VER);
+        lv_obj_add_event_cb(cell, app_list_item_click_cb, LV_EVENT_CLICKED,
+                            (void *)get_app_id_str(APP_LIST_ITEMS[i]));
+    }
+
+    LOG_I("App list embedded: %d apps at y=%d", count, (int)y_top);
+    return container;
+}
+
 /* Reset the app grid back to its top row. Called when the App List page is about
    to be revealed (the right-edge pull) so re-entering it always starts at the top
    instead of wherever the last visit left it scrolled. */

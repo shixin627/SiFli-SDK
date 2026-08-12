@@ -66,6 +66,8 @@ typedef enum
 LV_IMG_DECLARE(sun);
 LV_IMG_DECLARE(mouse_mode_icon);
 LV_IMG_DECLARE(device_btn);
+LV_IMG_DECLARE(img_left_arrow);
+LV_IMG_DECLARE(img_right_arrow);
 
 #define NOTIFICATION_ITEM_WIDTH 360
 #define NOTIFICATION_ITEM_HEIGHT 90
@@ -82,24 +84,27 @@ LV_IMG_DECLARE(device_btn);
 static lv_obj_t *app_clock_main_status_bar;
 static lv_obj_t *app_clock_main_status_bar_down;
 
-/* 頂部面板的兩個「停車位」(founder 2026-08-10)。
-   面板本體平常掛在 (1,0)（錶盤正上方）；從 session tile (2,1) 下拉時,把面板的所有子
-   物件整批搬到同一欄正上方的 (2,0),這樣下拉就是同一欄的垂直捲動 —— 全程跟手、沒有
-   先跳回錶盤那一下（founder:「按下去的瞬間為什麼會跳到錶盤才能拉下」）。手勢結束或
-   離開面板時再搬回 (1,0),錶盤自己的下拉才不會落空。
-   為什麼是搬子物件而不是搬整個面板:lv_top_panel_create 把設備列 / 圓點 / pager 等
-   直接掛在傳進去的 tile 上,沒有單一 root 可以 reparent。 */
-static lv_obj_t *s_panel_home_tile; /* (1,0) 錶盤上方 */
-
-/* 右側「一台設備一欄」(founder 2026-08-10):欄 2+i = 第 i 台設備的 session 列表,
-   正上方 (2+i,0) 是面板停車位 —— 於是每一欄往下拉,拉出來的都是那一欄那台的媒體頁,
-   而且是同一欄的垂直捲動(不跨欄,零跳轉)。
-   欄的順序 = 設備 registry 的順序,跟頂部面板媒體頁的順序是同一份,所以「左右滑媒體頁」
-   與「左右滑 session 欄」天生對得起來,不需要額外的映射表。 */
-#define SESSION_COL_FIRST 2 /* 錶盤是欄 1;右邊從欄 2 開始 */
-static lv_obj_t *s_session_tile[MAX_SYNCED_DEVICES];
-static lv_obj_t *s_panel_park_tile[MAX_SYNCED_DEVICES];
-static int s_panel_parked_col = -1; /* 面板目前停在哪一欄(-1 = 在錶盤那格) */
+/* ADR-0020 右側「一台設備一欄」的**媒體中心**（founder 2026-08-11 拍板，取代
+   之前的 per-device session 列表）:
+     欄 2       = 手機自己的媒體中心（控制目標 = 手機,active device 清空）
+     欄 2+1+i   = 第 i 台桌面設備的媒體中心（registry 順序）
+   每一欄**正下方** (col,2) 是「滑鼠入口停車位」:從媒體頁往上拉、settle 在那裡
+   = 進入該台的滑鼠模式（lv_top_panel_mouse_enter,控制目標在 settle 時已由
+   media_col_bind 選好）。founder 2026-08-11 R2:「我是要從下往上拉出滑鼠頁面」
+   —— 第一版放在上方,改到下方。退出 = 滑鼠頁頂部下拉
+   (clock_main_mouse_pulldown_reveal),落回同一台的媒體頁。
+   合併後的 session 列表搬到左側 (0,1),見 lv_session_pager.c。 */
+#define MEDIA_COL_FIRST 2 /* 錶盤是欄 1;右邊從欄 2 開始 */
+static lv_obj_t *s_media_tile[MAX_SYNCED_DEVICES];      /* (2+c,1) 媒體欄 */
+static lv_obj_t *s_media_page[MAX_SYNCED_DEVICES];      /* hid_mouse_media_page_create */
+static lv_obj_t *s_mouse_park_tile[MAX_SYNCED_DEVICES]; /* (2+c,2) 滑鼠入口 */
+/* 每欄頂部的設備列(founder R2:「像之前那樣上面顯示設備名稱跟左右箭頭」——
+   復刻舊頂部面板那組:圓點 + 名稱 + 兩顆箭頭)。每欄自帶一份,建在 tile 裡,
+   內容由 media_col_headers_refresh 依 registry / 連線狀態刷新。 */
+static lv_obj_t *s_media_dot[MAX_SYNCED_DEVICES];
+static lv_obj_t *s_media_name[MAX_SYNCED_DEVICES];
+static lv_obj_t *s_media_arr_l[MAX_SYNCED_DEVICES];
+static lv_obj_t *s_media_arr_r[MAX_SYNCED_DEVICES];
 static lv_obj_t *app_clock_ai_status_bar;
 static lv_obj_t *app_clock_device_change_bar;
 static lv_obj_t *status_bar_area_up;
@@ -175,22 +180,12 @@ static void notification_status_bar_cb(lv_event_t *event)
             LOG_I("notification_status_bar_cb from area: %d", area_id);
             if (area_id == STATUS_BAR_AREA_LEFT)
             {
-                /* L/R swap: device_pager is now the LEFT tile. Populate it NOW, on
-                   touch — before the left tile is dragged into view — so its content
-                   follows the finger instead of popping in on release (VALUE_CHANGED
-                   only fires on scroll-settle). Also re-reads the latest bonded set
-                   on every pull-out. */
-                extern void device_pager_refresh(void);
-                device_pager_refresh();
+                /* 左緣 = 合併 session + actions 頁 (0,1)。滑入前先捲回頂端,
+                   重進永遠從最新的列開始。 */
+                extern void session_list_reset_scroll(void);
+                session_list_reset_scroll();
             }
-            else if (area_id == STATUS_BAR_AREA_RIGHT)
-            {
-                /* Reset the App List (col 2) to its top row before it slides in — it's
-                   still off-screen here, so the reset is invisible — so re-entering the
-                   page always starts at the top instead of its last scroll position. */
-                extern void lv_app_list_layout_reset_scroll(void);
-                lv_app_list_layout_reset_scroll();
-            }
+            /* 右緣 = 媒體欄 (2,1),不需要進場準備 —— 內容常駐。 */
             lv_obj_set_tile_id(app_clock_main_status_bar, 1, 1, false);
             lv_obj_clear_flag(app_clock_main_status_bar, LV_OBJ_FLAG_HIDDEN);
             lv_obj_clear_flag(gaus_dial_bg, LV_OBJ_FLAG_HIDDEN);
@@ -199,19 +194,14 @@ static void notification_status_bar_cb(lv_event_t *event)
     }
 }
 
-/* ---- App List finger-follow from a full-screen face swipe ------------------ *
- * The watch-face swipe catcher (app_clock_main.c) calls these on a LEFTWARD pull to
- * drive the App List (col-2 tile) in from the right, finger-following — the same
- * result the 58px right edge zone gives, but the catcher (not the tileview) owns the
- * press, so we forward the scroll ourselves (sole writer → no jitter) and commit/
- * abort with set_tile_id on release; the VALUE_CHANGED settle then re-hides on a
- * land-back-HOME or wires up the App List page state. */
+/* ---- 右側媒體欄 finger-follow（錶面全螢幕 catcher 的向左滑 route）---------- *
+ * 舊名 applist_follow(當時欄 2 是 App List)。往左滑把欄 2(手機媒體中心)拉進來,
+ * catcher 擁有 press,所以 scroll 由我們自己餵(唯一 writer → 不抖),放開用
+ * set_tile_id commit / abort;settle 再收尾。 */
 void clock_main_applist_follow_begin(void)
 {
     if (!app_clock_main_status_bar || !lv_obj_is_valid(app_clock_main_status_bar))
         return;
-    extern void lv_app_list_layout_reset_scroll(void);
-    lv_app_list_layout_reset_scroll();          /* enter at the top row */
     lv_obj_set_tile_id(app_clock_main_status_bar, 1, 1, false); /* snap HOME, no anim */
     lv_obj_clear_flag(app_clock_main_status_bar, LV_OBJ_FLAG_HIDDEN);
     if (gaus_dial_bg && lv_obj_is_valid(gaus_dial_bg))
@@ -219,80 +209,206 @@ void clock_main_applist_follow_begin(void)
     set_clock_main_status_opa(0, false);
 }
 
-/* session tile (2,1) 往下拉 → 頂部面板的媒體頁（founder 2026-08-10）。
-   這兩個 tile 在 tileview 裡不相鄰((2,1) vs (1,0)),所以沒有原生的手指跟隨路徑可走 —
-   先 snap 回 HOME(無動畫,中間那格本來就沒東西可看),再用動畫往上開面板,看起來就是
-   「從這頁把面板拉下來」。落在哪一頁由 lv_top_panel_open_media() 決定,這裡不碰。 */
-/* 開始「從 session tile 下拉頂部面板」的跟手手勢。之後的 update/end 直接用錶盤那組
-   (clock_main_notify_follow_update / _end) —— 同一條 Y 軸、同一個 commit 判準,面板下拉
-   的手感就跟從錶盤拉完全一致(founder 2026-08-10:「我要的是跟我在錶盤拉下通知列表一樣的
-   效果」,原本用 set_tile_id 一次到位所以是瞬移)。
-   殘留:begin 這裡必須把 X 從第 2 欄 snap 回 HOME 欄,因為面板掛在 (1,0),跟 session
-   tile (2,1) 在格子上不相鄰,沒有能同時跟手的路徑。所以手勢一開始的那一瞬間,底下的
-   背景會從 session 列表換成錶面,面板才開始跟著手指下來。要完全無跳,得把面板從
-   tileview 裡搬出來變成浮層 —— 那是另一個範圍的改動,沒有先問過不做。 */
-/* 把面板的子物件整批搬到另一個 tile。取 child 0 反覆搬,所以到達端的順序與來源一致
-   （z-order 保持）。物件指標不會因為換 parent 而失效,lv_top_panel 內部存的那些
-   handle 全部照用。 */
-/* 面板現在停在哪一格(NULL = 錶盤那格)。 */
-static lv_obj_t *session_panel_host(void)
+/* ---- 左頁（合併 session + actions）finger-follow（向右滑 route）------------ *
+ * ADR-0020:左頁從 reveal 浮層改成實體 tile (0,1),向右滑改走原生語意的跟手:
+ * HOME 在 scroll_x==466,左頁在 0,dx>0(向右拖)把 scroll_x 往 0 壓。 */
+/* R45(founder:「中間往右滑沒有像邊緣滑動一樣拉出左側列表,而是用動畫的方式讓列表向右
+   彈出」):這條路徑本來只讓 **tileview** 跟手,而左格是空的透明格 —— 使用者看到的清單
+   其實是 lv_layer_top 上的浮層,它要等 settle 之後才由 instruction_list_open_browse()
+   用動畫飛進來,所以是「先拖了個空的、放手才彈出清單」。左緣那條之所以順,是因為它直接
+   讓**清單本體**跟手(instruction_list_reveal_drag_*)。這裡把同一組跟手一起帶上:
+   tileview 照舊(左頁的 settle 狀態機、session 模式、輪詢都掛在它上面),清單同步跟著
+   手指移動,放手時兩者一起 commit/取消,兩條入口的手感就一致了。 */
+void clock_main_leftpage_follow_begin(void)
 {
-    if (s_panel_parked_col < 0 || s_panel_parked_col >= MAX_SYNCED_DEVICES)
-        return s_panel_home_tile;
-    return s_panel_park_tile[s_panel_parked_col];
-}
-
-/* 把面板的子物件整批搬到第 col 欄的停車位(col < 0 = 搬回錶盤那格)。 */
-static void session_panel_move_to_col(int col)
-{
-    lv_obj_t *src = session_panel_host();
-    lv_obj_t *dst = (col < 0 || col >= MAX_SYNCED_DEVICES) ? s_panel_home_tile
-                                                           : s_panel_park_tile[col];
-    if (!src || !dst || !lv_obj_is_valid(src) || !lv_obj_is_valid(dst) || src == dst)
-    {
-        s_panel_parked_col = (col >= 0 && col < MAX_SYNCED_DEVICES) ? col : -1;
+    if (!app_clock_main_status_bar || !lv_obj_is_valid(app_clock_main_status_bar))
         return;
+    extern void session_list_reset_scroll(void);
+    session_list_reset_scroll();
+    lv_obj_set_tile_id(app_clock_main_status_bar, 1, 1, false);
+    lv_obj_clear_flag(app_clock_main_status_bar, LV_OBJ_FLAG_HIDDEN);
+    if (gaus_dial_bg && lv_obj_is_valid(gaus_dial_bg))
+        lv_obj_clear_flag(gaus_dial_bg, LV_OBJ_FLAG_HIDDEN);
+    set_clock_main_status_opa(0, false);
+    /* 清單同步從左邊緣park好,接下來跟著手指進來(from_left=true:與手指方向一致)。 */
+    {
+        extern void instruction_list_reveal_drag_begin_ex(bool from_left, char filter);
+        instruction_list_reveal_drag_begin_ex(true, 0);
     }
-    while (lv_obj_get_child_cnt(src) > 0)
-        lv_obj_set_parent(lv_obj_get_child(src, 0), dst);
-    s_panel_parked_col = (col >= 0 && col < MAX_SYNCED_DEVICES) ? col : -1;
 }
 
-/* hid_mouse.h 在本檔這個位置還沒被 include（它在下方才進來），而 registry 的順序是欄位
-   順序的唯一真相 —— 沿用本檔既有的就地 extern 慣例。 */
+void clock_main_leftpage_follow_update(lv_coord_t dx)
+{
+    if (!app_clock_main_status_bar || !lv_obj_is_valid(app_clock_main_status_bar))
+        return;
+    lv_coord_t sx = LV_HOR_RES - dx; /* dx>0 (向右) -> sx 從 466 往 0 */
+    if (sx < 0) sx = 0;
+    if (sx > LV_HOR_RES) sx = LV_HOR_RES;
+    lv_obj_scroll_to_x(app_clock_main_status_bar, sx, LV_ANIM_OFF);
+    {
+        extern void instruction_list_reveal_drag_update(lv_coord_t dx);
+        instruction_list_reveal_drag_update(dx);
+    }
+}
+
+void clock_main_leftpage_follow_end(lv_coord_t dx, lv_coord_t vx)
+{
+    if (!app_clock_main_status_bar || !lv_obj_is_valid(app_clock_main_status_bar))
+        return;
+    bool open_it = (dx >= LV_HOR_RES / 4) || (vx > 6);
+    /* 清單先收尾(它自己用同一組門檻決定 commit / 彈回),再讓 tileview 落位;順序反過來
+       的話 settle 會先跑 open_browse,和清單自己的收尾動畫打架。 */
+    {
+        extern void instruction_list_reveal_drag_end(lv_coord_t dx, lv_coord_t vx);
+        instruction_list_reveal_drag_end(dx, vx);
+    }
+    lv_obj_set_tile_id(app_clock_main_status_bar, open_it ? 0 : 1, 1, true);
+}
+
+/* ---- 媒體欄數 / 方向旗標 ---------------------------------------------------- *
+ * 欄數 = 1(手機) + 桌面設備數,夾在 [1, MAX_SYNCED_DEVICES]。格子開機建滿,能不能
+ * 滑到由 tile->dir 決定;設備數變動時重算並**當場**重設 scroll_dir(lv_tileview 在
+ * 發 VALUE_CHANGED 前就複製了 dir,慢一拍等於這次 settle 無效 —— 2026-08-11 踩過)。 */
 extern int hid_mouse_device_count(void);
 extern int hid_mouse_active_device_index(void);
 
-/* 讓「滑得到的欄數」跟著設備數走。
-   格子是開機時就建滿 MAX_SYNCED_DEVICES 的（tileview 不能事後抽換格子），所以擋住多餘
-   欄位的唯一辦法是改每一格註冊時的方向旗標 —— founder 2026-08-10 實測:只在 settle 裡
-   夾住「顯示哪一台」完全沒用,他一路滑過四欄全是空白背景,因為能不能往右滑是 tileview
-   讀 tile->dir 決定的,跟我們的顯示邏輯無關。
-   最後一欄不給 LV_DIR_RIGHT;第 0 欄保留 LV_DIR_LEFT 回錶盤。設備數會變(配對/離線),
-   所以每次 settle 都重算一次,成本只是幾個賦值。 */
-static int session_col_count(void);
-static void session_cols_apply_dirs(int col_count);
-
-/* 更新旗標,並**當場**把捲動方向重設到 tileview 上。
-   為什麼不能只改 tile->dir 就算了:lv_tileview 的 SCROLL_END 是
-       dir = tile->dir;  →  lv_event_send(VALUE_CHANGED);  →  lv_obj_set_scroll_dir(obj, dir);
-   它在發事件**之前**就把 dir 複製進區域變數,所以我們在 VALUE_CHANGED 裡改到的值,這一次
-   settle 根本用不到 —— 永遠慢一拍。開機當下 BLE 還沒好(log 有 conv list req FAILED),
-   設備數是 1,第 0 欄因此沒開右邊,之後即使算出 2 也套不進去,使用者就是滑不到第二欄
-   (founder 2026-08-11:「不能到第1頁」)。 */
-static void session_cols_refresh(void)
+static int media_col_count(void)
 {
-    int col_count = session_col_count();
+    int n = 1 + hid_mouse_device_count(); /* 手機恆佔第一欄 */
+    if (n < 1) n = 1;
+    if (n > MAX_SYNCED_DEVICES) n = MAX_SYNCED_DEVICES;
+    return n;
+}
+
+static void media_cols_apply_dirs(int col_count)
+{
+    for (int c = 0; c < MAX_SYNCED_DEVICES; c++)
+    {
+        /* LEFT = 回錶盤方向;BOTTOM = 往上拉出下方的滑鼠入口(founder R2)。 */
+        lv_dir_t d = LV_DIR_LEFT | LV_DIR_BOTTOM;
+        if (c + 1 < col_count)
+            d |= LV_DIR_RIGHT;
+        if (s_media_tile[c] && lv_obj_is_valid(s_media_tile[c]))
+            ((lv_tileview_tile_t *)s_media_tile[c])->dir = d;
+        /* 停車位只准往上收回媒體頁(settle 在這裡本來就立刻切進滑鼠圖層)。 */
+        if (s_mouse_park_tile[c] && lv_obj_is_valid(s_mouse_park_tile[c]))
+            ((lv_tileview_tile_t *)s_mouse_park_tile[c])->dir = LV_DIR_TOP;
+    }
+}
+
+/* ── 媒體欄頂部設備列(復刻舊頂部面板那組,座標同 DEV_DOT_Y/DEV_LABEL_Y/
+   DEV_ARROW_DX/DEV_ARROW_Y = 26/40/117/42)── */
+extern const char *hid_mouse_device_name(int idx);
+extern bool hid_mouse_device_online(int idx);
+
+static void media_col_headers_refresh(void)
+{
+    int count = media_col_count();
+    for (int c = 0; c < MAX_SYNCED_DEVICES; c++)
+    {
+        if (s_media_name[c] == NULL || !lv_obj_is_valid(s_media_name[c]))
+            continue;
+        const char *name;
+        bool online;
+        if (c == 0)
+        {
+            name = LV_EXT_STR_GET_BY_KEY(connected_phone, "Phone");
+            online = get_bluetooth_connection_status();
+        }
+        else
+        {
+            name = hid_mouse_device_name(c - 1);
+            online = hid_mouse_device_online(c - 1);
+        }
+        lv_label_set_text(s_media_name[c], (name && name[0]) ? name : "");
+        if (s_media_dot[c] && lv_obj_is_valid(s_media_dot[c]))
+            lv_obj_set_style_bg_color(s_media_dot[c],
+                                      online ? lv_color_hex(0x4CAF50)
+                                             : lv_color_hex(0xFF3B30),
+                                      0);
+        /* 不循環(沿用舊面板規則):到底那一側的箭頭消失。左端(欄 2 = 手機)
+           左箭頭也收掉 —— 回錶盤走原生左滑,不用箭頭。 */
+        if (s_media_arr_l[c] && lv_obj_is_valid(s_media_arr_l[c]))
+        {
+            if (c > 0) lv_obj_clear_flag(s_media_arr_l[c], LV_OBJ_FLAG_HIDDEN);
+            else lv_obj_add_flag(s_media_arr_l[c], LV_OBJ_FLAG_HIDDEN);
+        }
+        if (s_media_arr_r[c] && lv_obj_is_valid(s_media_arr_r[c]))
+        {
+            if (c + 1 < count) lv_obj_clear_flag(s_media_arr_r[c], LV_OBJ_FLAG_HIDDEN);
+            else lv_obj_add_flag(s_media_arr_r[c], LV_OBJ_FLAG_HIDDEN);
+        }
+    }
+}
+
+/* 箭頭 = 走一格到隔壁欄(原生動畫換頁,settle 自己收尾)。user_data = 目標欄。 */
+static void media_arrow_cb(lv_event_t *e)
+{
+    int target_col = (int)(intptr_t)lv_event_get_user_data(e);
+    int count = media_col_count();
+    if (target_col < MEDIA_COL_FIRST || target_col >= MEDIA_COL_FIRST + count)
+        return;
+    if (app_clock_main_status_bar && lv_obj_is_valid(app_clock_main_status_bar))
+        lv_obj_set_tile_id(app_clock_main_status_bar, (uint8_t)target_col, 1, true);
+}
+
+static void media_col_header_build(int c)
+{
+    lv_obj_t *tile = s_media_tile[c];
+    if (tile == NULL || !lv_obj_is_valid(tile))
+        return;
+
+    s_media_dot[c] = lv_obj_create(tile);
+    lv_obj_remove_style_all(s_media_dot[c]);
+    lv_obj_set_size(s_media_dot[c], 10, 10);
+    lv_obj_align(s_media_dot[c], LV_ALIGN_TOP_MID, 0, 26);
+    lv_obj_set_style_radius(s_media_dot[c], LV_RADIUS_CIRCLE, 0);
+    lv_obj_set_style_bg_opa(s_media_dot[c], LV_OPA_COVER, 0);
+    lv_obj_set_style_bg_color(s_media_dot[c], lv_color_hex(0x4CAF50), 0);
+    lv_obj_clear_flag(s_media_dot[c], LV_OBJ_FLAG_CLICKABLE);
+
+    s_media_name[c] = lv_label_create(tile);
+    lv_obj_set_width(s_media_name[c], 200);
+    lv_label_set_long_mode(s_media_name[c], LV_LABEL_LONG_DOT);
+    lv_obj_set_style_text_align(s_media_name[c], LV_TEXT_ALIGN_CENTER, 0);
+    lv_obj_set_style_text_color(s_media_name[c], lv_color_hex(0xFFFFFF), 0);
+    lv_obj_set_style_text_opa(s_media_name[c], LV_OPA_80, 0);
+    lv_label_set_text(s_media_name[c], "");
+    lv_obj_align(s_media_name[c], LV_ALIGN_TOP_MID, 0, 40);
+    lv_obj_clear_flag(s_media_name[c], LV_OBJ_FLAG_CLICKABLE);
+
+    s_media_arr_l[c] = lv_img_create(tile);
+    lv_img_set_src(s_media_arr_l[c], &img_left_arrow);
+    lv_obj_align(s_media_arr_l[c], LV_ALIGN_TOP_MID, -117, 42);
+    lv_obj_add_flag(s_media_arr_l[c], LV_OBJ_FLAG_CLICKABLE);
+    lv_obj_set_ext_click_area(s_media_arr_l[c], 24);
+    lv_obj_add_event_cb(s_media_arr_l[c], media_arrow_cb, LV_EVENT_CLICKED,
+                        (void *)(intptr_t)(MEDIA_COL_FIRST + c - 1));
+    lv_obj_add_flag(s_media_arr_l[c], LV_OBJ_FLAG_HIDDEN);
+
+    s_media_arr_r[c] = lv_img_create(tile);
+    lv_img_set_src(s_media_arr_r[c], &img_right_arrow);
+    lv_obj_align(s_media_arr_r[c], LV_ALIGN_TOP_MID, 117, 42);
+    lv_obj_add_flag(s_media_arr_r[c], LV_OBJ_FLAG_CLICKABLE);
+    lv_obj_set_ext_click_area(s_media_arr_r[c], 24);
+    lv_obj_add_event_cb(s_media_arr_r[c], media_arrow_cb, LV_EVENT_CLICKED,
+                        (void *)(intptr_t)(MEDIA_COL_FIRST + c + 1));
+    lv_obj_add_flag(s_media_arr_r[c], LV_OBJ_FLAG_HIDDEN);
+}
+
+/** 設備清單有變時呼叫:右側可滑的媒體欄數跟著設備數走。 */
+void clock_main_media_cols_refresh(void)
+{
+    int col_count = media_col_count();
     static int s_last_logged = -1;
     if (col_count != s_last_logged)
     {
         s_last_logged = col_count;
-        LOG_W("[sp-col] reachable session columns = %d (devices=%d)", col_count,
+        LOG_W("[media-col] reachable columns = %d (devices=%d)", col_count,
               hid_mouse_device_count());
     }
-    session_cols_apply_dirs(col_count);
-    /* 重設當前 tile 的方向:上面那段時序讓 tileview 手上握著舊值,不重設的話新旗標要等
-       下一次 settle 才生效,而使用者正是因為滑不動才沒有下一次 settle。 */
+    media_cols_apply_dirs(col_count);
+    media_col_headers_refresh();
     if (app_clock_main_status_bar && lv_obj_is_valid(app_clock_main_status_bar))
     {
         lv_obj_t *act = lv_tileview_get_tile_act(app_clock_main_status_bar);
@@ -302,139 +418,167 @@ static void session_cols_refresh(void)
     }
 }
 
-/** 設備清單有變 / session 列表有更新時呼叫：右側可滑的欄數跟著設備數走。 */
-void clock_main_session_cols_refresh(void)
+/* 滑鼠模式頂部下拉(founder 2026-08-11 R2/R4:「抓著上面往下把滑鼠頁面拉掉,顯示
+   下面的媒體頁面」)。
+   R3 的做法(async 退出+吞 press)在真機仍會拉出通知面板:destroy 讓 indev reset,
+   把 wait_release 也清掉,殘餘拖曳照樣被 tileview 用舊的四向 scroll_dir 接走。
+   改用**跟舊面板 reveal 完全同一套交棒機制**(該機制在真機驗證過):下拉判定當下
+   **不拆滑鼠**,只把主 tileview 亮在該欄的滑鼠停車格 (col,2) —— hid_mouse 的頂
+   部帶沒有 PRESS_LOCK,press 下一 tick 自然轉給 tileview,往下拖就是停車格→媒體
+   頁的**原生跟手**。settle 落在媒體頁(row 1)才真正退出滑鼠模式;落回停車格 =
+   取消,tileview 收回、滑鼠模式原樣繼續。 */
+static bool s_mouse_pull_reveal = false; /* reveal 的 snap settle 與取消 settle 區分用 */
+
+/* R36 診斷:滑鼠頁進出一直撞 `sys memory is full!`,但 founder 指出「以前頁面更多卻
+   不會死」—— 所以要先量出**峰值到底發生在哪一步、差多少**,不要再靠猜砍東西。在每個
+   轉換點印 heap(RT-Thread 主 heap,單位 byte)。穩定後連同 R22/R28 診斷一起移除。 */
+void clock_main_heap_log(const char *tag)
 {
-    session_cols_refresh();
+    rt_uint32_t total = 0, used = 0, mx = 0;
+    rt_memory_info(&total, &used, &mx);
+    LOG_W("[heap] %s used=%u free=%u max=%u", tag ? tag : "?", (unsigned)used,
+          (unsigned)(total - used), (unsigned)mx);
 }
 
-static void session_cols_apply_dirs(int col_count)
+void clock_main_mouse_pulldown_reveal(void)
 {
-    for (int c = 0; c < MAX_SYNCED_DEVICES; c++)
-    {
-        lv_dir_t d = LV_DIR_LEFT;
-        if (c + 1 < col_count)
-            d |= LV_DIR_RIGHT;
-        if (s_session_tile[c] && lv_obj_is_valid(s_session_tile[c]))
-            ((lv_tileview_tile_t *)s_session_tile[c])->dir = d;
-        /* 停車位只上下:面板自己的左右換頁是它內部的 pager,不是 tileview 的欄。 */
-        if (s_panel_park_tile[c] && lv_obj_is_valid(s_panel_park_tile[c]))
-            ((lv_tileview_tile_t *)s_panel_park_tile[c])->dir = LV_DIR_VER;
-    }
+    if (!app_clock_main_status_bar || !lv_obj_is_valid(app_clock_main_status_bar))
+        return;
+    clock_main_heap_log("reveal-enter");
+    int dev = hid_mouse_active_device_index();
+    int col = MEDIA_COL_FIRST + ((dev >= 0) ? dev + 1 : 0);
+    if (col >= MEDIA_COL_FIRST + media_col_count())
+        col = MEDIA_COL_FIRST;
+    s_mouse_pull_reveal = true; /* set_tile_id 會同步發 settle,先立旗 */
+    /* R34:這一刻是全機記憶體峰值 —— 滑鼠圖層還在,又要把 tileview/媒體頁亮出來給
+       手指接手,實測就是在這裡 `sys memory is full!` 然後 EPIC render list 掛掉。
+       全螢幕的模糊底圖(gaus_dial_bg / gaus_dial_img)此時**完全被滑鼠圖層蓋住、看
+       不到**,卻照樣進繪製清單吃合成緩衝。先收掉它,settle 收尾本來就會依落點決定
+       要不要重新顯示,所以不影響之後的畫面。 */
+    if (gaus_dial_bg && lv_obj_is_valid(gaus_dial_bg))
+        lv_obj_add_flag(gaus_dial_bg, LV_OBJ_FLAG_HIDDEN);
+    set_clock_main_status_opa(LV_OPA_TRANSP, false);
+    lv_obj_set_tile_id(app_clock_main_status_bar, (uint8_t)col, 2, false);
+    lv_obj_clear_flag(app_clock_main_status_bar, LV_OBJ_FLAG_HIDDEN);
+    clock_main_media_cols_refresh(); /* 當場套上停車格的 LV_DIR_TOP */
+    LOG_W("[media-col] mouse pulldown reveal at col %d", col);
+    clock_main_heap_log("reveal-done");
 }
 
-/* 有幾欄是真的:設備數,但至少 1 —— 一台都沒有時仍留一欄,使用者才有地方看到空狀態
-   和「按麥克風開新的」,而不是右邊整片消失。 */
-static int session_col_count(void)
+/* 滑鼠頁底部 skaibar tap(founder 2026-08-11 R6):開「目前控制那台」的新 session,
+   UI 同左頁 —— 退出滑鼠、切到左頁 (0,1)、對那台發 conv_new;清單推回來後
+   session pager 自動 walk-in 進聊天室。從 hid_mouse 的事件鏈進來,退出會拆它
+   自己 → async 到下一輪再做。 */
+static void open_device_session_async_cb(void *unused)
 {
-    int n = hid_mouse_device_count();
-    if (n < 1) n = 1;
-    if (n > MAX_SYNCED_DEVICES) n = MAX_SYNCED_DEVICES;
-    return n;
+    (void)unused;
+    extern void lv_top_panel_mouse_exit(void);
+    extern void session_list_open_new_for_device(const char *device_id);
+    extern const char *hid_mouse_device_id(int idx);
+    /* 先記下目標再退出(registry 是全域資料,退出不清 active,但保險起見先取)。 */
+    int dev = hid_mouse_active_device_index();
+    const char *dev_id = (dev >= 0) ? hid_mouse_device_id(dev) : NULL;
+    session_list_open_new_for_device(dev_id); /* NULL = 預設目標(active/第0台) */
+    lv_top_panel_mouse_exit();
+    if (!app_clock_main_status_bar || !lv_obj_is_valid(app_clock_main_status_bar))
+        return;
+    extern void session_list_reset_scroll(void);
+    session_list_reset_scroll();
+    lv_obj_set_tile_id(app_clock_main_status_bar, 0, 1, false); /* 左頁 */
+    lv_obj_clear_flag(app_clock_main_status_bar, LV_OBJ_FLAG_HIDDEN);
+    if (gaus_dial_bg && lv_obj_is_valid(gaus_dial_bg))
+        lv_obj_clear_flag(gaus_dial_bg, LV_OBJ_FLAG_HIDDEN);
+    LOG_W("[media-col] skaibar tap -> new session on %s",
+          dev_id ? dev_id : "(default)");
 }
 
-/* 面板不在錶盤那格時,任何「不是停在 session 面板」的 settle 都要把它搬回去,否則
-   錶盤自己的下拉會拉出一格空白。 */
-static void session_panel_park_home(void)
+void clock_main_open_device_session(void)
 {
-    if (s_panel_parked_col >= 0)
-        session_panel_move_to_col(-1);
+    lv_async_call(open_device_session_async_cb, NULL);
 }
 
-/* 目前捲動位置換算成欄 / 列。tile 加入順序的索引(active_pos)在補了 8 格之後已經沒有
-   可讀性,而格子座標本來就是我們要的語意。 */
-static int session_scroll_col(lv_obj_t *tv)
+/* 目前捲動位置換算成欄 / 列（tile 加入順序的 active_pos 在補格之後沒有可讀性）。 */
+static int media_scroll_col(lv_obj_t *tv)
 {
     return (int)((lv_obj_get_scroll_x(tv) + LV_HOR_RES / 2) / LV_HOR_RES);
 }
-static int session_scroll_row(lv_obj_t *tv)
+static int media_scroll_row(lv_obj_t *tv)
 {
     return (int)((lv_obj_get_scroll_y(tv) + LV_VER_RES / 2) / LV_VER_RES);
 }
 
-/* 面板停在哪一欄,由它「現在在哪一頁」決定(founder 2026-08-10):
-     設備媒體頁 → session 欄 (2,0),往上收回到那台設備的 session 列表
-     通知列表 / 控制中心(手機範疇) → 錶盤欄 (1,0),往上收回到錶盤
-   面板是全螢幕的,而且兩欄的第 0 列都只有它,所以在 row 0 換欄的瞬間畫面完全一樣 —
-   使用者看不到任何位移,只有「往上收會回到哪裡」跟著改變。
-   由 lv_top_panel 在自己換頁 settle 時呼叫。 */
-void clock_main_panel_park_for_page(bool device_page)
+/* settle 在欄 col:曲名路由綁到那一欄的媒體頁,控制目標換成那一台。
+   欄 2 = 手機:清掉 active device(控制目標回到手機,媒體資訊走手機自己那份)。 */
+static void media_col_bind(int col)
 {
-    if (!app_clock_main_status_bar || !lv_obj_is_valid(app_clock_main_status_bar))
+    int c = col - MEDIA_COL_FIRST;
+    if (c < 0 || c >= MAX_SYNCED_DEVICES)
         return;
-    if (!s_panel_home_tile)
+    if (s_media_page[c] == NULL || !lv_obj_is_valid(s_media_page[c]))
         return;
-    /* 只有面板正開著(停在第 0 列)才需要換欄;沒開著的話 park 由既有路徑處理。 */
-    if (lv_obj_get_scroll_y(app_clock_main_status_bar) != 0)
-        return;
-    /* 設備媒體頁 → 停在「那一台自己的欄」,所以往上收回的是那台的 session 列表。
-       欄號直接取自面板正在顯示的設備索引,跟 registry 同一份順序。 */
-    int want_col = -1;
-    if (device_page)
+    extern void hid_mouse_media_page_bind(lv_obj_t *page);
+    extern void hid_mouse_media_page_reset_title(lv_obj_t *page);
+    extern void hid_mouse_clear_active_device(void);
+    extern void hid_mouse_set_active_device_index(int idx);
+    hid_mouse_media_page_bind(s_media_page[c]);
+    if (c == 0)
     {
-        int dev = hid_mouse_active_device_index();
-        if (dev < 0) dev = 0;
-        if (dev >= session_col_count()) dev = session_col_count() - 1;
-        want_col = dev;
+        if (hid_mouse_active_device_index() >= 0)
+        {
+            hid_mouse_media_page_reset_title(s_media_page[c]);
+            hid_mouse_clear_active_device();
+        }
     }
-    if (want_col == s_panel_parked_col)
-        return; /* 已經停對欄 */
-    session_panel_move_to_col(want_col);
-    lv_obj_set_tile_id(app_clock_main_status_bar,
-                       (uint8_t)((want_col < 0) ? 1 : (SESSION_COL_FIRST + want_col)), 0,
-                       false);
-    LOG_W("[sp-pull] panel parked in col %d", want_col);
+    else if (hid_mouse_active_device_index() != c - 1)
+    {
+        hid_mouse_media_page_reset_title(s_media_page[c]);
+        hid_mouse_set_active_device_index(c - 1);
+    }
 }
 
-void clock_main_session_panel_follow_begin(void)
+/* ---- Notification / control+applist finger-follow --------------------------- *
+   垂直軸雙向:往下拉(dy>0)開頂部面板(row 0);往上拉(dy<0)開下方的
+   控制中心+App List 頁(row 2, ADR-0020 恢復)。 */
+void clock_main_notify_follow_begin(void)
 {
     if (!app_clock_main_status_bar || !lv_obj_is_valid(app_clock_main_status_bar))
-    {
-        LOG_W("[sp-pull] panel follow: no tileview");
         return;
-    }
-    /* 從哪一欄拉的,面板就停到那一欄 —— 於是拉下來的是那一欄那台的媒體頁,收回去也回
-       到同一欄的 session 列表。 */
-    int col = session_scroll_col(app_clock_main_status_bar) - SESSION_COL_FIRST;
-    if (col < 0) col = 0;
-    if (col >= session_col_count()) col = session_col_count() - 1;
-    LOG_W("[sp-pull] panel follow begin col=%d", col);
-    lv_top_panel_open_media_for(col); /* 落點 = 這一欄那台的媒體頁 */
-    session_panel_move_to_col(col);   /* 之後全程只動 scroll_y,不跨欄 */
-    /* session 頁釘在 tileview 的父物件上:捲動只帶走面板,頁面留在原地被蓋住
-       (founder:「應該要是媒體中心蓋下來」)。 */
-    {
-        /* = status_bar_bg_main，但那個 static 宣告在本檔更下面；取 tileview 的 parent
-           是同一個物件，還少一個宣告順序的依賴。 */
-        extern void session_pager_pin_for_panel(lv_obj_t * fixed_parent);
-        session_pager_pin_for_panel(lv_obj_get_parent(app_clock_main_status_bar));
-    }
+    lv_obj_set_tile_id(app_clock_main_status_bar, 1, 1, false); /* snap HOME, no anim */
     lv_obj_clear_flag(app_clock_main_status_bar, LV_OBJ_FLAG_HIDDEN);
     if (gaus_dial_bg && lv_obj_is_valid(gaus_dial_bg))
         lv_obj_clear_flag(gaus_dial_bg, LV_OBJ_FLAG_HIDDEN);
+    set_clock_main_status_opa(0, false);
 }
 
-/* 放開:跟錶盤那組同一個判準(看放開當下的實際 scroll,不是累計位移),只是 commit 回
-   第 2 欄而不是 HOME 欄。取消的話立刻把面板搬回錶盤那格。 */
-void clock_main_session_panel_follow_end(lv_coord_t dy, lv_coord_t vy)
+void clock_main_notify_follow_update(lv_coord_t dy)
+{
+    if (!app_clock_main_status_bar || !lv_obj_is_valid(app_clock_main_status_bar))
+        return;
+    lv_coord_t sy = LV_VER_RES - dy; /* dy>0 (下拉) -> sy<466 往 0 (通知) */
+    if (sy < 0) sy = 0;
+    if (sy > 2 * LV_VER_RES) sy = 2 * LV_VER_RES; /* dy<0 (上拉) -> 往 932 (控制頁) */
+    lv_obj_scroll_to_y(app_clock_main_status_bar, sy, LV_ANIM_OFF);
+}
+
+void clock_main_notify_follow_end(lv_coord_t dy, lv_coord_t vy)
 {
     (void)dy;
     if (!app_clock_main_status_bar || !lv_obj_is_valid(app_clock_main_status_bar))
         return;
+    /* Commit by the LIVE scroll position, not the raw cumulative dy — this axis has
+       two opposite targets, and a big reversal could cross the OPPOSITE side's raw
+       threshold (the exact bug the 2026-07 note below the old code described). */
     lv_coord_t sy = lv_obj_get_scroll_y(app_clock_main_status_bar);
-    bool open_panel = (sy <= LV_VER_RES - LV_VER_RES / 4) || (vy > 6);
-    /* 停在原來那一欄 —— 面板在 begin 就搬過去了,這裡只決定停第 0 列還是第 1 列。 */
-    int col = (s_panel_parked_col >= 0) ? s_panel_parked_col
-                                        : (session_scroll_col(app_clock_main_status_bar) -
-                                           SESSION_COL_FIRST);
-    if (col < 0) col = 0;
-    LOG_W("[sp-pull] follow end col=%d sy=%d vy=%d open=%d", col, (int)sy, (int)vy,
-          (int)open_panel);
-    lv_obj_set_tile_id(app_clock_main_status_bar, (uint8_t)(SESSION_COL_FIRST + col),
-                       open_panel ? 0 : 1, true);
-    if (!open_panel)
-        session_panel_park_home();
+    uint8_t row;
+    if ((sy <= LV_VER_RES - LV_VER_RES / 4) || (vy > 6))
+        row = 0; /* 頂部面板(通知) */
+    else if ((sy >= LV_VER_RES + LV_VER_RES / 4) || (vy < -6))
+        row = 2; /* 控制中心 + App List */
+    else
+        row = 1; /* 回錶盤 */
+    lv_obj_set_tile_id(app_clock_main_status_bar, 1, row, true);
 }
+
 
 void clock_main_applist_follow_update(lv_coord_t dx)
 {
@@ -458,56 +602,6 @@ void clock_main_applist_follow_end(lv_coord_t dx, lv_coord_t vx)
     lv_obj_set_tile_id(app_clock_main_status_bar, open_it ? 2 : 1, 1, true);
 }
 
-/* ---- Notification / control-center finger-follow from the same full-screen face
-   swipe catcher ---------------------------------------------------------------- *
-   Mirrors clock_main_applist_follow_* on the Y axis: HOME (row 1) already has both
-   LV_DIR_TOP and LV_DIR_BOTTOM registered (see the tile add call below), so unlike
-   the App List column this direction never needed the mid-drag retreat fix — a
-   live reversal already scrolls back cleanly either way. A downward pull (dy>0)
-   reveals the message/notification tile (row 0, scroll_y toward 0); an upward pull
-   (dy<0) reveals control-center (row 2, scroll_y toward 2*LV_VER_RES). */
-void clock_main_notify_follow_begin(void)
-{
-    if (!app_clock_main_status_bar || !lv_obj_is_valid(app_clock_main_status_bar))
-        return;
-    lv_obj_set_tile_id(app_clock_main_status_bar, 1, 1, false); /* snap HOME, no anim */
-    lv_obj_clear_flag(app_clock_main_status_bar, LV_OBJ_FLAG_HIDDEN);
-    if (gaus_dial_bg && lv_obj_is_valid(gaus_dial_bg))
-        lv_obj_clear_flag(gaus_dial_bg, LV_OBJ_FLAG_HIDDEN);
-    set_clock_main_status_opa(0, false);
-}
-
-void clock_main_notify_follow_update(lv_coord_t dy)
-{
-    if (!app_clock_main_status_bar || !lv_obj_is_valid(app_clock_main_status_bar))
-        return;
-    lv_coord_t sy = LV_VER_RES - dy; /* dy>0 (down) -> sy<466 toward 0 (notification) */
-    if (sy < 0) sy = 0;
-    /* 上界只到 home：往上拉沒有頁可去（控制中心已搬進頂部面板），夾住就不會
-       出現「跟著手指往上空滑一段再彈回來」。 */
-    if (sy > LV_VER_RES) sy = LV_VER_RES;
-    lv_obj_scroll_to_y(app_clock_main_status_bar, sy, LV_ANIM_OFF);
-}
-
-void clock_main_notify_follow_end(lv_coord_t dy, lv_coord_t vy)
-{
-    (void)dy;
-    if (!app_clock_main_status_bar || !lv_obj_is_valid(app_clock_main_status_bar))
-        return;
-    /* Commit by the LIVE scroll position, not the raw cumulative dy from the press
-       point — unlike the App List (a single one-sided reveal), this axis has two
-       opposite targets, so a big enough reversal (drag down past the threshold,
-       then swipe back up past it) could cross the OPPOSITE side's raw-dy threshold
-       and launch control-center when the user was just trying to cancel back out
-       of notifications. Read the actual scroll_y (mirrors how
-       instruction_list_reveal_drag_end reads the live translate_x) so only where
-       you ACTUALLY let go decides which tile wins. */
-    lv_coord_t sy = lv_obj_get_scroll_y(app_clock_main_status_bar);
-    /* 2026-08-06: 只剩「往下拉 = 頂部面板」一個去處；控制中心搬進面板，
-       錶盤往上滑不再開頁（HOME 已移除 LV_DIR_BOTTOM）。 */
-    bool open_notify = (sy <= LV_VER_RES - LV_VER_RES / 4) || (vy > 6);
-    lv_obj_set_tile_id(app_clock_main_status_bar, 1, open_notify ? 0 : 1, true);
-}
 
 static void dev_change_refresh_device_list(void);
 static void dev_change_stop_connecting_timer(void);
@@ -569,6 +663,38 @@ static uint16_t bg_opa_3 = LV_OPA_50;
 static uint8_t middle_layer_tileview_index = 255;
 static uint8_t ai_interface_tileview_index = 0;
 
+/* R25:停在左頁(session/actions)時每 5s 跟所有桌面重拉一次 conv list。桌面刪除 /
+   新增 session 不會主動推 0x20,只在進頁時拉一次的話,人停在頁面上就永遠看不到
+   變動(founder 2026-08-12)。離開頁面立刻停,不在背景燒 BLE。注入層 upsert/移除
+   都有 changed-guard,清單沒變不會重繪。 */
+#define CONV_POLL_PERIOD_MS 5000
+static lv_timer_t *s_conv_poll_timer = NULL;
+
+static void conv_poll_timer_cb(lv_timer_t *t)
+{
+    (void)t;
+    extern bool commu_send_conv_list_req(const char *device);
+    commu_send_conv_list_req(NULL); /* NULL = 每一台桌面 */
+}
+
+void clock_main_conv_poll_set(bool on)
+{
+    if (on)
+    {
+        extern bool commu_send_conv_list_req(const char *device);
+        commu_send_conv_list_req(NULL); /* 進頁先拉一次,不等第一個 tick */
+        if (s_conv_poll_timer == NULL)
+            s_conv_poll_timer =
+                lv_timer_create(conv_poll_timer_cb, CONV_POLL_PERIOD_MS, NULL);
+        return;
+    }
+    if (s_conv_poll_timer != NULL)
+    {
+        lv_timer_del(s_conv_poll_timer);
+        s_conv_poll_timer = NULL;
+    }
+}
+
 static void app_clock_main_status_bar_event_cb(lv_event_t *event)
 {
     lv_obj_t *obj = lv_event_get_target(event);
@@ -577,246 +703,69 @@ static void app_clock_main_status_bar_event_cb(lv_event_t *event)
     {
     case LV_EVENT_SCROLL:
     {
-        /* session 欄的變暗（founder 2026-08-10:「需要像錶盤那樣有個慢慢變黑的背景」）。
-           **必須放在這個 case 的最前面**:底下 sx > 466 那條 App List／右欄的分支自己
-           會 break（本檔約 40 行後），我們這一欄的 scroll_x 是 932，永遠先撞上那個
-           早退，寫在 case 結尾的話一次都不會執行。
-           用 scroll_y 當唯一訊號:拉下 / 收回 / 放開後的慣性滑行全部吃得到，不必在手勢
-           與原生捲動兩邊各補一次。466（session 列）→ 0（面板列）對應 0 → 204。 */
-        /* 面板正停在 session 欄 = 我們的下拉/收回進行中,頂部時間的濃度由下面那段
-           垂直換算獨佔。否則後面 sx > 466 的 App List 分支會用水平位移算出滿值再設
-           一次,把我們的淡出蓋掉(founder 2026-08-10:「上面的時間沒有」)。 */
-        /* 右側整區(每一欄 session 與其面板)一律不顯示頂部時間 —— founder 2026-08-11:
-           「上面都不要顯示時間好了」。這條旗標同時擋掉後面 sx > 466 那段 App List 分支,
-           它會依水平位移把時間設成滿值;不擋的話滑進第一欄的瞬間時間會閃一下。 */
-        bool session_panel_owns_time =
-            (s_panel_parked_col >= 0) || (lv_obj_get_scroll_x(obj) > LV_HOR_RES);
-        if (session_panel_owns_time)
+        /* ADR-0020 之後的視覺狀態機,單一 owner:
+             sx > HOME  → 右側媒體區(欄 2+):模糊底圖跟手漸入,時間/電量不顯示
+             sx < HOME  → 左頁(合併 session + actions):同樣的模糊漸入
+             sx == HOME → 垂直軸(上=通知面板 / 下=控制+App List)
+           gaus_dial_bg 濃度只在這裡與 settle 寫,別的路徑不要碰(2026-08-11 之前
+           有 7 條路徑共寫,靠執行順序決勝負,下拉看不到模糊的 bug 就活在那裡)。 */
+        lv_coord_t sx = lv_obj_get_scroll_x(obj);
+        lv_coord_t sy = lv_obj_get_scroll_y(obj);
+
+        if (sx > LV_HOR_RES)
+        {
+            /* 右側媒體區。founder 2026-08-11:右側整區不顯示頂部時間。 */
             set_instruction_list_time_opa(LV_OPA_TRANSP);
-        if (s_panel_parked_col >= 0)
-        {
-            lv_coord_t dim_sy = lv_obj_get_scroll_y(obj);
-            if (dim_sy < 0) dim_sy = 0;
-            if (dim_sy > LV_VER_RES) dim_sy = LV_VER_RES;
-            extern void session_pager_set_dim(lv_opa_t opa);
-            /* 上限 90（≈35%）而不是 204。scrim 是全螢幕黑幕、蓋在模糊底圖之上,而面板本身
-               是透明的 —— 拉到 204 等於把「透過面板看到的背景」整片壓黑,使用者看到的就是
-               「只有變暗、沒有模糊」,直到 settle 把頁面連同 scrim 收回 tile 之後模糊才突然
-               冒出來(founder 2026-08-11)。降到 90 兩者才能並存:頁面仍隨手指變暗,模糊也還
-               透得出來。這是個可調的美術值,不是推導出來的常數。 */
-            /* 上限 90(≈35%)。2026-08-11 A/B 實測:scrim 全關之後模糊仍然不出現,所以
-               「拉的過程看不到模糊」與 scrim 無關 —— 是別的圖層蓋住它(未解,見 runlog)。
-               scrim 保留在 founder 要的「隨手指慢慢變黑」上。 */
-            session_pager_set_dim((lv_opa_t)((LV_VER_RES - dim_sy) * 90 / LV_VER_RES));
-            /* 模糊底圖在這裡**不動**。它是 session 頁自己的背景,停在這一欄時本來就是滿
-               濃度;把它接上下拉進度是我 2026-08-11 的過度修正 —— 一開始拉的瞬間濃度掉到
-               接近 0,背景就整片消失、露出後面的錶盤(founder:「原本session頁面的背景會
-               突然消失顯示成錶盤」)。會跟著手指變的是 scrim(頁面變暗)和面板本身。
-               仍要壓住的是水平那段:它每幀用固定的水平位移把濃度寫回去,是另一個方向的
-               干擾,gate 在下面 sx > 466 的分支裡。 */
-            if (gaus_dial_bg && lv_obj_is_valid(gaus_dial_bg))
-                lv_obj_clear_flag(gaus_dial_bg, LV_OBJ_FLAG_HIDDEN);
-            /* 一次性 trace:模糊底圖在下拉當下到底是什麼狀態。連兩輪憑推理修錯方向
-               (先接漸變 → 背景消失露出錶盤;再完全不碰 → 拉的過程沒有模糊),所以把
-               bg_opa / img_opa / hidden 直接印出來再決定。每次下拉只印一次。 */
-            {
-                static bool s_logged_this_pull = false;
-                if (dim_sy >= LV_VER_RES - 40)
-                    s_logged_this_pull = false; /* 回到頁面頂端 = 下一次下拉重新印 */
-                else if (!s_logged_this_pull)
-                {
-                    s_logged_this_pull = true;
-                    LOG_W("[sp-blur] sy=%d bg_opa=%d img_opa=%d hidden=%d", (int)dim_sy,
-                          (int)lv_obj_get_style_bg_opa(gaus_dial_bg, LV_PART_MAIN),
-                          (int)(gaus_dial_img && lv_obj_is_valid(gaus_dial_img)
-                                    ? lv_obj_get_style_img_opa(gaus_dial_img, LV_PART_MAIN)
-                                    : -1),
-                          (int)lv_obj_has_flag(gaus_dial_bg, LV_OBJ_FLAG_HIDDEN));
-                }
-            }
-        }
-        /* App List tile (col 2) reveal: home sits at scroll_x==466; pulling RIGHT
-           toward the App List raises scroll_x toward 932. Finger-follow the SAME
-           blurred-dial + top time/weather fade-in the left mixed-list reveal uses,
-           so the App List slides in with the dial gradually blurring and the time
-           fading IN — not popping straight to the settled state. Historically col 2
-           was an unreachable placeholder, so only the leftward/vertical reveals had a
-           finger-follow fade. The settle (VALUE_CHANGED, MAIN_PAGE_TYPE_LEFT) already
-           lands on this same blurred-dial + OPA_100 time state. */
-        {
-            lv_coord_t sx = lv_obj_get_scroll_x(obj);
-            /* HOME's registered tile dir (LV_DIR_TOP|BOTTOM|RIGHT, no LEFT — see the
-               tile add call below) is what lv_tileview locks lv_obj_set_scroll_dir to
-               for the WHOLE press: LV_EVENT_SCROLL_END only re-applies a tile's dir
-               when the indev is no longer pressed (lv_tileview.c tileview_event_cb),
-               so mid-drag the missing LEFT makes retreating from a partial App List
-               pull impossible — scroll_x can only climb, forcing a full commit on
-               release no matter which way you're dragging when you let go. Punch a
-               temporary LEFT hole in only while sx is past HOME (mid pull-out) so the
-               live drag can retreat; drop it the instant sx is back at HOME so this
-               can't also open the old device_pager-vs-@-list conflict (P3) that got
-               LEFT permanently removed from HOME's own registration. */
-            static bool s_applist_retreat_open = false;
-            if (sx > 466 && !s_applist_retreat_open)
-            {
-                s_applist_retreat_open = true;
-                lv_obj_set_scroll_dir(obj, LV_DIR_TOP | LV_DIR_RIGHT |
-                                               LV_DIR_LEFT);
-            }
-            else if (sx <= 466 && s_applist_retreat_open)
-            {
-                s_applist_retreat_open = false;
-                lv_obj_set_scroll_dir(obj, LV_DIR_TOP | LV_DIR_RIGHT);
-            }
-            if (sx > 466)
-            {
-                extern void instruction_list_bar_set_blur_amount(uint8_t opa);
-                lv_coord_t pull = sx - 466; /* 0..466 */
-                lv_coord_t opa = pull * 255 / 466;
-                if (opa > 255) opa = 255;
-                /* 面板在 session 欄跟手時,模糊 / 時間 / scrim 三者由上面那段的垂直進度
-                   獨佔。這個函式內部就是在設模糊圖的濃度,而這裡的 opa 是用**水平**位移
-                   算的 —— 我們這一欄垂直下拉時 scroll_x 不動,於是它每一幀都把垂直漸變
-                   覆寫回同一個值,模糊就變成「放手才整張出現」(founder 2026-08-11)。 */
-                if (s_panel_parked_col < 0)
-                    instruction_list_bar_set_blur_amount((uint8_t)opa);
-                if (!session_panel_owns_time)
-                    set_instruction_list_time_opa((uint8_t)opa);
-                /* Same pull fades in the blurred dial behind the session pager — the SCREEN-LEVEL
-                   gaus_dial_bg, exactly as the left action list uses it. It must not be parented
-                   to the tile: that travels with the tileview, and the backdrop then drifts
-                   sideways with the page instead of sitting still (founder 2026-08-05). Black
-                   underlay + blurred image ramp together, so the dial dissolves into the blur
-                   rather than the page arriving on a hard cut. */
-                /* 面板正在這一欄跟手時,模糊底圖歸上面那段的垂直進度管 —— 這裡是用水平
-                   位移算的,而垂直下拉時 scroll_x 不動,寫下去等於把它凍在原值。 */
-                if (s_panel_parked_col < 0 && gaus_dial_bg && lv_obj_is_valid(gaus_dial_bg))
-                {
-                    lv_obj_clear_flag(gaus_dial_bg, LV_OBJ_FLAG_HIDDEN);
-                    lv_obj_set_style_bg_opa(gaus_dial_bg, (lv_opa_t)opa, 0);
-                    if (gaus_dial_img && lv_obj_is_valid(gaus_dial_img))
-                        lv_obj_set_style_img_opa(gaus_dial_img, (lv_opa_t)opa, 0);
-                }
-                break;
-            }
-        }
-        /* Left tile (device_pager) reveal: darken the whole watch face to black as
-           the page is pulled out — a full-screen fade-to-black on gaus_dial_bg.
-           Home sits at scroll_x == 466; pulling LEFT toward the device tile (now the
-           (0,1) tile) lowers it toward 0, so rx = 466 - scroll_x rises with the pull.
-           ropa is 0 at home, so an idle home keeps its transparent bg / blur. */
-        {
-            lv_coord_t rx = 466 - lv_obj_get_scroll_x(obj);
-            if (rx < 0) rx = 0;
-            lv_coord_t ropa = rx * 255 / 350;
-            if (ropa > 255) ropa = 255;
-            if (gaus_dial_bg && lv_obj_is_valid(gaus_dial_bg))
-                lv_obj_set_style_bg_opa(gaus_dial_bg, (lv_opa_t)ropa, 0);
-            if (ropa > 0 && gaus_dial_img && lv_obj_is_valid(gaus_dial_img))
-                lv_obj_set_style_img_opa(gaus_dial_img, LV_OPA_0, 0); /* right: black only, no blur */
-        }
-        /* 滑鼠模式下拉面板的黑底跟手漸黑（錶盤路徑由 gaus_dial_bg 負責，
-           那層在滑鼠圖層底下看不到，所以另走面板自己那份）。scroll_y 從 466
-           (home) 降到 0 (面板全開) → up 就是下拉進度。 */
-        {
-            lv_coord_t up = 466 - lv_obj_get_scroll_y(obj);
-            if (up < 0) up = 0;
-            if (up > 466) up = 466;
-            lv_top_panel_set_backdrop_opa((uint8_t)((int32_t)up * 204 / 466));
-        }
-        lv_coord_t scroll_y = (466 - lv_obj_get_scroll_y(obj)) * bg_opa / 350;
-        lv_coord_t scroll_x = (466 - lv_obj_get_scroll_x(obj)) * bg_opa / 350;
-        if (scroll_x > bg_opa)
-            scroll_x = bg_opa;
-        else if (scroll_x < 0)
-            scroll_x = 0;
-        if (scroll_y > bg_opa)
-            scroll_y = bg_opa;
-        else if (scroll_y < -bg_opa)
-            scroll_y = -bg_opa;
-
-        lv_coord_t scroll_second_y =
-            (466 - lv_obj_get_scroll_y(obj)) * bg_opa_2 / 466;
-        lv_coord_t scroll_second_x =
-            (466 - lv_obj_get_scroll_x(obj)) * bg_opa_2 / 466;
-
-        if (scroll_second_y > bg_opa_2)
-            scroll_second_y = bg_opa_2;
-        else if (scroll_second_y < -bg_opa_2)
-            scroll_second_y = -bg_opa_2;
-        if (scroll_second_x > bg_opa_2)
-            scroll_second_x = bg_opa_2;
-        else if (scroll_second_x < -bg_opa_2)
-            scroll_second_x = -bg_opa_2;
-
-        if (((abs(scroll_y) < (bg_opa + 1)) && (scroll_y != 0)) ||
-            ((abs(scroll_x) < (bg_opa + 1)) && (scroll_x != 0)))
-        {
-            if (scroll_y == 0)
-            {
-                shady_transparency = abs(scroll_x);
-                set_clock_main_status_opa(shady_transparency, false);
-            }
-            else
-            {
-                shady_transparency = abs(scroll_y);
-                set_clock_main_status_opa(shady_transparency, true);
-            }
-        }
-        if (scroll_second_y == 0)
-        {
-            if (scroll_second_x > 0)
-            {
-                shady_transparency = scroll_second_x;
-                if (shady_transparency < (bg_opa_2 + 1) &&
-                    shady_transparency > 0)
-                {
-                    set_instruction_list_time_opa(shady_transparency);
-                    /* Fade the top battery out together with the time as we pull
-                       toward the device page (RIGHT) — it's hidden there anyway
-                       (show_battery(false) on settle), so without this it rides
-                       along the whole slide and only pops out on release. Same
-                       HOME->RIGHT scroll-x branch. Per the user: turn the battery
-                       fully OFF (0) the moment the rightward slide starts, not a
-                       gradual fade, so it never shows on the way to the mouse. */
-                    set_instruction_list_battery_opa(LV_OPA_TRANSP);
-                }
-            }
-            // else
-            // {
-            //     shady_transparency = -scroll_second_x;
-            //     set_instruction_list_battery_opa(shady_transparency);
-            // }
-        }
-        else
-        {
-            /* 垂直方向唯一的去處是頂部面板，那裡不顯示電量 → 一拉就關掉，
-               不要讓它跟著滑一路淡入再於 settle 突然消失。 */
-            shady_transparency = abs(scroll_second_y);
             set_instruction_list_battery_opa(LV_OPA_TRANSP);
+            lv_coord_t pull = sx - LV_HOR_RES;
+            if (pull > LV_HOR_RES) pull = LV_HOR_RES; /* 欄與欄之間保持滿值 */
+            lv_coord_t opa = pull * 255 / 350;
+            if (opa > 255) opa = 255;
+            if (gaus_dial_bg && lv_obj_is_valid(gaus_dial_bg))
+            {
+                lv_obj_clear_flag(gaus_dial_bg, LV_OBJ_FLAG_HIDDEN);
+                lv_obj_set_style_bg_opa(gaus_dial_bg, (lv_opa_t)opa, 0);
+            }
+            set_clock_main_status_opa((uint8_t)opa, false);
+            break;
+        }
+        if (sx < LV_HOR_RES)
+        {
+            /* 左頁(合併 session + actions)拉出。 */
+            set_instruction_list_time_opa(LV_OPA_TRANSP);
+            set_instruction_list_battery_opa(LV_OPA_TRANSP);
+            lv_coord_t pull = LV_HOR_RES - sx;
+            lv_coord_t opa = pull * 255 / 350;
+            if (opa > 255) opa = 255;
+            if (gaus_dial_bg && lv_obj_is_valid(gaus_dial_bg))
+            {
+                lv_obj_clear_flag(gaus_dial_bg, LV_OBJ_FLAG_HIDDEN);
+                lv_obj_set_style_bg_opa(gaus_dial_bg, (lv_opa_t)opa, 0);
+            }
+            set_clock_main_status_opa((uint8_t)opa, false);
+            break;
         }
 
-        if (scroll_second_y == 0)
+        /* sx == HOME:垂直軸。 */
         {
-            shady_transparency = scroll_second_x;
-        }
-        else
-        {
-            shady_transparency = scroll_second_y;
-        }
-        break;
-    }
-    case LV_EVENT_SCROLL_BEGIN:
-    {
-        /* 收回面板是 LVGL 原生捲動((2,0) 是 LV_DIR_VER),不經過我們的下拉手勢,所以
-           session 頁還在自己的 tile 裡、會跟著捲上來 —— founder 2026-08-10:「往上拉
-           回去還是會看到 session 從下面上來」。面板停在 session 欄時(= 面板開著,唯一
-           的去處就是收回去),捲動一開始就把頁面釘住,關閉於是跟開啟對稱:面板走,頁面
-           留在原地。橫向不必擔心:(2,0) 只允許垂直,開著面板時滑不到別欄。 */
-        if (s_panel_parked_col >= 0)
-        {
-            extern void session_pager_pin_for_panel(lv_obj_t * fixed_parent);
-            session_pager_pin_for_panel(lv_obj_get_parent(app_clock_main_status_bar));
+            lv_coord_t up = LV_VER_RES - sy; /* >0 = 往面板;<0 = 往控制頁 */
+            /* 滑鼠模式下拉面板的黑底跟手漸黑(錶盤路徑由 gaus_dial_bg 負責,
+               那層在滑鼠圖層底下看不到)。 */
+            lv_coord_t upc = up;
+            if (upc < 0) upc = 0;
+            if (upc > LV_VER_RES) upc = LV_VER_RES;
+            lv_top_panel_set_backdrop_opa((uint8_t)((int32_t)upc * 204 / 466));
+
+            lv_coord_t mag = LV_ABS(up);
+            if (mag > 0)
+            {
+                lv_coord_t opa = mag * 255 / 350;
+                if (opa > 255) opa = 255;
+                if (gaus_dial_bg && lv_obj_is_valid(gaus_dial_bg))
+                    lv_obj_clear_flag(gaus_dial_bg, LV_OBJ_FLAG_HIDDEN);
+                set_clock_main_status_opa((uint8_t)opa, true);
+                set_instruction_list_battery_opa(LV_OPA_TRANSP);
+            }
         }
         break;
     }
@@ -839,146 +788,178 @@ static void app_clock_main_status_bar_event_cb(lv_event_t *event)
         }
         if (active_pos == 1)
         {
-            /* Landing back at HOME — including a CANCELLED reveal, which settles
-               here with active_pos unchanged from before the gesture (1), so this
-               must run ahead of the middle_layer_tileview_index early-return below,
-               not only in the "moved to a new tile" path further down. Without it:
-               1) the full-screen swipe catcher can end up covered and only an edge
-                  touch (a different object) would re-foreground it;
-               2) worse, gaus_dial_bg — full-screen, CLICKABLE by lv_obj_create's
-                  default, un-hidden by clock_main_notify_follow_begin for the
-                  finger-follow blur — never gets re-hidden on a cancel (that only
-                  happened in the "moved to a new tile" branch further down), so it
-                  sits on top intercepting every touch afterward even though nothing
-                  LOOKS different, since the scroll position is back at home. */
+            /* Landing back at HOME — 含取消的 reveal。catcher 要回前景;
+               gaus_dial_bg(全螢幕、lv_obj_create 預設 CLICKABLE)必須藏回去,
+               否則之後所有觸控都被它吃掉(歷史 bug,見 git log)。 */
             extern void clock_main_face_swipe_catcher_foreground(void);
             clock_main_face_swipe_catcher_foreground();
             if (gaus_dial_bg && lv_obj_is_valid(gaus_dial_bg))
                 lv_obj_add_flag(gaus_dial_bg, LV_OBJ_FLAG_HIDDEN);
         }
+
+        int col_now = media_scroll_col(obj);
+        int row_now = media_scroll_row(obj);
+        bool on_media_col = (row_now == 1 && col_now >= MEDIA_COL_FIRST);
+        bool on_mouse_park = (row_now == 2 && col_now >= MEDIA_COL_FIRST);
+
+        /* 護欄:媒體欄的 row 0 沒有格子(停車位在 row 2)。stale scroll_dir 之類的
+           殘餘拖曳若把捲動帶到那裡,settle 會吸去別的欄 —— 直接彈回該欄媒體頁。 */
+        if (row_now == 0 && col_now >= MEDIA_COL_FIRST)
+        {
+            lv_obj_set_tile_id(obj, (uint8_t)col_now, 1, true);
+            break;
+        }
+
+        /* ADR-0020 R2:媒體欄**往上拉** settle 在下方停車位 = 進入該欄那台的滑鼠
+           模式。R4:已在滑鼠模式時,停車位的 settle 是「下拉退出」流程的一部分 ——
+           reveal 的 snap settle(保持顯示,等 press 交棒給 tileview 跟手)或使用者
+           取消(收回 tileview,滑鼠模式原樣繼續),都不能再走進入路徑。 */
+        if (on_mouse_park)
+        {
+            if (lv_top_panel_mouse_mode())
+            {
+                if (s_mouse_pull_reveal)
+                {
+                    /* reveal 剛 snap 進來:維持顯示,等原生跟手拖曳。 */
+                    s_mouse_pull_reveal = false;
+                }
+                else
+                {
+                    /* 下拉不到門檻放開 = 取消:收回 tileview,繼續滑鼠模式。 */
+                    middle_layer_tileview_index = 255;
+                    lv_obj_set_tile_id(obj, 1, 1, false);
+                    lv_obj_add_flag(app_clock_main_status_bar, LV_OBJ_FLAG_HIDDEN);
+                    if (gaus_dial_bg && lv_obj_is_valid(gaus_dial_bg))
+                        lv_obj_add_flag(gaus_dial_bg, LV_OBJ_FLAG_HIDDEN);
+                    LOG_W("[media-col] mouse pulldown cancelled");
+                }
+                check_main_page();
+                break;
+            }
+            media_col_bind(col_now);
+            /* R30:進 hosted 滑鼠模式**一定要先停掉 conv 輪詢**。這條分支提早 break,
+               不會走到下面那段左頁進出的 poll on/off,所以 R25 的 5s 輪詢會活著跟進
+               滑鼠模式;之後回來的 0x20 觸發 refresh_custom_instructions 去重建指令
+               清單 UI,但滑鼠圖層接管後那些父物件已經不在了 → 在失效父物件下建立子
+               物件,hard fault(mem manage,PC=lv_obj_mark_layout_as_dirty,LR=
+               lv_obj_class_init_obj;founder 2026-08-12「從媒體頁往上滑進滑鼠頁就
+               當機」)。 */
+            clock_main_conv_poll_set(false);
+            clock_main_heap_log("mouse-enter-before");
+            /* R32:滑鼠頁要一大塊 heap,而浮動清單即使 HIDDEN 也把每一列的 LVGL 物件
+               全留著(session 注入後列數翻倍,錶盤閒置只剩 ~40KB)。先把列的 UI 釋放
+               —— 資料不動,下次開清單由 instruction_list_ensure_ui 原路重建。 */
+            {
+                extern void instruction_list_release_ui(void);
+                instruction_list_release_ui();
+            }
+            clock_main_heap_log("mouse-enter-list-freed");
+            /* R38:量出來的事實 —— 開機建完所有頁面是 used 220K/free 103K,但實際使用
+               時 free 只剩 ~49K,執行期多吃的 ~54K 最大宗就是這張**全螢幕模糊錶盤圖**
+               (GAUS_CLOCK1_BG,從 NAND 載入後解碼常駐在 LVGL image cache;gaus_dial_img
+               與 dev_change_gaus_img 共用同一個 cache entry)。滑鼠圖層自己要 ~41.5K,
+               進去後只剩 ~8K,退出時要同時亮出 tileview 合成就 `sys memory is full!`。
+               滑鼠模式期間這張圖完全看不到,先把它的 cache 丟掉,回錶盤再重新解碼。 */
+            lv_obj_add_flag(gaus_dial_bg, LV_OBJ_FLAG_HIDDEN);
+            lv_img_cache_invalidate_src(GAUS_CLOCK1_BG);
+            clock_main_heap_log("mouse-enter-blur-dropped");
+            lv_top_panel_mouse_enter();
+            clock_main_heap_log("mouse-enter-after");
+            middle_layer_tileview_index = 255; /* 下次 settle 一定重跑收尾 */
+            lv_obj_set_tile_id(obj, 1, 1, false);
+            lv_obj_add_flag(app_clock_main_status_bar, LV_OBJ_FLAG_HIDDEN);
+            if (gaus_dial_bg && lv_obj_is_valid(gaus_dial_bg))
+                lv_obj_add_flag(gaus_dial_bg, LV_OBJ_FLAG_HIDDEN);
+            check_main_page();
+            break;
+        }
+
+        /* R4:settle 在媒體頁而滑鼠模式還開著 = 下拉退出 commit —— 現在才真正拆
+           滑鼠圖層(press 早已交棒給 tileview,hid_mouse 不在事件鏈上,可安全拆)。 */
+        if (on_media_col && lv_top_panel_mouse_mode())
+        {
+            extern void lv_top_panel_mouse_exit(void);
+            s_mouse_pull_reveal = false;
+            lv_top_panel_mouse_exit();
+            LOG_W("[media-col] mouse exit -> col %d", col_now);
+        }
+
         if (middle_layer_tileview_index == active_pos)
         {
             check_main_page();
             return;
         }
-
         middle_layer_tileview_index = active_pos;
-        /* Global input bar (lv_layer_top): show ONLY on the watch face (HOME) and
-           the mouse page (RIGHT) — a tap floats the shared list in place. Hidden on
-           the (empty post-R3) instruction_list LEFT tile, message (UP) and
-           control-center (DOWN). The gui_app_is_actived("Main") gate matters when an
-           app is layered over the watch face (e.g. notification detail / voice reply
-           opened from the message list — animate_to_home_from_notification_center
-           slides THIS tileview back to HOME): that settle fires VALUE_CHANGED with
-           active_pos==HOME while Main is paused, which without the gate re-shows the
-           bar on top of that app. With the gate it stays hidden. (R3 stage 2: the
-           mouse page uses THIS bar, not device_pager's own — kept hidden in
-           device_pager_set_active.) */
+
+        /* 設備數會隨配對/上下線變動,每次 settle 重算可滑的媒體欄數並**當場**
+           重設方向(lv_tileview 在發 VALUE_CHANGED 前就複製 dir,慢一拍等於這次
+           settle 無效)。 */
+        clock_main_media_cols_refresh();
+
+        /* Global input bar (lv_layer_top):錶盤(HOME)與左頁都要 —— R8:左頁的
+           內容就是這個浮動清單本體(session 已注入),settle 進左頁直接把它請出來,
+           離開時收掉(瀏覽態的 close;輸入框由 close_ai_on_leave 收)。
+           gui_app gate:通知詳情等 app 蓋在錶盤上時 settle 回 HOME 不能把 bar
+           疊上去。 */
         {
             extern void instruction_list_bar_set_visible(bool visible);
-            /* 滑鼠模式時 HOME 底下不是錶面而是 hid_mouse 圖層，它自帶底部 bar
-               (bottom_swipe_area / skaibar)，全域 bar 再冒出來會疊兩條。 */
-            instruction_list_bar_set_visible((active_pos == MAIN_PAGE_TYPE_HOME ||
-                                              active_pos == MAIN_PAGE_TYPE_RIGHT) &&
-                                             gui_app_is_actived("Main") &&
-                                             !lv_top_panel_mouse_mode());
-        }
-        /* 頂部面板 settle：進來時刷新設備清單 / 媒體頁 / 底部按鈕狀態。
-           面板有 1+N 個可能的落點 —— 錶盤上方 (1,0) 與每一台設備自己那欄的上方
-           (2+i,0)，全部是同一個面板實體，只是被搬過去。用格子座標判，不用 tile 加入
-           順序的索引：補了 8 格之後那個索引已經沒有可讀性。 */
-        int col_now = session_scroll_col(obj);
-        int row_now = session_scroll_row(obj);
-        /* 設備數會隨配對 / 上下線變動,每次 settle 重算可滑的欄數(並當場重設方向 ——
-           光改 tile->dir 對這一次 settle 是無效的,見 session_cols_refresh 的說明)。 */
-        session_cols_refresh();
-        bool on_session_panel = (row_now == 0 && col_now >= SESSION_COL_FIRST);
-        bool on_session_list = (row_now == 1 && col_now >= SESSION_COL_FIRST);
-        {
-            bool on_panel = (active_pos == MAIN_PAGE_TYPE_UP || on_session_panel);
-            lv_top_panel_set_open(on_panel);
-            lv_top_panel_set_backdrop_opa(on_panel ? 204 : 0);
-            /* 停在別的地方就把面板送回錶盤那格：使用者可能從 session 面板一路滑回
-               錶盤，那條路徑不會經過我們的手勢 end，沒有這行錶盤下拉就會是空的。 */
-            if (!on_session_panel)
-                session_panel_park_home();
-            /* 停在第 i 欄 → 那一欄顯示第 i 台的 sessions。換欄會關掉上一欄的對話
-               （手錶同時只開一個），所以只在真的換了設備時才呼叫。 */
-            if (on_session_list || on_session_panel)
+            extern void instruction_list_set_session_page_mode(bool on);
+            extern void instruction_list_open_browse(void);
+            extern bool instruction_list_is_visible(void);
+            extern void close_ai_widget(void);
+            bool on_left_page = (active_pos == MAIN_PAGE_TYPE_RIGHT);
+            instruction_list_set_session_page_mode(on_left_page);
+            instruction_list_bar_set_visible(
+                ((active_pos == MAIN_PAGE_TYPE_HOME && gui_app_is_actived("Main")) ||
+                 on_left_page) &&
+                !lv_top_panel_mouse_mode());
+            if (on_left_page)
             {
-                int dev = col_now - SESSION_COL_FIRST;
-                if (dev >= session_col_count())
-                    dev = session_col_count() - 1;
-                extern void session_pager_set_column(int device_index, lv_obj_t * tile);
-                /* 把那一欄的 tile 一起交出去 —— session UI 只有一份,不搬過去的話使用者
-                   滑到的就是一格空格子(founder 2026-08-11 實測第二欄全空)。 */
-                session_pager_set_column(
-                    dev, (dev >= 0 && dev < MAX_SYNCED_DEVICES) ? s_session_tile[dev] : NULL);
+                instruction_list_open_browse();
+                /* R46(founder:「中間往右滑後會觸發定位到頂部 item,我不要這樣」;
+                   「左邊緣往右滑就不會」):R9 的 focus_first_action 掛在這個 settle,
+                   而左緣那條不經過 settle —— 所以兩條入口的落點一直不一樣,R45 讓清單
+                   跟手之後更明顯:清單已經在眼前了才被拉去別的位置。以「左緣的行為」
+                   為準,這裡不再定位;進場落點由 reveal 的 reset_list_internal 決定
+                   (兩條路徑共用),要改落點就去改那一支。 */
+                /* R20:桌面刪 session 不會主動推 0x20 —— 進左頁重拉一次
+                   (舊 session pager tile 的同款機制,它退役後這條斷了),
+                   注入層收到新清單會把已刪的 conv 項移除。
+                   R25(founder:「在 session 列表那邊的時候他不會更新」):進頁只拉
+                   一次,人停在頁面上時桌面的新增/刪除就看不到。桌面端沒有變動推播
+                   (要三平台改 wire),先在手錶側補輪詢:停在左頁每 5s 重拉一次,
+                   離開就停。注入層有 changed-guard,沒變動不會重繪/不會抖。 */
+                clock_main_conv_poll_set(true);
             }
-            /* 手勢結束了 → session 頁回到自己的 tile。釘住只在拖曳期間成立；留著的話
-               它會掛在 tileview 外面,滑到任何一頁都跟著出現。settle 是唯一該解除的
-               時機:animation 還在跑時必須維持釘住,否則頁面會在動畫中途彈位。 */
+            else if (instruction_list_is_visible())
             {
-                extern void session_pager_pin_for_panel(lv_obj_t * fixed_parent);
-                extern void session_pager_set_dim(lv_opa_t opa);
-                session_pager_pin_for_panel(NULL);
-                /* 停在 session 面板 = 頁面被完全蓋住,維持全暗；其餘一律清掉,否則
-                   離開之後那層黑會留在 session 頁上。 */
-                session_pager_set_dim(on_session_panel ? (lv_opa_t)90 : LV_OPA_TRANSP);
-                /* 時間跟著 settle 收尾:停在面板 = 全暗(0)。停在別頁不在這裡復原 ——
-                   各頁本來就會自己設定(session 列表那頁設 OPA_100),硬塞會蓋掉它們。 */
-                if (on_session_panel)
-                    set_instruction_list_time_opa(LV_OPA_TRANSP);
-            }
-        }
-        {
-            /* Right tile = the device control page. Host the mouse behind the
-               list while we're on it; tear it down when we leave. Also re-read
-               the bonded-device set on entry. */
-            extern void device_pager_refresh(void);
-            extern void device_pager_set_active(bool on);
-            bool on_device_page = (active_pos == MAIN_PAGE_TYPE_RIGHT);
-            device_pager_set_active(on_device_page);
-            /* Hide the top battery indicator on the mouse/device page (user
-               request); show it again on every other page. Its per-page content
-               opacity still governs whether it actually appears there, so showing
-               the container on a page that keeps it transparent is harmless. */
-            {
-                extern void show_battery(bool show);
-                show_battery(!on_device_page);
-            }
-            /* settle: full-screen black backdrop on the device page (gaus_dial_bg),
-               cleared for the left/down/up reveals so their blur shows instead */
-            if (gaus_dial_bg && lv_obj_is_valid(gaus_dial_bg))
-                lv_obj_set_style_bg_opa(gaus_dial_bg,
-                                        on_device_page ? LV_OPA_COVER : LV_OPA_TRANSP, 0);
-            if (on_device_page)
-            {
-                if (gaus_dial_img && lv_obj_is_valid(gaus_dial_img))
-                    lv_obj_set_style_img_opa(gaus_dial_img, LV_OPA_0, 0);
-                device_pager_refresh();
-            }
-            /* Left tile = the instruction_list voice page. Auto-dismiss its open
-               voice input box when we navigate away (mirrors the device page
-               closing its skaibar on leave); the box only self-dismisses on a
-               swipe that starts on it, so an edge-back / page switch would
-               otherwise leave it open. */
-            extern void instruction_list_close_ai_on_leave(void);
-            if (active_pos != MAIN_PAGE_TYPE_LEFT)
-            {
-                instruction_list_close_ai_on_leave();
-            }
-        }
-        if (gui_app_is_actived("Main"))
-        {
-            if (active_pos != 1)
-            {
-                main_clock_tileview_scrollable = false;
+                clock_main_conv_poll_set(false);
+                close_ai_widget(); /* 離開左頁:瀏覽態清單滑出收掉 */
             }
             else
-            {
-                main_clock_tileview_scrollable = true;
-            }
+                clock_main_conv_poll_set(false);
+        }
+
+        {
+            bool on_panel = (active_pos == MAIN_PAGE_TYPE_UP);
+            lv_top_panel_set_open(on_panel);
+            lv_top_panel_set_backdrop_opa(on_panel ? 204 : 0);
+        }
+
+        /* 媒體欄 settle:曲名路由 + 控制目標跟著欄走(欄 2 = 手機)。 */
+        if (on_media_col)
+            media_col_bind(col_now);
+
+        /* 離開左頁時把它的 AI 輸入框收掉(它只在自己頁面上自我關閉)。 */
+        {
+            extern void instruction_list_close_ai_on_leave(void);
+            if (active_pos != MAIN_PAGE_TYPE_RIGHT)
+                instruction_list_close_ai_on_leave();
+        }
+
+        if (gui_app_is_actived("Main"))
+        {
+            main_clock_tileview_scrollable = (active_pos == 1);
         }
         if (scroll_y == 466 && scroll_x == 466)
         {
@@ -989,7 +970,6 @@ static void app_clock_main_status_bar_event_cb(lv_event_t *event)
             lv_obj_add_flag(gaus_dial_bg, LV_OBJ_FLAG_HIDDEN);
             set_clock_main_status_opa(LV_OPA_0, false);
             set_instruction_list_time_opa(LV_OPA_0);
-
             set_instruction_list_battery_opa(LV_OPA_TRANSP);
         }
         else
@@ -997,43 +977,16 @@ static void app_clock_main_status_bar_event_cb(lv_event_t *event)
             lv_obj_clear_flag(myLancher[app_index_message].pagetileview,
                               LV_OBJ_FLAG_HIDDEN);
             lv_obj_clear_flag(gaus_dial_bg, LV_OBJ_FLAG_HIDDEN);
-            /* 頂部時間在**任何一欄** session 列表上都要顯示。原本只認
-               MAIN_PAGE_TYPE_LEFT —— 那是 tile 加入順序的索引 2,也就是只有第 0 欄;
-               後面新增的欄拿到索引 5 以後,全部掉進 else 被設成 0,於是滑到第二台的
-               列表時上面的時間就不見了(founder 2026-08-11)。用格子座標判,跟這個
-               handler 裡其他 session 欄的判斷同一套。 */
-            /* session 欄一律不顯示時間（founder 2026-08-11:「上面都不要顯示時間好了」）。
-               MAIN_PAGE_TYPE_LEFT 就是第 0 欄，跟其他欄一視同仁。 */
+            /* settle 收尾:模糊圖滿值、黑底退場(跟 2026-08-06 之前各頁的最終
+               狀態一致);時間/電量在非錶盤頁一律不顯示(founder 2026-08-11)。 */
+            if (gaus_dial_bg && lv_obj_is_valid(gaus_dial_bg))
+                lv_obj_set_style_bg_opa(gaus_dial_bg, LV_OPA_TRANSP, 0);
             set_instruction_list_time_opa(LV_OPA_0);
-            /* 停在 session 欄時的模糊狀態,用來跟下拉當下的 [sp-blur] 對照 —— 兩者數值
-               的差,就是「拉下去模糊就不見」的原因。 */
-            if (on_session_list && gaus_dial_bg && lv_obj_is_valid(gaus_dial_bg))
-            {
-                LOG_W("[sp-blur] REST bg_opa=%d img_opa=%d hidden=%d",
-                      (int)lv_obj_get_style_bg_opa(gaus_dial_bg, LV_PART_MAIN),
-                      (int)(gaus_dial_img && lv_obj_is_valid(gaus_dial_img)
-                                ? lv_obj_get_style_img_opa(gaus_dial_img, LV_PART_MAIN)
-                                : -1),
-                      (int)lv_obj_has_flag(gaus_dial_bg, LV_OBJ_FLAG_HIDDEN));
-            }
-            if (active_pos == MAIN_PAGE_TYPE_UP)
-            {
-                set_clock_main_status_opa(LV_OPA_100, true);
-            }
-            else if (active_pos == MAIN_PAGE_TYPE_RIGHT)
-            {
-                /* device page wants a PURE BLACK backdrop (gaus_dial_bg at
-                   COVER), not the blurred dial — keep the blur image hidden so
-                   the settle doesn't re-reveal it after the drag faded to black. */
-                set_clock_main_status_opa(LV_OPA_0, false);
-            }
-            else
-            {
-                set_clock_main_status_opa(LV_OPA_100, false);
-            }
-            /* 2026-08-06: 面板頁不再顯示電量（founder:通知列表上面的電量拿掉），
-               頂部那條位置現在是「控制中設備」名稱。 */
             set_instruction_list_battery_opa(LV_OPA_TRANSP);
+            if (active_pos == MAIN_PAGE_TYPE_UP)
+                set_clock_main_status_opa(LV_OPA_100, true);
+            else
+                set_clock_main_status_opa(LV_OPA_100, false);
 
             extern void reset_gravity_position(void);
             reset_gravity_position();
@@ -1323,13 +1276,6 @@ void animate_to_home_from_ai_page(void)
 static app_media_t *p_app_media = NULL;
 static lv_obj_t *ble_mode_btn;
 static lv_obj_t *dnd_mode_btn;
-static void calculator_btn_event_cb(lv_event_t *e)
-{
-    gui_app_run(APP_ID_CALCULATOR);
-
-    animate_to_home_from_notification_center();
-}
-
 static void set_dnd_mode(bool dnd_mode)
 {
     if (dndmode_enabled != dnd_mode)
@@ -1370,24 +1316,6 @@ static void qrcode_btn_event_cb(lv_event_t *e)
     // strcpy(intent.app_id, "JA_app1");
     // watch_run_app_by_intent(&intent);
     gui_app_run(APP_ID_QRCODE);
-    animate_to_home_from_notification_center();
-}
-
-static void setting_icon_event_cb(lv_event_t *e)
-{
-    gui_app_run(APP_ID_SETTING);
-    animate_to_home_from_notification_center();
-}
-
-static void mouse_mode_icon_event_cb(lv_event_t *e)
-{
-    gui_app_run(APP_ID_MOUSE);
-    animate_to_home_from_notification_center();
-}
-
-static void flishlight_icon_event_cb(lv_event_t *e)
-{
-    gui_app_run(APP_ID_FLASHLIGHT);
     animate_to_home_from_notification_center();
 }
 
@@ -1690,48 +1618,28 @@ lv_obj_t *control_center_layout_create(lv_obj_t *parent)
     lv_obj_update_layout(bar); /* resolve width before the first fill calc */
     cc_bar_apply_fill(bar, brightness_floor);
 
-    /* Tool-button grid below the slider. */
-    lv_obj_t *cc_bottom = lv_obj_create(control_center_window);
-    lv_obj_set_size(cc_bottom, LV_HOR_RES, LV_VER_RES);
-    lv_obj_set_style_bg_opa(cc_bottom, LV_OPA_0, 0);
-    lv_obj_set_style_border_width(cc_bottom, 0, 0);
-    lv_obj_clear_flag(cc_bottom, LV_OBJ_FLAG_SCROLLABLE);
-    lv_obj_align_to(cc_bottom, bar, LV_ALIGN_OUT_BOTTOM_MID, 0, 10);
-
-    /* Row 1: calculator / flashlight / mouse */
-    /* calculator_icon = the dedicated control-center calculator glyph the user
-       supplied (2026-06-25). CALCULATOR_ICON resolves to &calculator_icon; the
-       ezip resource now exists so the symbol links on watch + PC. */
-    lv_obj_t *calculator_btn = common_image_button(
-        cc_bottom, CALCULATOR_ICON, 100, 100, calculator_btn_event_cb);
-    lv_obj_set_style_bg_opa(calculator_btn, LV_OPA_10, 0);
-    lv_obj_align(calculator_btn, LV_ALIGN_TOP_LEFT, 70, 0);
-
-    lv_obj_t *flishlight_btn = common_image_button(
-        cc_bottom, FLISHLIGHT_ICON, 100, 100, flishlight_icon_event_cb);
-    lv_obj_align(flishlight_btn, LV_ALIGN_TOP_MID, 0, 0);
-
-    /* Mouse replaced the recorder here (founder direction 2026-07-02); the
-       recorder app stays reachable from the App List. */
-    lv_obj_t *mouse_btn = common_image_button(
-        cc_bottom, MOUSE_MODE_ICON, 100, 100, mouse_mode_icon_event_cb);
-    lv_obj_align(mouse_btn, LV_ALIGN_TOP_RIGHT, -70, 0);
-
-    /* Row 2: setting / qrcode / do-not-disturb */
-    lv_obj_t *setting_icon = common_image_button(
-        cc_bottom, IMG_SETTINGS, 100, 100, setting_icon_event_cb);
-    lv_obj_align_to(setting_icon, calculator_btn, LV_ALIGN_OUT_BOTTOM_MID, 0, 15);
-    lv_obj_set_style_bg_opa(setting_icon, LV_OPA_10, 0);
-    lv_obj_set_style_bg_color(setting_icon, lv_color_hex(0xFFFFFF), 0);
+    /* ADR-0020(founder 2026-08-11):控制中心只留 亮度 / QR / 勿擾 / 找手機
+       (dev 版另加 gesture),當成 App List 網格的頭部第一列;其餘工具
+       (計算機/手電筒/設定/滑鼠)都在下面的 app 網格裡,不重複。 */
+    lv_obj_t *cc_row = lv_obj_create(control_center_window);
+    lv_obj_set_size(cc_row, LV_HOR_RES, 120);
+    lv_obj_set_style_bg_opa(cc_row, LV_OPA_0, 0);
+    lv_obj_set_style_border_width(cc_row, 0, 0);
+    lv_obj_clear_flag(cc_row, LV_OBJ_FLAG_SCROLLABLE);
+    lv_obj_align_to(cc_row, bar, LV_ALIGN_OUT_BOTTOM_MID, 0, 14);
 
     lv_obj_t *qrcode_btn = common_image_button(
-        cc_bottom, &icon_qrcode, 100, 100, qrcode_btn_event_cb);
-    lv_obj_align_to(qrcode_btn, flishlight_btn, LV_ALIGN_OUT_BOTTOM_MID, 0, 15);
+        cc_row, &icon_qrcode, 100, 100, qrcode_btn_event_cb);
+#if !kReleaseMode
+    /* dev:四顆 —— QR / 勿擾 / 找手機 / gesture */
+    lv_obj_align(qrcode_btn, LV_ALIGN_TOP_LEFT, 32, 0);
+#else
+    lv_obj_align(qrcode_btn, LV_ALIGN_TOP_LEFT, 70, 0);
+#endif
 
     dndmode_enabled = SkaiWatchSys.DNDMode.config.status;
-    dnd_mode_btn = common_image_button(cc_bottom, &icon_dnd_mode, 100, 100,
+    dnd_mode_btn = common_image_button(cc_row, &icon_dnd_mode, 100, 100,
                                        dnd_mode_btn_event_cb);
-    lv_obj_align_to(dnd_mode_btn, mouse_btn, LV_ALIGN_OUT_BOTTOM_MID, 0, 15);
     if (dndmode_enabled)
     {
         lv_obj_set_style_bg_opa(dnd_mode_btn, LV_OPA_90, 0);
@@ -1743,15 +1651,28 @@ lv_obj_t *control_center_layout_create(lv_obj_t *parent)
         lv_obj_set_style_bg_color(dnd_mode_btn, lv_color_hex(0xFFFFFF), 0);
     }
 
-    /* Row 3: find-phone (+ gesture-test in debug builds) */
     lv_obj_t *find_phone_btn = common_image_button(
-        cc_bottom, FIND_PHONE, 100, 100, find_phone_btn_event_cb);
-    lv_obj_align_to(find_phone_btn, setting_icon, LV_ALIGN_OUT_BOTTOM_MID, 0, 35);
+        cc_row, FIND_PHONE, 100, 100, find_phone_btn_event_cb);
+
 #if !kReleaseMode
+    lv_obj_align_to(dnd_mode_btn, qrcode_btn, LV_ALIGN_OUT_RIGHT_MID, 4, 0);
+    lv_obj_align_to(find_phone_btn, dnd_mode_btn, LV_ALIGN_OUT_RIGHT_MID, 4, 0);
     lv_obj_t *gesture_test_btn = common_image_button(
-        cc_bottom, IMG_LOGO, 100, 100, gesture_test_btn_event_cb);
-    lv_obj_align_to(gesture_test_btn, qrcode_btn, LV_ALIGN_OUT_BOTTOM_MID, 0, 35);
+        cc_row, IMG_LOGO, 100, 100, gesture_test_btn_event_cb);
+    lv_obj_align_to(gesture_test_btn, find_phone_btn, LV_ALIGN_OUT_RIGHT_MID, 4, 0);
+#else
+    lv_obj_align(dnd_mode_btn, LV_ALIGN_TOP_MID, 0, 0);
+    lv_obj_align(find_phone_btn, LV_ALIGN_TOP_RIGHT, -70, 0);
 #endif
+
+    /* App List 網格接在控制列下方,同一個捲動容器(視覺融為一體)。 */
+    {
+        extern lv_obj_t *lv_app_list_layout_create_embedded(lv_obj_t *parent,
+                                                            lv_coord_t y_top);
+        lv_obj_update_layout(cc_row);
+        lv_app_list_layout_create_embedded(control_center_window,
+                                           lv_obj_get_y(cc_row) + 120 + 10);
+    }
 
     return control_center_window;
 }
@@ -1973,10 +1894,12 @@ void app_clock_main_status_bar_init(lv_obj_t *par)
                tile (col 2 = MAIN_PAGE_TYPE_LEFT) swipes in from the right edge.
                HOME still scrolls TOP to the message list. The left edge stays the
                mixed-list reveal overlay (no LV_DIR_LEFT). */
-            /* 2026-08-06: LV_DIR_BOTTOM 拿掉 — 控制中心搬進頂部面板(從通知列表
-               往右滑)，錶盤往上滑不再有頁面。上 tile 現在是整個面板。 */
-            pages[i] = lv_tileview_add_tile(app_clock_main_status_bar, 1, i,
-                                            LV_DIR_TOP | LV_DIR_RIGHT);
+            /* ADR-0020 (2026-08-11):HOME 四向全開 —
+               TOP = 通知面板 (1,0)、BOTTOM = 控制中心+App List (1,2)、
+               LEFT = 合併 session+actions 頁 (0,1)、RIGHT = 媒體欄 (2,1)。 */
+            pages[i] = lv_tileview_add_tile(
+                app_clock_main_status_bar, 1, i,
+                LV_DIR_TOP | LV_DIR_BOTTOM | LV_DIR_LEFT | LV_DIR_RIGHT);
             app_clock_main_status_bar_down = pages[i];
             lv_obj_set_style_bg_color(pages[i], LV_COLOR_RED,
                                       LV_PART_MAIN | LV_STATE_DEFAULT);
@@ -2064,75 +1987,77 @@ void app_clock_main_status_bar_init(lv_obj_t *par)
             lv_obj_set_scrollbar_mode(pages[i], LV_SCROLLBAR_MODE_OFF);
         }
     }
-    /* session 欄正上方的面板停車位 (2,0)。在迴圈之後才加,所以拿到索引 5,既有的
-       MAIN_PAGE_TYPE_*(0..4) 映射完全不動。LV_DIR_VER 只是給原生捲動用;實際下拉由
-       session tile 的 catcher 手動驅動 scroll_y,所以 (2,1) 不用開 LV_DIR_TOP —— 也
-       不該開,否則使用者在列表上隨便往上滑就會把空面板拉出來。 */
-    s_panel_home_tile = pages[MESSAGE_PAGE_INDEX];
-    /* 欄 2 的 session tile 就是迴圈裡建好的那格 (2,1);欄 3.. 在這裡補。每一欄都配一個
-       正上方的面板停車位。全部先建滿 MAX_SYNCED_DEVICES —— tileview 的格子不能事後
-       抽換,而設備數是執行期才知道的;多出來的欄由 settle 邏輯擋住不讓停(見
-       session_col_clamp)。 */
-    s_session_tile[0] = pages[INSTRUCTION_LIST_PAGE_INDEX];
+    /* ADR-0020:右側媒體欄 (2+c,1) 與各自的滑鼠入口停車位 (2+c,0)。欄 2 的 tile
+       就是迴圈裡建好的那格 (2,1);欄 3.. 在這裡補。全部先建滿 MAX_SYNCED_DEVICES ——
+       tileview 的格子不能事後抽換,設備數是執行期才知道的;多出來的欄由
+       media_cols_apply_dirs 用 tile->dir 鎖住。 */
+    s_media_tile[0] = pages[INSTRUCTION_LIST_PAGE_INDEX];
     for (int c = 0; c < MAX_SYNCED_DEVICES; c++)
     {
-        uint8_t col = (uint8_t)(SESSION_COL_FIRST + c);
+        uint8_t col = (uint8_t)(MEDIA_COL_FIRST + c);
         if (c > 0)
         {
-            s_session_tile[c] =
+            s_media_tile[c] =
                 lv_tileview_add_tile(app_clock_main_status_bar, col, 1, LV_DIR_HOR);
-            lv_obj_set_size(s_session_tile[c], LV_HOR_RES_MAX, LV_VER_RES_MAX);
-            lv_obj_set_style_bg_opa(s_session_tile[c], LV_OPA_TRANSP, 0);
-            lv_obj_set_scrollbar_mode(s_session_tile[c], LV_SCROLLBAR_MODE_OFF);
+            lv_obj_set_size(s_media_tile[c], LV_HOR_RES_MAX, LV_VER_RES_MAX);
+            lv_obj_set_style_bg_opa(s_media_tile[c], LV_OPA_TRANSP, 0);
+            lv_obj_set_scrollbar_mode(s_media_tile[c], LV_SCROLLBAR_MODE_OFF);
         }
-        s_panel_park_tile[c] =
-            lv_tileview_add_tile(app_clock_main_status_bar, col, 0, LV_DIR_VER);
-        lv_obj_set_size(s_panel_park_tile[c], LV_HOR_RES_MAX, LV_VER_RES_MAX);
-        lv_obj_set_style_bg_opa(s_panel_park_tile[c], LV_OPA_TRANSP, 0);
-        lv_obj_set_scrollbar_mode(s_panel_park_tile[c], LV_SCROLLBAR_MODE_OFF);
+        /* 滑鼠入口停車位在**下方** (col,2) —— founder R2:從媒體頁往上拉出滑鼠。 */
+        s_mouse_park_tile[c] =
+            lv_tileview_add_tile(app_clock_main_status_bar, col, 2, LV_DIR_TOP);
+        lv_obj_set_size(s_mouse_park_tile[c], LV_HOR_RES_MAX, LV_VER_RES_MAX);
+        lv_obj_set_style_bg_opa(s_mouse_park_tile[c], LV_OPA_TRANSP, 0);
+        lv_obj_set_scrollbar_mode(s_mouse_park_tile[c], LV_SCROLLBAR_MODE_OFF);
+
+        /* 媒體頁常駐建在每一欄裡(內容輕:曲名 + 控制鈕);曲名路由由 settle 的
+           media_col_bind 綁到當前欄。頂部設備列(圓點/名稱/箭頭)蓋在其上。 */
+        {
+            extern lv_obj_t *hid_mouse_media_page_create(lv_obj_t *parent);
+            s_media_page[c] = hid_mouse_media_page_create(s_media_tile[c]);
+        }
+        media_col_header_build(c);
+
+        /* 滑鼠入口停車位的預覽:黑底 + 滑鼠圖示。settle 在這格的瞬間會切換成
+           真正的滑鼠模式圖層(同為黑底,視覺上是原地亮起)。 */
+        {
+            lv_obj_t *icon = lv_img_create(s_mouse_park_tile[c]);
+            lv_img_set_src(icon, &mouse_mode_icon);
+            lv_obj_center(icon);
+            lv_obj_clear_flag(icon, LV_OBJ_FLAG_CLICKABLE);
+        }
     }
 
-    session_cols_refresh(); /* 開機時就把多餘的欄鎖起來(設備到齊後會再刷一次) */
+    clock_main_media_cols_refresh(); /* 開機先鎖住多餘的欄(設備到齊後會再刷) */
+    clock_main_heap_log("boot:media-cols-built");
 
     lv_obj_set_tile_id(app_clock_main_status_bar, 1, 1, false);
     lv_obj_add_flag(app_clock_main_status_bar, LV_OBJ_FLAG_HIDDEN);
-    /* 2026-08-06: 控制中心不再自己佔一個 tile — 它是頂部面板的最左頁，
-       由 lv_top_panel_create 掛進去。(1,2) tile 保留但空著且不可達。 */
 
+    /* actions 資料層 + 浮層 bar(lv_layer_top)。左頁的 actions 區段從這份資料
+       匯出(instruction_list_export_*),所以要在 session 列表之前建好。 */
     extern lv_obj_t *lv_instruction_list_layout_create(lv_obj_t * parent);
     LOG_I("clock_status_bar: before instruction_list_layout_create");
-    lv_instruction_list_layout_create(pages[INSTRUCTION_LIST_PAGE_INDEX]);
+    lv_instruction_list_layout_create(pages[MAIN_PAGE_TYPE_RIGHT]);
     LOG_I("clock_status_bar: after instruction_list_layout_create");
+    clock_main_heap_log("boot:instruction-list");
 
-    /* 2026-06-25: the right-swipe tile (col 2 = INSTRUCTION_LIST_PAGE_INDEX) now
-       hosts the App List grid. instruction_list_layout_create above floats its
-       content on lv_layer_top and only tracks this tile as instruction_list_page
-       (read-only, for scroll-snap), so the tile itself is free to render the app
-       grid that swipes in from the right edge. The left mixed list keeps using
-       the left-edge reveal overlay.
-       2026-08-05: that tile now hosts the DESKTOP-SESSION PAGER instead — one
-       horizontally-snapping page per desktop chat session. lv_app_list_layout.c is
-       kept intact but unmounted (founder: "App List 先不顯示"); re-mounting it is a
-       one-line change here. */
+    /* ADR-0020 左頁 (0,1) = 跨設備合併 session 列表(通知卡樣式 + 設備副標)
+       + 下接 actions 列表。 */
     extern lv_obj_t *lv_session_pager_create(lv_obj_t * parent);
-    lv_session_pager_create(pages[INSTRUCTION_LIST_PAGE_INDEX]);
-    /* 每一欄各自建一份列表 —— 拖曳到隔壁欄時它已經畫好了。聊天層 / 麥克風 / scrim 仍是
-       單一份,由 session_pager_set_column 跟著停下來的那一欄搬。 */
-    {
-        extern void lv_session_pager_attach_column(int idx, lv_obj_t * tile);
-        for (int c = 0; c < MAX_SYNCED_DEVICES; c++)
-            lv_session_pager_attach_column(c, s_session_tile[c]);
-    }
-    /* 上 tile = 頂部面板（控制中心 ← 通知列表 → 各設備媒體中心 + 固定的頂部
-       設備列 / 底部按鈕）。通知列表與控制中心都由面板內部建立。 */
+    lv_session_pager_create(pages[MAIN_PAGE_TYPE_RIGHT]);
+    clock_main_heap_log("boot:session-pager");
+
+    /* 上 tile = 頂部面板(ADR-0020 之後只剩通知列表 + 滑鼠模式 Exit 鈕)。 */
     LOG_I("clock_status_bar: before top_panel_create");
     lv_top_panel_create(pages[MESSAGE_PAGE_INDEX], par);
     LOG_I("clock_status_bar: after top_panel_create");
+    clock_main_heap_log("boot:top-panel");
 
-    /* T4: device_pager 內容放右 tile (2,1)，鏡像左側 instruction_list。
-       拉出靠原生 tileview 滑動。 */
-    extern lv_obj_t *device_pager_create(lv_obj_t * parent);
-    // device_pager_create(pages[MAIN_PAGE_TYPE_RIGHT]); // 2026-06-30: removed; left (0,1) slot will host the instruction list (static tile)
+    /* 下 tile (1,2) = 控制中心(亮度/QR/勿擾/找手機,dev 加 gesture)當頭部 +
+       App List 網格(ADR-0020:合併為一頁,從錶盤往上拉進入)。 */
+    control_center_layout_create(pages[MAIN_PAGE_TYPE_DOWN]);
+    clock_main_heap_log("boot:control+applist");
 
     LOG_D("tileview set tile id to 1,1");
     myLancher[app_index_message].pagetileview = app_clock_main_status_bar;

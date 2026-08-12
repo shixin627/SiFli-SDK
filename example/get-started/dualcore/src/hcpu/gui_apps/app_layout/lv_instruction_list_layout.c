@@ -112,6 +112,10 @@ typedef struct
     char title[LIST_ITEM_TITLE_LEN];
     const char *icon;      // icon resource pointer, can be NULL
     char img_path[64];     // file-based image path for instructions
+    /* R44:這張圖的檔案內容真的換過(update_instruction_image),下次 refresh 要丟掉它的
+       解碼快取。手機每次開清單都會 replace-all 重推一份**內容相同**的清單,那種情況不
+       該丟 —— 丟了就得重讀 NAND 重解碼,使用者看到「文字先進來、右邊圖標晚一拍」。 */
+    bool img_dirty;
     lv_obj_t *widget;      // app widget obj, NULL for instructions
     bool is_instruction;   // true = custom instruction, false = app
     bool is_interval;      // for instructions: has toggle switch
@@ -257,6 +261,10 @@ static lv_obj_t *switch_objs[MAX_LIST_ITEMS]; // toggle switches for any item
 /* 縮放曲線指數：1.0 = 線性、2.0 = 平方（中央放大效果突出，邊緣下降快）、
  * 3.0 = 立方（更陡峭）。值越大，「中央 dot 顯著大、其他 dot 都很小」越明顯 */
 #define DOT_ZOOM_EXPONENT 2.0f
+/* R29:session 列右緣的來源設備名(取代圓框裡的 icon)最大寬度。選中時 app_icon_frame
+   以 DOT_ICON_SCALE * DOT_BIG_PROPORTION 放大置中在 DOT_BG_SIZE 的 dot_bg 裡,名字
+   要**置中且不超出框**,所以留一點內距,超過就 … 截斷。 */
+#define CONV_NAME_MAX_W 88
 
 #define ARRAY_SIZE(arr) (sizeof(arr) / sizeof((arr)[0]))
 
@@ -316,6 +324,105 @@ uint16_t INSTRUCTION_LIST_ITEMS_DEFINITION[] = {
 uint8_t return_total_list_count(void)
 {
     return list_item_count;
+}
+
+/* ── ADR-0020 匯出:左頁(合併 session 列表)在自己的捲動容器裡畫 actions 區段。
+   資料與執行路徑都留在本檔;左頁只讀 title/icon、點擊轉發 activate_index。
+   回傳的指標指向 list_items[] 靜態儲存 —— LVGL 單執行緒,讀取期間不會被
+   BLE thread 改寫(推播走 pending → LVGL thread apply)。 */
+const char *instruction_list_export_title(uint8_t i)
+{
+    if (i >= list_item_count)
+        return NULL;
+    return list_items[i].title;
+}
+
+const char *instruction_list_export_id(uint8_t i)
+{
+    if (i >= list_item_count)
+        return NULL;
+    return list_items[i].id;
+}
+
+/* ADR-0020 R8:左頁(合併 session+actions)顯示的就是這個浮動清單本體。這個旗標
+   由 clock 在左頁 settle 進出時設定;開著時麥克風 pill 的 tap = 開新 session
+   (交回 session pager 的 conv_new),不是開 AI 輸入框。 */
+static bool s_session_page_mode = false;
+void instruction_list_set_session_page_mode(bool on)
+{
+    s_session_page_mode = on;
+}
+
+/* R9(founder:「actions 在下面」):把 conv: 開頭的 session item 穩定移到清單
+   前段,actions 落在後段。static 暫存 —— list_item_t ~260B x30 ≈ 7.8KB,放
+   LVGL thread 的堆疊太肥。呼叫端(session pager 注入)接著自己 refresh。 */
+/* R27:把 conv: 段**強制排成 ids[] 給的順序**(其餘 actions 維持原順序、整段在後)。
+   為什麼需要這支:`add_or_update_custom_instruction` 對已存在的 id 只更新內容,
+   **位置原地不動**;`instruction_list_move_conv_items_first` 又是穩定分段。所以注入端
+   改排序(R26 ts 由新→舊改舊→新)只對「這次才第一次出現」的 session 生效,早就在清單裡
+   的仍停在當初插入的位置 —— founder 2026-08-12:「最新的還是在最上面沒有在下面」。
+   回傳是否真的動過順序,讓呼叫端只在有變時才 refresh(避免每次輪詢都重繪)。 */
+bool instruction_list_order_conv_items(const char *const *ids, uint8_t n)
+{
+    static list_item_t s_order_tmp[MAX_LIST_ITEMS];
+    if (list_item_count == 0)
+        return false;
+    uint8_t w = 0;
+    /* 1) 依 ids[] 指定的順序收 conv 項 */
+    for (uint8_t k = 0; k < n && w < MAX_LIST_ITEMS; k++)
+    {
+        if (ids[k] == NULL || ids[k][0] == '\0')
+            continue;
+        for (uint8_t i = 0; i < list_item_count; i++)
+        {
+            if (strncmp(list_items[i].id, "conv:", 5) == 0 &&
+                strcmp(list_items[i].id, ids[k]) == 0)
+            {
+                s_order_tmp[w++] = list_items[i];
+                break;
+            }
+        }
+    }
+    /* 2) ids[] 沒點到的 conv 項(理論上不該有)接在後面,維持原相對順序 */
+    for (uint8_t i = 0; i < list_item_count && w < MAX_LIST_ITEMS; i++)
+    {
+        if (strncmp(list_items[i].id, "conv:", 5) != 0)
+            continue;
+        bool taken = false;
+        for (uint8_t k = 0; k < w; k++)
+            if (strcmp(s_order_tmp[k].id, list_items[i].id) == 0) { taken = true; break; }
+        if (!taken)
+            s_order_tmp[w++] = list_items[i];
+    }
+    /* 3) actions 等非 conv 項,原順序,整段在 conv 之後 */
+    for (uint8_t i = 0; i < list_item_count && w < MAX_LIST_ITEMS; i++)
+        if (strncmp(list_items[i].id, "conv:", 5) != 0)
+            s_order_tmp[w++] = list_items[i];
+    if (w != list_item_count)
+        return false; /* 數不對就別動整份清單(寧可順序舊,也不要掉項目) */
+    bool changed = false;
+    for (uint8_t i = 0; i < list_item_count; i++)
+        if (strcmp(s_order_tmp[i].id, list_items[i].id) != 0) { changed = true; break; }
+    if (changed)
+        memcpy(list_items, s_order_tmp, sizeof(list_item_t) * list_item_count);
+    return changed;
+}
+
+/* R31:`instruction_list_move_conv_items_first` 在 R27 被 order_conv_items 取代後成了
+   孤兒,但它那份 `static list_item_t[MAX_LIST_ITEMS]`(~7.8KB)還是佔著 SRAM —— 而
+   SRAM 少一塊就是 heap 少一塊。這台只剩 ~38KB heap,進滑鼠頁的大配置失敗就 NULL
+   deref 當機,所以把重複的那份刪掉,只留 order_conv_items 的暫存。 */
+
+/* instruction_list_focus_first_action 在檔尾(它用到的定位 statics 宣告在後段)。
+   R32 的 release/ensure 也在檔尾 —— 它們要 p_instruction_list_layout(宣告在後面)。 */
+
+const void *instruction_list_export_icon(uint8_t i)
+{
+    if (i >= list_item_count)
+        return NULL;
+    if (list_items[i].img_path[0] != '\0')
+        return list_items[i].img_path; /* lv_img_set_src 認得檔案路徑字串 */
+    return list_items[i].icon;         /* 資源指標,可為 NULL */
 }
 
 typedef struct
@@ -684,6 +791,16 @@ static void update_indicator_dots_position(int input_value)
 
         lv_obj_set_style_img_opa(p_instruction_list_layout->indicator_dots[i],
                                  opacity, 0);
+        /* R17:conv 列的設備名 label(dot_bg 第 3 個 child)跟 dot 同步淡出。
+           label 不吃 zoom(EPIC label 特性),只同步 opa。
+           R19(founder):設備名整體再暗一點 —— 基準 55%(dot 全亮時 ≈ 140)。 */
+        {
+            lv_obj_t *name = lv_obj_get_child(
+                p_instruction_list_layout->indicator_dots_bg[i], 2);
+            if (name != NULL && lv_obj_is_valid(name))
+                lv_obj_set_style_text_opa(
+                    name, (lv_opa_t)(((uint16_t)opacity * 140) / 255), 0);
+        }
 
         /* 用指數曲線 ratio^N 取代線性 ratio：N>1 時，中央 dot 大幅放大，
          * 邊緣 dot 快速縮小，視覺上中央更突出 */
@@ -767,6 +884,46 @@ static void create_indicator_dots(lv_obj_t *parent)
         {
             /* Instructions without icon: show frame only */
             lv_img_set_src(dot, &app_icon_frame);
+        }
+
+        /* R17(founder):session 列的右緣不要圓框,改直接顯示來源設備名(取代
+           R11-R15 的標題右下角小副標)。dot img 保留但藏起來(位置/zoom 迴圈
+           仍對 img 操作,label 不能頂替它),設備名 label 掛在 dot_bg 上、右緣
+           對齊往左長(框寬=文字寬,R15 教訓:別靠 text_align),淡出在
+           update_indicator_dots_position 跟 dot 同步。 */
+        if (strncmp(list_items[i].id, "conv:", 5) == 0)
+        {
+            extern const char *session_list_device_name_for(const char *conv_id);
+            extern lv_font_t *lvsf_get_font_from_size(uint16_t size);
+            const char *dev_name = session_list_device_name_for(list_items[i].id);
+            if (dev_name != NULL && dev_name[0])
+            {
+                lv_obj_add_flag(dot, LV_OBJ_FLAG_HIDDEN);
+                lv_obj_add_flag(dot_bg, LV_OBJ_FLAG_OVERFLOW_VISIBLE);
+                lv_obj_t *name = lv_label_create(dot_bg);
+                lv_font_t *f = lvsf_get_font_from_size(18);
+                if (f != NULL)
+                    lv_obj_set_style_text_font(name, f, 0);
+                lv_obj_set_style_text_color(name, lv_color_hex(0xFFFFFF), 0);
+                lv_label_set_text(name, dev_name);
+                lv_obj_clear_flag(name, LV_OBJ_FLAG_CLICKABLE);
+                lv_obj_add_flag(name, LV_OBJ_FLAG_EVENT_BUBBLE);
+                /* R18(founder):超過就 … 截斷。只在超寬時才鎖寬走 LONG_DOT(截斷後
+                   文字填滿框,無對齊歧義);短的維持框寬=文字寬,免踩 text_align 不
+                   生效的雷(R13-R15)。
+                   R29(founder:「設備名稱要剛好在 app_icon_frame 中間,長度也不能
+                   超過」):選中框 app_icon_frame 跟 dot img 一樣 center 在 dot_bg,
+                   所以名字改 **LV_ALIGN_CENTER**(原本靠右對齊,會偏出框外);寬度上
+                   限縮到框內 CONV_NAME_MAX_W,超過就 … 。框寬=文字寬時置中框=置中
+                   文字,截斷時文字填滿框也仍置中,兩種情況都不依賴 text_align。 */
+                lv_obj_update_layout(name);
+                if (lv_obj_get_width(name) > CONV_NAME_MAX_W)
+                {
+                    lv_label_set_long_mode(name, LV_LABEL_LONG_DOT);
+                    lv_obj_set_width(name, CONV_NAME_MAX_W);
+                }
+                lv_obj_align(name, LV_ALIGN_CENTER, 0, 0);
+            }
         }
 
         p_instruction_list_layout->indicator_dots_bg[i] = dot_bg;
@@ -1245,12 +1402,13 @@ static void scroll_list(lv_obj_t *obj, int16_t drift)
             }
             if (brightness != last_brightness[i])
             {
-                // 使用顏色深淺代替透明度，創建從白色到灰色的漸變
-                lv_color_t text_color =
-                    lv_color_make(brightness, brightness, brightness);
+                /* R12(founder):換回**真透明度**。當年 SDK 的 per-label text_opa
+                   會互相干擾(同容器的文字設一個全部跟著動),才改用顏色深淺仿
+                   透明;SDK 已再更新,改回 text_opa 上機實測。字色固定白(建立
+                   處設一次),這裡只動 opa。 */
                 if (app_label[i] != NULL && lv_obj_is_valid(app_label[i]))
                 {
-                    lv_obj_set_style_text_color(app_label[i], text_color, 0);
+                    lv_obj_set_style_text_opa(app_label[i], brightness, 0);
                 }
                 if (switch_objs[i] != NULL && lv_obj_is_valid(switch_objs[i]))
                 {
@@ -1387,8 +1545,14 @@ static void scroll_list(lv_obj_t *obj, int16_t drift)
                     if (app_label[i] != NULL && lv_obj_is_valid(app_label[i]))
                         lv_obj_clear_flag(app_label[i], LV_OBJ_FLAG_HIDDEN);
                 }
+                /* R28(founder:「選到 session 的地方也要有 app_icon_frame 圖片出現」):
+                   選中框(app_icon_shadow)本來只給「有 icon」的項目顯示,而 conv: 的
+                   session 右緣放的是設備名文字、沒有 icon,所以選到時什麼都不亮。conv
+                   項一併放行 —— 框是 dot_bg 的第一個 child、設備名 label 後加,所以
+                   框在底、名字在上。 */
                 if ((list_items[i].icon != NULL ||
-                     list_items[i].img_path[0] != '\0') &&
+                     list_items[i].img_path[0] != '\0' ||
+                     strncmp(list_items[i].id, "conv:", 5) == 0) &&
                     app_icon_shadow[i] != NULL &&
                     lv_obj_is_valid(app_icon_shadow[i]))
                     lv_obj_clear_flag(app_icon_shadow[i], LV_OBJ_FLAG_HIDDEN);
@@ -1397,8 +1561,11 @@ static void scroll_list(lv_obj_t *obj, int16_t drift)
             }
             else
             {
+                /* R28:離開選中一併收框(判定條件要跟上面顯示那支對稱,否則 conv 項的
+                   框亮了就再也收不掉)。 */
                 if ((list_items[i].icon != NULL ||
-                     list_items[i].img_path[0] != '\0') &&
+                     list_items[i].img_path[0] != '\0' ||
+                     strncmp(list_items[i].id, "conv:", 5) == 0) &&
                     app_icon_shadow[i] != NULL &&
                     lv_obj_is_valid(app_icon_shadow[i]))
                     lv_obj_add_flag(app_icon_shadow[i], LV_OBJ_FLAG_HIDDEN);
@@ -3374,6 +3541,15 @@ static void mic_bar_event_cb(lv_event_t *evt)
         s_mic_lp_consumed = false;
         return;
     }
+    /* ADR-0020 R8:左頁 session 檢視中,麥克風 = 直接開新 session(founder R6:
+       「點麥克風也是直接去開新的 session」)。清單推回來後 session pager 自動
+       走進聊天室。 */
+    if (s_session_page_mode)
+    {
+        extern void session_list_open_new_for_device(const char *device_id);
+        session_list_open_new_for_device(NULL);
+        return;
+    }
     /* Toggle by the box's ACTUAL visibility, not the is_open flag — the flag can
        get stuck true (e.g. navigating away while open without a close), which made
        a tap take the close branch and silently do nothing instead of opening. The
@@ -3983,6 +4159,49 @@ static void inst_list_slide_out_done_cb(lv_anim_t *a)
             lv_obj_add_flag(s_global_bar_layer, LV_OBJ_FLAG_HIDDEN);
         { extern void hid_mouse_set_own_bar_hidden(bool); hid_mouse_set_own_bar_hidden(false); } /* 浮層 bar 收→當幀還原滑鼠自有 bar */
     }
+    /* 2026-08-12 卡死修:清單「真正 HIDDEN」是這一刻(動畫跑完),但關閉路徑
+       (back 手勢 close_ai_widget + R16 snap_to_home、或電腦刪 session 觸發的
+       refresh)常在清單還在滑出、is_visible() 仍 true 時就跑過 check_main_page,
+       把 _at_instruction_list latch 成 true → 邊緣區(通知/媒體/控制中心手勢)被
+       關掉後沒人再 poll,回到錶盤看得到畫面卻四向全滑不出。清單此刻已藏,補跑一次
+       重評估讓 latch 翻回 false、display_gesture_detect_objs/status_bar_area 重新
+       開放邊緣區。
+       R23(founder 定位:「進去過 session 列表再回錶盤就會觸發」):這裡原本只重評
+       **清單**那一個 latch,但真正把四條邊緣 zone 重新打開的是 `check_is_at_home`
+       的進場分支(display_status_bar_area(0..3,true) / reveal overlay)。只翻
+       _at_instruction_list 的話 _at_home 仍卡 false —— 畫面回到錶盤、手勢全死,
+       左緣還留著 app 返回鍵。改叫 check_main_page():它依序重評 message /
+       instruction_list / control_center / home,順序本身就是相依順序。
+       R24(真兇,診斷坐實):log 顯示 `[ATINST] 1->0 visible=0 idx=4` 之後**沒有**
+       `[ATHOME] 0->1` —— 清單滑掉了,但 **tileview 還停在左頁
+       (idx=MAIN_PAGE_TYPE_RIGHT=4)**。左格透明所以看起來像回到錶盤,可是
+       check_is_at_home 的 on_device_page 判定直接把 idx==4 當「非錶盤」否決,
+       四條 zone 永遠不開。R16 只在 chat 返回 / ESC 關清單兩條路徑補了
+       snap_to_home,「人在左頁直接把清單滑掉」這條沒有;這裡是所有關閉路徑的
+       共同出口,還停在左頁就 snap 回 HOME(INSTANT,走 set_tile_id 讓 settle
+       收尾照跑),再重評狀態機。hosted 滑鼠模式的 tileview 由滑鼠圖層自己管,
+       不要碰。 */
+    {
+        extern uint8_t get_middle_layer_tileview_index(void);
+        extern void snap_to_home_from_any_page(void);
+        extern bool lv_top_panel_mouse_mode(void);
+        if (!lv_top_panel_mouse_mode() &&
+            get_middle_layer_tileview_index() == MAIN_PAGE_TYPE_RIGHT)
+        {
+            LOG_W("[R24] list hidden but tileview parked at left -> snap home");
+            snap_to_home_from_any_page();
+        }
+    }
+    /* R43:R33 曾在這裡「一關清單就釋放列物件」,為的是擠出 heap 給滑鼠頁。但滑鼠頁
+       OOM 的真兇後來量出來是**鍵盤模式 UI 的 38KB**(R40 改成延遲建立就解決了),所以
+       這個釋放只剩代價:每次開清單都要重建整份列,使用者看到的就是「文字先進來、icon
+       晚半秒才出現」(founder 連續三輪回報)。改回常駐 —— 滑鼠模式那條路徑仍會
+       release(見 app_clock_status_bar 進滑鼠模式處),真正需要記憶體的時候才付這個
+       代價。 */
+    {
+        extern void check_main_page(void);
+        check_main_page();
+    }
 }
 
 /* ---- watch-face right-edge left-pull → finger-reveal the list (L/R swap) ----
@@ -4138,6 +4357,14 @@ void instruction_list_reveal_drag_begin(void)
         return;
     if (s_left_closing || !lv_obj_has_flag(list_bg, LV_OBJ_FLAG_HIDDEN))
         return;
+    /* R37(founder:「從錶盤進入 session 列表時右邊的圖片會先透明的後面才出現」):
+       R33 起清單關閉就釋放列的物件,而**手指拖曳進場**這條路徑不像 open_browse 會先
+       ensure —— 列是後來某次 refresh 才補建的,所以圖標比清單本體晚一步浮現。手指
+       一開始拖就先把列建回來,進場第一幀就是完整內容。 */
+    {
+        extern void instruction_list_ensure_ui(void);
+        instruction_list_ensure_ui();
+    }
     instruction_list_bar_set_visible(true); /* idempotent on HOME */
     lv_anim_del(list_bg, inst_list_slide_anim_cb);
     lv_obj_clear_flag(list_bg, LV_OBJ_FLAG_HIDDEN);
@@ -4145,6 +4372,10 @@ void instruction_list_reveal_drag_begin(void)
     lv_obj_set_style_translate_x(list_bg,
                                  s_reveal_from_left ? -LV_HOR_RES : LV_HOR_RES, 0);
     reset_list_internal(); /* every reveal opens at the list's bottom item (R3) */
+    /* R47(founder 定案:「應該是把定位拿掉,先回到原本不做定位的版本」):R9 的
+       focus_first_action 整個退場 —— 兩條 reveal 都不定位,落點就是 reset_list_internal
+       的結果(清單最下面那項),跟左緣原本的行為一致。R46 曾把它挪到這裡(改成進場前定位
+       以消除跳動),但 founder 要的是連定位本身都不要。 */
     /* Backdrop behind the list: transparent on the watch face (blurred dial shows
        through), light scrim elsewhere — same rule as animate_open_ai_widget. */
     {
@@ -4267,6 +4498,12 @@ void instruction_list_open_browse(void)
     lv_obj_t *list_bg = p_instruction_list_layout->p_instruction_list_bg;
     if (!list_bg || !lv_obj_is_valid(list_bg))
         return;
+    /* R32:進滑鼠頁時把列的 UI 釋放掉換 heap,這裡是開清單的共同入口 —— 先原路
+       重建回來(沒被 release 過就是 no-op)。 */
+    {
+        extern void instruction_list_ensure_ui(void);
+        instruction_list_ensure_ui();
+    }
     /* Only when parked & hidden — already up (browse/open) or sliding shut: leave it. */
     if (s_left_closing || !lv_obj_has_flag(list_bg, LV_OBJ_FLAG_HIDDEN))
         return;
@@ -5182,20 +5419,10 @@ static void flash_instruction_label(lv_obj_t *label)
     lv_timer_set_repeat_count(t, 1);
 }
 
-static void list_item_click_event_cb(lv_event_t *evt)
+/* 執行一個 list item(點擊本體)。從浮層的 click cb 與 ADR-0020 左頁的
+   instruction_list_activate_index 兩條路進來,行為完全一致。 */
+static void list_item_activate(list_item_t *item)
 {
-    list_item_t *item = (list_item_t *)evt->user_data;
-    lv_obj_t *obj = evt->target;
-    /* A horizontal swipe (the left-to-close flick, or a right flick) also lands a
-       CLICKED on the item: the list scrolls vertically only, so a horizontal drag
-       never "loses" the press and LVGL fires CLICKED on release. The list's
-       GESTURE handler latches s_list_horiz_swipe for exactly this — ignore the
-       click so swipe-right-to-close doesn't ALSO select the item. (A flag, not
-       lv_indev_get_gesture_dir, because gesture_dir lingers after the swipe and
-       would then wrongly suppress the NEXT genuine tap.) */
-    if (s_list_horiz_swipe)
-        return;
-    LOG_D("ID: %s,obj:%p", item->id, obj);
 
     /* A tapped @-contact opens the in-watch chat room (mirror the desktop @-contact
        tap). The merged mixed list has no separate @ view, so this keys off the tapped
@@ -5301,6 +5528,30 @@ static void list_item_click_event_cb(lv_event_t *evt)
     {
         on_item_tap(item);
     }
+}
+
+static void list_item_click_event_cb(lv_event_t *evt)
+{
+    list_item_t *item = (list_item_t *)evt->user_data;
+    /* A horizontal swipe (the left-to-close flick, or a right flick) also lands a
+       CLICKED on the item: the list scrolls vertically only, so a horizontal drag
+       never "loses" the press and LVGL fires CLICKED on release. The list's
+       GESTURE handler latches s_list_horiz_swipe for exactly this — ignore the
+       click so swipe-right-to-close doesn't ALSO select the item. (A flag, not
+       lv_indev_get_gesture_dir, because gesture_dir lingers after the swipe and
+       would then wrongly suppress the NEXT genuine tap.) */
+    if (s_list_horiz_swipe)
+        return;
+    LOG_D("ID: %s", item->id);
+    list_item_activate(item);
+}
+
+/** ADR-0020:左頁 actions 區段的點擊入口。 */
+void instruction_list_activate_index(uint8_t i)
+{
+    if (i >= list_item_count)
+        return;
+    list_item_activate(&list_items[i]);
 }
 
 static bool tap_to_open_control = false;
@@ -6436,6 +6687,9 @@ static void create_list_items_ui(lv_obj_t *list, uint8_t start_idx,
                                    LV_EXT_FONT_GET(get_system_font_size(1)), 0);
         lv_obj_set_style_text_color(app_label[i], lv_color_hex(0xFFFFFF), 0);
 
+        /* R17(founder):標題右下角的設備名小副標退場 —— 設備名改顯示在右緣
+           dot 輪播的位置(create_indicator_dots 的 conv 分支),字級加大。 */
+
         /* For instructions with interval, create switch and position label left
          */
         if (list_items[i].is_instruction && list_items[i].is_interval)
@@ -6511,6 +6765,9 @@ static void create_list_items_ui(lv_obj_t *list, uint8_t start_idx,
 }
 
 static rt_tick_t s_last_refresh_tick = 0;
+/* R42:這次 refresh 是「原樣重建」(ensure_ui 把 release 掉的列建回來)還是「內容變了」。
+   原樣重建不可以作廢影像快取,否則每次進場都要重新解碼 NAND 上的圖。 */
+static bool s_restore_rebuild = false;
 static lv_timer_t *s_pending_refresh_timer = NULL;
 /* s_in_refresh_scroll is declared earlier in the file (near the forward
    decls for list_window_scroll_event_cb) so the scroll handler can read
@@ -6601,6 +6858,44 @@ void refresh_custom_instructions(void)
     /* 滑出關閉動畫進行中:擋退出途中的 UI 重繪(本地 restore 與手機 replace-all 重推的共同出口)。
        flag 在滑出結束、列表已 HIDDEN 後才清 → gate 只在列表可見的滑出過程生效。 */
     if (s_list_sliding_out) return;
+
+    /* R21:背景刷新(桌面刪 session 等)絕對不可以改變「清單是不是開著」——
+       instruction_list_is_visible() 是 check_is_at_instruction_list 的判定來源,
+       被刷新過程意外掀開就會把 _at_instruction_list 閂成 true、四條邊緣 zone 關掉,
+       畫面明明在錶盤卻只剩 app 返回鍵(=R16 那個假錶盤,換成背景刷新觸發)。
+       進場記下 hidden,出場照原樣還原。 */
+    bool r21_was_hidden =
+        p_instruction_list_layout != NULL &&
+        p_instruction_list_layout->p_instruction_list_bg != NULL &&
+        lv_obj_is_valid(p_instruction_list_layout->p_instruction_list_bg) &&
+        lv_obj_has_flag(p_instruction_list_layout->p_instruction_list_bg,
+                        LV_OBJ_FLAG_HIDDEN);
+
+    /* R30:重建會在 list / bg 底下**建立子物件**,父物件若已被拆掉(滑鼠圖層接管、
+       app 切換),lv_obj_class_init_obj → lv_obj_mark_layout_as_dirty 會踩到已釋放
+       記憶體 → hard fault(2026-08-12 從媒體頁進滑鼠頁時,R25 的輪詢在背景觸發重建
+       打中的就是這個)。NULL 檢查不夠,物件是被 del 掉、指標還在,要 lv_obj_is_valid。 */
+    if (p_instruction_list_layout == NULL ||
+        p_instruction_list_layout->list == NULL ||
+        !lv_obj_is_valid(p_instruction_list_layout->list) ||
+        p_instruction_list_layout->p_instruction_list_bg == NULL ||
+        !lv_obj_is_valid(p_instruction_list_layout->p_instruction_list_bg))
+    {
+        LOG_W("[R30] refresh skipped: list objects gone (torn down)");
+        return;
+    }
+
+    /* R33:列的 UI 被 release 掉時(滑鼠頁佔著 heap)**不要重建**。桌面 push-on-change
+       隨時可能送 0x20 進來,一重建就把 R32 讓出的記憶體又吃回去 —— 而退出滑鼠頁那
+       一刻是全域用量最高峰(滑鼠圖層還在,又要亮出 tileview/媒體頁),實測就是在那裡
+       `sys memory is full!`。資料已經寫進 list_items[],下次開清單時 ensure_ui 會
+       重建成最新內容,什麼都不會漏。 */
+    extern bool instruction_list_ui_is_released(void);
+    if (instruction_list_ui_is_released())
+    {
+        LOG_W("[R33] refresh deferred: list UI released (mouse page owns the heap)");
+        return;
+    }
     open_scroll_motor = false;
     if (p_instruction_list_layout == NULL ||
         p_instruction_list_layout->list == NULL)
@@ -6685,11 +6980,35 @@ void refresh_custom_instructions(void)
        cache invalidation (deferring it here is safer than calling LVGL APIs
        on KE_EVT2's 4KB stack). When the phone replaces an existing image at
        the same path, we need this flush so lv_img_set_src below picks up the
-       new pixels rather than a stale cached entry. */
-    for (uint8_t i = 0; i < list_item_count; i++)
+       new pixels rather than a stale cached entry.
+
+       R42(founder:「文字進來但 icon 是空的,晚一點才出現」):**restore 型重建不要
+       作廢快取**。R33 起清單一關就釋放列物件,再開時 ensure_ui 重建 —— 資料一個
+       字都沒變,卻把每張圖的解碼結果丟掉。
+
+       R44(founder 給的決定性線索:「從左邊邊緣滑不會消失,從中間往右滑就會先消失後面
+       才出現」):那是兩條不同路徑 —— 左緣拖曳是浮層直接開;中間往右滑會 settle 到左
+       頁,而 settle 會讓手機把整份 actions **replace-all 重推**一次。重推的內容通常
+       一模一樣,卻走「內容變了」這條路把所有圖的快取丟光 → 重讀 NAND、重解碼 → 圖標
+       慢一拍。所以作廢範圍縮到「這一項的圖檔真的被換過」(update_instruction_image
+       設 img_dirty),而不是「有人重建了清單」。 */
+    if (!s_restore_rebuild)
     {
-        if (list_items[i].img_path[0] != '\0')
-            lv_img_cache_invalidate_src(list_items[i].img_path);
+        for (uint8_t i = 0; i < list_item_count; i++)
+        {
+            if (list_items[i].img_dirty && list_items[i].img_path[0] != '\0')
+            {
+                lv_img_cache_invalidate_src(list_items[i].img_path);
+                list_items[i].img_dirty = false;
+            }
+        }
+    }
+    s_restore_rebuild = false;
+
+    /* R32:走到這裡就是要完整 teardown+rebuild,不管先前是不是被 release 過。 */
+    {
+        extern void instruction_list_mark_ui_rebuilt(void);
+        instruction_list_mark_ui_rebuilt();
     }
 
     lv_obj_t *list = p_instruction_list_layout->list;
@@ -6844,6 +7163,69 @@ void refresh_custom_instructions(void)
     LOG_I("[RCK] F refresh tail reached (done)");
     LOG_D("refresh_custom_instructions: %d items total", list_item_count);
     s_in_refresh_scroll = false;
+
+    /* ADR-0020:左頁的 actions 區段從 list_items[] 匯出 —— 清單落地後叫它重畫。
+       這裡已經在 LVGL thread、且過了 debounce,不會抖。 */
+    {
+        extern void session_list_actions_changed(void);
+        session_list_actions_changed();
+    }
+
+    /* R21:還原進場時的 hidden(見函式開頭),再讓狀態機重新評估一次 ——
+       刷新若在背景把清單掀開又蓋回,latch 仍可能停在錯值,check_main_page
+       是四條邊緣 zone 顯示狀態的唯一 owner,補跑一次就自癒。 */
+    if (r21_was_hidden && p_instruction_list_layout != NULL &&
+        p_instruction_list_layout->p_instruction_list_bg != NULL &&
+        lv_obj_is_valid(p_instruction_list_layout->p_instruction_list_bg) &&
+        !lv_obj_has_flag(p_instruction_list_layout->p_instruction_list_bg,
+                         LV_OBJ_FLAG_HIDDEN))
+    {
+        lv_obj_add_flag(p_instruction_list_layout->p_instruction_list_bg,
+                        LV_OBJ_FLAG_HIDDEN);
+        LOG_W("[R21] refresh re-hid the list (was hidden on entry)");
+    }
+    {
+        extern void check_main_page(void);
+        check_main_page();
+    }
+}
+
+/* R9(founder:「每次進來都在 actions 的位置」):左頁進場把選取定位到第一個
+   action(第一個非 conv: item);session 在上方,往上捲才看到。復用 refresh 的
+   force-scroll 定位手法(scroll_center_item + scroll_list + 重算 dots)。 */
+void instruction_list_focus_first_action(void)
+{
+    if (p_instruction_list_layout == NULL || p_instruction_list_layout->list == NULL ||
+        !lv_obj_is_valid(p_instruction_list_layout->list))
+        return;
+    if (list_item_count == 0)
+        return;
+    uint16_t target = 0;
+    for (uint8_t i = 0; i < list_item_count; i++)
+    {
+        if (strncmp(list_items[i].id, "conv:", 5) != 0)
+        {
+            target = i;
+            break;
+        }
+    }
+    lv_obj_t *list = p_instruction_list_layout->list;
+    s_in_refresh_scroll = true; /* 程式化捲動,別觸發 scroll-to-fade 收 widget */
+    app_scroll_target_item = target;
+    selected_item_index = target;
+    scroll_center_item(list, target);
+    lv_obj_update_layout(list);
+    scroll_list(list, 0);
+    selected_item_index = target;
+    app_scroll_target_item = target;
+    {
+        float total_range = 100.0f * list_item_count;
+        float input_val = total_range - 63.0f -
+                          selected_item_index * (total_range / list_item_count);
+        gesture_starting_value = (uint16_t)input_val;
+        update_indicator_dots_position(gesture_starting_value);
+    }
+    s_in_refresh_scroll = false;
 }
 
 void update_instruction_image(const char *id, const char *path)
@@ -6884,6 +7266,9 @@ void update_instruction_image(const char *id, const char *path)
     strncpy(list_items[idx].img_path, img_path,
             sizeof(list_items[idx].img_path) - 1);
     list_items[idx].img_path[sizeof(list_items[idx].img_path) - 1] = '\0';
+    /* R44:這裡是「圖真的換了」的唯一入口(手機下載完新 icon 覆寫同一路徑),所以只有
+       這些項目需要在下次 refresh 丟掉解碼快取。見 refresh 內的說明。 */
+    list_items[idx].img_dirty = true;
 
     /* LVGL ops only on the LVGL thread.
        BLE notify (parse_notify) and file-receive callback (bloc_filesystem)
@@ -8085,6 +8470,83 @@ rt_int32_t instruction_list_deinit(void)
     LOG_I("instruction_list_deinit");
     pause_instruction_list = true;
     return RT_EOK;
+}
+
+/* ── R32:列 UI 的釋放 / 重建 ────────────────────────────────────────────────
+   浮動清單的 LVGL 物件在錶盤閒置時也一直常駐(它只是 HIDDEN),每一列要
+   item/touch/label/dot_bg/frame/icon 好幾個 —— session 注入後列數翻倍,heap 只剩
+   ~40KB,進 hosted 滑鼠頁那一大塊配置就失敗 → lv_obj_create 回 NULL →
+   lv_obj_class_init_obj 解 NULL 父物件 hard fault(founder 2026-08-12「從媒體頁往上
+   滑進滑鼠頁就當機」,連兩版都當)。release 只拆「列的 UI」,資料 list_items[] 不動,
+   下次開清單前 ensure 走 refresh 原路重建。 */
+static bool s_list_ui_released = false;
+
+void instruction_list_release_ui(void)
+{
+    if (p_instruction_list_layout == NULL || s_list_ui_released)
+        return;
+    lv_obj_t *list = p_instruction_list_layout->list;
+    if (list == NULL || !lv_obj_is_valid(list))
+        return;
+    /* dots 是 bg 的子物件,lv_obj_clean(list) 不會清到 —— 跟 refresh 的拆除段同序:
+       先刪 dot_bg(其 children = frame + icon 一起走),立刻 NULL 掉 handle 陣列,再
+       clean list。順序反了會在 DELETE 的同步回呼裡踩到已釋放的 dot(既有註解記錄
+       過 DACCVIOL)。 */
+    for (uint8_t i = 0; i < MAX_LIST_ITEMS; i++)
+    {
+        if (p_instruction_list_layout->indicator_dots_bg[i] != NULL &&
+            lv_obj_is_valid(p_instruction_list_layout->indicator_dots_bg[i]))
+            lv_obj_del(p_instruction_list_layout->indicator_dots_bg[i]);
+        p_instruction_list_layout->indicator_dots_bg[i] = NULL;
+        p_instruction_list_layout->indicator_dots[i] = NULL;
+        app_icon_shadow[i] = NULL;
+    }
+    lv_obj_clean(list);
+    for (uint8_t i = 0; i < MAX_LIST_ITEMS; i++)
+    {
+        app_icon[i] = NULL;
+        app_widget[i] = NULL;
+        touch_obj[i] = NULL;
+        app_label[i] = NULL;
+        switch_objs[i] = NULL;
+        p_instruction_list_layout->p_app_indicator_btn[i] = NULL;
+    }
+    s_list_ui_released = true;
+    LOG_W("[R32] list UI released (rebuilds on next open)");
+}
+
+/** 開清單前呼叫:被 release 過就原路重建(no-op if never released)。 */
+void instruction_list_ensure_ui(void)
+{
+    if (!s_list_ui_released)
+        return;
+    s_list_ui_released = false;
+    /* R41(founder:「左邊的 icon 還是進去才出現,第一次進去沒問題第二次才會」):
+       refresh 有 500ms trailing-edge 去抖 —— 第二次進場的重建請求常常剛好落在
+       前一次刷新的去抖窗內,被推遲到 550ms 後才真的建,於是清單先是空的、圖標才
+       浮出來。這裡是「使用者正要看到清單」的當下,不能等:清掉去抖時間戳與待辦
+       timer,強制這一次同步重建。 */
+    s_last_refresh_tick = 0;
+    if (s_pending_refresh_timer != NULL)
+    {
+        lv_timer_del(s_pending_refresh_timer);
+        s_pending_refresh_timer = NULL;
+    }
+    /* R42:原樣重建 —— 資料沒變,別把圖的解碼結果丟掉(見 refresh 內的說明)。 */
+    s_restore_rebuild = true;
+    refresh_custom_instructions();
+}
+
+/** refresh 走到完整 rebuild 時清旗標(它自己就是重建路徑)。 */
+void instruction_list_mark_ui_rebuilt(void)
+{
+    s_list_ui_released = false;
+}
+
+/** R33:目前列的 UI 是不是處於已釋放狀態(refresh 用來決定要不要重建)。 */
+bool instruction_list_ui_is_released(void)
+{
+    return s_list_ui_released;
 }
 
 /************************ (C) COPYRIGHT Skaiwalk Technology *******END OF
