@@ -407,19 +407,40 @@ void clock_main_media_cols_refresh(void)
    取消,tileview 收回、滑鼠模式原樣繼續。 */
 static bool s_mouse_pull_reveal = false; /* reveal 的 snap settle 與取消 settle 區分用 */
 
+/* R36 診斷:滑鼠頁進出一直撞 `sys memory is full!`,但 founder 指出「以前頁面更多卻
+   不會死」—— 所以要先量出**峰值到底發生在哪一步、差多少**,不要再靠猜砍東西。在每個
+   轉換點印 heap(RT-Thread 主 heap,單位 byte)。穩定後連同 R22/R28 診斷一起移除。 */
+void clock_main_heap_log(const char *tag)
+{
+    rt_uint32_t total = 0, used = 0, mx = 0;
+    rt_memory_info(&total, &used, &mx);
+    LOG_W("[heap] %s used=%u free=%u max=%u", tag ? tag : "?", (unsigned)used,
+          (unsigned)(total - used), (unsigned)mx);
+}
+
 void clock_main_mouse_pulldown_reveal(void)
 {
     if (!app_clock_main_status_bar || !lv_obj_is_valid(app_clock_main_status_bar))
         return;
+    clock_main_heap_log("reveal-enter");
     int dev = hid_mouse_active_device_index();
     int col = MEDIA_COL_FIRST + ((dev >= 0) ? dev + 1 : 0);
     if (col >= MEDIA_COL_FIRST + media_col_count())
         col = MEDIA_COL_FIRST;
     s_mouse_pull_reveal = true; /* set_tile_id 會同步發 settle,先立旗 */
+    /* R34:這一刻是全機記憶體峰值 —— 滑鼠圖層還在,又要把 tileview/媒體頁亮出來給
+       手指接手,實測就是在這裡 `sys memory is full!` 然後 EPIC render list 掛掉。
+       全螢幕的模糊底圖(gaus_dial_bg / gaus_dial_img)此時**完全被滑鼠圖層蓋住、看
+       不到**,卻照樣進繪製清單吃合成緩衝。先收掉它,settle 收尾本來就會依落點決定
+       要不要重新顯示,所以不影響之後的畫面。 */
+    if (gaus_dial_bg && lv_obj_is_valid(gaus_dial_bg))
+        lv_obj_add_flag(gaus_dial_bg, LV_OBJ_FLAG_HIDDEN);
+    set_clock_main_status_opa(LV_OPA_TRANSP, false);
     lv_obj_set_tile_id(app_clock_main_status_bar, (uint8_t)col, 2, false);
     lv_obj_clear_flag(app_clock_main_status_bar, LV_OBJ_FLAG_HIDDEN);
     clock_main_media_cols_refresh(); /* 當場套上停車格的 LV_DIR_TOP */
     LOG_W("[media-col] mouse pulldown reveal at col %d", col);
+    clock_main_heap_log("reveal-done");
 }
 
 /* 滑鼠頁底部 skaibar tap(founder 2026-08-11 R6):開「目前控制那台」的新 session,
@@ -802,6 +823,7 @@ static void app_clock_main_status_bar_event_cb(lv_event_t *event)
                lv_obj_class_init_obj;founder 2026-08-12「從媒體頁往上滑進滑鼠頁就
                當機」)。 */
             clock_main_conv_poll_set(false);
+            clock_main_heap_log("mouse-enter-before");
             /* R32:滑鼠頁要一大塊 heap,而浮動清單即使 HIDDEN 也把每一列的 LVGL 物件
                全留著(session 注入後列數翻倍,錶盤閒置只剩 ~40KB)。先把列的 UI 釋放
                —— 資料不動,下次開清單由 instruction_list_ensure_ui 原路重建。 */
@@ -809,7 +831,18 @@ static void app_clock_main_status_bar_event_cb(lv_event_t *event)
                 extern void instruction_list_release_ui(void);
                 instruction_list_release_ui();
             }
+            clock_main_heap_log("mouse-enter-list-freed");
+            /* R38:量出來的事實 —— 開機建完所有頁面是 used 220K/free 103K,但實際使用
+               時 free 只剩 ~49K,執行期多吃的 ~54K 最大宗就是這張**全螢幕模糊錶盤圖**
+               (GAUS_CLOCK1_BG,從 NAND 載入後解碼常駐在 LVGL image cache;gaus_dial_img
+               與 dev_change_gaus_img 共用同一個 cache entry)。滑鼠圖層自己要 ~41.5K,
+               進去後只剩 ~8K,退出時要同時亮出 tileview 合成就 `sys memory is full!`。
+               滑鼠模式期間這張圖完全看不到,先把它的 cache 丟掉,回錶盤再重新解碼。 */
+            lv_obj_add_flag(gaus_dial_bg, LV_OBJ_FLAG_HIDDEN);
+            lv_img_cache_invalidate_src(GAUS_CLOCK1_BG);
+            clock_main_heap_log("mouse-enter-blur-dropped");
             lv_top_panel_mouse_enter();
+            clock_main_heap_log("mouse-enter-after");
             middle_layer_tileview_index = 255; /* 下次 settle 一定重跑收尾 */
             lv_obj_set_tile_id(obj, 1, 1, false);
             lv_obj_add_flag(app_clock_main_status_bar, LV_OBJ_FLAG_HIDDEN);
@@ -1972,6 +2005,7 @@ void app_clock_main_status_bar_init(lv_obj_t *par)
     }
 
     clock_main_media_cols_refresh(); /* 開機先鎖住多餘的欄(設備到齊後會再刷) */
+    clock_main_heap_log("boot:media-cols-built");
 
     lv_obj_set_tile_id(app_clock_main_status_bar, 1, 1, false);
     lv_obj_add_flag(app_clock_main_status_bar, LV_OBJ_FLAG_HIDDEN);
@@ -1982,20 +2016,24 @@ void app_clock_main_status_bar_init(lv_obj_t *par)
     LOG_I("clock_status_bar: before instruction_list_layout_create");
     lv_instruction_list_layout_create(pages[MAIN_PAGE_TYPE_RIGHT]);
     LOG_I("clock_status_bar: after instruction_list_layout_create");
+    clock_main_heap_log("boot:instruction-list");
 
     /* ADR-0020 左頁 (0,1) = 跨設備合併 session 列表(通知卡樣式 + 設備副標)
        + 下接 actions 列表。 */
     extern lv_obj_t *lv_session_pager_create(lv_obj_t * parent);
     lv_session_pager_create(pages[MAIN_PAGE_TYPE_RIGHT]);
+    clock_main_heap_log("boot:session-pager");
 
     /* 上 tile = 頂部面板(ADR-0020 之後只剩通知列表 + 滑鼠模式 Exit 鈕)。 */
     LOG_I("clock_status_bar: before top_panel_create");
     lv_top_panel_create(pages[MESSAGE_PAGE_INDEX], par);
     LOG_I("clock_status_bar: after top_panel_create");
+    clock_main_heap_log("boot:top-panel");
 
     /* 下 tile (1,2) = 控制中心(亮度/QR/勿擾/找手機,dev 加 gesture)當頭部 +
        App List 網格(ADR-0020:合併為一頁,從錶盤往上拉進入)。 */
     control_center_layout_create(pages[MAIN_PAGE_TYPE_DOWN]);
+    clock_main_heap_log("boot:control+applist");
 
     LOG_D("tileview set tile id to 1,1");
     myLancher[app_index_message].pagetileview = app_clock_main_status_bar;

@@ -11052,13 +11052,14 @@ void lv_create_mouse_screen(lv_obj_t *scr)
     lv_obj_add_event_cb(s_top_logo, chrome_hit_test_cb, LV_EVENT_HIT_TEST, NULL);
     lv_obj_add_event_cb(s_top_logo, bottom_logo_cb, LV_EVENT_CLICKED, NULL);
 
-    // === 媒體中心 pull-down panel（從頂部模式切換條往下拉觸發）===
-    /* 頂部面板 host 模式（s_pulldown_cb 已裝，見 hid_mouse_set_pulldown_cb）不建
-       這層：媒體中心與設備切換都由錶盤頂部面板提供，重複一份只會兩邊打架又吃 RAM
-       （founder 2026-08-06：「APP 內上方的媒體中心可以不要」）。獨立開 APP_ID_MOUSE
-       時 cb 為 NULL，行為與從前完全相同。 */
-    if (s_pulldown_cb == NULL)
-        create_media_center_panel(bg);
+    /* === APP 內建的媒體中心下拉層:整個退役 ==========================================
+       2026-08-06 已先對「面板 host 模式」停建(founder:「APP 內上方的媒體中心可以不
+       要」);ADR-0020 之後媒體中心是錶盤右側每台設備一欄的常駐頁,獨立開 APP_ID_MOUSE
+       時同樣隨時滑得到,所以這一份就是純重複 —— founder 2026-08-12:「滑鼠 app 本來上
+       面是不是還有一個媒體頁面?如果還有的話把那個拿掉,現在有外面的那個就夠了」。
+       連帶好處是 heap:這台只剩 ~40KB,整層 tileview+兩個全螢幕 tile+控制列不再常駐。
+       所有 media_tileview 的使用點本來就都有 NULL 防護(它在 host 模式下一直是 NULL),
+       所以不建它不需要其他改動;offline overlay 取 host 也有 fallback。 */
 
     // 啟動自有底部 bar 的隱藏同步 poll（instruction_list 浮層 bar 顯示時收掉它）
     if (s_bar_ai_sync_timer == NULL)

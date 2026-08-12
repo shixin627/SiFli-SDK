@@ -4354,6 +4354,14 @@ void instruction_list_reveal_drag_begin(void)
         return;
     if (s_left_closing || !lv_obj_has_flag(list_bg, LV_OBJ_FLAG_HIDDEN))
         return;
+    /* R37(founder:「從錶盤進入 session 列表時右邊的圖片會先透明的後面才出現」):
+       R33 起清單關閉就釋放列的物件,而**手指拖曳進場**這條路徑不像 open_browse 會先
+       ensure —— 列是後來某次 refresh 才補建的,所以圖標比清單本體晚一步浮現。手指
+       一開始拖就先把列建回來,進場第一幀就是完整內容。 */
+    {
+        extern void instruction_list_ensure_ui(void);
+        instruction_list_ensure_ui();
+    }
     instruction_list_bar_set_visible(true); /* idempotent on HOME */
     lv_anim_del(list_bg, inst_list_slide_anim_cb);
     lv_obj_clear_flag(list_bg, LV_OBJ_FLAG_HIDDEN);
