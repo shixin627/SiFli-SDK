@@ -42,12 +42,12 @@ scons: done reading SConscript files.
 scons: Building targets ...
 scons: building associated VariantDir targets: build_sf32lb56-watch_hcpu . . .
 LINK build_sf32lb56-watch_hcpu\bootloader\bootloader.axf
-"C:\Users\andre\AppData\Local\Temp\pb1b0-3", line 127 (column 4): Warning: L6312W: Empty Execution region description for region ER_IROM3
+"C:\Users\skaiwalk\AppData\Local\Temp\p5ecc-3", line 127 (column 4): Warning: L6312W: Empty Execution region description for region ER_IROM3
 Program Size: Code=20416 RO-data=8568 RW-data=7580 ZI-data=27108  
 Finished: 0 information, 1 warning and 0 error messages.
-Generating build_sf32lb56-watch_hcpu\bootloader\bootloader.asm ...
-Generating build_sf32lb56-watch_hcpu\bootloader\bootloader.hex ...
 Generating build_sf32lb56-watch_hcpu\bootloader\bootloader.bin ...
+Generating build_sf32lb56-watch_hcpu\bootloader\bootloader.hex ...
+Generating build_sf32lb56-watch_hcpu\bootloader\bootloader.asm ...
 
 ========================================================================
 
@@ -59,17 +59,19 @@ Generating build_sf32lb56-watch_hcpu\bootloader\bootloader.bin ...
      20416       1826       8568       1272      27104     354298   build_sf32lb56-watch_hcpu\bootloader\bootloader.axf (compressed)
      20416       1826       8568       1272          0          0   ROM Totals for build_sf32lb56-watch_hcpu\bootloader\bootloader.axf
 LINK build_sf32lb56-watch_hcpu\lcpu\lcpu.axf
-Building compilation database build_sf32lb56-watch_hcpu\bootloader\compile_commands.json
 Building compilation database build_sf32lb56-watch_hcpu\compile_commands.json
+Building compilation database build_sf32lb56-watch_hcpu\bootloader\compile_commands.json
 Warning: L6439W: Multiply defined Global Symbol HAL_UART_RxHalfCpltCallback defined in .text.HAL_UART_RxHalfCpltCallback(bf0_hal_uart.o) rejected in favor of Symbol defined in .text.HAL_UART_RxHalfCpltCallback(drv_usart.o).
 Warning: L6439W: Multiply defined Global Symbol rt_hw_set_stack_limit defined in .text.rt_hw_set_stack_limit(cpuport.o) rejected in favor of Symbol defined in .text.rt_hw_set_stack_limit(thread.o).
 Warning: L6439W: Multiply defined Global Symbol HAL_UART_RxCpltCallback defined in .text.HAL_UART_RxCpltCallback(bf0_hal_uart.o) rejected in favor of Symbol defined in .text.HAL_UART_RxCpltCallback(drv_usart.o).
 Warning: L6439W: Multiply defined Global Symbol HAL_UART_ErrorCallback defined in .text.HAL_UART_ErrorCallback(bf0_hal_uart.o) rejected in favor of Symbol defined in .text.HAL_UART_ErrorCallback(drv_usart.o).
-Program Size: Code=161504 RO-data=40680 RW-data=1488 ZI-data=27096  
+Program Size: Code=161768 RO-data=40680 RW-data=1488 ZI-data=27112  
 Finished: 0 information, 4 warning and 0 error messages.
-CC build_sf32lb56-watch_hcpu\src\gui_apps\hid_mouse\hid_mouse.o
-Generating build_sf32lb56-watch_hcpu\lcpu\lcpu.hex ...
+Building compilation database build_sf32lb56-watch_hcpu\ftab\compile_commands.json
 Generating build_sf32lb56-watch_hcpu\lcpu\lcpu.bin ...
+Generating build_sf32lb56-watch_hcpu\lcpu\lcpu.hex ...
+Building compilation database build_sf32lb56-watch_hcpu\lcpu\compile_commands.json
+Generating build_sf32lb56-watch_hcpu\lcpu\lcpu.asm ...
 
 ========================================================================
 
@@ -77,19 +79,16 @@ Generating build_sf32lb56-watch_hcpu\lcpu\lcpu.bin ...
 
       Code (inc. data)   RO Data    RW Data    ZI Data      Debug   Object Name
 
-    161504      19074      40680       1488      27096    1436810   build_sf32lb56-watch_hcpu\lcpu\lcpu.axf
-    161504      19074      40680       1488          0          0   ROM Totals for build_sf32lb56-watch_hcpu\lcpu\lcpu.axf
-Building compilation database build_sf32lb56-watch_hcpu\ftab\compile_commands.json
+    161768      19098      40680       1488      27112    1437540   build_sf32lb56-watch_hcpu\lcpu\lcpu.axf
+    161768      19098      40680       1488          0          0   ROM Totals for build_sf32lb56-watch_hcpu\lcpu\lcpu.axf
 Generating build_sf32lb56-watch_hcpu\lcpu\lcpu.c ...
-Building compilation database build_sf32lb56-watch_hcpu\lcpu\compile_commands.json
-Generating build_sf32lb56-watch_hcpu\lcpu\lcpu.asm ...
 LINK build_sf32lb56-watch_hcpu\main.axf
-"C:\Users\andre\AppData\Local\Temp\p220c-3", line 45 (column 3): Warning: L6312W: Empty Execution region description for region RW_PSRAM1
-"C:\Users\andre\AppData\Local\Temp\p220c-3", line 148 (column 4): Warning: L6312W: Empty Execution region description for region ER_IROM3
+"C:\Users\skaiwalk\AppData\Local\Temp\p4fd0-3", line 45 (column 3): Warning: L6312W: Empty Execution region description for region RW_PSRAM1
+"C:\Users\skaiwalk\AppData\Local\Temp\p4fd0-3", line 148 (column 4): Warning: L6312W: Empty Execution region description for region ER_IROM3
 Warning: L6439W: Multiply defined Global Symbol HAL_TIMEx_BreakCallback defined in .text.HAL_TIMEx_BreakCallback(bf0_hal_tim_ex.o) rejected in favor of Symbol defined in .text.HAL_TIMEx_BreakCallback(bf0_hal_tim.o).
 Warning: L6330W: Undefined symbol BuiltinApp2Tab$$Base (referred from app_reg.o). Unused section has been removed.
 Warning: L6330W: Undefined symbol BuiltinApp2Tab$$Limit (referred from app_reg.o). Unused section has been removed.
-Program Size: Code=1582456 RO-data=1021096 RW-data=13676 ZI-data=4303984  
+Program Size: Code=1518760 RO-data=959900 RW-data=13032 ZI-data=4327188  
 Finished: 0 information, 5 warning and 0 error messages.
 Generating build_sf32lb56-watch_hcpu\main.asm ...
 Generating build_sf32lb56-watch_hcpu\main.hex ...
@@ -101,17 +100,17 @@ Generating build_sf32lb56-watch_hcpu\main.bin ...
 
       Code (inc. data)   RO Data    RW Data    ZI Data      Debug   Object Name
 
-   1582456     153704    1021096      13680    4303980   26268063   build_sf32lb56-watch_hcpu\main.axf (uncompressed)
-   1582456     153704    1021096       7984    4303980   26268063   build_sf32lb56-watch_hcpu\main.axf (compressed)
-   1582456     153704    1021096       7984          0          0   ROM Totals for build_sf32lb56-watch_hcpu\main.axf
+   1518760     143916     959912      13040    4327180   25914762   build_sf32lb56-watch_hcpu\main.axf (uncompressed)
+   1518760     143916     959912       7392    4327180   25914762   build_sf32lb56-watch_hcpu\main.axf (compressed)
+         0          0         12          0          0          0   (incl. padding)
+   1518760     143916     959912       7392          0          0   ROM Totals for build_sf32lb56-watch_hcpu\main.axf
 Generating build_sf32lb56-watch_hcpu\ftab\board\ftab.c ...
-CC build_sf32lb56-watch_hcpu\ftab\board\ftab.o
 LINK build_sf32lb56-watch_hcpu\ftab\ftab.axf
 Warning: L6305W: Image does not have an entry point. (Not specified or not set due to multiple choices.)
 Program Size: Code=0 RO-data=11280 RW-data=0 ZI-data=0  
 Finished: 0 information, 1 warning and 0 error messages.
-Generating build_sf32lb56-watch_hcpu\ftab\ftab.hex ...
 Generating build_sf32lb56-watch_hcpu\ftab\ftab.bin ...
+Generating build_sf32lb56-watch_hcpu\ftab\ftab.hex ...
 Generating build_sf32lb56-watch_hcpu\ftab\ftab.asm ...
 
 ========================================================================
