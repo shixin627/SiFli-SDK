@@ -380,6 +380,8 @@ static bool mode_swipe_is_commit = false;
 // 每個 mode 用一個 480×480 透明容器包，切換時整組移動
 static lv_obj_t *mode_container[HID_MODE_COUNT] = {NULL};
 static void apply_hid_mode(hid_mode_t mode);
+/* R40:鍵盤模式 UI 延遲建立(38KB,見 mode_set_visible 的說明)。 */
+static void kbd_ensure_built(void);
 
 // keyboard mode 下半部 mic 區前置宣告
 static void create_kbd_mic_section(lv_obj_t *parent);
@@ -607,6 +609,8 @@ static void bar_ai_on_tap(void); /* fwd：tap 當下立刻收自有底部 bar（
 
 // Keyboard mode 下半部 mic 區（mic 按鈕 + 右側鍵盤按鈕，跟 keyboard 互換顯示）
 static lv_obj_t *kbd_mic_section = NULL;
+/* R40:鍵盤模式 UI 是否已建(延遲建立,38KB)。teardown 時歸 false。 */
+static bool s_kbd_ui_built = false;
 static lv_obj_t *kbd_mic_section_mic_btn = NULL;
 static lv_obj_t *kbd_mic_section_mic_img = NULL; // 中央 mic icon，V2T 開關時切圖
 static lv_obj_t *kbd_mic_section_mic_pulse = NULL; // V2T active 時的脈衝圓
@@ -7185,6 +7189,14 @@ static void kbd_mode_extras_sync(void)
 
 static void mode_set_visible(hid_mode_t mode, bool visible)
 {
+    /* R40:鍵盤模式那一整套 UI 改成**第一次真的要顯示時才建**。量測結果:滑鼠圖層
+       共 41.7KB,其中 create_keyboard_mode_ui 一支就 38KB(trackpad 只有 3.6KB)——
+       而從媒體欄進來的人用的是 trackpad,鍵盤常常整個 session 都沒用到。這 38KB 正
+       是「進滑鼠頁只剩 6KB、退出時亮 tileview 就 sys memory is full」的元凶。
+       這裡是所有進鍵盤路徑(apply_hid_mode / expand 動畫 / 直接 set_visible)的共同
+       關卡,掛在這一個點就全覆蓋。 */
+    if (mode == HID_MODE_KEYBOARD && visible)
+        kbd_ensure_built();
     if (mode_container[mode] && lv_obj_is_valid(mode_container[mode]))
     {
         if (visible)
@@ -7642,6 +7654,24 @@ static void keyboard_mode_container_hit_test_cb(lv_event_t *e)
         is_point_in_right_arc(info->point) ||
         is_point_in_center_scroll_zone(info->point))
         info->res = false;
+}
+
+/* R40:第一次要顯示鍵盤模式時才建它的 UI(38KB)。所有進鍵盤的路徑都會經過
+   mode_set_visible(HID_MODE_KEYBOARD, true),那裡是唯一呼叫點。 */
+static void create_keyboard_mode_ui(lv_obj_t *parent);
+
+static void kbd_ensure_built(void)
+{
+    if (s_kbd_ui_built)
+        return;
+    lv_obj_t *kc = mode_container[HID_MODE_KEYBOARD];
+    if (kc == NULL || !lv_obj_is_valid(kc))
+        return;
+    s_kbd_ui_built = true; /* 先立旗:建構過程若間接再進來,不會遞迴重建 */
+    extern void clock_main_heap_log(const char *tag);
+    clock_main_heap_log("kbd-build:before");
+    create_keyboard_mode_ui(kc);
+    clock_main_heap_log("kbd-build:after");
 }
 
 static void create_keyboard_mode_ui(lv_obj_t *parent)
@@ -10900,10 +10930,19 @@ void lv_create_mouse_screen(lv_obj_t *scr)
         lv_obj_clear_flag(mode_container[i], LV_OBJ_FLAG_CLICKABLE);
     }
 
+    /* R39 診斷:量到滑鼠圖層整層要 ~41.7KB,而進來前只剩 ~47KB —— 退出時要同時亮
+       tileview 就爆。先切開看是誰吃的(trackpad / keyboard 兩段最大),別再猜。
+       穩定後連同其他 [heap] 診斷一起移除。 */
+    extern void clock_main_heap_log(const char *tag);
+    clock_main_heap_log("mouse-ui:containers");
+
     // === Per-mode UI ===
     // 加新元件改下面兩個函式
     create_trackpad_mode_ui(mode_container[HID_MODE_TRACKPAD]);
-    create_keyboard_mode_ui(mode_container[HID_MODE_KEYBOARD]);
+    clock_main_heap_log("mouse-ui:trackpad");
+    /* R40:鍵盤那 38KB 不在這裡建 —— 第一次切進鍵盤模式時由 mode_set_visible →
+       kbd_ensure_built() 建(整個 session 沒用到鍵盤就完全不花)。 */
+    s_kbd_ui_built = false;
 
     // === Cross-mode UI（跨 mode 共用元件）===
     // 向右返回 hint：螢幕左側中央，預設隱藏；超過拖曳門檻會顯示成圓 + 左箭頭
@@ -11146,6 +11185,7 @@ void hid_mouse_build_ui(lv_obj_t *scr)
     if (scr == lv_scr_act())
         cust_trans_anim_config(CUST_ANIM_TYPE_1, NULL);
     lv_create_mouse_screen(scr);
+    { extern void clock_main_heap_log(const char *tag); clock_main_heap_log("mouse-ui:done"); }
     s_ui_host = scr;
 }
 
@@ -11354,6 +11394,7 @@ void hid_mouse_destroy(void)
     handfree = false;
 
     // Keyboard mode 下半部 mic 區清理
+    s_kbd_ui_built = false; /* R40:圖層拆了,下次進鍵盤要重建 */
     kbd_mic_section = NULL;
     kbd_mic_section_mic_btn = NULL;
     kbd_mic_section_mic_img = NULL;
