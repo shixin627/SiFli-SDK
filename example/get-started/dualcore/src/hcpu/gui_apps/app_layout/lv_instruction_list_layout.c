@@ -4102,10 +4102,16 @@ static void inst_list_slide_out_done_cb(lv_anim_t *a)
        把 _at_instruction_list latch 成 true → 邊緣區(通知/媒體/控制中心手勢)被
        關掉後沒人再 poll,回到錶盤看得到畫面卻四向全滑不出。清單此刻已藏,補跑一次
        重評估讓 latch 翻回 false、display_gesture_detect_objs/status_bar_area 重新
-       開放邊緣區。 */
+       開放邊緣區。
+       R23(founder 定位:「進去過 session 列表再回錶盤就會觸發」):這裡原本只重評
+       **清單**那一個 latch,但真正把四條邊緣 zone 重新打開的是 `check_is_at_home`
+       的進場分支(display_status_bar_area(0..3,true) / reveal overlay)。只翻
+       _at_instruction_list 的話 _at_home 仍卡 false —— 畫面回到錶盤、手勢全死,
+       左緣還留著 app 返回鍵。改叫 check_main_page():它依序重評 message /
+       instruction_list / control_center / home,順序本身就是相依順序。 */
     {
-        extern void check_is_at_instruction_list(void);
-        check_is_at_instruction_list();
+        extern void check_main_page(void);
+        check_main_page();
     }
 }
 
