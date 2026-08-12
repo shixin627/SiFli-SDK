@@ -812,7 +812,13 @@ static void app_clock_main_status_bar_event_cb(lv_event_t *event)
                  on_left_page) &&
                 !lv_top_panel_mouse_mode());
             if (on_left_page)
+            {
                 instruction_list_open_browse();
+                /* R9(founder):每次進來定位在 actions 那段(session 在上方,
+                   往上捲才看到)。 */
+                extern void instruction_list_focus_first_action(void);
+                instruction_list_focus_first_action();
+            }
             else if (instruction_list_is_visible())
                 close_ai_widget(); /* 離開左頁:瀏覽態清單滑出收掉 */
         }

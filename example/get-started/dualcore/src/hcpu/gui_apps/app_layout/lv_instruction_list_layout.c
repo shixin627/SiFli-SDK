@@ -345,6 +345,28 @@ void instruction_list_set_session_page_mode(bool on)
     s_session_page_mode = on;
 }
 
+/* R9(founder:「actions 在下面」):把 conv: 開頭的 session item 穩定移到清單
+   前段,actions 落在後段。static 暫存 —— list_item_t ~260B x30 ≈ 7.8KB,放
+   LVGL thread 的堆疊太肥。呼叫端(session pager 注入)接著自己 refresh。 */
+void instruction_list_move_conv_items_first(void)
+{
+    static list_item_t s_reorder_tmp[MAX_LIST_ITEMS];
+    if (list_item_count <= 1)
+        return;
+    uint8_t n = 0;
+    for (uint8_t i = 0; i < list_item_count; i++)
+        if (strncmp(list_items[i].id, "conv:", 5) == 0)
+            s_reorder_tmp[n++] = list_items[i];
+    if (n == 0 || n == list_item_count)
+        return;
+    for (uint8_t i = 0; i < list_item_count; i++)
+        if (strncmp(list_items[i].id, "conv:", 5) != 0)
+            s_reorder_tmp[n++] = list_items[i];
+    memcpy(list_items, s_reorder_tmp, sizeof(list_item_t) * list_item_count);
+}
+
+/* instruction_list_focus_first_action 在檔尾(它用到的定位 statics 宣告在後段)。 */
+
 const void *instruction_list_export_icon(uint8_t i)
 {
     if (i >= list_item_count)
@@ -6910,6 +6932,44 @@ void refresh_custom_instructions(void)
         extern void session_list_actions_changed(void);
         session_list_actions_changed();
     }
+}
+
+/* R9(founder:「每次進來都在 actions 的位置」):左頁進場把選取定位到第一個
+   action(第一個非 conv: item);session 在上方,往上捲才看到。復用 refresh 的
+   force-scroll 定位手法(scroll_center_item + scroll_list + 重算 dots)。 */
+void instruction_list_focus_first_action(void)
+{
+    if (p_instruction_list_layout == NULL || p_instruction_list_layout->list == NULL ||
+        !lv_obj_is_valid(p_instruction_list_layout->list))
+        return;
+    if (list_item_count == 0)
+        return;
+    uint16_t target = 0;
+    for (uint8_t i = 0; i < list_item_count; i++)
+    {
+        if (strncmp(list_items[i].id, "conv:", 5) != 0)
+        {
+            target = i;
+            break;
+        }
+    }
+    lv_obj_t *list = p_instruction_list_layout->list;
+    s_in_refresh_scroll = true; /* 程式化捲動,別觸發 scroll-to-fade 收 widget */
+    app_scroll_target_item = target;
+    selected_item_index = target;
+    scroll_center_item(list, target);
+    lv_obj_update_layout(list);
+    scroll_list(list, 0);
+    selected_item_index = target;
+    app_scroll_target_item = target;
+    {
+        float total_range = 100.0f * list_item_count;
+        float input_val = total_range - 63.0f -
+                          selected_item_index * (total_range / list_item_count);
+        gesture_starting_value = (uint16_t)input_val;
+        update_indicator_dots_position(gesture_starting_value);
+    }
+    s_in_refresh_scroll = false;
 }
 
 void update_instruction_image(const char *id, const char *path)

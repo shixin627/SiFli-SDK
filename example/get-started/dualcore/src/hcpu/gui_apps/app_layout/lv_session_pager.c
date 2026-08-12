@@ -544,36 +544,68 @@ static void sp_inject_sessions_into_actions(void)
         }
     }
 
-    /* upsert:每台每筆;title 沒變就不動(add_or_update 恆觸發重繪成本)。 */
-    for (int d = 0; d < s_device_count; d++)
+    /* upsert:按 ts 新→舊(首次注入的順序就是清單順序);title 沒變就不動
+       (add_or_update 恆觸發重繪成本)。 */
+    struct
     {
+        uint8_t slot;
+        uint8_t idx;
+        uint32_t ts;
+    } order[SESSION_DEVICE_MAX * SESSION_PAGER_MAX];
+    int cnt = 0;
+    for (int d = 0; d < s_device_count; d++)
         for (int k = 0; k < s_devices[d].count; k++)
         {
-            const session_meta_t *s = &s_devices[d].items[k];
-            const char *title = s->title[0] ? s->title : "Session";
-            bool same = false;
-            uint8_t n = return_total_list_count();
-            for (uint8_t i = 0; i < n; i++)
-            {
-                const char *iid = instruction_list_export_id(i);
-                const char *it = instruction_list_export_title(i);
-                if (iid && it && strcmp(iid, s->id) == 0 && strcmp(it, title) == 0)
-                {
-                    same = true;
-                    break;
-                }
-            }
-            if (!same)
-            {
-                add_or_update_custom_instruction(s->id, title, "", 0, false, 0, "");
-                changed = true;
-            }
-            set_instruction_category(s->id, '@'); /* 冪等 */
+            order[cnt].slot = (uint8_t)d;
+            order[cnt].idx = (uint8_t)k;
+            order[cnt].ts = s_devices[d].items[k].ts;
+            cnt++;
         }
+    for (int i = 1; i < cnt; i++)
+    {
+        int j = i;
+        while (j > 0 && order[j - 1].ts < order[j].ts)
+        {
+            uint8_t t_slot = order[j].slot, t_idx = order[j].idx;
+            uint32_t t_ts = order[j].ts;
+            order[j] = order[j - 1];
+            order[j - 1].slot = t_slot;
+            order[j - 1].idx = t_idx;
+            order[j - 1].ts = t_ts;
+            j--;
+        }
+    }
+    for (int o = 0; o < cnt; o++)
+    {
+        const session_meta_t *s = &s_devices[order[o].slot].items[order[o].idx];
+        const char *title = s->title[0] ? s->title : "Session";
+        bool same = false;
+        uint8_t n = return_total_list_count();
+        for (uint8_t i = 0; i < n; i++)
+        {
+            const char *iid = instruction_list_export_id(i);
+            const char *it = instruction_list_export_title(i);
+            if (iid && it && strcmp(iid, s->id) == 0 && strcmp(it, title) == 0)
+            {
+                same = true;
+                break;
+            }
+        }
+        if (!same)
+        {
+            add_or_update_custom_instruction(s->id, title, "", 0, false, 0, "");
+            changed = true;
+        }
+        set_instruction_category(s->id, '@'); /* 冪等 */
     }
 
     if (changed)
+    {
+        /* R9(founder:「actions 在下面」):session 移到清單前段、actions 在後。 */
+        extern void instruction_list_move_conv_items_first(void);
+        instruction_list_move_conv_items_first();
         refresh_custom_instructions();
+    }
 }
 
 /** actions 清單有更新(手機推播 0x65/0x6B 落地)時由 instruction list 呼叫:
