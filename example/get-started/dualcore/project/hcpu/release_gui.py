@@ -310,12 +310,15 @@ def uart_provision_request(port, action, emit, timeout=20):
         raise RuntimeError(
             "缺少 pyserial，請執行：py -3 -m pip install pyserial") from e
 
-    # 20s, not 5: an idle watch answers MAC in ~0.3s, but one that has just
-    # finished the板級篩檢 stress run can take far longer to write NVDS, and
-    # MAC is the one command that must not be resent — a timeout there fails
-    # the whole release rather than retrying.
+    # The leading newline is load-bearing. The firmware's line buffer only
+    # resets on '\n', so if a partial line is left in it — a truncated command
+    # from a previous connection, line noise — the next command is appended to
+    # that junk, the prefix no longer matches, and it is dropped in silence.
+    # GET survives because it is resent every 0.8s; MAC is sent exactly once
+    # and would simply never be answered. Verified on hardware: junk + MAC =
+    # no reply, junk + "\n" + MAC = reply in 0.2s.
     nonce = secrets.token_hex(4).upper()
-    command = ("SKAI_PROVISION %s %s\n" % (action, nonce)).encode("ascii")
+    command = ("\nSKAI_PROVISION %s %s\n" % (action, nonce)).encode("ascii")
     deadline = time.monotonic() + timeout
     next_send = 0.0
     # GET is idempotent and may be retried.  MAC must be sent exactly once:
@@ -525,7 +528,9 @@ def run_hardware_selftest(port, emit, expected_version=None,
 
     nonce = secrets.token_hex(4).upper()
     action = "SCREEN" if screening_only else "RUN"
-    command = ("SKAI_HWTEST %s %s\n" % (action, nonce)).encode("ascii")
+    # Leading '\n' flushes any partial line left in the firmware's parser —
+    # see the note in uart_provision_request.
+    command = ("\nSKAI_HWTEST %s %s\n" % (action, nonce)).encode("ascii")
     end_prefix = "SKAI_HWTEST END %s " % nonce
     begin_prefix = "SKAI_HWTEST BEGIN %s " % nonce
     deadline = time.monotonic() + timeout
@@ -547,7 +552,7 @@ def run_hardware_selftest(port, emit, expected_version=None,
             while time.monotonic() < deadline:
                 if cancel_event is not None and cancel_event.is_set():
                     cancel_command = (
-                        "SKAI_HWTEST CANCEL %s\n" % nonce).encode("ascii")
+                        "\nSKAI_HWTEST CANCEL %s\n" % nonce).encode("ascii")
                     uart.write(cancel_command)
                     uart.flush()
                     raise HardwareSelftestCancelled("硬體自測已取消。")
