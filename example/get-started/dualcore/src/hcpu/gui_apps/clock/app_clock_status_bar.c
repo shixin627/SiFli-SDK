@@ -916,10 +916,12 @@ static void app_clock_main_status_bar_event_cb(lv_event_t *event)
             if (on_left_page)
             {
                 instruction_list_open_browse();
-                /* R9(founder):每次進來定位在 actions 那段(session 在上方,
-                   往上捲才看到)。 */
-                extern void instruction_list_focus_first_action(void);
-                instruction_list_focus_first_action();
+                /* R46(founder:「中間往右滑後會觸發定位到頂部 item,我不要這樣」;
+                   「左邊緣往右滑就不會」):R9 的 focus_first_action 掛在這個 settle,
+                   而左緣那條不經過 settle —— 所以兩條入口的落點一直不一樣,R45 讓清單
+                   跟手之後更明顯:清單已經在眼前了才被拉去別的位置。以「左緣的行為」
+                   為準,這裡不再定位;進場落點由 reveal 的 reset_list_internal 決定
+                   (兩條路徑共用),要改落點就去改那一支。 */
                 /* R20:桌面刪 session 不會主動推 0x20 —— 進左頁重拉一次
                    (舊 session pager tile 的同款機制,它退役後這條斷了),
                    注入層收到新清單會把已刪的 conv 項移除。
