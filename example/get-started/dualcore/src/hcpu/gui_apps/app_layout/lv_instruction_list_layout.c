@@ -4372,15 +4372,10 @@ void instruction_list_reveal_drag_begin(void)
     lv_obj_set_style_translate_x(list_bg,
                                  s_reveal_from_left ? -LV_HOR_RES : LV_HOR_RES, 0);
     reset_list_internal(); /* every reveal opens at the list's bottom item (R3) */
-    /* R46(founder:「中間往右滑後會觸發定位到頂部 item,我不要這樣」/「左邊緣往右滑就
-       不會」/「要定位」):定位要留,不能留的是**進來之後才跳**。原本 R9 把它掛在左頁
-       settle,所以只有中間那條會定位、而且是清單已經在眼前才跳;左緣那條完全不定位。
-       改放在這裡 —— 兩條 reveal 的共同入口、清單此刻還 park 在畫面外,定位完才跟著
-       手指進場:落點一致,而且看不到跳動。 */
-    {
-        extern void instruction_list_focus_first_action(void);
-        instruction_list_focus_first_action();
-    }
+    /* R47(founder 定案:「應該是把定位拿掉,先回到原本不做定位的版本」):R9 的
+       focus_first_action 整個退場 —— 兩條 reveal 都不定位,落點就是 reset_list_internal
+       的結果(清單最下面那項),跟左緣原本的行為一致。R46 曾把它挪到這裡(改成進場前定位
+       以消除跳動),但 founder 要的是連定位本身都不要。 */
     /* Backdrop behind the list: transparent on the watch face (blurred dial shows
        through), light scrim elsewhere — same rule as animate_open_ai_widget. */
     {
