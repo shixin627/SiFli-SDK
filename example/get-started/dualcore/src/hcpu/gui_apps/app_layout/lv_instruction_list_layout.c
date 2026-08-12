@@ -6517,6 +6517,32 @@ static void create_list_items_ui(lv_obj_t *list, uint8_t start_idx,
                                    LV_EXT_FONT_GET(get_system_font_size(1)), 0);
         lv_obj_set_style_text_color(app_label[i], lv_color_hex(0xFFFFFF), 0);
 
+        /* R11(founder):session item(conv:)在標題右下角掛一顆小字半透明的來源
+           設備名。做成標題 label 的**子物件**,跟著標題的置中/動畫一起走;畫在
+           標題框外側,父 label 要 OVERFLOW_VISIBLE 才不會被裁掉。 */
+        if (strncmp(list_items[i].id, "conv:", 5) == 0)
+        {
+            extern const char *session_list_device_name_for(const char *conv_id);
+            extern lv_font_t *lvsf_get_font_from_size(uint16_t size);
+            const char *dev_name = session_list_device_name_for(list_items[i].id);
+            if (dev_name != NULL && dev_name[0])
+            {
+                lv_obj_add_flag(app_label[i], LV_OBJ_FLAG_OVERFLOW_VISIBLE);
+                lv_obj_t *sub = lv_label_create(app_label[i]);
+                lv_label_set_long_mode(sub, LV_LABEL_LONG_DOT);
+                lv_obj_set_width(sub, 160);
+                lv_font_t *f = lvsf_get_font_from_size(13);
+                if (f != NULL)
+                    lv_obj_set_style_text_font(sub, f, 0);
+                lv_obj_set_style_text_align(sub, LV_TEXT_ALIGN_RIGHT, 0);
+                lv_obj_set_style_text_color(sub, lv_color_hex(0xFFFFFF), 0);
+                lv_obj_set_style_text_opa(sub, LV_OPA_40, 0); /* 小小半透明 */
+                lv_label_set_text(sub, dev_name);
+                lv_obj_clear_flag(sub, LV_OBJ_FLAG_CLICKABLE);
+                lv_obj_align(sub, LV_ALIGN_OUT_BOTTOM_RIGHT, 0, 0);
+            }
+        }
+
         /* For instructions with interval, create switch and position label left
          */
         if (list_items[i].is_instruction && list_items[i].is_interval)

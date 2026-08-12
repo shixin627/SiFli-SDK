@@ -577,24 +577,17 @@ static void sp_inject_sessions_into_actions(void)
     }
     for (int o = 0; o < cnt; o++)
     {
-        const device_sessions_t *dv = &s_devices[order[o].slot];
-        const session_meta_t *s = &dv->items[order[o].idx];
-        /* R10(founder):顯示標題帶上來源設備 —— 「標題 · 設備名」。輪播項只有
-           一個 label,併進標題最直接;點進聊天室的標頭也跟著標明來源。
-           LIST_ITEM_TITLE_LEN=64,超長由 add_or_update 的 strncpy 截斷。 */
-        char disp[96];
-        if (dv->name[0])
-            rt_snprintf(disp, sizeof(disp), "%s · %s",
-                        s->title[0] ? s->title : "Session", dv->name);
-        else
-            rt_snprintf(disp, sizeof(disp), "%s", s->title[0] ? s->title : "Session");
+        const session_meta_t *s = &s_devices[order[o].slot].items[order[o].idx];
+        /* R11(founder):來源設備不併進標題,改由 instruction list 在標題右下角
+           畫小字半透明副標(session_list_device_name_for 反查)。 */
+        const char *title = s->title[0] ? s->title : "Session";
         bool same = false;
         uint8_t n = return_total_list_count();
         for (uint8_t i = 0; i < n; i++)
         {
             const char *iid = instruction_list_export_id(i);
             const char *it = instruction_list_export_title(i);
-            if (iid && it && strcmp(iid, s->id) == 0 && strncmp(it, disp, 63) == 0)
+            if (iid && it && strcmp(iid, s->id) == 0 && strcmp(it, title) == 0)
             {
                 same = true;
                 break;
@@ -602,7 +595,7 @@ static void sp_inject_sessions_into_actions(void)
         }
         if (!same)
         {
-            add_or_update_custom_instruction(s->id, disp, "", 0, false, 0, "");
+            add_or_update_custom_instruction(s->id, title, "", 0, false, 0, "");
             changed = true;
         }
         set_instruction_category(s->id, '@'); /* 冪等 */
@@ -622,6 +615,22 @@ static void sp_inject_sessions_into_actions(void)
 void session_list_actions_changed(void)
 {
     sp_inject_sessions_into_actions();
+}
+
+/** conv id → 來源設備名(instruction list 畫右下角副標用)。找不到回 NULL。 */
+const char *session_list_device_name_for(const char *conv_id)
+{
+    if (conv_id == NULL || conv_id[0] == '\0')
+        return NULL;
+    for (int d = 0; d < s_device_count; d++)
+    {
+        if (s_devices[d].name[0] == '\0')
+            continue;
+        for (int k = 0; k < s_devices[d].count; k++)
+            if (strcmp(s_devices[d].items[k].id, conv_id) == 0)
+                return s_devices[d].name;
+    }
+    return NULL;
 }
 
 /* 合併重建:全設備的 sessions 收成一份,有 ts 就按 ts 由新到舊,沒 ts 的
