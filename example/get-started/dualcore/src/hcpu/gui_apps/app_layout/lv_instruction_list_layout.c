@@ -3500,8 +3500,13 @@ static void mic_bar_event_cb(lv_event_t *evt)
        should OPEN the input box in place — NOT dismiss the drawer. The dismiss-the-
        whole-drawer behaviour is only needed on the device/mouse page, where a shown
        list covers the trackpad. So: an open box always toggles closed; a browse-
-       state list dismisses ONLY off the watch face (on the face it opens the box). */
-    if (box_visible || (list_shown && !clock_main_page_is_home()))
+       state list dismisses ONLY off the watch face (on the face it opens the box).
+       R74(founder 2026-08-13「點麥克風他會回到主畫面」):左頁 SESSION 檢視也不在
+       錶盤(tileview 真的停在左格 idx≠home),browse 態 tap 因此走進 dismiss →
+       close_ai_widget 收掉清單 → R24 守門看到「清單沒了但人停在左格」snap home ——
+       麥克風一點就回主畫面。session 頁沒有觸控板要讓路,dismiss 規則不適用:
+       這裡 tap = 開語音輸入框(R55),跟錶盤同待遇。 */
+    if (box_visible || (list_shown && !clock_main_page_is_home() && !s_session_page_mode))
     {
         LOG_I("Mic bar tapped — dismissing AI widget (box=%d list=%d)",
               (int)box_visible, (int)list_shown);
