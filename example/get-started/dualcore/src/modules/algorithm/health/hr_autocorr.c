@@ -784,17 +784,69 @@ static uint16_t s_track_base_q4;    /* Q4 so the /4 EMA does not quantise away  
 static uint8_t  s_track_warm;
 static uint8_t  s_track_miss;
 
-static uint8_t  s_track_dry_bursts;  /* bursts in a row with no accepted value */
-
+#define TRACK_HIST_N     16         /* median window for the baseline           */
+#define TRACK_RUN_N       4         /* consecutive readings on a new level that
+                                       re-establish it instead of being fought  */
 #define TRACK_DRY_MAX     6         /* ~1 hour of bursts before the baseline is
-                                       considered too old to trust */
+                                       considered too old to trust              */
+
+/* Two properties matter more than the octave correction itself, and both were
+ * learned by breaking them.
+ *
+ * BASELINE IS A MEDIAN, NOT AN EMA. An EMA has no memory of how MANY readings
+ * disagreed — six in a row move it most of the way. On 2026-08-13 04:14 the
+ * watch reported 39 bpm on a window whose spectrum AND autocorrelation both say
+ * 76-79, because the baseline had been dragged to ~41 while the wrist sat at 56.
+ * That bound is derivable from the output alone: for 39 to be chosen the
+ * baseline had to lie between 32.5 and 48.75.
+ *
+ * A SUSTAINED CHANGE IS NOT AN OCTAVE ERROR. An octave slip is isolated — the
+ * estimator flips for one window and comes back. A real change persists and
+ * keeps going. Without this distinction the tracker pinned exercise to rest:
+ * fed a genuine 60 -> 120 it returned 60 for every reading, indefinitely,
+ * because 120/2 lands exactly on the resting baseline and each suppressed value
+ * fed the history that justified suppressing the next. The symmetric half is
+ * just as necessary — without it the END of a workout is DOUBLED back up to the
+ * exercising rate. */
+static uint8_t  s_track_hist[TRACK_HIST_N];
+static uint8_t  s_track_n;          /* entries used                            */
+static uint8_t  s_track_w;          /* next write index (ring)                 */
+static uint8_t  s_track_warm;
+static uint8_t  s_track_miss;
+static uint8_t  s_track_dry;
+static uint8_t  s_track_run;        /* consecutive readings off the baseline   */
+static int8_t   s_track_dir;        /* which side they are on                  */
 
 static void track_reset(void)
 {
-    s_track_base_q4 = 0;
+    s_track_n = 0;
+    s_track_w = 0;
     s_track_warm = 0;
     s_track_miss = 0;
-    s_track_dry_bursts = 0;
+    s_track_dry = 0;
+    s_track_run = 0;
+    s_track_dir = 0;
+}
+
+static int32_t track_base(void)
+{
+    if (s_track_n == 0) return 0;
+    uint8_t tmp[TRACK_HIST_N];
+    memcpy(tmp, s_track_hist, s_track_n);
+    for (uint8_t i = 1; i < s_track_n; i++)      /* insertion sort, n <= 16 */
+    {
+        uint8_t v = tmp[i]; int j = i - 1;
+        while (j >= 0 && tmp[j] > v) { tmp[j + 1] = tmp[j]; j--; }
+        tmp[j + 1] = v;
+    }
+    return tmp[s_track_n / 2];
+}
+
+static void track_push(uint8_t v)
+{
+    s_track_hist[s_track_w] = v;
+    s_track_w = (uint8_t)((s_track_w + 1) % TRACK_HIST_N);
+    if (s_track_n < TRACK_HIST_N) s_track_n++;
 }
 
 /* Called once per burst boundary. The baseline survives a burst, but not an
@@ -803,9 +855,9 @@ static void track_reset(void)
    longer a safe prior for whoever picks it up next. */
 static void track_age_burst(void)
 {
-    if (s_track_base_q4 == 0) return;
-    if (s_track_dry_bursts < 255) s_track_dry_bursts++;
-    if (s_track_dry_bursts > TRACK_DRY_MAX) track_reset();
+    if (s_track_n == 0) return;
+    if (s_track_dry < 255) s_track_dry++;
+    if (s_track_dry > TRACK_DRY_MAX) track_reset();
 }
 
 static uint8_t track_apply(uint8_t bpm)
@@ -817,41 +869,53 @@ static uint8_t track_apply(uint8_t bpm)
         return 0;
     }
     s_track_miss = 0;
-    s_track_dry_bursts = 0;
+    s_track_dry = 0;
 
     int32_t out = bpm;
-    int32_t base = (int32_t)s_track_base_q4 >> 4;
+    int32_t base = track_base();
 
-    if (base > 0 && s_track_warm >= TRACK_WARMUP)
+    int8_t dir = 0;
+    if (base > 0)
     {
-        int32_t d = out > base ? out - base : base - out;
-        if (d * 100 > base * TRACK_NEAR_PCT)
+        if (out * 100 > base * (100 + TRACK_NEAR_PCT))      dir =  1;
+        else if (out * 100 < base * (100 - TRACK_NEAR_PCT)) dir = -1;
+    }
+    if (dir != 0 && dir == s_track_dir) { if (s_track_run < 255) s_track_run++; }
+    else                                  s_track_run = (dir != 0) ? 1 : 0;
+    s_track_dir = dir;
+
+    if (base > 0 && s_track_warm >= TRACK_WARMUP && dir != 0)
+    {
+        int32_t cand[2] = { out * 2, out / 2 };
+        for (int i = 0; i < 2; i++)
         {
-            int32_t cand[2] = { out * 2, out / 2 };
-            for (int i = 0; i < 2; i++)
-            {
-                if (cand[i] < 30 || cand[i] > 220) continue;
-                int32_t cd = cand[i] > base ? cand[i] - base : base - cand[i];
-                if (cd * 100 <= base * TRACK_SNAP_PCT) { out = cand[i]; break; }
-            }
+            if (cand[i] < 30 || cand[i] > 220) continue;
+            int32_t cd = cand[i] > base ? cand[i] - base : base - cand[i];
+            if (cd * 100 > base * TRACK_SNAP_PCT) continue;
+            if (s_track_run >= TRACK_RUN_N) break;  /* sustained = real change */
+            out = cand[i];
+            break;
         }
     }
 
-    /* The baseline follows ACCEPTED output, and slowly: a run of bad windows
-       must not be able to walk it onto the wrong octave in a few steps. */
-    if (base == 0)
-    {
-        s_track_base_q4 = (uint16_t)(out << 4);
-        s_track_warm = 1;
-    }
+    if (base == 0) s_track_warm = 1;
     else
     {
         int32_t d = out > base ? out - base : base - out;
         s_track_warm = (d * 100 <= base * TRACK_NEAR_PCT)
                      ? (uint8_t)(s_track_warm < 255 ? s_track_warm + 1 : 255)
-                     : 1;                       /* genuine change: re-establish */
-        s_track_base_q4 = (uint16_t)(((int32_t)s_track_base_q4 * 3 + (out << 4)) / 4);
+                     : 1;
     }
+
+    if (s_track_run >= TRACK_RUN_N)
+    {
+        s_track_n = 0; s_track_w = 0;           /* re-establish, do not fight */
+        track_push((uint8_t)out);
+        s_track_warm = TRACK_WARMUP;
+        s_track_run = 0; s_track_dir = 0;
+    }
+    else track_push((uint8_t)out);
+
     return (uint8_t)out;
 }
 
