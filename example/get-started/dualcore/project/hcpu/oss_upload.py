@@ -23,6 +23,8 @@ Credentials are read from (file first, then env overrides), NEVER hard-coded.
 Key names match SkaiLink's .env.json so you can point straight at it:
     OSS_ENDPOINT  OSS_BUCKET  ALIYUN_ACCESS_KEY_ID  ALIYUN_ACCESS_KEY_SECRET
     OSS_SECURITY_TOKEN (optional, STS)
+The access keys are also accepted as ALIBABA_CLOUD_ACCESS_KEY_ID/_SECRET,
+which is what SkaiLink's .env.json calls them now.
 Default file: oss_credentials.json next to this script, or env OSS_CREDENTIALS_FILE.
 
 Usage (CLI):
@@ -85,13 +87,18 @@ SKAILINK_ENV_CANDIDATES = [
     r"C:\work\SkaiLink\.env.json",
 ]
 
-# Maps our internal field -> the credential key name (matches SkaiLink .env.json).
+# Maps our internal field -> accepted credential key names, first one canonical
+# (it is what the "missing credentials" error names). SkaiLink's .env.json
+# renamed ALIYUN_ACCESS_KEY_* to ALIBABA_CLOUD_ACCESS_KEY_*, so accept both:
+# a file is adopted only when all four required fields resolve, meaning one
+# unrecognised spelling silently discards the endpoint and bucket with it.
 CRED_KEYS = {
-    "endpoint": "OSS_ENDPOINT",
-    "bucket": "OSS_BUCKET",
-    "access_key_id": "ALIYUN_ACCESS_KEY_ID",
-    "access_key_secret": "ALIYUN_ACCESS_KEY_SECRET",
-    "security_token": "OSS_SECURITY_TOKEN",
+    "endpoint": ("OSS_ENDPOINT",),
+    "bucket": ("OSS_BUCKET",),
+    "access_key_id": ("ALIYUN_ACCESS_KEY_ID", "ALIBABA_CLOUD_ACCESS_KEY_ID"),
+    "access_key_secret": ("ALIYUN_ACCESS_KEY_SECRET",
+                          "ALIBABA_CLOUD_ACCESS_KEY_SECRET"),
+    "security_token": ("OSS_SECURITY_TOKEN",),
 }
 
 
@@ -117,9 +124,11 @@ def _load_from_file(path):
     creds = {}
     with io.open(path, "r", encoding="utf-8") as f:
         data = json.load(f)
-    for field, name in CRED_KEYS.items():
-        if name in data and str(data[name]).strip():
-            creds[field] = str(data[name]).strip()
+    for field, names in CRED_KEYS.items():
+        for name in names:
+            if name in data and str(data[name]).strip():
+                creds[field] = str(data[name]).strip()
+                break
     return creds
 
 
@@ -144,11 +153,13 @@ def load_credentials():
 
     # env vars override individual values (and can fill in on their own)
     env_used = False
-    for field, name in CRED_KEYS.items():
-        v = os.environ.get(name, "").strip()
-        if v:
-            creds[field] = v
-            env_used = True
+    for field, names in CRED_KEYS.items():
+        for name in names:
+            v = os.environ.get(name, "").strip()
+            if v:
+                creds[field] = v
+                env_used = True
+                break
     if env_used and not source:
         source = "環境變數"
 
@@ -156,8 +167,8 @@ def load_credentials():
     if creds.get("endpoint"):
         creds["endpoint"] = creds["endpoint"].replace("https://", "").replace("http://", "")
 
-    missing = [CRED_KEYS[f] for f in ("endpoint", "bucket", "access_key_id",
-                                      "access_key_secret") if not creds.get(f)]
+    missing = [CRED_KEYS[f][0] for f in ("endpoint", "bucket", "access_key_id",
+                                         "access_key_secret") if not creds.get(f)]
     if missing:
         tried = "\n".join("  - %s" % p for p, _ in _candidate_files())
         raise OssError(
