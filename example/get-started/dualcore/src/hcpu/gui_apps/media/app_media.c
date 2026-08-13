@@ -160,7 +160,6 @@ void music_ui_build(app_media_t *p_app_media, lv_obj_t *parent, float size)
 }
 
 static lv_obj_t *widget_vol_bar = NULL;
-static lv_obj_t *dial_widget_vol_icon_btn = NULL;
 #define VOL_BAR_COLLAPSE_TIMEOUT 3000
 
 /* ---- Media widget volume bar (independent from dial widget) ---- */
@@ -1065,54 +1064,11 @@ lv_obj_t *media_play_pause_btn_create(lv_obj_t *parent)
 
 extern void dial_widget_event(lv_event_t *e);
 
-static lv_obj_t *dial_widget_btn_prev_bg = NULL;
-static lv_obj_t *dial_widget_btn_next_bg = NULL;
-static lv_obj_t *dial_widget_btn_play_pause = NULL;
-static lv_obj_t *dial_widget_btn_play_pause_icon = NULL;
-
 
 /* dial_media_header moved to lv_message_list_layout.c */
 
 /* dial_media_header_init/deinit moved to lv_message_list_layout.c */
 
-static lv_obj_t *lv_create_media_screen(lv_obj_t *scr)
-{
-    lv_obj_t *cont = lv_obj_create(scr);
-    lv_obj_set_size(cont, LV_HOR_RES_MAX, LV_VER_RES_MAX);
-    lv_obj_center(cont);
-    lv_obj_set_style_bg_opa(cont, LV_OPA_0, 0);
-    p_app_media->media_title = lv_label_create(cont);
-    char *title = control_provider.get_media_title();
-    if (strlen(title) > 0)
-    {
-        lv_label_set_text(p_app_media->media_title, title);
-    }
-    else
-    {
-        lv_label_set_text(p_app_media->media_title, LV_EXT_STR_GET_BY_KEY(media_title_default, "Media Title"));
-    }
-    lv_obj_set_size(p_app_media->media_title, 300, 200);
-    lv_label_set_long_mode(p_app_media->media_title, LV_LABEL_LONG_DOT);
-    lv_obj_set_style_text_align(p_app_media->media_title, LV_TEXT_ALIGN_CENTER,
-                                LV_PART_MAIN);
-    lv_obj_set_style_text_font(p_app_media->media_title,
-                               LV_EXT_FONT_GET(get_system_font_size(-1)), 0);
-    lv_obj_set_style_text_color(p_app_media->media_title, lv_color_white(), 0);
-    lv_obj_align(p_app_media->media_title, LV_ALIGN_TOP_MID, 0, 50);
-    music_ui_build(p_app_media, cont, 0.8);
-    return cont;
-}
-
-static lv_obj_t *lv_create_media_app_screen(lv_obj_t *scr)
-{
-    lv_obj_t *cont = lv_obj_create(scr);
-    lv_obj_set_size(cont, LV_HOR_RES_MAX, LV_VER_RES_MAX);
-    lv_obj_set_style_bg_color(cont, lv_color_hex(0x000000), 0);
-    lv_obj_set_style_radius(cont, LV_RADIUS_CIRCLE, 0);
-    lv_obj_center(cont);
-    // music_app_ui_build(p_app_media);
-    return cont;
-}
 
 /* Define the action functions for the buttons */
 static void next_btn_event_cb(lv_event_t *e)
@@ -1175,55 +1131,12 @@ static void fourth_app_btn_event_cb(lv_event_t *e)
     gui_app_run(APP_ID_RECORDER);
 }
 
-static void reset_btn_state(void)
-{
-    lv_obj_set_style_shadow_opa(music_app_obj.btn_play_pause, LV_OPA_0, 0);
-    lv_img_set_zoom(music_app_obj.btn_play_pause_img,
-                    256 * WIDGET_ICON_ZOOM_SIZE);
-    lv_obj_set_style_shadow_opa(music_app_obj.btn_prev_bg, LV_OPA_0, 0);
-    lv_img_set_zoom(music_app_obj.btn_prev_img, 256 * WIDGET_ICON_ZOOM_SIZE);
-    lv_obj_set_style_shadow_opa(music_app_obj.btn_next_bg, LV_OPA_0, 0);
-    lv_img_set_zoom(music_app_obj.btn_next_img, 256 * WIDGET_ICON_ZOOM_SIZE);
-}
 
 static void button_selection(gesture_position_t gesture_position)
 {
     media_trigger_drag_by_py(gesture_position.gesture_position_y);
 }
 
-// 添加計時器回調函數
-static void clear_highlight_cb(void *param)
-{
-    // 清除所有按鈕的高亮
-    lv_obj_set_style_bg_opa(music_app_obj.btn_play_pause, LV_OPA_0, 0);
-    lv_obj_set_style_bg_opa(music_app_obj.btn_prev_bg, LV_OPA_0, 0);
-    lv_obj_set_style_bg_opa(music_app_obj.btn_next_bg, LV_OPA_0, 0);
-}
-
-// 添加計時器句柄
-static rt_timer_t highlight_timer;
-static void start_highlight_timer(void)
-{
-    if (!highlight_timer)
-    {
-        highlight_timer = rt_timer_create(
-            "highlight_timer", clear_highlight_cb, RT_NULL,
-            rt_tick_from_millisecond(300), RT_TIMER_FLAG_ONE_SHOT);
-    }
-    else
-    {
-        rt_timer_stop(highlight_timer);
-    }
-    rt_timer_start(highlight_timer);
-}
-
-static void stop_highlight_timer(void)
-{
-    if (highlight_timer)
-    {
-        rt_timer_stop(highlight_timer);
-    }
-}
 
 // 修改 handle_tap_event 函數
 static void handle_tap_event(void)

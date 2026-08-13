@@ -121,28 +121,6 @@ MyStruct_T myLancher[APP_NULL];
     #define ROW_APP_MAX_COUNT 2
 // tile view
 static uint16_t row_app_index = app_index_clock;
-static lv_obj_t *tileview;
-static void set_stack_app_index(uint16_t index)
-{
-    if (index != row_app_index)
-    {
-        row_app_index = index;
-        LOG_D("row_app_index: % d", row_app_index);
-        if (index == app_index_instruction_list)
-        {
-            LOG_I("Open instruction list");
-            // switch_watch_motion_control_mode(true, true);
-            clock_on_pause();
-        }
-        else if (index == app_index_clock)
-        {
-            LOG_I("Open watchface");
-            clock_on_resume();
-        }
-    }
-
-    check_is_at_home();
-}
 
 void animate_to_home_from_instruction_list(void)
 {
@@ -176,16 +154,6 @@ static void handle_set_instruction_list_opa(uint8_t opa)
     lv_obj_set_style_bg_opa(middle_layer_bg, opa, 0);
 }
 
-static inline void set_middle_layer_bg_opa(int32_t opa)
-{
-    if (middle_layer_bg)
-        lv_obj_set_style_bg_opa(middle_layer_bg, (lv_opa_t)opa, 0);
-}
-
-static void set_test_obj_opa(void *_, int32_t opa)
-{
-    set_middle_layer_bg_opa(opa);
-}
 
 void handle_tap_event_in_mainmenu(void)
 {
@@ -562,16 +530,6 @@ void check_is_at_home(void)
     instruction_list_refresh_home_bar();
 }
 
-static void clear_check_flags(void)
-{
-    _at_instruction_list = false;
-    _at_message = false;
-    _at_control_center = false;
-    _at_home = false;
-    _at_mouse_mode = false;
-    _at_ai_interface = false;
-    _at_speech_interface = false;
-}
 
 extern void scrolling_object(bool open_scrolling_object_flag);
 extern void stop_scrolling_object(void);
@@ -581,124 +539,8 @@ void set_open_scrolling_app_flag(bool flag)
     open_scrolling_app_flag = flag;
 }
 
-// extern void instruction_list_scroll_to_app(bool up);
-static uint16_t bg_opa = LV_OPA_COVER;
-static uint8_t bg_opa2 = LV_OPA_80;
 void *app_tap_indicate_function = NULL;
 void *app_scroll_list_function = NULL;
-static char pevr_app_id[GUI_APP_ID_MAX_LEN] = {0};
-static void app_main_Clock_view_event_cb(lv_event_t *event)
-{
-    lv_obj_t *obj = lv_event_get_target(event);
-    switch (event->code)
-    {
-    case LV_EVENT_SCROLL_BEGIN:
-        clock_on_resume();
-        break;
-    case LV_EVENT_SCROLL:
-    {
-        lv_coord_t sx = lv_obj_get_scroll_x(obj);
-        /* Scale background opacity */
-        lv_coord_t opa_scaled =
-            ((466 - sx) * (bg_opa + 1)) / 420; /* similar mapping as before */
-        if (opa_scaled > bg_opa)
-            opa_scaled = bg_opa;
-
-        /* Time text opacity */
-        lv_coord_t text_opa = ((466 - sx) * bg_opa) / 466;
-        if (text_opa > bg_opa)
-            text_opa = bg_opa;
-        set_instruction_list_time_opa(text_opa);
-        /* Time background opacity */
-        lv_coord_t time_bg_opa = ((466 - sx) * bg_opa2) / 466;
-        if (time_bg_opa > bg_opa2)
-            time_bg_opa = bg_opa2;
-        lv_obj_set_style_bg_opa(get_instruction_list_time_bg(), time_bg_opa, 0);
-        break;
-    }
-    case LV_EVENT_SCROLL_END:
-    {
-        lv_coord_t scroll_x = lv_obj_get_scroll_x(obj);
-        if (0 == scroll_x)
-        {
-            gui_runing_app_t *app = gui_app_get_actived();
-            strncpy(pevr_app_id, app->id, sizeof(pevr_app_id) - 1);
-            pevr_app_id[sizeof(pevr_app_id) - 1] = '\0';
-            lv_obj_set_style_bg_opa(get_instruction_list_time_bg(), bg_opa2, 0);
-            set_instruction_list_time_opa(bg_opa);
-            LOG_D("app_index_instruction_list");
-            set_stack_app_index(app_index_instruction_list);
-            extern void reset_gravity_position(void);
-            reset_gravity_position();
-            clock_on_pause();
-            force_release_finger();
-            if (open_scrolling_app_flag)
-            {
-                app_tap_indicate_function =
-                    lvgl_msg_handler.handle_tap_indicator;
-                app_scroll_list_function =
-                    lvgl_msg_handler.handle_gyro_scroll_list;
-                lvgl_msg_handler.handle_tap_indicator = on_tap_wrapper;
-                LOG_D("handle_tap_indicator =%p", on_tap_wrapper);
-                // lvgl_msg_handler.handle_gyro_scroll_list =
-                //     instruction_list_scroll_to_app;
-    #if ENABLE_VIRTUAL_TOUCH
-                scrolling_object(true);
-    #endif
-                open_scrolling_app_flag = false;
-            }
-        }
-        else if (466 == scroll_x)
-        {
-            force_release_finger();
-            lvgl_msg_t msg;
-            msg.type = LVGL_MSG_TYPE_TIME_TEXT;
-            lvgl_send_msg(msg);
-            lv_obj_set_style_bg_opa(get_instruction_list_time_bg(), LV_OPA_0,
-                                    0);
-            set_instruction_list_time_opa(LV_OPA_0);
-            LOG_D("app_index_clock");
-            if (myLancher[app_index_instruction_list].reset_list != NULL)
-            {
-                myLancher[app_index_instruction_list].reset_list();
-            }
-            set_stack_app_index(app_index_clock);
-            extern void set_q_vertical_movement_magnification(float mag);
-            set_q_vertical_movement_magnification(1.0f);
-
-    #if ENABLE_VIRTUAL_TOUCH
-            stop_scrolling_object();
-    #endif
-            if (gui_app_is_actived(APP_ID_MAIN))
-            {
-                lvgl_msg_handler.handle_tap_indicator = NULL;
-                lvgl_msg_handler.handle_gyro_scroll_list = NULL;
-            }
-            else
-            {
-                gui_runing_app_t *app = gui_app_get_actived();
-                if (strcmp(pevr_app_id, app->id) == 0)
-                {
-                    lvgl_msg_handler.handle_gyro_scroll_list =
-                        app_scroll_list_function;
-                    lvgl_msg_handler.handle_tap_indicator =
-                        app_tap_indicate_function;
-                }
-            }
-        }
-        break;
-    }
-    case LV_EVENT_RELEASED:
-    case LV_EVENT_PRESSED:
-    case LV_EVENT_CLICKED:
-    case LV_EVENT_PRESSING:
-    case LV_EVENT_SHORT_CLICKED:
-    case LV_EVENT_LONG_PRESSED:
-    case LV_EVENT_FOCUSED:
-    default:
-        break;
-    }
-}
 
 bool message_has_read = false;
 

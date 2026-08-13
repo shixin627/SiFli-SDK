@@ -1670,10 +1670,6 @@ static void app_setting_rebuild_main_cb(void *p)
     app_setting_init(NULL);
 }
 
-static void back_to_main_menu(void)
-{
-    gui_app_goback();
-}
 
 static void msg_handler(gui_app_msg_type_t msg, void *param)
 {

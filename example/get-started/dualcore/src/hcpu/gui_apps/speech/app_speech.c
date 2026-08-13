@@ -207,15 +207,6 @@ static void main_page_event_callback(lv_event_t *event)
     }
 }
 
-static lv_coord_t lv_obj_get_height_fit_text(lv_obj_t *label, lv_coord_t max_width, lv_coord_t extra_width)
-{
-    lv_obj_t *label_copy = lv_label_create(lv_scr_act());
-    lv_label_set_text(label_copy, lv_label_get_text(label));
-    lv_obj_set_width(label_copy, max_width + extra_width);
-    lv_coord_t h = lv_obj_get_height(label_copy);
-    lv_obj_del(label_copy);
-    return h;
-}
 
 static void on_stop(void);
 static void on_pause(void);

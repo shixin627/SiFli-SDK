@@ -935,7 +935,6 @@ static void create_indicator_dots(lv_obj_t *parent)
 }
 
 extern void tap_on_ai_hint(void);
-static bool is_open_ai_gesture = false;
 static lv_obj_t *ai_voice_btn = NULL;
 static lv_obj_t *ai_voice_send_icon = NULL;
 static lv_obj_t *ai_gaus_bg = NULL;
@@ -1033,43 +1032,6 @@ void set_indicator_dots_visible(bool visible)
     }
 }
 
-static void create_movable_range_arc(lv_obj_t *parent)
-{
-    if (p_instruction_list_layout == NULL)
-        return;
-
-    lv_obj_t *arc = lv_arc_create(parent);
-
-    lv_obj_set_size(arc, LIST_RADIUS, LIST_RADIUS);
-    lv_obj_align(arc, LV_ALIGN_CENTER, 0, 0);
-
-    int start_angle = 348;
-    int end_angle = 13;
-
-    lv_arc_set_range(arc, 0, 30);
-    lv_arc_set_bg_start_angle(arc, start_angle);
-    lv_arc_set_bg_end_angle(arc, end_angle);
-    lv_arc_set_value(arc, 30);
-
-    lv_obj_set_style_arc_width(arc, 0, LV_PART_MAIN);
-    lv_obj_set_style_arc_opa(arc, LV_OPA_TRANSP, LV_PART_MAIN);
-
-    lv_obj_set_style_arc_width(arc, MOVABLE_ARC_WIDTH, LV_PART_INDICATOR);
-    lv_obj_set_style_arc_color(arc, lv_color_hex(0xFFFFFF), LV_PART_INDICATOR);
-    lv_obj_set_style_arc_opa(arc, LV_OPA_70, LV_PART_INDICATOR);
-
-    lv_obj_set_style_bg_opa(arc, LV_OPA_TRANSP, LV_PART_KNOB);
-    lv_obj_set_style_border_opa(arc, LV_OPA_TRANSP, LV_PART_KNOB);
-    lv_obj_set_style_pad_all(arc, 0, LV_PART_KNOB);
-
-    lv_obj_clear_flag(arc, LV_OBJ_FLAG_CLICKABLE);
-    lv_obj_clear_flag(arc, LV_OBJ_FLAG_SCROLLABLE);
-
-    p_instruction_list_layout->movable_range_arc = arc;
-
-    LOG_D("Movable range arc created: radius=%d, start=%d, end=%d",
-          LIST_RADIUS / 2, MOVABLE_ARC_START_ANGLE, MOVABLE_ARC_END_ANGLE);
-}
 
 extern lv_img_dsc_t *create_widget_snapshot_img(lv_obj_t *target_obj);
 lv_obj_t *app_icon[MAX_LIST_ITEMS];
@@ -1083,8 +1045,6 @@ static bool is_widget_animation_active = false; // 追蹤 widget 動畫狀態
 static uint8_t app_scroll_target_item = 0;
 static uint16_t old_selected_item_index = -1;
 static lv_obj_t *selected_label;
-static lv_obj_t *instruction_list_main_status_bar;
-static rt_tick_t last_gohame_time = 0;
 
 void set_arc_stripe_external_offset(int16_t offset_degrees)
 {
@@ -1741,27 +1701,8 @@ void open_selected_widget(bool need_widget_img_anima)
     }
 }
 
-static void selected_widget_timer_callback(void *parameter)
-{
-    lvgl_msg_t msg = {.type = LVGL_MSG_TYPE_WIDGET_LIST_SELECT};
-    lvgl_send_msg(msg);
-}
 
 static rt_timer_t selected_widget_timer = NULL;
-static void selected_widget_timer_start(void)
-{
-    if (!selected_widget_timer)
-    {
-        selected_widget_timer = rt_timer_create(
-            "speaking_debounce_timer", selected_widget_timer_callback, NULL,
-            300, RT_TIMER_FLAG_ONE_SHOT);
-    }
-    else
-    {
-        rt_timer_stop(selected_widget_timer);
-    }
-    rt_timer_start(selected_widget_timer);
-}
 
 /* Forward decls — defined further down with the AI widget block. */
 static void ai_widget_fade_on_scroll(void);
@@ -2013,35 +1954,8 @@ static void list_window_scroll_event_cb(lv_event_t *evt)
 }
 
 extern void check_is_at_instruction_list(void);
-static void app_list_window_scroll_event_cb(lv_event_t *evt)
-{
-    lv_obj_t *obj = evt->target;
-    switch (evt->code)
-    {
-    case LV_EVENT_VALUE_CHANGED:
-    {
-        if (lv_obj_get_scroll_y(p_instruction_list_layout->app_list_tileview)/466 != 0)
-            return;
-        check_is_at_instruction_list();
-        break;
-    }
-    default:
-        break;
-    }
-    if (obj == NULL)
-    {
-        return;
-    }
-}
 extern void set_skai_widget_opa(uint8_t opa);
 extern void set_skai_widget_input_text(const char *text);
-static void set_ai_bg_opa(void *obj, int32_t opa)
-{
-    uint8_t bg_opa = 240 * opa / 255;
-    lv_obj_set_style_bg_opa(p_instruction_list_layout->p_instruction_list_ai_bg,
-                            bg_opa, 0);
-    set_skai_widget_opa(opa);
-}
 
 /* Mic status: animate ai_voice_btn opacity based on VAD */
 static void ai_voice_btn_opa_anim_cb(void *obj, int32_t value)
@@ -2103,23 +2017,11 @@ void instruction_ai_show_skai_widget(void)
 
 static rt_tick_t last_ai_widget_open_time = 0;
 static bool ai_widget_opened_by_drag = false;
-/* Guard flag: when animate_open_ai_widget drives the tileview from tile 1 → 0
-   with LV_ANIM_ON, the resulting SCROLL_END fires VALUE_CHANGED with
-   active_pos=0. Without the guard, ai_tileview_event_cb would interpret that
-   as "user dismissed to home" and close the widget we just opened. */
-static bool s_programmatic_open_in_progress = false;
 
 /* Mock instruction-update timer — simulates phone/PC pushing list updates
    while voice listening is active. Real backend wiring deferred per office-hours
    doc §5 P2 (latency unverified). Cycles a small fake set. */
 static rt_timer_t mock_inst_update_timer = RT_NULL;
-static int mock_inst_cycle = 0;
-static const char *MOCK_INST_TITLES[] = {
-    "Set 5 min timer",
-    "Send 'on my way' to Mom",
-    "Play workout playlist",
-    "Add milk to grocery list",
-};
 static const char *MOCK_INST_IDS[] = {
     "mock-timer-001",
     "mock-msg-002",
@@ -2128,35 +2030,6 @@ static const char *MOCK_INST_IDS[] = {
 };
 #define MOCK_INST_COUNT (sizeof(MOCK_INST_IDS) / sizeof(MOCK_INST_IDS[0]))
 
-static void mock_inst_update_cb(void *param)
-{
-    int idx = mock_inst_cycle % MOCK_INST_COUNT;
-    add_or_update_custom_instruction(MOCK_INST_IDS[idx], MOCK_INST_TITLES[idx],
-                                     "once", 0, false, mock_inst_cycle + 1, NULL);
-    mock_inst_cycle++;
-    lvgl_msg_t msg = {.type = LVGL_MSG_TYPE_REFRESH_INSTRUCTION_LIST};
-    lvgl_send_msg(msg);
-}
-
-static void start_mock_inst_update(void)
-{
-    if (mock_inst_update_timer == RT_NULL)
-    {
-        /* SOFT timer required: callback calls add_or_update_custom_instruction
-           (strncpy on shared array) + lvgl_send_msg. HARD timer = interrupt
-           context, unsafe for either. SOFT timer runs in dedicated timer
-           thread context, safe to call kernel APIs. */
-        mock_inst_update_timer = rt_timer_create(
-            "mock_inst_upd", mock_inst_update_cb, RT_NULL,
-            rt_tick_from_millisecond(1500),
-            RT_TIMER_FLAG_PERIODIC | RT_TIMER_FLAG_SOFT_TIMER);
-    }
-    if (mock_inst_update_timer != RT_NULL)
-    {
-        rt_timer_start(mock_inst_update_timer);
-        LOG_I("mock instruction update timer started");
-    }
-}
 
 static void stop_mock_inst_update(void)
 {
@@ -3619,41 +3492,6 @@ static void mic_bar_event_cb(lv_event_t *evt)
     }
 }
 
-/* 公開 bar-tap 入口：給其他 app（standalone APP_ID_MOUSE 滑鼠 app）驅動「跟錶盤底部
-   bar 完全同一套」的兩段式 skaibar——**同一個元件**，故列表 / 輸入框的樣式與行為一致。
-   1st tap：列表從右浮入(browse 態、無輸入框) + open_browse 的 settle 會 commu_send_
-   skaibar_view 通知 active 設備開它的 skaibar、選項同步；2nd tap(列表已開)：morph 輸入
-   框 + 語音；已開輸入框則收掉。永遠 browse-first、不模糊背景(呼叫者非錶盤)。 */
-void instruction_list_bar_tap(void)
-{
-    if (!p_instruction_list_layout)
-        return;
-    bool box_visible =
-        p_instruction_list_layout->p_instruction_list_ai_bg &&
-        !lv_obj_has_flag(p_instruction_list_layout->p_instruction_list_ai_bg,
-                         LV_OBJ_FLAG_HIDDEN);
-    bool list_shown =
-        p_instruction_list_layout->p_instruction_list_bg &&
-        !lv_obj_has_flag(p_instruction_list_layout->p_instruction_list_bg,
-                         LV_OBJ_FLAG_HIDDEN);
-    extern void animate_open_ai_widget(void);
-    extern void instruction_list_open_browse(void);
-    extern void instruction_list_bar_set_blur(bool on);
-    if (box_visible)
-    {
-        s_close_is_cancel = true; /* bar-tap close = user cancel */
-        close_ai_widget();
-    }
-    else if (list_shown)
-    {
-        animate_open_ai_widget(); /* 2nd tap → 輸入框 + 語音 */
-    }
-    else
-    {
-        instruction_list_bar_set_blur(false); /* 非錶盤、不模糊 */
-        instruction_list_open_browse();       /* 1st tap → 列表浮入 + 通知電腦開 skaibar */
-    }
-}
 
 /* 把 E7 registry 裡 device_id 那台的 default_actions 餵進共享浮層清單 —— 與 device_pager
    的 feed_active_device_options_to_list 同一套 API(save_base 快照錶盤清單→drop_pinned 去掉
@@ -3791,87 +3629,6 @@ bool instruction_list_remote_target_has_focus(void)
     return s_remote_target_has_focus;
 }
 
-/* 公開：給 STANDALONE 滑鼠 app(APP_ID_MOUSE)用的「單一控制設備」版 bar-tap。與
-   instruction_list_bar_tap 同一個兩段式狀態機 + 同一個元件(列表/輸入框樣式必然一致),差別:
-   1st tap 依 s_remote_target_has_focus 二選一——有聚焦輸入框(使用者八成剛點進那格)直接跳過
-   選項清單開輸入框;沒有就跟原本一樣先餵「控制中那台」的選項(非混合清單)、進單設備模式
-   (settle 改送 commu_send_skaibar_open_device 叫那台電腦開它的 skaibar、非廣播)。2nd tap /
-   收掉與錶盤完全相同。device_id 為空時退回一般 bar(沒有控制目標就沒有單一電腦可開)。 */
-void instruction_list_bar_tap_device(const char *device_id)
-{
-    LOG_I("[bar_dev] tap device_id=\"%s\"", (device_id && device_id[0]) ? device_id : "(EMPTY)");
-    /* 每次進入先重置「舉起帶出」旗標 — 舉起路徑(open_skaibar_from_pose)呼叫完會
-       再標回 true;手動 tap 維持 false(bar 長按語音不生效,保留原兩段式)。 */
-    s_opened_by_lift = false;
-    if (!p_instruction_list_layout)
-    {
-        /* P3 麥克風 OOM 修復:進 standalone 滑鼠 app 時錶盤(Main app)已被 gui_app_exit 整個拆掉,
-           它建的 instruction_list 單例也跟著釋放(p 變 NULL)。滑鼠 skaibar 要用 → 這裡 lazy 自建
-           一份,掛在滑鼠 app 自己的 active screen。Main 已 destroy、不會再有它的 on_stop 來誤拆
-           這份;滑鼠 app 離開(ONSTOP)時自己 deinit。錶盤情境(Main 活著)p 永遠非 NULL,不會進來。 */
-        extern lv_obj_t *lv_instruction_list_layout_create(lv_obj_t * parent);
-        LOG_I("[bar_dev] no singleton (錶盤已拆) -> lazy create for mouse app");
-        lv_instruction_list_layout_create(lv_scr_act());
-        if (!p_instruction_list_layout)
-            return; /* 建失敗才放棄 */
-    }
-    if (device_id == NULL || device_id[0] == '\0')
-    {
-        LOG_I("[bar_dev] EMPTY id -> fallback to generic broadcast bar");
-        instruction_list_bar_tap(); /* 沒有控制目標 → 一般(廣播)bar */
-        return;
-    }
-    bool box_visible =
-        p_instruction_list_layout->p_instruction_list_ai_bg &&
-        !lv_obj_has_flag(p_instruction_list_layout->p_instruction_list_ai_bg,
-                         LV_OBJ_FLAG_HIDDEN);
-    bool list_shown =
-        p_instruction_list_layout->p_instruction_list_bg &&
-        !lv_obj_has_flag(p_instruction_list_layout->p_instruction_list_bg,
-                         LV_OBJ_FLAG_HIDDEN);
-    extern void animate_open_ai_widget(void);
-    extern void instruction_list_bar_set_blur(bool on);
-    extern void instruction_list_open_browse(void);
-    if (box_visible)
-    {
-        /* 防手指誤觸自關:單擊直接開框讓「開框」跟「這下
-           tap 的手指放開」發生在同一次觸控循環裡 —— 剛長出來的輸入框長到手指底下,LVGL
-           把放開誤判成對新物件的一次點擊,馬上又觸發這裡的 box_visible 關閉,真機驗證過:
-           兩次 [bar_dev] tap log 只相隔 127ms,人不可能故意連按這麼快。剛開框(見
-           animate_open_ai_widget 設的 last_ai_widget_open_time)的極短時間窗內忽略這次
-           tap,視為同一次觸控的雜訊,不當作使用者真的要關。 */
-        if (rt_tick_get() - last_ai_widget_open_time < rt_tick_from_millisecond(400))
-        {
-            LOG_I("[bar_dev] tap ignored — too soon after open (debounce)");
-        }
-        else
-        {
-            s_close_is_cancel = true; /* bar-tap close = user cancel → 送 dismiss */
-            close_ai_widget();
-        }
-    }
-    else if (list_shown)
-    {
-        /* 2nd tap → 輸入框 + 語音(同錶盤)。開語音前重送 open_device 重新 latch 手機端單設備
-           模式 —— 中間的 box-close 會送 dismiss(0x0C) 清掉手機 flag,不重 latch 的話這次語音
-           transcript 會誤走廣播而非那一台。idempotent(電腦 skaibar 已開則維持)。 */
-        extern bool commu_send_skaibar_open_device(bool force_open);
-        commu_send_skaibar_open_device(true); /* manual tap — always show the desktop panel */
-        animate_open_ai_widget();
-    }
-    else
-    {
-        s_bar_single_device = true;            /* 收合時 restore、scroll/commit 不清 active */
-        /* 立刻送 0x0E(不等 settle)叫「控制中那台」電腦 summon 它的 skaibar。先餵 registry 的
-           default_actions 當即時 placeholder;之後手機把電腦的即時選項 push 過來會直接套上
-           (即時更新)。 */
-        extern bool commu_send_skaibar_open_device(bool force_open);
-        commu_send_skaibar_open_device(true); /* manual tap — always show the desktop panel */
-        feed_single_device_options(device_id); /* placeholder:手機即時 push 一到就替換成電腦選項 */
-        instruction_list_bar_set_blur(false);  /* 非錶盤、不模糊 */
-        instruction_list_open_browse();        /* 列表浮入 */
-    }
-}
 
 /* 公開：滑鼠 app 離開(destroy / Exit)時呼叫 —— 若還在單設備模式,把共享清單還原成錶盤清單、
    通知電腦收掉它的 skaibar、清旗標,避免設備選項殘留在下次錶盤底部 bar。idempotent。 */
@@ -5175,23 +4932,6 @@ void instruction_list_hide_now(void)
     }
 }
 
-void check_ai_widget_auto_close(void)
-{
-    extern bool get_skai_input_text_is_null(void);
-    /* Manual drag-open: user explicitly opened it, don't auto-close */
-    if (ai_widget_opened_by_drag)
-        return;
-    if (is_open_instruction_list_ai && !is_at_ai_widget &&
-        get_skai_input_text_is_null())
-    {
-        rt_tick_t current_time = rt_tick_get();
-        if (current_time - last_ai_widget_open_time < 3000) // 5秒后自动关闭
-        {
-            close_ai_widget();
-            is_open_instruction_list_ai = false;
-        }
-    }
-}
 
 void tap_on_ai_widget(void)
 {
@@ -5554,8 +5294,6 @@ void instruction_list_activate_index(uint8_t i)
     list_item_activate(&list_items[i]);
 }
 
-static bool tap_to_open_control = false;
-static bool open_quick_app = false;
 static void on_tap(void)
 {
     if (selected_item_index >= list_item_count)
@@ -5641,18 +5379,6 @@ static void on_tap(void)
     }
 }
 
-static int16_t find_app_index_by_id(uint16_t app_id)
-{
-    for (int i = 0; i < INSTRUCTION_LIST_ITEMS_DEF_COUNT; i++)
-    {
-        if (INSTRUCTION_LIST_ITEMS_DEFINITION[i] == app_id)
-        {
-            return i;
-        }
-    }
-    return -1; // 未找到 — 必須是不可能的 index 哨兵（不能回任何可能命中的
-               // index：app_base_count-1 在有 pinned 前綴的年代會誤判命中）
-}
 
 extern char *get_media_title(void);
 extern bool is_have_message_now(void);
@@ -5727,146 +5453,14 @@ uint16_t get_gesture_starting_value(void)
 }
 
 extern void media_widget_trigger_drag_by_py(int p_y);
-static void button_selection(gesture_position_t gesture_position)
-{
-    const int p_y = gesture_position.gesture_position_y;
-    if (selected_item_index == find_app_index_by_id(app_id_media))
-    {
-        media_widget_trigger_drag_by_py(p_y);
-    }
-}
 
 #ifdef USE_QUICK_OPEN_AI
-static uint8_t quick_app_id = 0;
-static void gesture_tap_event_handler(uint8_t gesture)
-{
-    if (gesture != 1)
-    {
-        return;
-    }
-    if (quick_app_id == 0)
-    {
-        force_release_finger();
-        lvgl_msg_t msg;
-        msg.type = LVGL_MSG_TYPE_CONTROL_QUICK_BTN;
-        msg.data.quick_btn_action.new_point = 0;
-        msg.data.quick_btn_action.swich_quick_btn = 0;
-        lvgl_send_msg(msg);
-        msg.type = LVGL_MSG_TYPE_SWITCH_FLASHLIGHT;
-        lvgl_send_msg(msg);
-    }
-    else if (quick_app_id == 1)
-    {
-        force_release_finger();
-        lvgl_msg_t msg;
-        msg.type = LVGL_MSG_TYPE_CONTROL_QUICK_BTN;
-        msg.data.quick_btn_action.new_point = 0;
-        msg.data.quick_btn_action.swich_quick_btn = 0;
-        lvgl_send_msg(msg);
-    }
-}
 
-static void open_quick_app_timer_cb(void *param)
-{
-    lvgl_msg_handler.handle_tap_indicator = gesture_tap_event_handler;
-}
 
 static rt_timer_t timer_open_quick_app = RT_NULL;
-static void start_open_quick_app_timer(uint8_t set_app_id)
-{
-    quick_app_id = set_app_id;
-    if (!timer_open_quick_app)
-    {
-        timer_open_quick_app = rt_timer_create(
-            "open_quick_app", open_quick_app_timer_cb, RT_NULL,
-            rt_tick_from_millisecond(300), RT_TIMER_FLAG_ONE_SHOT);
-        if (timer_open_quick_app == RT_NULL)
-        {
-            LOG_E("Failed to create timer_open_quick_app");
-            return;
-        }
-        LOG_D("timer_open_quick_app is created");
-    }
-    else
-    {
-        rt_timer_stop(timer_open_quick_app);
-    }
-    rt_timer_start(timer_open_quick_app);
-}
 
-static void stop_open_quick_app_timer(void)
-{
-    if (timer_open_quick_app)
-    {
-        rt_timer_stop(timer_open_quick_app);
-    }
-}
 
 static bool open_vibration = false;
-static quick_open_app_t quick_open_app_obj;
-static void move_quick_icon(QuickBtn pame)
-{
-    uint16_t distance = pame.new_point;
-    uint16_t swich_quick_btn = pame.swich_quick_btn;
-
-    if (swich_quick_btn == 1 && is_at_instruction_list())
-    {
-    }
-    else if (swich_quick_btn == 2)
-    {
-    }
-    else if (swich_quick_btn == 3 && !app_voice_get_voice2text_status() &&
-             !is_at_home())
-    {
-        if (distance > 45)
-        {
-            if (open_vibration)
-            {
-                start_open_quick_app_timer(1);
-                open_vibration = false;
-            }
-            open_quick_app = true;
-        }
-        else
-        {
-            lvgl_msg_handler.handle_tap_indicator = NULL;
-            stop_open_quick_app_timer();
-            open_quick_app = false;
-            open_vibration = true;
-        }
-    }
-    else if (swich_quick_btn == 4 && !app_voice_get_voice2text_status() &&
-             !is_at_home())
-    {
-        if (open_vibration)
-        {
-            start_open_quick_app_timer(1);
-            open_vibration = false;
-        }
-        open_quick_app = true;
-        lv_obj_set_style_border_opa(quick_open_app_obj.left, LV_OPA_80,
-                                    LV_PART_MAIN | LV_STATE_DEFAULT);
-        lv_obj_set_style_shadow_opa(quick_open_app_obj.left, LV_OPA_100,
-                                    LV_PART_MAIN | LV_STATE_DEFAULT);
-        lv_obj_set_pos(quick_open_app_obj.left, 50, 258);
-    }
-    else if (swich_quick_btn == 0)
-    {
-        lvgl_msg_handler.handle_tap_indicator = NULL;
-        stop_open_quick_app_timer();
-        open_quick_app = false;
-        lv_obj_set_style_border_opa(quick_open_app_obj.bottom, LV_OPA_0,
-                                    LV_PART_MAIN | LV_STATE_DEFAULT);
-        lv_obj_set_style_shadow_opa(quick_open_app_obj.bottom, LV_OPA_0,
-                                    LV_PART_MAIN | LV_STATE_DEFAULT);
-        lv_obj_set_pos(quick_open_app_obj.bottom, 258, 0);
-        lv_obj_set_style_border_opa(quick_open_app_obj.left, LV_OPA_0,
-                                    LV_PART_MAIN | LV_STATE_DEFAULT);
-        lv_obj_set_style_shadow_opa(quick_open_app_obj.left, LV_OPA_0,
-                                    LV_PART_MAIN | LV_STATE_DEFAULT);
-        lv_obj_set_pos(quick_open_app_obj.left, 0, 258);
-    }
-}
 #endif
 
 // 設置指示點位置的公共函數
@@ -5943,146 +5537,7 @@ extern void clear_skai_widget_ai_reply(void);
 extern bool get_voice_recognition_started(void);
 extern void clearVoice2Text(void);
 
-static lv_obj_t *complete_on_phone_tip_window = NULL;
-static lv_obj_t *complete_on_phone_tip_label = NULL;
-static lv_timer_t *complete_on_phone_tip_timer = NULL;
 
-static void complete_on_phone_tip_fade_ready_cb(lv_anim_t *anim)
-{
-    if (lv_obj_is_valid(complete_on_phone_tip_window))
-    {
-        lv_obj_del(complete_on_phone_tip_window);
-        complete_on_phone_tip_window = NULL;
-        complete_on_phone_tip_label = NULL;
-    }
-}
-
-static void complete_on_phone_tip_set_opa(void *obj, int32_t opa)
-{
-    if (lv_obj_is_valid(complete_on_phone_tip_window))
-    {
-        uint8_t window_opa = opa * LV_OPA_90 / LV_OPA_100;
-        lv_obj_set_style_bg_opa(complete_on_phone_tip_window, window_opa,
-                                LV_PART_MAIN);
-        uint8_t border_opa = opa * LV_OPA_50 / LV_OPA_100;
-        lv_obj_set_style_border_opa(complete_on_phone_tip_window, border_opa,
-                                    LV_PART_MAIN);
-        if (complete_on_phone_tip_label)
-        {
-            lv_obj_set_style_text_opa(complete_on_phone_tip_label, opa,
-                                      LV_PART_MAIN);
-        }
-    }
-}
-
-static void complete_on_phone_tip_timer_cb(lv_timer_t *timer)
-{
-    if (complete_on_phone_tip_timer)
-    {
-        lv_timer_del(complete_on_phone_tip_timer);
-        complete_on_phone_tip_timer = NULL;
-    }
-    if (lv_obj_is_valid(complete_on_phone_tip_window))
-    {
-        lv_anim_t fade_out_anim;
-        lv_anim_init(&fade_out_anim);
-        lv_anim_set_var(&fade_out_anim, complete_on_phone_tip_window);
-        lv_anim_set_exec_cb(&fade_out_anim, complete_on_phone_tip_set_opa);
-        lv_anim_set_values(&fade_out_anim, LV_OPA_100, LV_OPA_TRANSP);
-        lv_anim_set_time(&fade_out_anim, 600);
-        lv_anim_set_path_cb(&fade_out_anim, lv_anim_path_ease_in);
-        lv_anim_set_ready_cb(&fade_out_anim,
-                             complete_on_phone_tip_fade_ready_cb);
-        lv_anim_start(&fade_out_anim);
-    }
-}
-
-static void show_complete_on_phone_tip(void)
-{
-    if (complete_on_phone_tip_timer)
-    {
-        lv_timer_del(complete_on_phone_tip_timer);
-        complete_on_phone_tip_timer = NULL;
-    }
-    if (lv_obj_is_valid(complete_on_phone_tip_window))
-    {
-        lv_obj_del(complete_on_phone_tip_window);
-        complete_on_phone_tip_window = NULL;
-        complete_on_phone_tip_label = NULL;
-    }
-
-    complete_on_phone_tip_window = lv_obj_create(lv_layer_top());
-    lv_obj_set_size(complete_on_phone_tip_window, 260, 70);
-    lv_obj_align(complete_on_phone_tip_window, LV_ALIGN_CENTER, 0, 0);
-    lv_obj_set_style_bg_color(complete_on_phone_tip_window,
-                              lv_color_hex(0x000000), LV_PART_MAIN);
-    lv_obj_set_style_bg_opa(complete_on_phone_tip_window, LV_OPA_90,
-                            LV_PART_MAIN);
-    lv_obj_set_style_border_color(complete_on_phone_tip_window,
-                                  lv_color_hex(0xFFFFFF), LV_PART_MAIN);
-    lv_obj_set_style_border_width(complete_on_phone_tip_window, 1,
-                                  LV_PART_MAIN);
-    lv_obj_set_style_border_opa(complete_on_phone_tip_window, LV_OPA_50,
-                                LV_PART_MAIN);
-    lv_obj_set_style_radius(complete_on_phone_tip_window, 35, LV_PART_MAIN);
-    lv_obj_clear_flag(complete_on_phone_tip_window, LV_OBJ_FLAG_SCROLLABLE);
-    lv_obj_clear_flag(complete_on_phone_tip_window, LV_OBJ_FLAG_CLICKABLE);
-
-    complete_on_phone_tip_label = lv_label_create(complete_on_phone_tip_window);
-    lv_label_set_text(complete_on_phone_tip_label, LV_EXT_STR_GET_BY_KEY(complete_on_phone, "Complete on phone"));
-    lv_obj_set_style_text_color(complete_on_phone_tip_label, lv_color_white(),
-                                LV_PART_MAIN);
-    lv_obj_set_style_text_font(complete_on_phone_tip_label,
-                               LV_EXT_FONT_GET(get_system_font_size(1)),
-                               LV_PART_MAIN);
-    lv_obj_center(complete_on_phone_tip_label);
-
-    complete_on_phone_tip_timer =
-        lv_timer_create(complete_on_phone_tip_timer_cb, 1000, NULL);
-    lv_timer_set_repeat_count(complete_on_phone_tip_timer, 1);
-}
-
-static void add_instruction_btn_event_cb(lv_event_t *evt)
-{
-    LOG_I("add_inst_btn clicked: show 'complete on phone' tip");
-    if (get_bluetooth_connection_status())
-    {
-        const char *json = "{\"action\":\"add\"}";
-        LOG_I("Send create-instruction request: %s", json);
-        commu_send_update_instruction(json);
-    }
-    show_complete_on_phone_tip();
-}
-
-static void logo_click_event_cb(lv_event_t *evt)
-{
-    /* Re-ask has priority: once the AI has replied, the button's job is to
-       clear everything and start a new voice capture — even if the old
-       speech text is still in the v2t buffer. */
-    if (skai_widget_has_ai_reply() && !get_voice_recognition_started())
-    {
-        if (!get_bluetooth_connection_status())
-        {
-            create_connection_tips();
-            return;
-        }
-        send_to_ai_again = true;
-        clearVoice2Text();
-        clear_skai_widget_ai_reply();
-        set_skai_widget_input_text("");
-        set_ai_open_mic(true);
-        open_skai_widget_ai(true);
-        voice_provider.start_v2t();
-        return;
-    }
-    /* Normal flow: if we have speech text in the buffer, send it to AI. */
-    if (!isTextEmpty())
-    {
-        tap_on_ai_hint();
-        if (ai_voice_send_icon && lv_obj_is_valid(ai_voice_send_icon))
-            lv_obj_add_flag(ai_voice_send_icon, LV_OBJ_FLAG_HIDDEN);
-    }
-}
 static void ai_bar_event_cb(lv_event_t *evt)
 {
     if (evt->code == LV_EVENT_PRESSED)
@@ -6112,124 +5567,7 @@ static void ai_bar_event_cb(lv_event_t *evt)
         }
     }
 }
-/* Was 240 = dark backdrop frame around the AI widget. Set to 0 so the
-   styled skai_widget pill (Liquid Glass aesthetic) sits cleanly over the
-   list without a darker enclosing rectangle. */
-static uint16_t ai_bg_opa = 0;
-static void ai_tileview_event_cb(lv_event_t *evt)
-{
-    lv_obj_t *obj = lv_event_get_target(evt);
-    switch (evt->code)
-    {
-    case LV_EVENT_SCROLL:
-    {
-        uint16_t ai_scroll_x =
-            (466 - lv_obj_get_scroll_x(obj)) * ai_bg_opa / 350;
-        uint8_t calculated_opa =
-            (ai_scroll_x > ai_bg_opa) ? ai_bg_opa : ai_scroll_x;
-        lv_obj_set_style_bg_opa(
-            p_instruction_list_layout->p_instruction_list_ai_bg, calculated_opa,
-            0);
-        break;
-    }
-    case LV_EVENT_VALUE_CHANGED:
-    {
-        lv_coord_t scroll_x = lv_obj_get_scroll_x(obj);
-        if (abs(scroll_x) % 466 != 0)
-        {
-            break;
-        }
-        rt_uint32_t active_pos = (rt_uint32_t)lv_event_get_param(evt);
-        if (active_pos == 0)
-        {
-            /* Skip close path if we're inside our own animated open —
-               this VALUE_CHANGED is the settle of animate_open_ai_widget's
-               tile 1→0 anim, not a user dismissal. */
-            if (s_programmatic_open_in_progress)
-            {
-                s_programmatic_open_in_progress = false;
-                break;
-            }
-            // is_open_instruction_list_ai = false;
-            voice_provider.stop_v2t();
-            stop_voice_recognition(V2T_INTENT_NOTHING);
-            set_is_open_instruction_list_ai(false);
-            open_skai_widget_ai(false);
-            set_paused_control_with_arm(false);
-            set_ai_open_mic(false);
-            // lvgl_msg_handler.handle_vad_status = NULL;
-            skai_widget_shown = false;
-            if (ai_gaus_bg && lv_obj_is_valid(ai_gaus_bg))
-            {
-                lv_obj_add_flag(ai_gaus_bg, LV_OBJ_FLAG_HIDDEN);
-            }
-            // show_speech_indicator(false);
-            // voice_provider.stop_v2t();
-            // close_ai_widget();
-            lv_obj_add_flag(p_instruction_list_layout->p_instruction_list_ai_bg,
-                            LV_OBJ_FLAG_HIDDEN);
-        }
-        else if (active_pos == 1)
-        {
-            if (!is_open_instruction_list_ai)
-            {
-                set_ai_open_mic(true);
-                tap_on_ai_widget();
-                /* Drag-opened: jump straight to Phase 2 (widget visible, dark
-                   bg) without the fade-in animation — the drag itself already
-                   provides the reveal motion. */
-                ai_widget_opened_by_drag = true;
-                skai_widget_shown = true;
-                if (ai_gaus_bg && lv_obj_is_valid(ai_gaus_bg))
-                {
-                    lv_obj_clear_flag(ai_gaus_bg, LV_OBJ_FLAG_HIDDEN);
-                }
-                // if (ai_voice_send_icon &&
-                // lv_obj_is_valid(ai_voice_send_icon))
-                // {
-                //     lv_obj_clear_flag(ai_voice_send_icon,
-                //     LV_OBJ_FLAG_HIDDEN);
-                // }
-                lv_obj_set_style_bg_opa(
-                    p_instruction_list_layout->p_instruction_list_ai_bg,
-                    LV_OPA_50, 0);
-                set_skai_widget_opa(LV_OPA_COVER);
-            }
-        }
-        else
-        {
-            LOG_W("Unknown tileview position: %d", active_pos);
-        }
-        break;
-    }
-    default:
-        break;
-    }
-}
 
-static void home_tileview_event_cb(lv_event_t *evt)
-{
-    lv_obj_t *obj = lv_event_get_target(evt);
-    switch (evt->code)
-    {
-    case LV_EVENT_RELEASED:
-    {
-        /* Only hide ai_bg if user pressed without actually opening the AI page.
-           `obj` is the home_page tile (always scroll 0,0); check the tileview's
-           scroll via its parent, and keep it visible whenever AI is open. */
-        lv_obj_t *tileview = lv_obj_get_parent(obj);
-        if (!is_open_instruction_list_ai && tileview &&
-            lv_obj_get_scroll_x(tileview) == 466)
-        {
-            lv_obj_add_flag(p_instruction_list_layout->p_instruction_list_ai_bg,
-                            LV_OBJ_FLAG_HIDDEN);
-        }
-        break;
-    }
-    default:
-        break;
-    }
-}
 
 /*******************************************************************************
  * Custom Instruction API
@@ -6782,11 +6120,6 @@ static bool s_force_scroll_to_last = false;
    layout places dots in the TOP half (angles -72..0°), which users
    intuitively read as "scrolled to the top of the list". */
 static bool s_force_visual_at_bottom = false;
-void instruction_list_force_scroll_to_last(void)
-{
-    s_force_scroll_to_last = true;
-    s_force_visual_at_bottom = true;
-}
 
 static void deferred_refresh_cb(lv_timer_t *t)
 {
@@ -7190,43 +6523,6 @@ void refresh_custom_instructions(void)
     }
 }
 
-/* R9(founder:「每次進來都在 actions 的位置」):左頁進場把選取定位到第一個
-   action(第一個非 conv: item);session 在上方,往上捲才看到。復用 refresh 的
-   force-scroll 定位手法(scroll_center_item + scroll_list + 重算 dots)。 */
-void instruction_list_focus_first_action(void)
-{
-    if (p_instruction_list_layout == NULL || p_instruction_list_layout->list == NULL ||
-        !lv_obj_is_valid(p_instruction_list_layout->list))
-        return;
-    if (list_item_count == 0)
-        return;
-    uint16_t target = 0;
-    for (uint8_t i = 0; i < list_item_count; i++)
-    {
-        if (strncmp(list_items[i].id, "conv:", 5) != 0)
-        {
-            target = i;
-            break;
-        }
-    }
-    lv_obj_t *list = p_instruction_list_layout->list;
-    s_in_refresh_scroll = true; /* 程式化捲動,別觸發 scroll-to-fade 收 widget */
-    app_scroll_target_item = target;
-    selected_item_index = target;
-    scroll_center_item(list, target);
-    lv_obj_update_layout(list);
-    scroll_list(list, 0);
-    selected_item_index = target;
-    app_scroll_target_item = target;
-    {
-        float total_range = 100.0f * list_item_count;
-        float input_val = total_range - 63.0f -
-                          selected_item_index * (total_range / list_item_count);
-        gesture_starting_value = (uint16_t)input_val;
-        update_indicator_dots_position(gesture_starting_value);
-    }
-    s_in_refresh_scroll = false;
-}
 
 void update_instruction_image(const char *id, const char *path)
 {
@@ -7299,17 +6595,6 @@ void update_instruction_image(const char *id, const char *path)
     }
 }
 
-static lv_obj_t *ai_tileview = NULL;
-
-static void go_to_app_list_btn_cb(lv_event_t *evt)
-{
-    if (p_instruction_list_layout == NULL ||
-        p_instruction_list_layout->app_list_tileview == NULL)
-        return;
-    lv_obj_set_tile_id(p_instruction_list_layout->app_list_tileview, 0, 1,
-                       LV_ANIM_ON);
-    LOG_I("Navigate to app list via button");
-}
 
 void back_to_instruction_list_btn(void)
 {
@@ -8224,11 +7509,6 @@ void instruction_list_set_phone_connected(bool connected)
     refresh_custom_instructions();
 }
 
-static rt_int32_t init(lv_obj_t *parent)
-{
-    lv_instruction_list_layout_create(parent);
-    return RT_EOK;
-}
 
 rt_int32_t instruction_list_resume(void)
 {

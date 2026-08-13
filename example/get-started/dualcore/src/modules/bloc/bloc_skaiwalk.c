@@ -360,7 +360,6 @@ void add_skai_message(chat_t *chat_list, uint16_t *items_amount_ptr, const char 
 	bloc_notify_skai_message();
 }
 
-static uint32_t last_updated_ts;
 static chat_t temp_message = {
 	.id = "",
 	.state = false,

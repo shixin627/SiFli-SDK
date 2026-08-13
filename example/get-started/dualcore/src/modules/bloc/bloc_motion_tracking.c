@@ -239,7 +239,6 @@ static void air_mouse_process(rt_uint32_t ts, Quaternion *quaternion,
                               Quaternion *prev_quat);
 #endif
 
-static float total_yaw_energy = 0;
 /* 體感滾動：每格固定 6 度（與列表長度無關）。control_angle 隨 count 等比
  * 放大到 6×count，使每格角度 = control_angle / count = DEGREES_PER_SLOT。 */
 #define DEGREES_PER_SLOT 6
@@ -1483,7 +1482,6 @@ static void report_air_mouse_data(air_plane_delta_movement_t *movement,
 }
 
 extern bool app_hid_mouse_movement_lock(void);
-static uint8_t log_count = 0;
 
     // DPS to rad/s conversion factor (PI / 180)
     #define DPS_TO_RADS 0.01745329f
@@ -2371,7 +2369,6 @@ static float gyro_y_count = 2600; // 新增Y軸陀螺儀計數器
 static uint16_t media_x_control = 0;
 static uint16_t media_y_control = 0;
 static uint16_t pevr_media_control[2] = {0, 0};
-static rt_tick_t last_vibrate_time_at_boundary = 0;
 static float movement_scale_ratio =
     1.0f;                     // 移動比例縮放係數，預設為1.0（不縮放）
 #define MOTOR_INTERVAL_MS 300 // Interval in milliseconds
@@ -2656,23 +2653,8 @@ void reset_gravity_position(void)
 #endif
 }
 
-static bool can_open_ai_interface(void)
-{
-    if (is_at_home() || is_at_control_center() || is_at_mouse_mode() ||
-        gui_app_is_actived(APP_ID_FLASHLIGHT) ||
-        gui_app_is_actived(APP_ID_TIMER) || gui_app_is_actived(APP_ID_MOUSE) ||
-        gui_app_is_actived(APP_ID_EXERCISE) ||
-        gui_app_is_actived(APP_ID_GESTURE) ||
-        gui_app_is_actived(APP_ID_RECORDER) ||
-        (!is_ai_open_mic && app_voice_get_listening_status()))
-    {
-        return false;
-    }
-    return true;
-}
 
 extern void level_bar_update(int16_t value);
-static uint8_t pevr_ai_hint_bg_pos = 0;
 static void calculate_gravity_position(Vector3 *gravity)
 {
     if (gravity->x > -1 && gravity->x < 1 && is_at_home())
@@ -2860,7 +2842,6 @@ static void watchface_shake_process(motion_data_t *motion_data)
 }
 
 static Quaternion tap_state_q;
-static Quaternion tap_state_q_prev;
 static bool tap_state_q_flag = false;
 
 static euler_angle_t befor_tap_delta_angle = {
@@ -2924,9 +2905,7 @@ void set_stop_mouse_move(bool stop)
     stop_mouse_move = stop;
 }
 
-static uint8_t test_log_count = 0;
 extern uint8_t get_message_page_count(void);
-static euler_angle_t pevr_befor_switch_widget_delta_angle;
 static float prev_delta_roll = 0.0f;
 static float prev_delta_yaw = 0.0f;
 static void motion_tracking_in_hcpu(motion_data_t *motion_data)

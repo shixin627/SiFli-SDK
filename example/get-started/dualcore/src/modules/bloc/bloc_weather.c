@@ -58,15 +58,6 @@
 #define DBG_LVL BSP_DBG_LVL
 #include <rtdbg.h>
 
-/* Default weather data for initialization */
-static const weather_t DEFAULT_WEATHER = {
-	.time = 0,
-	.rainLastHour = 50,
-	.snowLastHour = 0,
-	.precipitationProbability = 0,
-	.temperature = 33,
-	.description = "",
-};
 
 /* Module state variables */
 static uint8_t weather_items_amount = 0;

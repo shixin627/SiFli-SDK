@@ -323,21 +323,16 @@ static rt_tick_t dial_header_shrink_start_tick = 0;
 static uint32_t dial_header_shrink_duration_ms = 0;
 
 static bool open_shock = false;
-static bool open_action_flag = true;
 static bool left_hand_mode = true;
 static bool need_correction = false;
 static uint16_t selected_message_index = 0;
 static uint16_t old_selected_message_index = -1;
-static uint16_t lest_wiget_x_pos = 0;
 static uint16_t message_index = 0;
 static uint16_t notification_count = 0;
-static lv_coord_t last_y_diff_on_selected = 0;
 static rt_tick_t last_gohame_time = 0;
 
 static uint8_t button_selection_index = 1;
 static lv_obj_t *selected_message = NULL;
-static lv_obj_t *page_up = NULL;
-static lv_obj_t *page_down = NULL;
 
 /* 在卡片上垂直拖曳 = 換頁瀏覽，跟右側弧形拖曳共用同一個模型：手指只帶動右邊
  * 的 icon，卡片本身不跟手，跨過半格才由 scroll_message_list_to_index 播一次
@@ -1242,7 +1237,6 @@ static void list_window_scroll_event_cb(lv_event_t *evt)
     }
 }
 
-static uint8_t top_align_space = 0;
 static lv_obj_t *clear_all_btn;
 static void clear_all_btn_event_cb(lv_event_t *evt)
 {
@@ -1349,14 +1343,6 @@ static void list_message_click_cb(notification_t *notification)
 }
 
 extern void app_message_set_from_temp(notification_t *notification);
-static void list_message_reply(notification_t *notification)
-{
-    if (notification->can_reply)
-    {
-        app_message_set_from_temp(notification);
-        notify_provider.navigate_to_reply(notification);
-    }
-}
 
 static void list_message_click_event_cb(lv_event_t *evt)
 {
@@ -1371,10 +1357,6 @@ static void create_background_blocks(lv_obj_t *parent)
     // 背景色塊已移除，不再需要顯示拖拽背景
 }
 
-// 更新背景色塊位置和可見性（已移除背景色塊顯示）
-static void update_background_blocks(lv_obj_t *obj, lv_coord_t diff)
-{
-}
 
 // 隱藏背景色塊（已移除背景色塊）
 static void hide_background_blocks(void)
@@ -1521,34 +1503,6 @@ static void animate_to_original_position(lv_obj_t *obj, lv_coord_t target_x)
     lv_anim_start(&a);
 }
 
-static void set_pos_ready_cb(lv_anim_t *a)
-{
-    motor_pattern_scrolling_app();
-}
-static void set_pos_ready_cb_on_original(lv_anim_t *a)
-{
-    hide_background_blocks();
-}
-static void animate_to_position(lv_obj_t *obj, lv_coord_t target_x,
-                                bool end_motor)
-{
-    lv_anim_t a;
-    lv_anim_init(&a);
-    lv_anim_set_var(&a, obj);
-    lv_anim_set_exec_cb(&a, set_drag_translate_x);
-    lv_anim_set_values(&a, lv_obj_get_style_translate_x(obj, 0), target_x);
-    lv_anim_set_time(&a, 200);
-    lv_anim_set_path_cb(&a, lv_anim_path_bounce);
-    if (end_motor)
-    {
-        lv_anim_set_ready_cb(&a, set_pos_ready_cb);
-    }
-    else
-    {
-        lv_anim_set_ready_cb(&a, set_pos_ready_cb_on_original);
-    }
-    lv_anim_start(&a);
-}
 
 // 重力拖拽已移除，僅保留手指右拖拽
 static uint8_t gesture_control = 1;
@@ -2238,17 +2192,6 @@ uint8_t get_gesture_control_state(void)
     return gesture_control;
 }
 
-// 事件轉發函數
-static void event_forwarder(lv_event_t *e)
-{
-    lv_event_code_t code = lv_event_get_code(e);
-    if (code == LV_EVENT_CLICKED)
-    {
-        // 將事件轉發給目標物件
-        lv_event_send(myLancher[app_index_message].pagetileview, code,
-                      lv_event_get_param(e));
-    }
-}
 
 static void reset_list_cb(void)
 {
@@ -2588,16 +2531,6 @@ lv_obj_t *lv_message_list_layout_create(lv_obj_t *parent)
     return p_app_notification->main_window;
 }
 
-static void reset_button_selection(void)
-{
-    lv_obj_set_style_img_opa(page_up, LV_OPA_10, 0);
-    lv_obj_set_style_img_opa(page_down, LV_OPA_10, 0);
-    // lv_obj_set_style_bg_opa(selected_message, LV_OPA_40, LV_PART_MAIN);
-    if (lv_obj_is_valid(selected_message))
-    {
-        lv_obj_set_style_border_width(selected_message, 1, LV_PART_MAIN);
-    }
-}
 
 extern uint8_t get_gesture_control_state(void);
 extern uint8_t get_media_widget_selection_index(void);
@@ -3504,17 +3437,7 @@ void dial_media_header_deinit(void)
     //     lvgl_msg_handler.handle_dial_media_play_state = NULL;
 }
 
-void message_widget_stop(void)
-{
-    if (lvgl_msg_handler.handle_new_notification == refresh_new_message_widget)
-        lvgl_msg_handler.handle_new_notification = NULL;
-}
 
-static rt_int32_t init(lv_obj_t *parent)
-{
-    lv_message_list_layout_create(parent);
-    return RT_EOK;
-}
 rt_int32_t notification_on_pause(void)
 {
     // set_media_control_threshold(3000);

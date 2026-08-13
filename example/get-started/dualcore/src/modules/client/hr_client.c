@@ -31,17 +31,6 @@ static datac_handle_t hr_service_handle;
 static datac_handle_t ppg_service_handle;
 static hr_sensor_data_t client_hr_data;
 
-static bool check_ppg_sensor(void)
-{
-#ifdef BSP_USING_WATCH_SYS_CLIENT
-    if (!watch_sys_sync.is_ppg_enabled())
-    {
-        LOG_E("ppg sensor is not enabled\n");
-        return false;
-    }
-#endif
-    return true;
-}
 
 static void process_hr_sensor_data(struct rt_sensor_data *data)
 {

@@ -172,7 +172,6 @@ LV_IMG_DECLARE(switch_icon);
 LV_IMG_DECLARE(keyboard_icon);
 LV_IMG_DECLARE(down_arrow); // 輸入框下方收回按鈕
 
-static lv_point_t touchscreen_point;
 static lv_point_t start_point;
 static lv_point_t last_point;
 static lv_point_t bottom_bar_start_point;
@@ -180,7 +179,6 @@ static lv_point_t bottom_bar_last_point;
 static unsigned int press_time = 0;
 static bool user_touching = false;
 static bool scrolling = false;
-static bool scrolling_confirmed = false;
 static bool moving = false;
 
 static bool go_back = false;
@@ -206,17 +204,12 @@ static bool pressed_left_half = false;
     #endif
 
 static bool start_from_edge[4] = {false};
-static lv_timer_t *scroll_timer = NULL;
-static lv_indev_t *indev_global = NULL;
-static lv_obj_t *device_sw = NULL;
-static uint8_t zoom_count = 0;
 static lv_obj_t *menu_bg = NULL;
 static lv_obj_t *menu_tileview = NULL;
 static lv_obj_t *menu_home_tile = NULL;
 static lv_obj_t *menu_content_tile = NULL;
 static lv_obj_t *menu_swipe_area = NULL;
 static lv_obj_t *left_scroll_bar = NULL;
-static lv_obj_t *v2t_mic_img = NULL;
 static bool left_scroll_active = false;
 
 // 左側滾動區（弧形 + 中間態）等待方向判定的 pending 狀態：
@@ -358,25 +351,14 @@ static const char *const hid_mode_names[HID_MODE_COUNT] = {
     "Trackpad",
     "Keyboard",
 };
-// label 顯示「按下去會切到的下一個 mode」名稱，不是當前 mode
-static inline const char *next_mode_name(hid_mode_t mode)
-{
-    return hid_mode_names[((int)mode + 1) % HID_MODE_COUNT];
-}
     #define MODE_SWIPE_COMMIT_THRESHOLD 60
     #define MODE_SWIPE_ANIM_TIME_MS 200
 static bool mode_swipe_active = false;
-static int16_t mode_swipe_start_x = 0;
 static hid_mode_t mode_swipe_target = HID_MODE_TRACKPAD;
 static int8_t mode_swipe_target_side = -1;
-static lv_anim_t mode_swipe_anim;     // 留著編譯通過（dispose 內還有 ref）
 static int32_t mode_swipe_anim_value; // 同上
 // 自製 timer-based 動畫（避開 LVGL anim 的 race）
 static lv_timer_t *mode_swipe_timer = NULL;
-static int32_t mode_swipe_from_dx = 0;
-static int32_t mode_swipe_to_dx = 0;
-static uint32_t mode_swipe_start_tick = 0;
-static bool mode_swipe_is_commit = false;
 // 每個 mode 用一個 480×480 透明容器包，切換時整組移動
 static lv_obj_t *mode_container[HID_MODE_COUNT] = {NULL};
 static void apply_hid_mode(hid_mode_t mode);
@@ -481,8 +463,6 @@ static bool is_point_in_center_scroll_zone(const lv_point_t *p)
     float max_dy = dist * 0.819f;
     return (dy >= -max_dy && dy <= max_dy);
 }
-static lv_obj_t *control_page = NULL;
-static lv_obj_t *status_bar_area = NULL;
 static lv_obj_t *crosshair_line1 = NULL;
 static lv_obj_t *crosshair_line2 = NULL;
 static lv_obj_t *text_input_bar = NULL;
@@ -491,13 +471,10 @@ static lv_obj_t *text_input_bar_bg = NULL;
 // 因為 text_input_bar_bg 已被 reparent 到 mode_container[KEYBOARD]，
 // trackpad mode 下方需要獨立 hit area
 static lv_obj_t *bottom_swipe_area = NULL;
-static uint8_t *text_input_open_value = NULL;
-static lv_timer_t *text_input_bar_timer = NULL;
 // static lv_timer_t *colon_blink_timer = NULL;
 
 // Keyboard related variables
 static lv_obj_t *keyboard = NULL;
-static lv_obj_t *text_area = NULL;
 static bool keyboard_visible = false;
 static lv_obj_t *custom_keyboard = NULL;
 static lv_obj_t *keyboard_container = NULL;
@@ -604,7 +581,6 @@ static lv_obj_t *space_red_dot_x = NULL;
 static lv_obj_t *trackpad_mic_btn = NULL;
 static lv_obj_t *trackpad_mic_icon = NULL;
 static lv_obj_t *trackpad_mic_red_dot = NULL;
-static lv_obj_t *trackpad_mic_red_dot_x = NULL;
 static void bar_ai_on_tap(void); /* fwd：tap 當下立刻收自有底部 bar（定義在 lv_create 前） */
 
 // Keyboard mode 下半部 mic 區（mic 按鈕 + 右側鍵盤按鈕，跟 keyboard 互換顯示）
@@ -726,7 +702,6 @@ typedef struct
     void (*callback)(void);
 } file_item_t;
 
-static file_item_t file_items[10]; // 最多10個file
 static int file_items_count = 0;
 
 // Long press detection variables
@@ -1220,17 +1195,6 @@ static void anim_set_translate_y(void *obj, int32_t v)
     lv_obj_set_style_translate_y((lv_obj_t *)obj, v, 0);
 }
 
-// kbd_lower_arrow_event_cb 中 keyboard 往下滑出後 hide，下次升起才會從畫面外起步
-static void keyboard_hide_after_slide_down_cb(lv_anim_t *a)
-{
-    lv_obj_t *obj = (lv_obj_t *)a->var;
-    if (obj && lv_obj_is_valid(obj))
-    {
-        lv_obj_add_flag(obj, LV_OBJ_FLAG_HIDDEN);
-        // translate_y 還原成 0，下次手動再設 300 起步
-        lv_obj_set_style_translate_y(obj, 0, 0);
-    }
-}
 
 /**
  * @brief Animation ready callback when keyboard close animation finishes
@@ -1412,123 +1376,6 @@ void toggle_keyboard_visibility(void)
     }
 }
 
-/**
- * @brief Text area event callback for keyboard interaction
- * @param e Pointer to the event
- */
-static void ta_event_cb(lv_event_t *e)
-{
-    lv_event_code_t code = lv_event_get_code(e);
-    lv_obj_t *ta = lv_event_get_target(e);
-    lv_obj_t *kb = (lv_obj_t *)lv_event_get_user_data(e);
-
-    if (code == LV_EVENT_FOCUSED)
-    {
-        if (kb != NULL)
-        {
-            lv_keyboard_set_textarea(kb, ta);
-            lv_obj_clear_flag(kb, LV_OBJ_FLAG_HIDDEN);
-            keyboard_visible = true;
-        }
-    }
-
-    if (code == LV_EVENT_DEFOCUSED)
-    {
-        if (kb != NULL)
-        {
-            lv_keyboard_set_textarea(kb, NULL);
-            lv_obj_add_flag(kb, LV_OBJ_FLAG_HIDDEN);
-            keyboard_visible = false;
-        }
-    }
-}
-
-/**
- * @brief Switch keyboard mode (you can call this to change keyboard layout)
- * @param mode Keyboard mode to switch to
- */
-static void switch_keyboard_mode(lv_keyboard_mode_t mode)
-{
-    if (keyboard != NULL)
-    {
-        lv_keyboard_set_mode(keyboard, mode);
-    }
-}
-
-/**
- * @brief Create custom keyboard map (example of custom layout)
- */
-static void setup_custom_keyboard_map(void)
-{
-    // Example: Create a simple number pad
-    static const char *number_map[] = {"1",
-                                       "2",
-                                       "3",
-                                       "\n",
-                                       "4",
-                                       "5",
-                                       "6",
-                                       "\n",
-                                       "7",
-                                       "8",
-                                       "9",
-                                       "\n",
-                                       LV_SYMBOL_BACKSPACE,
-                                       "0",
-                                       LV_SYMBOL_OK,
-                                       ""};
-
-    static const lv_btnmatrix_ctrl_t number_ctrl[] = {1, 1, 1, 1, 1, 1,
-                                                      1, 1, 1, 2, 1, 2};
-
-    if (keyboard != NULL)
-    {
-        // You can set custom map like this:
-        // lv_keyboard_set_map(keyboard, LV_KEYBOARD_MODE_USER_1, number_map,
-        // number_ctrl); lv_keyboard_set_mode(keyboard,
-        // LV_KEYBOARD_MODE_USER_1);
-    }
-}
-
-/**
- * @brief Custom keyboard button event callback
- */
-static void custom_keyboard_event_cb(lv_event_t *e)
-{
-    lv_event_code_t code = lv_event_get_code(e);
-    lv_obj_t *obj = lv_event_get_target(e);
-
-    if (code == LV_EVENT_VALUE_CHANGED)
-    {
-        uint16_t id = lv_btnmatrix_get_selected_btn(obj);
-        const char *txt = lv_btnmatrix_get_btn_text(obj, id);
-
-        if (txt != NULL) // text_area != NULL &&
-        {
-            if (strcmp(txt, "Del") == 0)
-            {
-                // lv_textarea_del_char(text_area);
-            }
-            else if (strcmp(txt, "Enter") == 0)
-            {
-                // lv_textarea_add_char(text_area, '\n');
-            }
-            else if (strcmp(txt, "Space") == 0)
-            {
-                // lv_textarea_add_char(text_area, ' ');
-            }
-            else if (strcmp(txt, "Hide") == 0)
-            {
-                // Hide keyboard
-                toggle_keyboard_visibility();
-            }
-            else
-            {
-                // lv_textarea_add_text(text_area, txt);
-            }
-        }
-    }
-}
 
 /**
  * @brief Show key popup above the pressed button
@@ -3275,134 +3122,6 @@ static void create_circular_keyboard_layout(lv_obj_t *parent)
     lv_obj_add_flag(keyboard_container, LV_OBJ_FLAG_HIDDEN);
 }
 
-/**
- * @brief Create completely custom keyboard with custom button layout
- */
-static void create_custom_keyboard(lv_obj_t *parent)
-{
-    // 為 466x466 圓形屏幕設計的弧形鍵盤佈局
-    // 採用弧形排列，按鍵數量從上到下遞增然後遞減，符合圓形邊緣
-    static const char *custom_map[] = {
-        // 第一行 - 6個按鍵 (圓形頂部較窄)
-        "1", "2", "3", "4", "5", "6", "\n",
-        // 第二行 - 8個按鍵
-        "Q", "W", "E", "R", "T", "Y", "U", "I", "\n",
-        // 第三行 - 9個按鍵 (圓形中部最寬)
-        "A", "S", "D", "F", "G", "H", "J", "K", "L", "\n",
-        // 第四行 - 8個按鍵
-        "Z", "X", "C", "V", "B", "N", "M", "P", "\n",
-        // 第五行 - 6個按鍵 (圓形底部)
-        "7", "8", "9", "0", "O", "Del", "\n",
-        // 第六行 - 3個功能鍵 (最底部)
-        "Space", "Enter", "Hide", ""};
-
-    // 控制每個按鍵的寬度，創建弧形效果
-    static const lv_btnmatrix_ctrl_t custom_ctrl[] = {
-        // 第一行 - 6個按鍵，居中效果
-        1, 1, 1, 1, 1, 1,
-        // 第二行 - 8個按鍵
-        1, 1, 1, 1, 1, 1, 1, 1,
-        // 第三行 - 9個按鍵，圓形最寬處
-        1, 1, 1, 1, 1, 1, 1, 1, 1,
-        // 第四行 - 8個按鍵
-        1, 1, 1, 1, 1, 1, 1, 1,
-        // 第五行 - 6個按鍵
-        1, 1, 1, 1, 1, 2,
-        // 第六行 - 功能鍵
-        3, 2, 2};
-
-    custom_keyboard = lv_btnmatrix_create(parent);
-    lv_btnmatrix_set_map(custom_keyboard, custom_map);
-    lv_btnmatrix_set_ctrl_map(custom_keyboard, custom_ctrl);
-
-    // 為 466x466 圓形屏幕精確調整
-    int keyboard_width = 380;  // 減小寬度讓按鍵更緊湊
-    int keyboard_height = 300; // 減小高度
-    lv_obj_set_size(custom_keyboard, keyboard_width, keyboard_height);
-    lv_obj_align(custom_keyboard, LV_ALIGN_CENTER, 0, 40);
-
-    // 圓形屏幕專用的視覺設計
-    lv_obj_set_style_bg_color(custom_keyboard, lv_color_hex(0x0f0f0f),
-                              LV_PART_MAIN);
-    lv_obj_set_style_bg_opa(custom_keyboard, LV_OPA_90, LV_PART_MAIN);
-
-    // 漸層圓形邊框
-    lv_obj_set_style_border_color(custom_keyboard, lv_color_hex(0x4a90e2),
-                                  LV_PART_MAIN);
-    lv_obj_set_style_border_width(custom_keyboard, 2, LV_PART_MAIN);
-    lv_obj_set_style_radius(custom_keyboard, 25, LV_PART_MAIN);
-
-    // 減少內邊距使按鍵更緊湊
-    lv_obj_set_style_pad_all(custom_keyboard, 4, LV_PART_MAIN);
-    lv_obj_set_style_pad_gap(custom_keyboard, 2, LV_PART_MAIN);
-
-    // 按鍵設計 - 圓形按鍵
-    lv_obj_set_style_bg_color(custom_keyboard, lv_color_hex(0x2a2a2a),
-                              LV_PART_ITEMS);
-    lv_obj_set_style_bg_color(custom_keyboard, lv_color_hex(0x4a90e2),
-                              LV_PART_ITEMS | LV_STATE_PRESSED);
-    lv_obj_set_style_text_color(custom_keyboard, lv_color_hex(0xFFFFFF),
-                                LV_PART_ITEMS);
-
-    // 設置按鍵為圓形 - 半徑設為按鍵高度的一半
-    lv_obj_set_style_radius(custom_keyboard, LV_RADIUS_CIRCLE, LV_PART_ITEMS);
-
-    // 設置固定的按鍵尺寸而不是自動填充
-    lv_obj_set_style_min_width(custom_keyboard, 32, LV_PART_ITEMS);
-    lv_obj_set_style_min_height(custom_keyboard, 32, LV_PART_ITEMS);
-    lv_obj_set_style_max_width(custom_keyboard, 36, LV_PART_ITEMS);
-    lv_obj_set_style_max_height(custom_keyboard, 36, LV_PART_ITEMS);
-
-    lv_obj_set_style_border_width(custom_keyboard, 1, LV_PART_ITEMS);
-    lv_obj_set_style_border_color(custom_keyboard, lv_color_hex(0x404040),
-                                  LV_PART_ITEMS);
-    lv_obj_set_style_border_opa(custom_keyboard, LV_OPA_50, LV_PART_ITEMS);
-
-    // 設置文字大小適應圓形按鍵 (使用系統默認字體)
-    // lv_obj_set_style_text_font(custom_keyboard, &lv_font_montserrat_12,
-    // LV_PART_ITEMS);
-
-    // 添加微妙的陰影效果
-    lv_obj_set_style_shadow_width(custom_keyboard, 6, LV_PART_MAIN);
-    lv_obj_set_style_shadow_color(custom_keyboard, lv_color_hex(0x000000),
-                                  LV_PART_MAIN);
-    lv_obj_set_style_shadow_opa(custom_keyboard, LV_OPA_40, LV_PART_MAIN);
-    lv_obj_set_style_shadow_spread(custom_keyboard, 1, LV_PART_MAIN);
-
-    // 按鍵輕微陰影
-    lv_obj_set_style_shadow_width(custom_keyboard, 1, LV_PART_ITEMS);
-    lv_obj_set_style_shadow_color(custom_keyboard, lv_color_hex(0x000000),
-                                  LV_PART_ITEMS);
-    lv_obj_set_style_shadow_opa(custom_keyboard, LV_OPA_30, LV_PART_ITEMS);
-
-    // 添加事件處理
-    lv_obj_add_event_cb(custom_keyboard, custom_keyboard_event_cb,
-                        LV_EVENT_VALUE_CHANGED, NULL);
-
-    // 初始時隱藏
-    lv_obj_add_flag(custom_keyboard, LV_OBJ_FLAG_HIDDEN);
-}
-
-/**
- * @brief Maps screen coordinates to HID touchscreen coordinates
- * @param point Pointer to the point to be mapped
- */
-static void map_screen_coordinate_to_hid_touchscreen(lv_point_t *point)
-{
-    uint16_t origin_x = point->x;
-    uint16_t origin_y = point->y;
-
-    // Map X coordinate
-    uint16_t new_x = origin_x * 128.0f / (LV_HOR_RES_MAX - 22);
-    point->x = (new_x > 127) ? 127 : new_x;
-
-    // Map Y coordinate
-    uint16_t new_y = origin_y * 128.0f / (LV_VER_RES_MAX - 22);
-    point->y = (new_y > 127) ? 127 : new_y;
-
-    LOG_D("[screen]x: %d, y: %d => [map]x: %d, y: %d", origin_x, origin_y,
-          point->x, point->y);
-}
 
 /**
  * @brief Checks if a point is near the edge of the screen
@@ -3505,46 +3224,7 @@ static bool handle_edge_scrolling(const lv_point_t *current_point,
     return false;
 }
 
-/**
- * @brief Handles mouse wheel scrolling
- * @param delta_x X movement delta
- * @param delta_y Y movement delta
- */
-static void handle_mouse_wheel_scrolling(int16_t delta_x, int16_t delta_y)
-{
-    #if USING_MOUSE_WHEEL_SCROLLING
-    RT_ASSERT(control_provider.ble_hid_mouse_wheel_scroll);
-
-    // 根据锁定的方向执行滚动
-    if (is_horizontal_scroll)
-    {
-        // LOG_D("MOVE X : %d", delta_x);
-        control_provider.ble_hid_mouse_pan_scroll(delta_x /
-                                                  SCROLLING_THRESHOLD);
-    }
-    else
-    {
-        control_provider.ble_hid_mouse_wheel_scroll(delta_y /
-                                                    SCROLLING_THRESHOLD);
-    }
-    #endif
-}
     #if USING_TOUCHSCREEN_SCROLLING
-/**
- * @brief Handles touchscreen scrolling
- * @param current_point Current touch point
- */
-static void handle_touchscreen_scrolling(const lv_point_t *current_point)
-{
-
-    touchscreen_point = *current_point;
-    map_screen_coordinate_to_hid_touchscreen(&touchscreen_point);
-    if (control_provider.ble_hid_touch_screen_press != NULL)
-    {
-        control_provider.ble_hid_touch_screen_press(touchscreen_point.x,
-                                                    touchscreen_point.y);
-    }
-}
     #endif
 
     #if USING_EDGE_BOTTOM_DETECTION
@@ -3587,37 +3267,6 @@ static void start_multiple_pages_timer(void)
     rt_timer_start(multiple_pages_timer);
 }
     #endif
-/**
- * @brief Inertia scroll timer callback
- */
-static void inertia_scroll_timer_cb(lv_timer_t *timer)
-{
-    inertia_velocity *= INERTIA_DECAY_FACTOR;
-
-    if (fabsf(inertia_velocity) < MIN_SCROLL_SPEED)
-    {
-        lv_timer_del(timer);
-        inertia_timer = NULL;
-        inertia_accumulator = 0.0f;
-        return;
-    }
-
-    inertia_accumulator += inertia_velocity * (INERTIA_TIMER_MS / 1000.0f);
-    int8_t scroll_val = (int8_t)inertia_accumulator;
-    inertia_accumulator -= (float)scroll_val;
-
-    if (scroll_val != 0)
-    {
-        if (is_horizontal_scroll)
-        {
-            control_provider.ble_hid_mouse_pan_scroll(scroll_val);
-        }
-        else
-        {
-            control_provider.ble_hid_mouse_wheel_scroll(scroll_val);
-        }
-    }
-}
 
 /**
  * @brief Handles the pressed event
@@ -4647,29 +4296,6 @@ static void menu_swipe_area_event_cb(lv_event_t *e)
 
     #if ENABLE_MENU_FEATURE
 
-/**
- * @brief Calibrate button event callback
- * @param e Pointer to the event
- */
-static void calibrate_btn_event_cb(lv_event_t *e)
-{
-    lv_event_code_t event = lv_event_get_code(e);
-
-    if (LV_EVENT_CLICKED == event)
-    {
-        watch_sys_sync.notify_calibration_global_attitude();
-    }
-}
-
-/**
- * @brief Handfree mode switch event callback
- * @param e Pointer to the event
- */
-static void handfree_mode_sw_event_callback(lv_event_t *e)
-{
-    lv_obj_t *obj = lv_event_get_target(e);
-    handfree = (lv_obj_get_state(obj) & LV_STATE_CHECKED) ? true : false;
-}
 
 // Forward declarations for BLE functions
 extern void ble_app_advertising_start(bool mouse_mode, bool pairing_mode);
@@ -5492,10 +5118,6 @@ static void hw_open_commit(void);
 static void close_handwrite_from_pose(void); /* 定義在本段尾:輸入鈕=送出 */
 static void hw_cancel_session(void);         /* 定義在本段尾:退出鈕/離開 app=取消 */
 
-bool hid_mouse_handwrite_active(void)
-{
-    return s_hw_view_active;
-}
 
 static void hw_view_event_cb(lv_event_t *e)
 {
@@ -6173,31 +5795,6 @@ static bool hw_view_stage_offscreen(void)
     return true;
 }
 
-/* GUI thread:頂部 logo tap=手寫頁從右滑入(founder 2026-07-22:右緣拉出退役,
-   改 logo 一鍵開關;滑入沿用 pull snap 機構→hw_open_commit)。冪等。 */
-static void hw_open_slide_in(void)
-{
-    if (!hw_view_stage_offscreen())
-        return;
-    /* 滑鼠圖同步滑出左緣(founder 2026-07-22:tap 進場也要跟左拉一樣的
-       雙向動態);蓋滿後 hw_open_commit 歸位。 */
-    if (s_top_logo && lv_obj_is_valid(s_top_logo))
-    {
-        lv_anim_del(s_top_logo, NULL);
-        lv_anim_t la;
-        lv_anim_init(&la);
-        lv_anim_set_var(&la, s_top_logo);
-        lv_anim_set_exec_cb(&la, top_logo_tx_anim_exec);
-        lv_anim_set_values(&la,
-                           lv_obj_get_style_translate_x(s_top_logo,
-                                                        LV_PART_MAIN),
-                           (int32_t)-(int32_t)LV_HOR_RES);
-        lv_anim_set_time(&la, 200);
-        lv_anim_set_path_cb(&la, lv_anim_path_ease_out);
-        lv_anim_start(&la);
-    }
-    hw_pull_snap(true); /* 滑到 0 → hw_open_commit(開 CLICKABLE+0x1b start) */
-}
 
 /* GUI thread:鍵盤 Mode 鈕第三站——程式化直開手寫(無 snap 動畫)。
    冪等;非滑鼠 app 情境直接 no-op。 */
@@ -6229,18 +5826,6 @@ static void mouse_v2t_close_and_paste(void)
     LOG_D("V2T close (input bar preserved)");
 }
 
-// trackpad mic btn 點擊：根據當前狀態切換開/關
-static void trackpad_mic_btn_event_cb(lv_event_t *e)
-{
-    if (lv_event_get_code(e) != LV_EVENT_CLICKED)
-        return;
-    if (mouse_v2t_active)
-    {
-        mouse_v2t_close_and_paste();
-    }
-    else
-        mouse_v2t_open();
-}
 
 /**
  * @brief 把 V2T 結果文字直接 set 到 hid_mouse 的 input bar
@@ -6306,12 +5891,8 @@ void append_text_to_mouse_input(void)
     lvgl_send_msg(msg);
 }
 
-// static lv_obj_t *text_input_bar = NULL;
-static rt_tick_t text_input_bar_pressing_time = NULL;
 static rt_tick_t text_input_bar_press_time = NULL;
 static uint16_t max_move_y = 0;
-static uint8_t test_count = 0;
-static float prev_elapsed = 0.0f;
 
 // === skaibar 選項 helpers ====================================================
 
@@ -6420,7 +6001,6 @@ void mouse_skaibar_set_options_json(const char *json)
     #define BOTTOM_BAR_MULTITASK_HOLD_MS 100      // 停住多久觸發
 static bool bottom_bar_multitask_ready = false;   // 已達成往上位移條件
 static bool bottom_bar_multitask_fired = false;   // 這次 gesture 已觸發過
-static lv_point_t bottom_bar_multitask_anchor;
 // 用 rt_timer 而非 lv_timer：拖曳時 BLE queue 會把 LVGL task 塞到 lv_timer
 // 延遲數百 ms 才 fire；rt_timer 跑在獨立 timer thread，不受 LVGL 佔用影響
 static rt_timer_t bottom_bar_multitask_timer = NULL;
@@ -6448,49 +6028,6 @@ void hid_mouse_set_host_pull_cb(void (*cb)(int up_px, int released))
     s_hosted = (cb != NULL || s_host_back_cb != NULL);
 }
 
-static void bottom_bar_multitask_fire(void)
-{
-    LOG_D("Bottom bar: multitask triggered");
-    if (bottom_bar_multitask_fired)
-        return;
-    /* hosted: suppress the multitask send here (this can run on the rt_timer
-       thread — no LVGL calls). The actual return is driven on the LVGL thread
-       by the release handler below. */
-    if (s_hosted && s_host_back_cb)
-        return;
-    bottom_bar_multitask_fired = true;
-    if (control_provider.ble_hid_keyboard_multitask != NULL)
-    {
-        control_provider.ble_hid_keyboard_multitask(true);
-    }
-    motor_pattern_tap();
-}
-
-static void bottom_bar_multitask_rt_timer_cb(void *parameter)
-{
-    // Soft timer thread 被 BLE/其他高優 thread 卡住時，本 callback 可能比
-    // 預期晚很多才排到執行。RELEASED/再次 PRESSED 會把 ready 設成 false，
-    // 這裡先 double-check 才真的送 HID，避免放手後「事後被戳」。
-    if (!bottom_bar_multitask_ready || bottom_bar_multitask_fired)
-        return;
-    bottom_bar_multitask_fire();
-}
-
-// 手指每次位移超過 epsilon（或剛 armed）就呼叫，重新倒數 HOLD_MS
-static void bottom_bar_multitask_restart_timer(void)
-{
-    if (bottom_bar_multitask_timer == NULL)
-    {
-        bottom_bar_multitask_timer = rt_timer_create(
-            "bb_mt", bottom_bar_multitask_rt_timer_cb, NULL,
-            rt_tick_from_millisecond(BOTTOM_BAR_MULTITASK_HOLD_MS),
-            RT_TIMER_FLAG_ONE_SHOT | RT_TIMER_FLAG_SOFT_TIMER);
-    }
-    if (bottom_bar_multitask_timer != NULL)
-    {
-        rt_timer_start(bottom_bar_multitask_timer);
-    }
-}
 
 static void bottom_bar_multitask_cancel_timer(void)
 {
@@ -7364,64 +6901,6 @@ static void mode_swipe_cancel_async_cb(void *user_data)
     kbd_mode_extras_sync(); /* 取消回原 mode,附件跟 current 對齊 */
 }
 
-static void mode_swipe_commit_anim_ready(lv_anim_t *a)
-{
-    (void)a;
-    lv_async_call(mode_swipe_commit_async_cb, NULL);
-}
-
-static void mode_swipe_cancel_anim_ready(lv_anim_t *a)
-{
-    (void)a;
-    lv_async_call(mode_swipe_cancel_async_cb, NULL);
-}
-
-// 自製 timer-based 動畫
-static void mode_swipe_timer_cb(lv_timer_t *t)
-{
-    uint32_t elapsed = lv_tick_elaps(mode_swipe_start_tick);
-    bool finished = (elapsed >= MODE_SWIPE_ANIM_TIME_MS);
-    int32_t v;
-    if (finished)
-    {
-        v = mode_swipe_to_dx;
-    }
-    else
-    {
-        float p = (float)elapsed / (float)MODE_SWIPE_ANIM_TIME_MS;
-        float ease = 1.0f - (1.0f - p) * (1.0f - p) * (1.0f - p);
-        v = mode_swipe_from_dx +
-            (int32_t)((mode_swipe_to_dx - mode_swipe_from_dx) * ease);
-    }
-    mode_set_translate_x(current_hid_mode, (int16_t)v);
-    int16_t target_offset = mode_swipe_target_side * LV_HOR_RES_MAX + v;
-    mode_set_translate_x(mode_swipe_target, target_offset);
-
-    if (finished)
-    {
-        lv_timer_del(t);
-        mode_swipe_timer = NULL;
-        if (mode_swipe_is_commit)
-        {
-            hid_mode_t old_mode = current_hid_mode;
-            current_hid_mode = mode_swipe_target;
-            mode_set_visible(old_mode, false);
-            mode_set_translate_x(old_mode, 0);
-            mode_set_translate_x(current_hid_mode, 0);
-
-            keyboard_visible = (current_hid_mode == HID_MODE_KEYBOARD);
-            kbd_mode_extras_sync(); /* 同 async commit:swipe 進鍵盤要顯附件 */
-            LOG_D("mode commit -> %s", hid_mode_names[current_hid_mode]);
-        }
-        else
-        {
-            mode_set_visible(mode_swipe_target, false);
-            mode_set_translate_x(current_hid_mode, 0);
-            mode_set_translate_x(mode_swipe_target, 0);
-        }
-        mode_swipe_active = false;
-    }
-}
 
 static void mode_swipe_kill_timer(void)
 {
@@ -10851,21 +10330,6 @@ void open_skaibar_from_pose(void)
        時觸控板上下兩個圖示都要讓位。(2026-07-17 曾要求底部維持原樣，已被這次改口取代。) */
 }
 
-// 底部 bar 的 tap / 長按入口(founder 2026-07-31:「按下方的圖片也要等於我立起手錶」)。
-// 開 = 與立起姿態走完全同一條 open_skaibar_from_pose；已開 = 收掉。
-// 這個 toggle 同時是面板唯一的取消出口 —— wrist-drop 已不再關面板，沒有它使用者就只能
-// 靠送出或離開 app 才能脫身。LVGL thread(bar 的觸控 cb)呼叫，可直接碰 UI。
-void hid_mouse_toggle_lift_input_panel(void)
-{
-    extern bool instruction_list_lift_input_view_open(void);
-    if (instruction_list_lift_input_view_open())
-    {
-        extern void instruction_list_close_lift_input_view(void);
-        instruction_list_close_lift_input_view();
-        return;
-    }
-    open_skaibar_from_pose();
-}
 /* 給 instruction_list 在「切換浮層 bar 顯示/隱藏的當幀」同步呼叫 → frame-perfect 交接，
    消除 poll 40ms 延遲造成的那一閃/空窗。off-mouse(trackpad_mic_btn NULL)為 no-op、錶盤不受影響。 */
 void hid_mouse_set_own_bar_hidden(bool hide)
@@ -11105,7 +10569,6 @@ void lv_create_mouse_screen(lv_obj_t *scr)
         s_bar_ai_sync_timer = lv_timer_create(bar_ai_sync_timer_cb, 40, NULL);
 
 
-
     #if ENABLE_MENU_FEATURE
     menu_window(bg);
 
@@ -11242,32 +10705,6 @@ void hid_mouse_create(lv_obj_t *scr)
     hid_mouse_enter_mode();
 }
 
-/**
- * @brief Handles application resume
- */
-static void on_resume(void)
-{
-    reset_lvgl_msg_handler();
-    // if (handfree)
-    // {
-        extern void switch_watch_motion_control_mode(bool enable,
-                                                     bool animation);
-        switch_watch_motion_control_mode(true, false);
-    // }
-
-    setting_provider.set_power_save_mode(0);
-}
-
-/**
- * @brief Handles application pause
- */
-static void on_pause(void)
-{
-    hw_cancel_session(); /* 手寫殘留:取消(不送出)收乾淨(冪等) */
-    dial_drag_state_reset(); /* 暫停 app 先清 dial/拖曳殘留,免恢復後卡 */
-    setting_provider.set_power_save_mode(1);
-    switch_watch_motion_control_mode(false, false);
-}
 
 /**
  * @brief Tear down the mouse UI + deactivate control surface.

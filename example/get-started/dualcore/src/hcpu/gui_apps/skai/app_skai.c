@@ -103,11 +103,6 @@ extern void unbind_app_speech_data(void);
     #define FONT_SIZE FONT_BIGL
     #define LIST_ENABLE_ARC_SCROLLBAR 0
 
-/*
- * STATIC VARS DEFINITIONS
- *****************************************************************************************
- */
-static app_skai_t *p_app_skai = NULL;
 
 static const lv_style_const_prop_t LIST_SKAI_STYLE_PROPS[] = {
     LV_STYLE_CONST_WIDTH(LIST_SKAI_WIDTH),
@@ -125,10 +120,6 @@ static const lv_style_const_prop_t LIST_SKAI_TITLE_STYLE_PROPS[] = {
 LV_STYLE_CONST_INIT(LIST_SKAI_STYLE, LIST_SKAI_STYLE_PROPS);
 LV_STYLE_CONST_INIT(LIST_SKAI_TITLE_STYLE, LIST_SKAI_TITLE_STYLE_PROPS);
 
-static bool open_action_flag = true;
-static bool left_hand_mode = true;
-static uint16_t selected_message_index = 0;
-static lv_obj_t *first_open_ai_window;
 
 void open_skai_widget_ai(bool open);
 void set_skai_widget_input_text(const char *text);
@@ -162,19 +153,8 @@ static void send_to_note(void)
     animate_to_home_from_notification_center();
 }
 
-static void skai_widget_ai_button_event_cb(lv_event_t *evt)
-{
-    send_to_ai();
-}
 
-static void skai_widget_note_button_event_cb(lv_event_t *evt)
-{
-    send_to_note();
-}
 static lv_obj_t *skai_widget_input_text_bg;
-static lv_obj_t *skai_widget_ai_bg;
-static lv_obj_t *skai_widget_note_button;
-static lv_obj_t *skai_widget_ai_button;
 static lv_obj_t *skai_widget_ai_reply;
 static lv_obj_t *skai_widget_bg_scroller;
 lv_obj_t *lv_skai_widget_builder(lv_obj_t *parent)

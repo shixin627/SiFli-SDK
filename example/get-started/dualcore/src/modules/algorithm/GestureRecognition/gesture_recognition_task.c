@@ -90,7 +90,6 @@ static void gesture_stage2_report(const char *what);
 extern void app_gesture_receive_imu_data(int16_t (*dataset)[6], int sample_num);
 
 static rt_thread_t gesture_recognition_thread = RT_NULL;
-static rt_thread_t send_gesture_data_thread = RT_NULL;
 
 /* Buffers for sensor data processing */
 static float identifyWindow[TAP_TARGET_SAMPLE_NUM][4];
@@ -175,36 +174,6 @@ static void get_gesture_data(gesture_data_t *gesture, int sample_num,
     }
 }
 
-static void get_gesture_data_with_ppg(gesture_data_t *dataset, int sample_num,
-                                      uint8_t divide_rate)
-{
-    for (int i = 0; i < sample_num; i++)
-    {
-#if kChannelReleaseNumber == 4
-        if (i == 0)
-        {
-            continue;
-        }
-        ppgidentifyWindow[i - 1][0] =
-            dataset->dataset_ppg[i].acce.x / INT16_to_G * GRAVITY;
-        ppgidentifyWindow[i - 1][1] =
-            dataset->dataset_ppg[i].acce.y / INT16_to_G * GRAVITY;
-        ppgidentifyWindow[i - 1][2] =
-            dataset->dataset_ppg[i].acce.z / INT16_to_G * GRAVITY;
-        float diff_ppg =
-            dataset->dataset_ppg[i].ppg - dataset->dataset_ppg[i - 1].ppg;
-        ppgidentifyWindow[i - 1][3] = diff_ppg;
-#else
-        int index = i * divide_rate;
-        ppgidentifyWindow[i][0] =
-            dataset->dataset_ppg[index].acce.x / INT16_to_G * GRAVITY;
-        ppgidentifyWindow[i][1] =
-            dataset->dataset_ppg[index].acce.y / INT16_to_G * GRAVITY;
-        ppgidentifyWindow[i][2] =
-            dataset->dataset_ppg[index].acce.z / INT16_to_G * GRAVITY;
-#endif
-    }
-}
 
 static bool gesture_recognition_lock = false;
 static uint8_t unknown_gesture_count = 0;

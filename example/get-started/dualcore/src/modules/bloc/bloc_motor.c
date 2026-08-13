@@ -90,7 +90,6 @@ static void bloc_motor_stop(void);
 static rt_tick_t last_vibrate_tick = 0;
 static bool motor_stop_flag = true;
 static uint8_t motor_control_io_pin_state = 0;
-static uint8_t motor_power_io_pin_state = 0;
 
 static bool _motor_power_on = false;
 

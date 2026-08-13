@@ -106,7 +106,6 @@ static float sum_gyro_hand_lifting_y = 0;
 
 #if USING_PUT_DOWN_TIMER
 static rt_timer_t timer_put_down_confirm;
-static rt_tick_t last_lift2_time = 0;
 static rt_tick_t last_gesture_event_time = 0;
 static bool put_down_started = false;
 extern void main_send_hand_lift_event(void);
@@ -127,16 +126,6 @@ void hand_tracking_lift_callback(uint8_t lift)
     LOG_I("Hand lift callback triggered with lift: %d", lift);
 }
 
-static void trigger_lift2_event(void)
-{
-    if (!hand_tracking.lift_callback)
-        return;
-    if (last_lift2_time + GESTURE_COOLDOWN_TIME < rt_tick_get())
-    {
-        last_lift2_time = rt_tick_get();
-        hand_tracking.lift_callback(2);
-    }
-}
 
 static void trigger_lift3_event(void)
 {
@@ -166,7 +155,6 @@ static void trigger_back_event(void)
     }
 }
 
-static bool watchface_visible = false;
 static uint8_t state = 0;
 static bool gyro_y_check_watch = false;
 static void timer_check_watch_callback(void *param)

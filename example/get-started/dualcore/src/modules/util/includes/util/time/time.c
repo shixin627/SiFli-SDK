@@ -30,9 +30,6 @@ static const uint8_t s_mon_lengths[2][MONTHS_PER_YEAR] = {
     {31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31},
     {31, 29, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31}};
 
-static const uint16_t s_year_lengths[2] = {
-    365,
-    366};
 
 int32_t time_get_gmtoffset(void)
 {

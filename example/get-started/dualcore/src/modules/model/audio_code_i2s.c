@@ -138,7 +138,6 @@ static rt_uint8_t audprc_buf[RINGBUFFER_SIZE];
 #endif
 static rt_uint8_t audprc_adc_temp[320];
 static rt_uint8_t audio_input_buf[RINGBUFFER_SIZE];
-static uint16_t buffer_index = 0;
 
 static struct rt_ringbuffer audprc_ringbuffer;
 

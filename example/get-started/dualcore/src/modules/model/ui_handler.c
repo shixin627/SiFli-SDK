@@ -108,7 +108,6 @@ extern void set_signal_bad(bool bad);
 static rt_mq_t lvgl_mq; /**< Message queue for LVGL messages */
 
 #ifdef USE_LV_TIMER
-static lvgl_msg_t lvgl_msg; /**< LVGL message buffer for timer mode */
 #endif
 
 /* Captured at first process_lvgl_message() invocation. Used by callers in
@@ -124,8 +123,6 @@ bool is_on_lvgl_thread(void)
 
 lvgl_msg_handler_t lvgl_msg_handler; /**< Message handler function table */
 static rt_tick_t last_refresh_tick;  /**< Last screen refresh timestamp */
-static watch_app_id_t watch_app_id =
-    app_id_mainmenu; /**< Current active app ID */
 /* ============== Helper Functions ============== */
 void clear_all_handlers(void)
 {

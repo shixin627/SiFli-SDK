@@ -339,36 +339,6 @@ void ble_app_start_targeted_advertising(uint8_t device_idx)
     LOG_I("Targeted advertising started for device[%d]", device_idx);
 }
 
-/**
- * @brief Clear bonded device address and switch advertising to normal mode
- * @note Uses sibles_advertising_reconfig() to switch mode, no need to manually
- * stop/start
- */
-void ble_app_clear_bonded_device(void)
-{
-    LOG_I("Clearing bonded device...");
-
-    // Delete all bonded devices from connection manager
-    conn_manager_get_bonded_dev_t bonded_devs;
-    uint8_t ret =
-        connection_manager_get_bonded_devices((uint8_t *)&bonded_devs);
-
-    if (ret == 0)
-    {
-        for (int i = 0; i < MAX_PAIR_DEV; i++)
-        {
-            if (bonded_devs.priority[i] != MAX_PAIR_DEV)
-            {
-                LOG_I("Deleting bonded device[%d]", i);
-                connection_manager_delete_bond(bonded_devs.peer_addr[i]);
-            }
-        }
-    }
-
-    // Clear cached bonded device
-    memset(&g_target_device_addr, 0, sizeof(ble_gap_addr_t));
-    g_has_target_device = 0;
-}
 
 /********************** Start of Skaiwalk BLE Application
  * *********************************/
@@ -1074,32 +1044,6 @@ typedef struct
     uint16_t writting;
 } skaiwalk_nvds_mem_init_t;
 
-void bt_stack_update_flash(void)
-{
-    skaiwalk_nvds_mem_init_t *ptr1 =
-        (skaiwalk_nvds_mem_init_t *)NVDS_BUFF_START;
-    if (ptr1->pattern == NVDS_PATTERN && ptr1->writting == 0)
-    {
-        uint8_t *buf_addr = (uint8_t *)(ptr1 + 1);
-        rt_kprintf("used mem len:%d\r\n", ptr1->used_mem);
-
-        /* Patch BD_ADDRESS region (NVDS layout: 6 raw MAC bytes start at
-           offset 8). The values below are the production MAC override; do
-           not change without coordinating with provisioning. */
-        uint8_t write_data[] = {0xE0, 0x63, 0x66, 0x20, 0x95, 0x01};
-        memcpy(&buf_addr[8], write_data, sizeof(write_data));
-        sifli_nvds_write(SIFLI_NVDS_TYPE_STACK, ptr1->used_mem,
-                         (uint8_t *)(ptr1 + 1));
-        rt_kprintf("Written data at offset 8: ");
-        for (int i = 8; i < 14 && i < ptr1->used_mem; i++)
-        {
-            rt_kprintf("%02X ", buf_addr[i]);
-        }
-        rt_kprintf("\r\n");
-
-        LOG_HEX("nvds_data", 16, (uint8_t *)(ptr1 + 1), ptr1->used_mem);
-    }
-}
 
 static bool bluetooth_broadcasting_status = false;
 bool get_bluetooth_broadcasting_status(void)

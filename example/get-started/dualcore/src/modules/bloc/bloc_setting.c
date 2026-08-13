@@ -81,7 +81,6 @@
 
 /* Private variables ---------------------------------------------------------*/
 SettingProvider setting_provider;
-static rt_thread_t thread_shared_prefs = RT_NULL;
 static watch_prefs_key key_to_store = 0;
 static rt_timer_t shared_prefs_storage_timer = RT_NULL;
 static uint8_t _power_save_enable = 0;

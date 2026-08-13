@@ -438,7 +438,6 @@ void dial_widget_event(lv_event_t *e)
 
 extern void write_clock_widget_number(void);
 static lv_obj_t *dial_widget = NULL;
-static lv_obj_t *dial_widget_img_bg = NULL;
 
 // Level bar for flat detection
 // Flat zone threshold: see original geometry — dot range vs arc bracket position.

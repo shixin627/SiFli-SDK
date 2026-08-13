@@ -31,22 +31,6 @@ extern void set_main_phonepeer_addr(void);
    drops; if the phone disconnects first the timer fires harmlessly. */
 rt_timer_t unbond_disc_timer = RT_NULL;
 
-void unbond_timerout_callback(void *pxTimer)
-{
-    if (SkaiWatchSys.gap_conn_state == GAP_CONN_STATE_CONNECTED)
-    {
-        LOG_I("unbond timeout disconnect!");
-        le_disconnect(SkaiWatchSys.watch_conn_id);
-    }
-}
-
-void communicate_parse_init(void)
-{
-    unbond_disc_timer = rt_timer_create("unbond disc_timer",
-                                         unbond_timerout_callback,
-                                         RT_NULL, 2000,
-                                         RT_TIMER_FLAG_ONE_SHOT);
-}
 
 /**
  * @brief   Resolve private bond commands from the phone.

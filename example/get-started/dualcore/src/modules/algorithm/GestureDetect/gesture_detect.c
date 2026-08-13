@@ -309,31 +309,6 @@ extern uint8_t gesture_threshold_factor;
 #if USE_PPG_VARIANCE
 static uint16_t gesture_release_ppg_rawdata_diff_buf[GESTURE_RELEASE_TIME_STEP];
 static uint16_t gesture_release_ppg_rawdata_diff_index = 0;
-static bool calculate_ppg_variance(void)
-{
-    float mean = 0.0f;
-    float variance = 0.0f; // Calculate average value
-    for (int i = 0; i < GESTURE_RELEASE_SLIDING_WINDOW_SIZE; i++)
-    {
-        mean += gesture_release_ppg_rawdata_diff_buf[i];
-    }
-    mean /= GESTURE_RELEASE_SLIDING_WINDOW_SIZE; // Calculate variance
-    for (int i = 0; i < GESTURE_RELEASE_SLIDING_WINDOW_SIZE; i++)
-    {
-        float diff = gesture_release_ppg_rawdata_diff_buf[i] - mean;
-        variance += diff * diff;
-    }
-    variance /= GESTURE_RELEASE_SLIDING_WINDOW_SIZE;
-    LOG_D("PPG Variance: %f", variance);
-    if (variance > 100)
-    {
-        return true;
-    }
-    else
-    {
-        return false;
-    }
-}
 #endif
 
 /**
@@ -461,7 +436,6 @@ void handle_motion_data_in_25hz(rt_tick_t now, Vector3 *accData)
  * @return cost time in ms
  */
 
-static uint8_t log_count = 0;
 int handle_imu_data(float hz, Vector3 *accData, Vector3 *gyroData)
 {
     static float pre_freq = 0;

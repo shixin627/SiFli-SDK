@@ -53,9 +53,6 @@ LV_IMG_DECLARE(voice_group);
 static app_message_ctx_t *p_app_message_ctx = NULL;
 static app_message_t *p_app_message = NULL;
 
-static lv_obj_t *lbl_content;
-static lv_obj_t *lbl_title;
-static lv_obj_t *lbl_app_name;
 static notification_t notification;
 
 static bool open_from_message_list = false;
@@ -174,13 +171,6 @@ static void message_send_btn_cb(lv_event_t *event)
     }
 }
 
-static void message_cancel_btn_cb(lv_event_t *event)
-{
-    if (LV_EVENT_CLICKED == event->code)
-    {
-        message_voice_clear();
-    }
-}
 
 static void message_tap_send(uint8_t gesture)
 {
@@ -214,8 +204,6 @@ static void handle_message_mic_status(bool speaking)
     #endif
 
 static lv_obj_t *reply_btn = NULL;
-static lv_obj_t *icon_btn_send = NULL;
-static rt_timer_t off_selected_timer = NULL;
 static bool selected_message = false;
 static void switch_selected_message(bool on)
 {
@@ -239,18 +227,6 @@ static void switch_selected_timer_cb(void *param)
     selected_message = false;
 }
 
-static void start_selected_timer(void)
-{
-    selected_message = true;
-    switch_selected_timer_cb(&selected_message);
-    if (off_selected_timer == NULL)
-    {
-        off_selected_timer =
-            rt_timer_create("off_selected_timer", switch_selected_timer_cb,
-                            &selected_message, 500, RT_TIMER_FLAG_ONE_SHOT);
-    }
-    rt_timer_start(off_selected_timer);
-}
 
 static bool messagr_can_reply = false;
 
@@ -547,17 +523,6 @@ static void on_stop(void)
     }
 }
 
-static void handle_back_for_reply(void)
-{
-    if (isTextEmpty() == false)
-    {
-        clearVoice2Text();
-    }
-    else
-    {
-        gui_app_exit(APP_ID_MESSAGE);
-    }
-}
 
 static void main_msg_handler(gui_app_msg_type_t msg, void *param)
 {

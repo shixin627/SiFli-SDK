@@ -573,16 +573,6 @@ void handle_notification(uint8_t notify_id, char *json_string)
     interact_with_notification(&temp_notification);
 }
 
-void get_notification_list_from_template(void)
-{
-    for (uint8_t i = 0;
-         i < sizeof(notifications_constant) / sizeof(notification_t); i++)
-    {
-        LOG_D("notification(%d) is in constant resources", i);
-        _notification_list[i] = notifications_constant[i];
-        notification_items_amount++;
-    }
-}
 
 static void remove_notification(notification_t *notifications, uint8_t *size,
                                 const char *id)
