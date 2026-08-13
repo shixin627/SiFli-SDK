@@ -5255,12 +5255,12 @@ static void open_pending_chat_async_cb(void *unused)
     extern void chat_page_open(const char *title, const char *icon_src);
     extern void chat_page_seed_local_message(const char *text);
     extern bool chat_page_is_open(void);
-    /* R71(founder:「新開的 SESSION 聊天室不能從左邊緣往右滑退出」):左緣返回**只有在 Main
-       處於「清單」狀態時才武裝**(watch_demo.c 的 ESC 分支與 check_is_at_instruction_list
-       都靠這個)。點「開新對話」時清單已經被收掉 → 掉回錶盤狀態 → 手勢沒掛上,房間就出不去。
-       既有的 @-聊天室是靠「清單全程留著、被不透明面板蓋住」來保住手勢的,這條路照做。 */
-    if (!instruction_list_is_visible())
-        instruction_list_open_browse();
+    /* R71(founder:「新開的 SESSION 聊天室不能從左邊緣往右滑退出」)真兇不在這裡:
+       chat_page_open 本來就會武裝左緣偵測器,但點「開新對話」時清單已收掉、ATINST=false,
+       輪詢的 check_is_at_home 一翻回 true 就 display_gesture_detect_objs(0,false) 把偵測器
+       再藏掉。修在 app_mainmenu.c:_at_home 的條件加 !chat_page_is_open()(聊天開著就不是
+       「在錶盤」),偵測器因此保持武裝。先前「重開清單保住 ATINST」的招沒效
+       (instruction_list_open_browse 不會讓清單真的 visible),已移除。 */
     if (!chat_page_is_open())
         chat_page_open(s_pending_chat_title, NULL);
     chat_page_seed_local_message(s_pending_chat_title); /* 自己那句先顯示,別讓房間空著 */

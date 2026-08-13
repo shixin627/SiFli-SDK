@@ -48,6 +48,39 @@ static bool s_pending_sending;
 static chat_msg_t s_pending_msgs[CHAT_MAX_MSGS];
 static volatile int s_pending_msg_count; /* written LAST on BLE, read FIRST on LVGL */
 
+/* Pending clarify/approval (0x12 top-level `approval` {rid,q,opts:[{id,label}]}, 2026-08-13):
+   the desktop agent is BLOCKED asking — render the question + one tappable chip per option.
+   A chip tap answers on the 0x10 uplink as `\x01decision:<rid>\x1f<optionId>` (the phone routes
+   it to convDecision; the `\x01newsession:` pattern). `id` is the ANSWER Hermes receives
+   (clarify: the choice sentence itself), so it gets the bigger buffer and a UTF-8-safe cut. */
+#define CHAT_APPR_OPTS 4
+#define CHAT_APPR_TEXT 96
+static char s_appr_rid[64];
+static char s_appr_q[192];
+static struct
+{
+    char id[CHAT_APPR_TEXT];
+    char label[CHAT_APPR_TEXT];
+} s_appr_opts[CHAT_APPR_OPTS];
+static int s_appr_count;
+static volatile bool s_appr_pending; /* written LAST on BLE, read FIRST on LVGL */
+
+/* Bounded copy that never leaves a torn UTF-8 sequence at the end (a mid-sequence cut renders
+   as tofu AND, for clarify, would send back a corrupted answer string). */
+static void chat_copy_utf8(char *dst, size_t cap, const char *src)
+{
+    size_t n = strlen(src);
+    if (n >= cap)
+    {
+        n = cap - 1;
+        /* back up over any continuation bytes (10xxxxxx) so the cut lands on a boundary */
+        while (n > 0 && ((unsigned char)src[n] & 0xC0) == 0x80)
+            n--;
+    }
+    memcpy(dst, src, n);
+    dst[n] = '\0';
+}
+
 bool chat_page_is_open(void)
 {
     return s_chat_panel != NULL && lv_obj_is_valid(s_chat_panel);
@@ -62,6 +95,7 @@ void chat_page_seed_local_message(const char *text)
     if (text == NULL || text[0] == '\0')
         return;
     s_pending_msg_count = 0; /* 這是新房間的第一句 */
+    s_appr_pending = false;  /* 上個房間殘留的 clarify 不屬於新房間 */
     rt_strncpy(s_pending_msgs[0].role, "user", sizeof(s_pending_msgs[0].role) - 1);
     s_pending_msgs[0].role[sizeof(s_pending_msgs[0].role) - 1] = '\0';
     rt_strncpy(s_pending_msgs[0].text, text, CHAT_MSG_TEXT_LEN - 1);
@@ -691,6 +725,44 @@ void skai_chat_on_conv_state(const uint8_t *json, uint16_t length)
             count++;
         }
     }
+    /* Pending clarify/approval — parse BEFORE publishing msg_count so one REFRESH_CHAT renders
+       both. Absent object ⇒ nothing pending (an answered/expired prompt clears this way too). */
+    s_appr_pending = false;
+    s_appr_count = 0;
+    cJSON *j_appr = cJSON_GetObjectItem(root, "approval");
+    if (cJSON_IsObject(j_appr))
+    {
+        cJSON *j_rid = cJSON_GetObjectItem(j_appr, "rid");
+        cJSON *j_q = cJSON_GetObjectItem(j_appr, "q");
+        if (cJSON_IsString(j_rid) && j_rid->valuestring[0] != '\0')
+        {
+            chat_copy_utf8(s_appr_rid, sizeof(s_appr_rid), j_rid->valuestring);
+            chat_copy_utf8(s_appr_q, sizeof(s_appr_q),
+                           cJSON_IsString(j_q) ? j_q->valuestring : "");
+            cJSON *j_opts = cJSON_GetObjectItem(j_appr, "opts");
+            if (cJSON_IsArray(j_opts))
+            {
+                cJSON *o = NULL;
+                cJSON_ArrayForEach(o, j_opts)
+                {
+                    if (s_appr_count >= CHAT_APPR_OPTS)
+                        break;
+                    cJSON *j_id = cJSON_GetObjectItem(o, "id");
+                    cJSON *j_label = cJSON_GetObjectItem(o, "label");
+                    const char *id = cJSON_IsString(j_id) ? j_id->valuestring : "";
+                    const char *label =
+                        (cJSON_IsString(j_label) && j_label->valuestring[0] != '\0')
+                            ? j_label->valuestring : id;
+                    chat_copy_utf8(s_appr_opts[s_appr_count].id,
+                                   sizeof(s_appr_opts[s_appr_count].id), id);
+                    chat_copy_utf8(s_appr_opts[s_appr_count].label,
+                                   sizeof(s_appr_opts[s_appr_count].label), label);
+                    s_appr_count++;
+                }
+            }
+            s_appr_pending = true; /* publish LAST (same ordering rule as msg_count) */
+        }
+    }
     cJSON_Delete(root);
 
     s_pending_msg_count = count; /* publish LAST so an LVGL reader never sees a half-filled buffer */
@@ -698,6 +770,85 @@ void skai_chat_on_conv_state(const uint8_t *json, uint16_t length)
 
     lvgl_msg_t msg = {.type = LVGL_MSG_TYPE_REFRESH_CHAT};
     lvgl_send_msg(msg);
+}
+
+/* A clarify/approval chip was tapped: answer on the 0x10 uplink as
+   `\x01decision:<rid>\x1f<optionId>` (BleWatchConnection routes it to convDecision), then drop the
+   chips locally — the desktop's `decision` convEvent (or a re-ask) is the authoritative refresh. */
+static void chat_appr_chip_cb(lv_event_t *e)
+{
+    if (lv_event_get_code(e) != LV_EVENT_CLICKED || !s_appr_pending)
+        return;
+    int idx = (int)(intptr_t)lv_event_get_user_data(e);
+    if (idx < 0 || idx >= s_appr_count)
+        return;
+    /* "\x01" kept as its OWN literal: "\x01dec…" would let the hex escape swallow the d/e/c. */
+    static char out[16 + sizeof(s_appr_rid) + sizeof(s_appr_opts[0].id)];
+    rt_snprintf(out, sizeof(out), "\x01" "decision:%s\x1f%s", s_appr_rid, s_appr_opts[idx].id);
+    commu_send_conv_send(out);
+    LOG_I("chat clarify: answered opt=%d rid=%s", idx, s_appr_rid);
+    s_appr_pending = false;
+    chat_page_apply_pending_state(); /* re-render without the chips */
+}
+
+/* Render the pending clarify/approval under the transcript: the question as a THEIRS bubble, then
+   one full-width tappable chip per option (bordered pill, desktop approval-buttons parity). */
+static void chat_render_pending_approval(void)
+{
+    if (!s_appr_pending || s_msg_list == NULL || !lv_obj_is_valid(s_msg_list))
+        return;
+
+    if (s_appr_q[0] != '\0')
+    {
+        lv_obj_t *row = lv_obj_create(s_msg_list);
+        lv_obj_set_width(row, lv_pct(100));
+        lv_obj_set_height(row, LV_SIZE_CONTENT);
+        lv_obj_set_style_bg_opa(row, LV_OPA_TRANSP, 0);
+        lv_obj_set_style_border_width(row, 0, 0);
+        lv_obj_set_style_pad_all(row, 0, 0);
+        lv_obj_clear_flag(row, LV_OBJ_FLAG_SCROLLABLE);
+        lv_obj_t *bubble = lv_obj_create(row);
+        lv_obj_set_width(bubble, LV_SIZE_CONTENT);
+        lv_obj_set_height(bubble, LV_SIZE_CONTENT);
+        lv_obj_set_style_pad_hor(bubble, 11, 0);
+        lv_obj_set_style_pad_ver(bubble, 7, 0);
+        lv_obj_set_style_radius(bubble, 21, 0);
+        lv_obj_set_style_border_width(bubble, 0, 0);
+        lv_obj_set_style_bg_color(bubble, lv_color_hex(0x2C2C2E), 0);
+        lv_obj_clear_flag(bubble, LV_OBJ_FLAG_SCROLLABLE);
+        lv_obj_align(bubble, LV_ALIGN_TOP_LEFT, 0, 0);
+        lv_obj_t *lbl = lv_label_create(bubble);
+        lv_label_set_long_mode(lbl, LV_LABEL_LONG_WRAP);
+        lv_obj_set_width(lbl, (LV_HOR_RES * 72) / 100);
+        lv_label_set_text(lbl, s_appr_q);
+        lv_obj_set_style_text_color(lbl, lv_color_hex(0xFFFFFF), 0);
+    }
+
+    for (int i = 0; i < s_appr_count; i++)
+    {
+        lv_obj_t *chip = lv_obj_create(s_msg_list);
+        lv_obj_set_width(chip, lv_pct(96));
+        lv_obj_set_height(chip, LV_SIZE_CONTENT);
+        lv_obj_set_style_pad_hor(chip, 14, 0);
+        lv_obj_set_style_pad_ver(chip, 9, 0);
+        lv_obj_set_style_radius(chip, 21, 0);
+        /* Outlined, not filled: chips must read as ACTIONS, distinct from message bubbles —
+           Skaiwalk sky accent border on a translucent fill. */
+        lv_obj_set_style_border_width(chip, 1, 0);
+        lv_obj_set_style_border_color(chip, lv_color_hex(0x5C9CB8), 0);
+        lv_obj_set_style_bg_color(chip, lv_color_hex(0x5C9CB8), 0);
+        lv_obj_set_style_bg_opa(chip, LV_OPA_20, 0);
+        lv_obj_clear_flag(chip, LV_OBJ_FLAG_SCROLLABLE);
+        lv_obj_add_flag(chip, LV_OBJ_FLAG_CLICKABLE);
+        lv_obj_add_event_cb(chip, chat_appr_chip_cb, LV_EVENT_CLICKED, (void *)(intptr_t)i);
+        lv_obj_t *lbl = lv_label_create(chip);
+        lv_label_set_long_mode(lbl, LV_LABEL_LONG_WRAP);
+        lv_obj_set_width(lbl, lv_pct(100));
+        lv_obj_set_style_text_align(lbl, LV_TEXT_ALIGN_CENTER, 0);
+        lv_label_set_text(lbl, s_appr_opts[i].label[0] != '\0'
+                          ? s_appr_opts[i].label : "讓 Agent 自行決定");
+        lv_obj_set_style_text_color(lbl, lv_color_hex(0xFFFFFF), 0);
+    }
 }
 
 /* LVGL thread: rebuild the transcript bubbles from the pending buffer (left=them grey / right=me
@@ -717,15 +868,17 @@ void chat_page_apply_pending_state(void)
         count = CHAT_MAX_MSGS;
 
     /* Toggle the centered "載入中…" placeholder: shown while the transcript is still empty (the Matrix
-       backlog can take many seconds for a cold room), hidden once any message has arrived. */
+       backlog can take many seconds for a cold room), hidden once any message has arrived — or once a
+       clarify question is pending (the question IS the content then). */
+    bool empty = (count == 0 && !s_appr_pending);
     if (s_loading_label != NULL && lv_obj_is_valid(s_loading_label))
     {
-        if (count == 0)
+        if (empty)
             lv_obj_clear_flag(s_loading_label, LV_OBJ_FLAG_HIDDEN);
         else
             lv_obj_add_flag(s_loading_label, LV_OBJ_FLAG_HIDDEN);
     }
-    if (count == 0)
+    if (empty)
         return; /* nothing to render yet — the centered placeholder is up */
 
     for (int i = 0; i < count; i++)
@@ -777,6 +930,8 @@ void chat_page_apply_pending_state(void)
         lv_label_set_text(lbl, cm->text);
         lv_obj_set_style_text_color(lbl, lv_color_hex(0xFFFFFF), 0);
     }
+
+    chat_render_pending_approval();
 
     lv_obj_scroll_to_y(s_msg_list, LV_COORD_MAX, LV_ANIM_OFF); /* pin to the newest */
 }
