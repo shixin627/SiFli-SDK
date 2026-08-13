@@ -1722,6 +1722,13 @@ static void reveal_settle_anim_cb(void *var, int32_t v);
    does programmatic scrolls. Declared here (not at refresh_* location) so
    list_window_scroll_event_cb can read it. Actually defined below. */
 static bool s_in_refresh_scroll = false;
+/* R50(founder:「進場過程停在 actions 最下面,停一下又跑到第二個 action,沒到第一個
+   session」):進場那一刻清單裡常常**還沒有 session** —— 它們是手機稍後推來、由
+   session pager 注入的,所以 R49 的落點在 reset 當下找不到 conv 項,只能退回 actions
+   最下面;等 sessions 到了、清單重建,走的卻是「還原原本選中項」那條路,於是停在一個
+   action 上。這個旗標把「這次是進場」記到重建之後:只要使用者還沒自己捲動過,每次重建
+   都重新套用 R49 落點(最新的 session)。使用者一動手就熄掉,不再搶他的位置。 */
+static bool s_entry_landing_pending = false;
 /* Latched true when a horizontal drag (the left-to-close drawer) is detected on
    the list, so the item CLICKED LVGL also raises on the release — the VER-scroll
    list never loses the press on a horizontal drag — is ignored: a swipe must not
@@ -1761,6 +1768,8 @@ static void list_window_scroll_event_cb(lv_event_t *evt)
         if (!s_in_refresh_scroll)
         {
             ai_widget_fade_on_scroll();
+            /* R50:使用者自己捲了 → 進場落點的任務結束,之後的重建保留他的位置。 */
+            s_entry_landing_pending = false;
         }
         // LOG_D("APP LIST Scroll begin");
         break;
@@ -3883,6 +3892,7 @@ static void inst_list_slide_anim_cb(void *var, int32_t v)
 static void inst_list_slide_out_done_cb(lv_anim_t *a)
 {
     (void)a;
+    s_entry_landing_pending = false; /* R50:清單關了,進場落點的任務結束 */
     if (p_instruction_list_layout &&
         p_instruction_list_layout->p_instruction_list_bg &&
         lv_obj_is_valid(p_instruction_list_layout->p_instruction_list_bg))
@@ -4118,6 +4128,15 @@ void instruction_list_reveal_drag_begin(void)
        R33 起清單關閉就釋放列的物件,而**手指拖曳進場**這條路徑不像 open_browse 會先
        ensure —— 列是後來某次 refresh 才補建的,所以圖標比清單本體晚一步浮現。手指
        一開始拖就先把列建回來,進場第一幀就是完整內容。 */
+    /* R51(founder:「進場過程停在最下面的 actions,之後才跳到 session」):跳動的根源是
+       **進場當下清單裡還沒有 session** —— 它們要等手機推播落地才由 session pager 注入。
+       R50 讓落點在注入後補正,但補正本身就是看得到的那一跳。這裡在建 UI **之前**先把
+       pager 已經握有的 session 資料注入進來,第一幀就是完整清單、落點一次到位。
+       (資料早就在 pager 的 s_devices 裡 —— 手機每 5 秒推一次;缺的只是「注入」這個動作。) */
+    {
+        extern void session_list_actions_changed(void);
+        session_list_actions_changed();
+    }
     {
         extern void instruction_list_ensure_ui(void);
         instruction_list_ensure_ui();
@@ -4128,7 +4147,9 @@ void instruction_list_reveal_drag_begin(void)
     /* Park off-screen on the entry edge; drag_update finger-tracks it toward 0. */
     lv_obj_set_style_translate_x(list_bg,
                                  s_reveal_from_left ? -LV_HOR_RES : LV_HOR_RES, 0);
-    reset_list_internal(); /* every reveal opens at the list's bottom item (R3) */
+    /* R50:這次是進場 —— 落點規則要一路管到「sessions 稍後才注入」的那次重建為止。 */
+    s_entry_landing_pending = true;
+    reset_list_internal(); /* R49 起:落點 = 最新的 session,沒有 session 才是清單最後一項 */
     /* R47(founder 定案:「應該是把定位拿掉,先回到原本不做定位的版本」):R9 的
        focus_first_action 整個退場 —— 兩條 reveal 都不定位,落點就是 reset_list_internal
        的結果(清單最下面那項),跟左緣原本的行為一致。R46 曾把它挪到這裡(改成進場前定位
@@ -5384,6 +5405,9 @@ extern char *get_media_title(void);
 extern bool is_have_message_now(void);
 static uint16_t gesture_starting_value = 0;
 
+/* 精確置中(定義在後段,R49 的落點要用它 —— lv_obj_scroll_to_view 對這個重疊清單不準)。 */
+static void scroll_center_item(lv_obj_t *list, uint16_t target);
+
 static void reset_list_internal(void)
 {
     if (p_instruction_list_layout->list == NULL)
@@ -5396,6 +5420,47 @@ static void reset_list_internal(void)
     scroll_initialized = false;
     uint8_t scroll_to_index;
     {
+        /* R49(founder 2026-08-13 定案):**進場落點 = 最新的那個 session**,也就是 conv 段
+           最下面、緊鄰 actions 上方的那一項(conv 段由舊到新、最新在最下面)。只有完全沒有
+           session 時才退回舊行為 —— 停在 actions 最下面。
+           (R3 原本一律停在整份清單的最後一項,也就是 actions 最下面;有 session 之後那個
+           落點對使用者沒有意義 —— 進來第一眼要看到的是最新的對話。) */
+        uint8_t newest_conv = (uint8_t)-1;
+        for (uint8_t i = 0; i < list_item_count; i++)
+            if (strncmp(list_items[i].id, "conv:", 5) == 0)
+                newest_conv = i; /* 不 break:要的是**最後一個** conv 項 */
+        if (newest_conv != (uint8_t)-1)
+        {
+            app_scroll_target_item = newest_conv;
+            /* R52(founder:「文字是對的,但右邊的 icon 後面才跳」):右側指示圈的位置是用
+               refresh 尾端那條公式從 selected_item_index 反推的 ——
+                   input = 100*cnt - 63 - 100*selected
+               舊有的固定值 37 只是這條公式在 selected == cnt-1(最後一項)時的解。落點改成
+               「最新的 session」之後再沿用 37,等於把圈畫在最後一項上,直到下一次 refresh
+               用正確公式重算才跳過去。這裡直接套同一條公式,進場第一幀就一致。 */
+            gesture_starting_value =
+                (uint16_t)(100 * (int)list_item_count - 63 - 100 * (int)newest_conv);
+            selected_item_index = app_scroll_target_item;
+            prev_app_scroll_target_item = app_scroll_target_item;
+            scroll_center_item(p_instruction_list_layout->list, newest_conv);
+            if (!scroll_initialized)
+                scroll_list(p_instruction_list_layout->list, 0);
+            /* scroll_list 會從幾何反推 selected,落點不完全精準時會差一格 —— 重新釘回。 */
+            selected_item_index = newest_conv;
+            app_scroll_target_item = newest_conv;
+            /* R53(founder:「已經在 session 頁就算沒滾動過,有更新也不要跳,維持現狀」):
+               落點已經落在 session 上 → 進場定位的任務就結束,之後手機推播走的是
+               R48 的「還原原本那一項」,位置不動。
+               沒有 conv 項的那條 fallback 不清旗標:那代表 session 還沒到,等它到達時
+               仍要補正一次(founder 的規則是「沒有 session 才停在 actions 最下面」)。 */
+            s_entry_landing_pending = false;
+            update_indicator_dots_position(gesture_starting_value);
+            open_selected_widget(false);
+            is_widget_animation_active = false;
+            enable_scrolling_motor_vibrate();
+            open_scroll_motor = true;
+            return;
+        }
         /* 滾到列表最下面那個項目。list_item_count is uint8_t — with the empty-list
            placeholder (load_default_apps() can now leave list_item_count==0, unlike
            before when the built-in app prefix guaranteed count>0), `count - 1`
@@ -6370,6 +6435,19 @@ void refresh_custom_instructions(void)
     /* Save current scroll position and selected index */
     lv_coord_t saved_scroll_y = lv_obj_get_scroll_y(list);
     uint16_t saved_selected = selected_item_index;
+    /* R48(founder:「拉出清單中途在 actions 最下面,之後瞬間跳到 session 第二項」):
+       還原捲動位置**不能用像素**。手機的 replace-all 會把 sessions 洗掉再重建,session
+       pager 隨即把它們插回清單**最上面**(conv 段在前、actions 在後) —— 插在上面的項目
+       把底下全部往下推,於是同一個 saved_scroll_y 對到的已經是別的項目,畫面就往上跳進
+       session 段。改記**選中項的 id**,重建後找回同一個 id 再精確置中;找不到(該項真的
+       被刪了)才退回舊行為。 */
+    char saved_id[sizeof(list_items[0].id)];
+    saved_id[0] = '\0';
+    if (saved_selected < list_item_count)
+    {
+        strncpy(saved_id, list_items[saved_selected].id, sizeof(saved_id) - 1);
+        saved_id[sizeof(saved_id) - 1] = '\0';
+    }
 
     /* Delete ALL children of the list */
     lv_obj_clean(list);
@@ -6418,7 +6496,27 @@ void refresh_custom_instructions(void)
 
     /* Restore scroll position */
     old_selected_item_index = (uint16_t)-1;
-    if (s_force_scroll_to_last && list_item_count > 0)
+    if (s_entry_landing_pending && list_item_count > 0)
+    {
+        /* R50:這次重建屬於「剛進場」 → 重新套用落點規則(最新的 session,沒有就最後一項),
+           而不是還原重建前的位置 —— 進場當下 sessions 常常還沒到。 */
+        uint16_t target = (uint16_t)(list_item_count - 1);
+        for (uint8_t i = 0; i < list_item_count; i++)
+            if (strncmp(list_items[i].id, "conv:", 5) == 0)
+                target = i; /* 最後一個 conv 項 = 最新的 session */
+        app_scroll_target_item = target;
+        selected_item_index = target;
+        scroll_center_item(list, target);
+        lv_obj_update_layout(list);
+        scroll_list(list, 0);
+        selected_item_index = target;
+        app_scroll_target_item = target;
+        /* R53:補正只做這一次 —— 落到 session 上就交棒給 R48 的位置保留。清單裡還是
+           一個 session 都沒有時保持 pending,等 session 真的到達再補。 */
+        if (strncmp(list_items[target].id, "conv:", 5) == 0)
+            s_entry_landing_pending = false;
+    }
+    else if (s_force_scroll_to_last && list_item_count > 0)
     {
         /* Voice-say flow: scroll so the LAST (newest) item becomes the
            focused/centered one. LV_ANIM_OFF makes the scroll settle
@@ -6455,10 +6553,37 @@ void refresh_custom_instructions(void)
     }
     else
     {
-        /* Add or no change — keep exact same scroll position */
-        lv_obj_scroll_to_y(list, saved_scroll_y, LV_ANIM_OFF);
-        lv_obj_update_layout(list);
-        scroll_list(list, 0);
+        /* R48:先用 id 找回原本選中的那一項(它可能已經被上面新插入的 session 推到別的
+           index),精確置中 —— 這才是「位置沒變」的正確定義。 */
+        uint16_t target = (uint16_t)-1;
+        if (saved_id[0] != '\0')
+        {
+            for (uint8_t i = 0; i < list_item_count; i++)
+            {
+                if (strcmp(list_items[i].id, saved_id) == 0)
+                {
+                    target = i;
+                    break;
+                }
+            }
+        }
+        if (target != (uint16_t)-1)
+        {
+            app_scroll_target_item = target;
+            selected_item_index = target;
+            scroll_center_item(list, target);
+            lv_obj_update_layout(list);
+            scroll_list(list, 0);
+            selected_item_index = target;
+            app_scroll_target_item = target;
+        }
+        else
+        {
+            /* 找不到同一項(例如清單本來就空的)→ 沿用舊的像素還原 */
+            lv_obj_scroll_to_y(list, saved_scroll_y, LV_ANIM_OFF);
+            lv_obj_update_layout(list);
+            scroll_list(list, 0);
+        }
     }
 
     /* Recalculate input_value for indicator dots based on current
