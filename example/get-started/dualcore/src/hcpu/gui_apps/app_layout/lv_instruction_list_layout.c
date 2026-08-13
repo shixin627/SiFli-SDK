@@ -188,6 +188,17 @@ static char s_cat_filter = 0;
 static list_item_t s_cat_backup[MAX_LIST_ITEMS];
 static uint8_t s_cat_backup_count = 0;
 static bool s_cat_backup_valid = false;
+/* R55(founder 2026-08-13):左頁的麥克風 = 先開輸入框,說出來的字**即時篩上面的清單**
+   (actions 的標題 + 各設備的 session 標題);全部篩掉了才變成「開新 session」那一個選項。
+   這是**第二層**檢視篩選,跟 s_cat_filter 疊在一起用同一份 s_cat_backup 打包 —— 另外開
+   一份備份是 sizeof(list_items) ≈ 8KB 的 BSS,而這台的 heap 已經吃緊(進滑鼠頁的大配置
+   失敗就 NULL deref)。空字串 = 不篩。 */
+static char s_text_filter[48] = {0};
+static void pack_text_filter(void); /* 定義在後段(要用 item/字串輔助函式);refresh 出口呼叫 */
+static bool search_freeze_active(void); /* 搜尋期間清單凍結(R60) */
+/* 篩不到任何東西時補上的合成列:點它 = 用目前控制中的那台開新 session。id 用一個
+   list_items[] 不可能出現的字串(手機 action id / conv:<id> 都不會長這樣)。 */
+#define NEW_SESSION_ITEM_ID "\x01newsession"
 /* The @/-view the user is CURRENTLY looking at ('@' / '/' / 0=all). Distinct from
    s_cat_filter (the filter physically applied to list_items[] right now, which a phone
    push transiently lifts to 0 via cat_filter_restore_full). s_view_cat PERSISTS across a
@@ -891,11 +902,26 @@ static void create_indicator_dots(lv_obj_t *parent)
            仍對 img 操作,label 不能頂替它),設備名 label 掛在 dot_bg 上、右緣
            對齊往左長(框寬=文字寬,R15 教訓:別靠 text_align),淡出在
            update_indicator_dots_position 跟 dot 同步。 */
-        if (strncmp(list_items[i].id, "conv:", 5) == 0)
+        /* R61:「開新對話」列也走同一套 —— 右緣圓框放的是**要開在哪一台**的名字
+           (founder:「右邊的圖片裡面就放設備名稱」),兩台設備就是兩列同名選項、
+           只有右邊的設備名不同。 */
+        if (strncmp(list_items[i].id, "conv:", 5) == 0 ||
+            strncmp(list_items[i].id, NEW_SESSION_ITEM_ID,
+                    sizeof(NEW_SESSION_ITEM_ID) - 1) == 0)
         {
             extern const char *session_list_device_name_for(const char *conv_id);
+            extern const char *session_list_device_name_of(const char *device_id);
             extern lv_font_t *lvsf_get_font_from_size(uint16_t size);
-            const char *dev_name = session_list_device_name_for(list_items[i].id);
+            const char *dev_name;
+            if (list_items[i].id[0] == NEW_SESSION_ITEM_ID[0])
+            {
+                const char *did = list_items[i].id + (sizeof(NEW_SESSION_ITEM_ID) - 1);
+                dev_name = (*did == ':') ? session_list_device_name_of(did + 1) : NULL;
+            }
+            else
+            {
+                dev_name = session_list_device_name_for(list_items[i].id);
+            }
             if (dev_name != NULL && dev_name[0])
             {
                 lv_obj_add_flag(dot, LV_OBJ_FLAG_HIDDEN);
@@ -1006,6 +1032,19 @@ void instruction_list_set_voice_transcript(const char *text)
     {
         lv_label_set_text(s_voice_transcript_label, text ? text : "");
         voice_transcript_scroll_to_bottom();   /* keep the latest 2 rows in view */
+    }
+    /* R55:左頁(session 檢視)裡,說出來的字同時是**清單的搜尋字** —— actions 標題與
+       各設備的 session 標題一起篩,都沒中就只剩「開新 session」。其他情境(錶盤 skaibar、
+       滑鼠頁)維持原本行為:那裡的查詢是送到手機做的,不在手錶本地篩。 */
+    if (s_session_page_mode)
+    {
+        extern void instruction_list_set_text_filter(const char *text);
+        /* 「Listening」是開麥克風時的**佔位字**,不是使用者說的話 —— log 實測它會一路
+           走到這裡把清單篩成空的(founder 2026-08-13:[flt] set "Listening")。 */
+        const char *placeholder = LV_EXT_STR_GET_BY_KEY(listening, "Listening");
+        if (text != NULL && placeholder != NULL && strcmp(text, placeholder) == 0)
+            return;
+        instruction_list_set_text_filter(text);
     }
 }
 
@@ -3423,15 +3462,15 @@ static void mic_bar_event_cb(lv_event_t *evt)
         s_mic_lp_consumed = false;
         return;
     }
+    /* 這顆 tap 的去向只有兩種,兩邊都要看得見 —— 「按了沒反應」查起來最花時間的就是
+       分不出「事件沒進來」和「進來了走錯分支」(founder 2026-08-13)。 */
+    LOG_W("[mic] tap session_page=%d", (int)s_session_page_mode);
     /* ADR-0020 R8:左頁 session 檢視中,麥克風 = 直接開新 session(founder R6:
        「點麥克風也是直接去開新的 session」)。清單推回來後 session pager 自動
        走進聊天室。 */
-    if (s_session_page_mode)
-    {
-        extern void session_list_open_new_for_device(const char *device_id);
-        session_list_open_new_for_device(NULL);
-        return;
-    }
+    /* R55(founder 2026-08-13 改版):麥克風**先開輸入框**,說的字即時篩上面的清單;
+       篩不到才出現「開新 session」那一項,由它去建。所以這裡不再直接建 session ——
+       直接建的話,想找既有的 session / action 就沒有入口了。 */
     /* Toggle by the box's ACTUAL visibility, not the is_open flag — the flag can
        get stuck true (e.g. navigating away while open without a close), which made
        a tap take the close branch and silently do nothing instead of opening. The
@@ -3893,6 +3932,12 @@ static void inst_list_slide_out_done_cb(lv_anim_t *a)
 {
     (void)a;
     s_entry_landing_pending = false; /* R50:清單關了,進場落點的任務結束 */
+    /* R55:搜尋字不跨開關殘留 —— 下次拉開要看到完整清單,不是上次講到一半的篩選結果。 */
+    if (s_text_filter[0] != '\0')
+    {
+        s_text_filter[0] = '\0';
+        cat_filter_restore_full();
+    }
     if (p_instruction_list_layout &&
         p_instruction_list_layout->p_instruction_list_bg &&
         lv_obj_is_valid(p_instruction_list_layout->p_instruction_list_bg))
@@ -4149,6 +4194,16 @@ void instruction_list_reveal_drag_begin(void)
                                  s_reveal_from_left ? -LV_HOR_RES : LV_HOR_RES, 0);
     /* R50:這次是進場 —— 落點規則要一路管到「sessions 稍後才注入」的那次重建為止。 */
     s_entry_landing_pending = true;
+    /* R54(founder:「點 session 列表下面的麥克風沒反應」):`s_session_page_mode` 原本只在
+       **整頁 settle 到左頁**時才設(app_clock_status_bar 的 active_pos == MAIN_PAGE_TYPE_RIGHT),
+       但從錶盤邊緣拖曳拉出來的是**浮層**這條路,tileview 根本沒換頁 → 旗標留 false →
+       麥克風走「開 AI 輸入框」那條而不是開新 session。兩條路開的是同一個左頁內容,語意
+       就該一致。滑鼠模式下這個清單是被 hid_mouse 借去當 skaibar 的,維持原本行為。 */
+    {
+        extern bool lv_top_panel_mouse_mode(void);
+        if (!lv_top_panel_mouse_mode())
+            s_session_page_mode = true;
+    }
     reset_list_internal(); /* R49 起:落點 = 最新的 session,沒有 session 才是清單最後一項 */
     /* R47(founder 定案:「應該是把定位拿掉,先回到原本不做定位的版本」):R9 的
        focus_first_action 整個退場 —— 兩條 reveal 都不定位,落點就是 reset_list_internal
@@ -5182,8 +5237,92 @@ static void flash_instruction_label(lv_obj_t *label)
 
 /* 執行一個 list item(點擊本體)。從浮層的 click cb 與 ADR-0020 左頁的
    instruction_list_activate_index 兩條路進來,行為完全一致。 */
+/* R65(founder:「點了 ANDREW 的 NEW SESSION 卻進到 123++」;log 實證同一下點擊產生**兩次**
+   啟動:先是正確的 `newsession:3ad19ddc`,3.6 秒後又一次 `conv:hermes:…123++`):開新對話會
+   收輸入框、清搜尋字,清單因此重建 —— 重建後停在同一個位置的是**別的項目**,而那顆還在
+   路上的點擊就落到它身上。開完新對話後短暫吃掉後續啟動,讓那顆遲來的點擊無處可去。 */
+static rt_tick_t s_activate_suppress_until = 0;
+
+/* R70:開新對話時要「當場」進聊天室,但**不能**在點擊事件處理中途動 UI 樹(清單正被收掉)。
+   把標題存下來,用 lv_async_call 延到這一輪處理結束後的下一輪再建浮層。 */
+static char s_pending_chat_title[64] = {0};
+
+static void open_pending_chat_async_cb(void *unused)
+{
+    (void)unused;
+    if (s_pending_chat_title[0] == '\0')
+        return;
+    extern void chat_page_open(const char *title, const char *icon_src);
+    extern void chat_page_seed_local_message(const char *text);
+    extern bool chat_page_is_open(void);
+    /* R71(founder:「新開的 SESSION 聊天室不能從左邊緣往右滑退出」):左緣返回**只有在 Main
+       處於「清單」狀態時才武裝**(watch_demo.c 的 ESC 分支與 check_is_at_instruction_list
+       都靠這個)。點「開新對話」時清單已經被收掉 → 掉回錶盤狀態 → 手勢沒掛上,房間就出不去。
+       既有的 @-聊天室是靠「清單全程留著、被不透明面板蓋住」來保住手勢的,這條路照做。 */
+    if (!instruction_list_is_visible())
+        instruction_list_open_browse();
+    if (!chat_page_is_open())
+        chat_page_open(s_pending_chat_title, NULL);
+    chat_page_seed_local_message(s_pending_chat_title); /* 自己那句先顯示,別讓房間空著 */
+    s_pending_chat_title[0] = '\0';
+}
+
+void instruction_list_open_pending_chat(const char *title)
+{
+    if (title == NULL || title[0] == '\0')
+        return;
+    strncpy(s_pending_chat_title, title, sizeof(s_pending_chat_title) - 1);
+    s_pending_chat_title[sizeof(s_pending_chat_title) - 1] = '\0';
+    lv_async_call(open_pending_chat_async_cb, NULL);
+}
+
 static void list_item_activate(list_item_t *item)
 {
+    if (s_activate_suppress_until != 0 &&
+        (int32_t)(s_activate_suppress_until - rt_tick_get()) > 0) /* 有號差:tick 回卷也成立 */
+    {
+        LOG_W("[act] suppressed \"%s\" (just opened a new session)", item->title);
+        return;
+    }
+    s_activate_suppress_until = 0;
+    LOG_W("[act] id=\"%s\" title=\"%s\"", item->id, item->title);
+    /* R55:合成的「開新 session」列 —— 篩不到任何既有項目時才存在。點它就用目前控制中
+       的那台電腦開新 session(清單推回來後 session pager 自己走進聊天室),然後收掉輸入框
+       與文字篩選,讓清單回到完整狀態。 */
+    if (strncmp(item->id, NEW_SESSION_ITEM_ID, sizeof(NEW_SESSION_ITEM_ID) - 1) == 0)
+    {
+        /* R61:id = NEW_SESSION_ITEM_ID[":"<device_id>] —— 有帶設備就開在那台(使用者
+           在畫面上挑的那一列),沒帶就交給 pager 的預設目標。 */
+        const char *dev = item->id + (sizeof(NEW_SESSION_ITEM_ID) - 1);
+        if (*dev == ':')
+            dev++;
+        else
+            dev = NULL;
+        extern void session_list_open_new_with_prompt(const char *device_id,
+                                                      const char *prompt);
+        extern void instruction_list_set_text_filter(const char *text);
+        /* R58:講的那句話沒中任何既有項目 → 它就是新對話的第一句,一起帶過去。 */
+        session_list_open_new_with_prompt(dev, s_text_filter);
+        /* R70(founder:「連聊天室都沒進去,電腦也沒開新 SESSION」;log:`fatal error on thread:
+           app_watc` PC=0x2000072c):R68/R69 在這裡**當場**開聊天室浮層並塞入第一則訊息,好蓋掉
+           桌面建立那 4 秒的錶盤空窗。功能是對的,**時機**是錯的 —— 那是在清單自己的點擊處理
+           中途去建 layer_top 浮層,而同一時間清單正要被收掉(close_ai_widget 會把它帶走),
+           GUI 執行緒就當在半拆半建的物件樹上。改成把同一件事丟給 lv_async_call:等這一輪
+           事件處理**完全結束**、清單也收乾淨了,下一輪再開房間。 */
+        {
+            extern void instruction_list_open_pending_chat(const char *title);
+            instruction_list_open_pending_chat(s_text_filter);
+        }
+        /* R57:只收輸入框,**清單保持開著** —— session 是非同步建的(手機轉給桌面、桌面回
+           推清單才有那一列),清單一關就沒人帶使用者走進聊天室了。清單會在 chat_page 開起來
+           時自然被蓋掉。 */
+        if (is_open_instruction_list_ai)
+            close_ai_widget();
+        instruction_list_set_text_filter(NULL);
+        /* R65:接下來 1 秒內的啟動一律吃掉 —— 清單正在重建,遲到的那顆點擊會落在別的項目上。 */
+        s_activate_suppress_until = rt_tick_get() + rt_tick_from_millisecond(1000);
+        return;
+    }
 
     /* A tapped @-contact opens the in-watch chat room (mirror the desktop @-contact
        tap). The merged mixed list has no separate @ view, so this keys off the tapped
@@ -5310,6 +5449,7 @@ static void list_item_click_event_cb(lv_event_t *evt)
 /** ADR-0020:左頁 actions 區段的點擊入口。 */
 void instruction_list_activate_index(uint8_t i)
 {
+    LOG_W("[act] index=%u cnt=%u", (unsigned)i, (unsigned)list_item_count);
     if (i >= list_item_count)
         return;
     list_item_activate(&list_items[i]);
@@ -5317,6 +5457,8 @@ void instruction_list_activate_index(uint8_t i)
 
 static void on_tap(void)
 {
+    LOG_W("[act] on_tap sel=%u cnt=%u", (unsigned)selected_item_index,
+          (unsigned)list_item_count);
     if (selected_item_index >= list_item_count)
         return;
 
@@ -5638,8 +5780,21 @@ static void ai_bar_event_cb(lv_event_t *evt)
  * Custom Instruction API
  ******************************************************************************/
 
+/* R60(founder:「往上滑到別的選項會瞬間跳回最下面那個 NEW SESSION」+「點了還是沒反應」):
+   語音搜尋開著的時候,**清單凍結**。手機每 5 秒 replace-all 一次,我在推播之後重篩 ——
+   於是每 5 秒把選中項與捲動位置重設一次(你的上滑被彈回去),而重建被 500ms 防抖延後的
+   那段空窗裡,陣列與畫面對不起來(你點到的是別人)。與其在每條推播路徑後面補救,不如讓
+   搜尋期間的清單就是一份靜態快照:推播照收(佇列留著),只是先不套用。搜尋一結束,
+   cat_filter_restore_full 把搜尋前的完整清單放回來,下一次推播(最多 5 秒)就補上最新內容。 */
+static bool search_freeze_active(void)
+{
+    return s_text_filter[0] != '\0';
+}
+
 void clear_custom_instructions(void)
 {
+    if (search_freeze_active())
+        return;
     /* BATCH replace (0x6B) clears here before re-appending. A clear is always a
        phone push, so enter PHONE mode and treat the link as connected; any stale
        disconnect-filter snapshot is now superseded by the incoming list. */
@@ -5740,6 +5895,8 @@ void add_or_update_custom_instruction(const char *id, const char *title,
                                       uint32_t interval_sec, bool enabled,
                                       uint32_t version, const char *open_app)
 {
+    if (search_freeze_active())
+        return; /* R60:搜尋期間清單凍結 —— 見 search_freeze_active 的說明 */
     /* A transient category view filter (@ / /) re-packs list_items[] too — lift it
        first so the push resolves against the real list (the disconnect restore
        below then unwinds the outer layer). */
@@ -6409,6 +6566,11 @@ void refresh_custom_instructions(void)
         instruction_list_mark_ui_rebuilt();
     }
 
+    /* R56:重建的共同出口 —— 內容不管是誰換的(手機 replace-all、session 注入、分類篩選),
+       畫出來之前都在這裡套用一次語音搜尋。pack_text_filter 只動陣列、不再呼叫 refresh,
+       所以不會遞迴。 */
+    pack_text_filter();
+
     lv_obj_t *list = p_instruction_list_layout->list;
 
     /* 先刪除舊的指示點（它們是 bg 的子物件，lv_obj_clean(list) 不會刪到） */
@@ -6496,6 +6658,14 @@ void refresh_custom_instructions(void)
 
     /* Restore scroll position */
     old_selected_item_index = (uint16_t)-1;
+    /* R64(founder:「滑到上面 ANDREW 那列會一直跳回下面 DESKTOP 那列」):語音搜尋開著時,
+       清單就是使用者正在挑的那幾個選項 —— 任何自動歸位(進場落點、re-home 到最後一項)都
+       是在跟他的手指搶。搜尋期間一律走「還原原本選中的那一項」(下面的 id 比對分支)。 */
+    if (s_text_filter[0] != '\0')
+    {
+        s_entry_landing_pending = false;
+        s_force_scroll_to_last = false;
+    }
     if (s_entry_landing_pending && list_item_count > 0)
     {
         /* R50:這次重建屬於「剛進場」 → 重新套用落點規則(最新的 session,沒有就最後一項),
@@ -6936,6 +7106,8 @@ static lv_timer_t *s_inst_op_drain_timer = NULL;
 static void inst_op_drain_tick_cb(lv_timer_t *t)
 {
     (void)t;
+    if (search_freeze_active())
+        return; /* R60:搜尋期間不套用推播,佇列留著,結束後照常補上 */
     extern void apply_pending_instruction_batch(void);
     apply_pending_instruction_batch();
     if (s_pending_refresh_timer != NULL &&
@@ -7486,12 +7658,170 @@ static void cat_filter_restore_full(void)
         s_cat_backup_valid = false;
     }
     s_cat_filter = 0;
+    /* R62(founder:「為什麼他一直當機?」):R59 曾在這裡直接重新打包,好讓陣列與畫面一致 ——
+       但這個函式會被非 refresh 的路徑呼叫,於是**在沒有重建 UI 的情況下改動了清單長度**。
+       右緣圓框(indicator_dots[])、開關(switch_objs[])這些物件陣列是照舊長度建的,其他
+       程式碼卻照新長度迭代 → 取到已不存在的物件指標。清單長度只能在 refresh 裡跟著 UI
+       一起變。R60 的「搜尋期間凍結推播」已經從源頭擋掉那個不一致,這裡不必再打包。 */
 }
 
 /* Apply (cat '@'/'/') or clear (cat 0) the view filter and rebuild the UI.
    Re-packs list_items[] to the matching subset over a full-list snapshot, keeping
    the pinned prefix — mirrors instruction_list_set_phone_connected so scroll /
    tap / indicator-dots keep working on the shorter contiguous array unchanged. */
+/* R55:大小寫不敏感的子字串比對。中文沒有大小寫,UTF-8 位元組序列直接比就對了;
+   英文 action 名稱則要忽略大小寫,不然「打開 Spotify」講成小寫就篩不到。 */
+static bool text_contains_ci(const char *hay, const char *needle)
+{
+    if (needle == NULL || needle[0] == '\0')
+        return true;
+    if (hay == NULL || hay[0] == '\0')
+        return false;
+    for (const char *h = hay; *h; h++)
+    {
+        const char *a = h, *b = needle;
+        while (*a && *b)
+        {
+            char ca = *a, cb = *b;
+            if (ca >= 'A' && ca <= 'Z') ca = (char)(ca - 'A' + 'a');
+            if (cb >= 'A' && cb <= 'Z') cb = (char)(cb - 'A' + 'a');
+            if (ca != cb)
+                break;
+            a++; b++;
+        }
+        if (*b == '\0')
+            return true;
+    }
+    return false;
+}
+
+/* R56(founder 第二輪:「測試功能/111/123++ 都還在,還多了一堆問 SKAI」;log 證明
+   `pack in=5 out=1` 有跑、畫面卻沒變):在「設定篩選」那一刻改陣列是錯的層級 ——
+   手機每 5 秒 replace-all 一次,那條路自己會 `cat_filter_restore_full()` 把全清單放回來
+   再重建。跟一條持續重寫同一個陣列的資料流搶,只會補完一個路徑漏下一個。
+   改成在**所有重建的共同出口** refresh_custom_instructions 裡套用:不管內容是誰重建的、
+   走哪條路徑,畫出來之前都會先被篩過一次。 */
+static void pack_text_filter(void)
+{
+    if (s_text_filter[0] == '\0')
+        return;
+    if (!s_cat_backup_valid)
+    {
+        memcpy(s_cat_backup, list_items, sizeof(list_items));
+        s_cat_backup_count = list_item_count;
+        s_cat_backup_valid = true;
+    }
+    uint8_t w = 0;
+    bool has_new_session_row = false;
+    for (uint8_t r = 0; r < list_item_count; r++)
+    {
+        /* R63(founder:「為什麼他一直當機?」;log:系統還活著、只有畫面卡住):合成的
+           「開新對話」列標題含有搜尋字,所以**下一次打包時它自己也會通過比對留下來**,
+           然後下面又補一整組 → 每次刷新多 N 列,很快撐到 MAX_LIST_ITEMS,GUI 執行緒被
+           反覆重建整份清單卡死(也就是先前看到的「一堆」選項)。認出既有的合成列、原樣
+           留下並標記已存在,就不會再追加。 */
+        if (strncmp(list_items[r].id, NEW_SESSION_ITEM_ID,
+                    sizeof(NEW_SESSION_ITEM_ID) - 1) == 0)
+        {
+            if (w != r)
+                memcpy(&list_items[w], &list_items[r], sizeof(list_item_t));
+            has_new_session_row = true;
+            w++;
+            continue;
+        }
+        /* 手機 launcher 鏡像在有查詢字時會推「問 SKAI」列。左頁 session 檢視裡那一列的
+           意思就是開新對話 → 改寫成新 session 那一項,並且只留一列(founder:「多了一堆
+           問 SKAI」)。認 title 前綴:那列由手機組字、id 就等於 title,沒有別的識別。 */
+        if (strstr(list_items[r].title, "SKAI") != NULL ||
+            strstr(list_items[r].title, "Skai") != NULL)
+        {
+            if (has_new_session_row)
+                continue;
+            if (w != r)
+                memcpy(&list_items[w], &list_items[r], sizeof(list_item_t));
+            memset(list_items[w].id, 0, sizeof(list_items[w].id));
+            strncpy(list_items[w].id, NEW_SESSION_ITEM_ID, sizeof(list_items[w].id) - 1);
+            snprintf(list_items[w].title, sizeof(list_items[w].title), "%s %s",
+                     LV_EXT_STR_GET_BY_KEY(new_session, "New session"), s_text_filter);
+            has_new_session_row = true;
+            w++;
+            continue;
+        }
+        if (!text_contains_ci(list_items[r].title, s_text_filter))
+            continue;
+        if (w != r)
+            memcpy(&list_items[w], &list_items[r], sizeof(list_item_t));
+        w++;
+    }
+    if (!has_new_session_row)
+    {
+        /* R61:一個都沒中 → **每一台已知桌面各一列**「開新對話」,右緣圓框放設備名
+           (create_indicator_dots 會依 id 前綴去查),使用者自己挑開在哪台。設備 id 直接
+           編在 item id 後面,啟動時解出來用,不必另外存對照表。一台設備都沒有時仍給一列
+           (id 不帶設備),由 pager 的預設目標決定 —— 總要有一條出路。 */
+        extern int session_list_device_count(void);
+        extern const char *session_list_device_id_at(int i);
+        int dev_n = session_list_device_count();
+        if (dev_n <= 0)
+        {
+            if (w < MAX_LIST_ITEMS)
+            {
+                memset(&list_items[w], 0, sizeof(list_item_t));
+                strncpy(list_items[w].id, NEW_SESSION_ITEM_ID, sizeof(list_items[w].id) - 1);
+                snprintf(list_items[w].title, sizeof(list_items[w].title), "%s %s",
+                         LV_EXT_STR_GET_BY_KEY(new_session, "New session"), s_text_filter);
+                w++;
+            }
+        }
+        else
+        {
+            for (int d = 0; d < dev_n && w < MAX_LIST_ITEMS; d++)
+            {
+                const char *did = session_list_device_id_at(d);
+                if (did == NULL || did[0] == '\0')
+                    continue;
+                memset(&list_items[w], 0, sizeof(list_item_t));
+                snprintf(list_items[w].id, sizeof(list_items[w].id), "%s:%s",
+                         NEW_SESSION_ITEM_ID, did);
+                snprintf(list_items[w].title, sizeof(list_items[w].title), "%s %s",
+                         LV_EXT_STR_GET_BY_KEY(new_session, "New session"), s_text_filter);
+                w++;
+            }
+        }
+    }
+    LOG_W("[flt] pack in=%u out=%u", (unsigned)list_item_count, (unsigned)w);
+    list_item_count = w;
+    if (selected_item_index >= list_item_count)
+        selected_item_index = list_item_count ? (list_item_count - 1) : 0;
+}
+
+/* R55:文字篩選層 —— 由輸入框的轉錄驅動。空字串 = 清掉,回到原本的清單。 */
+void instruction_list_set_text_filter(const char *text)
+{
+    char next[sizeof(s_text_filter)];
+    next[0] = '\0';
+    if (text != NULL)
+    {
+        strncpy(next, text, sizeof(next) - 1);
+        next[sizeof(next) - 1] = '\0';
+    }
+    if (strcmp(next, s_text_filter) == 0)
+        return; /* 轉錄會重複推同一串:沒變就別重繪 */
+    strncpy(s_text_filter, next, sizeof(s_text_filter) - 1);
+    s_text_filter[sizeof(s_text_filter) - 1] = '\0';
+    LOG_W("[flt] set \"%s\" (cat=%d vis=%d)", s_text_filter, (int)s_cat_filter,
+          (int)instruction_list_is_visible());
+    /* 清掉篩選 → 先把完整清單放回來;有篩選 → refresh 出口會套用(pack_text_filter)。 */
+    if (s_text_filter[0] == '\0')
+        cat_filter_restore_full();
+    refresh_custom_instructions();
+}
+
+const char *instruction_list_text_filter(void)
+{
+    return s_text_filter;
+}
+
 static void instruction_list_set_category_filter(char cat)
 {
     /* Always re-apply + rebuild (no early-return on an unchanged filter): a close
@@ -7537,6 +7867,17 @@ static void instruction_list_set_category_filter(char cat)
    open — the caller then does its own plain refresh. */
 bool instruction_list_reapply_view_filter(void)
 {
+    /* R55(founder:「session 測試功能/111/123++ 都還是出現」):手機的 replace-all 會把
+       list_items[] 整份換掉、並經 cat_filter_restore_full 把篩選解除 —— 使用者正在用語音
+       篩清單時,每 5 秒一次的推播就把篩掉的東西全放回來。文字篩選跟 @/ 檢視一樣要在推播
+       之後重新套用。 */
+    LOG_W("[flt] reapply text=\"%s\" cat=%d vis=%d", s_text_filter, (int)s_view_cat,
+          (int)instruction_list_is_visible());
+    if (s_text_filter[0] != '\0' && instruction_list_is_visible())
+    {
+        instruction_list_set_category_filter(s_view_cat);
+        return true;
+    }
     if (s_view_cat != 0 && instruction_list_is_visible())
     {
         instruction_list_set_category_filter(s_view_cat); /* re-packs + refreshes */

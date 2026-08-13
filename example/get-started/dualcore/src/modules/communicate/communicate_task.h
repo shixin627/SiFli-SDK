@@ -148,6 +148,7 @@ bool commu_send_conv_send(const char *text);                                 /* 
 bool commu_send_conv_close(void);                                            /* -> KEY_CONV_CLOSE (0x11) leave the chat room (back) */
 bool commu_send_conv_list_req(const char *device);                           /* -> KEY_CONV_LIST_REQ (0x21) (re)push sessions; NULL/"" = every desktop */
 bool commu_send_conv_new(const char *device);                                /* -> KEY_CONV_NEW  (0x24) create a session on that desktop (answered by KEY_CONV_LIST) */
+bool commu_send_conv_new_ex(const char *device, const char *text);           /* -> KEY_CONV_NEW  (0x24) {"device":..,"text":".."} 帶第一句去建 —— Hermes 只在有訊息後才落地,空的建立等於沒發生 */
 
 /* TV remote (APP_ID_TV_REMOTE) -> KEY_TV_CONTROL (0x22) {"cmd":"<verb>"}.
    Brand-neutral verbs only — power/up/down/left/right/ok/back/home/volumeUp/

@@ -216,6 +216,11 @@ static void sp_stop_and_send(void)
     }
 }
 
+/* R58:等 session 建好、走進聊天室時要補送的開場白(空 = 沒有)。 */
+static char s_await_prompt[192] = {0};
+/* R67:送出建立請求的時刻 —— 走進聊天室只在這之後 30 秒內成立。 */
+static rt_tick_t s_await_tick = 0;
+
 /* LIST 層麥克風/滑鼠頁 skaibar 開新 session 的目標:目前控制中的那台(registry
    active),沒有就 registry 第 0 台,再沒有就已存列表的第 0 台。 */
 static const char *sp_new_session_target(void)
@@ -246,9 +251,12 @@ static bool sp_request_new_session(const char *dev_id)
         return false;
     }
     s_await_new = true;
+    s_await_tick = rt_tick_get(); /* R67:走進聊天室的時效起點 */
     strncpy(s_await_dev_id, dev_id, SESSION_ID_LEN - 1);
     s_await_dev_id[SESSION_ID_LEN - 1] = '\0';
-    if (!commu_send_conv_new(dev_id))
+    /* R66:第一句一起送去建 —— 桌面的 Hermes 只在 session 有訊息之後才落地,空的建立
+       請求不會出現在任何清單裡(2026-08-13 實測 sessions 表查無此列)。 */
+    if (!commu_send_conv_new_ex(dev_id, s_await_prompt[0] ? s_await_prompt : NULL))
     {
         s_await_new = false; /* never leave the flag armed on a failed send */
         LOG_W("conv_new send failed");
@@ -262,7 +270,24 @@ static bool sp_request_new_session(const char *dev_id)
     UI 與左頁 session 一樣 —— 呼叫端先把畫面切到左頁,清單推回來就 walk-in。 */
 void session_list_open_new_for_device(const char *device_id)
 {
+    s_await_prompt[0] = '\0';
     sp_request_new_session(device_id);
+}
+
+/** R58(founder「要」):左頁語音搜尋沒中任何既有項目時,那句話**就是**新對話的第一句 ——
+    建完 session、走進聊天室之後把它當一則訊息送出去。刻意沿用既有的 conv_open+conv_send
+    兩支,不新增 wire key:建立請求那條路(0x24)照契約不帶內容、也不回新 id,新 id 只會從
+    桌面的清單推回來,所以開場白只能在「走進去」那一刻補送。 */
+void session_list_open_new_with_prompt(const char *device_id, const char *prompt)
+{
+    s_await_prompt[0] = '\0';
+    if (prompt != NULL)
+    {
+        strncpy(s_await_prompt, prompt, sizeof(s_await_prompt) - 1);
+        s_await_prompt[sizeof(s_await_prompt) - 1] = '\0';
+    }
+    if (!sp_request_new_session(device_id))
+        s_await_prompt[0] = '\0'; /* 沒送成功就別留著,下次開新對話會被誤用 */
 }
 
 static void sp_mic_toggle(void)
@@ -628,6 +653,40 @@ static void sp_inject_sessions_into_actions(void)
 void session_list_actions_changed(void)
 {
     sp_inject_sessions_into_actions();
+}
+
+/** R61(founder:「開新 SESSION 選項先每個設備都出現一個,右邊圖片裡放設備名稱」):
+    左頁語音搜尋沒中任何東西時,要為**每一台已知的桌面**各長出一個「開新對話」——
+    使用者自己挑要開在哪台,不必猜(先前一律送去「目前控制中的那台」,實測選到的是
+    使用者根本沒在看的那台遠端電腦)。這三支是給 instruction list 組那些列用的。 */
+int session_list_device_count(void)
+{
+    return s_device_count;
+}
+
+const char *session_list_device_id_at(int i)
+{
+    if (i < 0 || i >= s_device_count)
+        return NULL;
+    return s_devices[i].id;
+}
+
+/** device id → 顯示名(「開新對話」列的右緣圓框用)。找不到回 NULL。 */
+const char *session_list_device_name_of(const char *device_id)
+{
+    if (device_id == NULL || device_id[0] == '\0')
+        return NULL;
+    for (int d = 0; d < s_device_count; d++)
+        if (strcmp(s_devices[d].id, device_id) == 0)
+            return s_devices[d].name[0] ? s_devices[d].name : NULL;
+    return NULL;
+}
+
+const char *session_list_device_name_at(int i)
+{
+    if (i < 0 || i >= s_device_count)
+        return NULL;
+    return s_devices[i].name;
 }
 
 /** conv id → 來源設備名(instruction list 畫右下角副標用)。找不到回 NULL。 */
@@ -1058,6 +1117,15 @@ void skai_sessions_on_conv_state(const uint8_t *json, uint16_t length)
 
 /* ── LVGL thread ─────────────────────────────────────────────────────────── */
 
+/* R58:走進新聊天室之後把開場白當一則訊息送出去(有才送,送完就清)。 */
+/* R66:開場白現在**隨建立請求一起送**(commu_send_conv_new_ex),桌面建 session 時就把它
+   當第一則訊息 —— 所以走進聊天室時只要把它清掉,不再補送一次(補送會變成重複訊息,而且
+   conv_open 與 conv_send 背對背還有先後競態)。 */
+static void sp_flush_await_prompt(void)
+{
+    s_await_prompt[0] = '\0';
+}
+
 static void sp_apply_list(void)
 {
     int count = s_pending_session_count;
@@ -1136,6 +1204,38 @@ static void sp_apply_list(void)
        開新 session 之後就在那個聊天室裡). Only when the tile is on screen.
        R8:聊天室 = chat_page(與點 '@' item 同一條路),不再用自有 chat 層;
        不設 s_open_id,0x12 才會路由給 chat_page。 */
+    /* R57(founder:「點了 NEW SESSION 沒進聊天室,只回到錶盤」):`s_visible` 只在**整頁
+       settle 到左頁**時才是 true;從錶盤邊緣拖曳拉出來的清單是**浮層**,分頁沒切過去 ——
+       於是 session 建好了卻沒人帶進聊天室(跟 R54 麥克風那個 bug 同源)。清單本身還開著
+       就該走進去。 */
+    {
+        extern bool instruction_list_is_visible(void);
+        LOG_W("[walkin] await=%d fresh=%d tile_visible=%d list_visible=%d",
+              (int)s_await_new, fresh, (int)s_visible, (int)instruction_list_is_visible());
+        /* R67(founder:「電腦有出現新的 SESSION 但手錶沒進聊天室,只退回錶盤」;log:
+           `await=1 fresh=0 tile_visible=0 list_visible=0`):新 session 大約 4 秒後才從桌面
+           回來,那時清單早就關了 —— 要求「當下清單還開著」等於把這條路綁在一個幾乎必然
+           不成立的條件上。語意上使用者**明確要求開一個新對話**,那就該帶他進去,跟當下
+           停在哪一頁無關。只用時效把關:超過 30 秒才回來的請求不再硬把人拉走(那時他早就
+           在做別的事了)。 */
+        bool awaited_in_time =
+            s_await_new && fresh >= 0 &&
+            (int32_t)(rt_tick_get() - s_await_tick) < (int32_t)rt_tick_from_millisecond(30000);
+        if (awaited_in_time && !s_visible)
+        {
+            s_await_new = false;
+            const session_meta_t *ns = &dev->items[fresh];
+            commu_send_conv_open(ns->title, ns->id, 0);
+            /* R68:房間可能在點下去的當下就先開了(免得使用者盯著錶盤等 4 秒)。已經開著就
+               只綁定、不重開 —— chat_page_open 會先 close 再 build,重開會是看得見的一閃。 */
+            extern bool chat_page_is_open(void);
+            extern void chat_page_open(const char *title, const char *icon_src);
+            if (!chat_page_is_open())
+                chat_page_open(ns->title[0] ? ns->title : "Session", NULL);
+            sp_flush_await_prompt();
+            return;
+        }
+    }
     if (s_await_new && fresh >= 0 && s_visible)
     {
         s_await_new = false;
@@ -1143,6 +1243,7 @@ static void sp_apply_list(void)
         commu_send_conv_open(ns->title, ns->id, 0);
         extern void chat_page_open(const char *title, const char *icon_src);
         chat_page_open(ns->title[0] ? ns->title : "Session", NULL);
+        sp_flush_await_prompt();
         return;
     }
 

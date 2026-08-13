@@ -570,7 +570,19 @@ bool commu_send_conv_list_req(const char *device)
 /* Ask [device] to create a NEW session. Expects no direct reply — the new row comes back
    in that desktop's ordinary session list (KEY_CONV_LIST). See KEY_CONV_NEW in
    communicate_parse_skailink.h for why the new id never travels on this key. */
+bool commu_send_conv_new_ex(const char *device, const char *text); /* 定義在下方(本檔不 include 自己的標頭) */
+
 bool commu_send_conv_new(const char *device)
+{
+    return commu_send_conv_new_ex(device, NULL);
+}
+
+/* [text] = 這個新對話的第一句(左頁語音搜尋沒中任何項目時,使用者講的那句話)。
+   為什麼一定要帶:桌面的 Hermes **只在 session 有了第一則訊息之後才落地**(2026-08-13
+   實測:建立回報成功、`select … from sessions` 卻查無此列)。空的建立請求等於什麼都沒
+   發生 —— 清單永遠不會出現那一列,手錶也就等不到、走不進聊天室。帶著第一句去建,
+   session 才存在得下來。 */
+bool commu_send_conv_new_ex(const char *device, const char *text)
 {
     if (device == NULL || device[0] == '\0')
     {
@@ -579,11 +591,32 @@ bool commu_send_conv_new(const char *device)
         LOG_W("send conv new: no device, refused");
         return false;
     }
-    char json[128];
-    int n = rt_snprintf(json, sizeof(json), "{\"device\":\"%s\"}", device);
+    char json[320];
+    int n;
+    if (text != NULL && text[0] != '\0')
+    {
+        /* 轉錄可能含 " 或 \ —— 逐字元跳脫,別讓一句話破壞整個 JSON。 */
+        char esc[224];
+        size_t w = 0;
+        for (const char *p = text; *p && w + 2 < sizeof(esc); p++)
+        {
+            if (*p == '"' || *p == '\\')
+                esc[w++] = '\\';
+            else if ((unsigned char)*p < 0x20)
+                continue; /* 控制字元直接丟掉 */
+            esc[w++] = *p;
+        }
+        esc[w] = '\0';
+        n = rt_snprintf(json, sizeof(json), "{\"device\":\"%s\",\"text\":\"%s\"}", device, esc);
+    }
+    else
+    {
+        n = rt_snprintf(json, sizeof(json), "{\"device\":\"%s\"}", device);
+    }
     if (n <= 0 || n >= (int)sizeof(json)) return false;
     bool ok = commu_send_string(SKAI_LINK_COMMAND_ID, KEY_CONV_NEW, json);
-    LOG_I("send conv new dev=%s -> %s", device, ok ? "ok" : "FAILED");
+    LOG_W("send conv new dev=%s textLen=%u -> %s", device,
+          (unsigned)(text ? strlen(text) : 0), ok ? "ok" : "FAILED");
     return ok;
 }
 

@@ -53,6 +53,23 @@ bool chat_page_is_open(void)
     return s_chat_panel != NULL && lv_obj_is_valid(s_chat_panel);
 }
 
+/* R69(founder:「可以先把我輸入的顯示出來」):開新對話時,session 要 ~4 秒才在桌面建好,
+   房間在那之前是空的。把使用者剛講的那句話當成一則已送出的訊息**先畫上去** —— 它本來
+   就是這個對話的第一句。等桌面的真實 conv_state 回來,apply_pending_state 會整份重畫
+   (lv_obj_clean + 依 s_pending_msgs 重建),裡面已經含有這一句,所以不會變成兩則。 */
+void chat_page_seed_local_message(const char *text)
+{
+    if (text == NULL || text[0] == '\0')
+        return;
+    s_pending_msg_count = 0; /* 這是新房間的第一句 */
+    rt_strncpy(s_pending_msgs[0].role, "user", sizeof(s_pending_msgs[0].role) - 1);
+    s_pending_msgs[0].role[sizeof(s_pending_msgs[0].role) - 1] = '\0';
+    rt_strncpy(s_pending_msgs[0].text, text, CHAT_MSG_TEXT_LEN - 1);
+    s_pending_msgs[0].text[CHAT_MSG_TEXT_LEN - 1] = '\0';
+    s_pending_msg_count = 1; /* count 最後寫(與 BLE 側同一個順序約定) */
+    chat_page_apply_pending_state();
+}
+
 /* SWIPE-BACK is handled by the watch's NATIVE left-edge back gesture (display_gesture_detect_objs
    → ESC → handle_back_event), which now checks chat_page_is_open() FIRST and closes this room —
    see watch_demo.c. This panel is left NON-clickable (below) so the edge swipe passes through to
@@ -616,6 +633,7 @@ void chat_page_close(void)
    resolve_skailink_command links against a STRONG symbol regardless. */
 void skai_chat_on_conv_state(const uint8_t *json, uint16_t length)
 {
+    LOG_W("[chat] conv_state rx len=%u open=%d", (unsigned)length, (int)chat_page_is_open());
     if (json == NULL || length == 0)
         return;
     cJSON *root = cJSON_ParseWithLength((const char *)json, length);

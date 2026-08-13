@@ -42,6 +42,10 @@ extern "C"
        LVGL_MSG_TYPE_REFRESH_CHAT, which skai_chat_on_conv_state triggers). */
     void chat_page_apply_pending_state(void);
 
+    /* 開新對話時先把使用者剛講的那句話畫成一則已送出的訊息(桌面約 4 秒後才回傳真實
+       transcript,那之前房間是空的)。真實 conv_state 回來會整份重畫,不會重複。LVGL thread。 */
+    void chat_page_seed_local_message(const char *text);
+
     /* LVGL-thread update of the live mic transcript box — called from the shared voice router
        (refresh_ai_chat_input_message's chat branch), with the running partial transcript. */
     void chat_page_set_transcript(const char *text);
