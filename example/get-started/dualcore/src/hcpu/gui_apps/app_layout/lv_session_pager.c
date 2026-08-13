@@ -1218,9 +1218,19 @@ static void sp_apply_list(void)
            不成立的條件上。語意上使用者**明確要求開一個新對話**,那就該帶他進去,跟當下
            停在哪一頁無關。只用時效把關:超過 30 秒才回來的請求不再硬把人拉走(那時他早就
            在做別的事了)。 */
+        /* R75(founder:「我人就待在房裡等,回覆還是沒出現」;log:清單 65 秒後才到,
+           30 秒時效已過 → walk-in 放棄):relay 會弄丟推送,含新列的清單常常只剩較晚的
+           重送(+45s)能到。30 秒時效的本意是「別把已經走開的使用者硬拉走」——但 pending
+           聊天室**還開著**(且不是 pager 已綁定的別間)就是使用者明確還在等這間的證據,
+           時效不適用;另設 3 分鐘硬上限兜底,免得一個爆晚的清單把人從別的事拉走。 */
+        extern bool chat_page_is_open(void);
+        bool room_still_waiting =
+            chat_page_is_open() && !s_in_chat &&
+            (int32_t)(rt_tick_get() - s_await_tick) < (int32_t)rt_tick_from_millisecond(180000);
         bool awaited_in_time =
             s_await_new && fresh >= 0 &&
-            (int32_t)(rt_tick_get() - s_await_tick) < (int32_t)rt_tick_from_millisecond(30000);
+            (room_still_waiting ||
+             (int32_t)(rt_tick_get() - s_await_tick) < (int32_t)rt_tick_from_millisecond(30000));
         if (awaited_in_time && !s_visible)
         {
             s_await_new = false;
@@ -1228,7 +1238,6 @@ static void sp_apply_list(void)
             commu_send_conv_open(ns->title, ns->id, 0);
             /* R68:房間可能在點下去的當下就先開了(免得使用者盯著錶盤等 4 秒)。已經開著就
                只綁定、不重開 —— chat_page_open 會先 close 再 build,重開會是看得見的一閃。 */
-            extern bool chat_page_is_open(void);
             extern void chat_page_open(const char *title, const char *icon_src);
             if (!chat_page_is_open())
                 chat_page_open(ns->title[0] ? ns->title : "Session", NULL);
