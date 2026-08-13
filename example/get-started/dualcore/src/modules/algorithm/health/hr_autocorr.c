@@ -516,7 +516,19 @@ static void nlms_cancel(void)
 #define SPEC_BPM_STEP     2
 #define SPEC_BINS        93
 #define SPEC_SHARP_MIN  200         /* 0.200 in per-mille                      */
-#define SPEC_RATIO_MIN  130         /* 1.30 in hundredths                      */
+#define SPEC_RATIO_MIN  150         /* 1.50 in hundredths. Raised from 130 on
+                                       2026-08-13: the daytime curve carried
+                                       20-50% outliers every day for a week
+                                       while the night was clean, and the first
+                                       daytime windows captured showed both
+                                       worst values (132 and 206 bpm) came
+                                       ENTIRELY from this fallback — the
+                                       autocorrelation refused both, correctly,
+                                       and their ratios (1.40, 1.31) merely
+                                       grazed the old bar. Night windows the
+                                       autocorrelation answers score 1.66-2.00.
+                                       Cost on 138 labelled windows: recoveries
+                                       44 -> 36, errors unchanged.             */
 
 static const int16_t SPEC_COEF_Q13[93] = {
      16255,  16237,  16218,  16198,  16177,  16155,  16131,  16107,

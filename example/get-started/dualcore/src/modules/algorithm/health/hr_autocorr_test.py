@@ -180,7 +180,18 @@ SPEC_BPM_LO, SPEC_BPM_HI, SPEC_BPM_STEP = 30, 214, 2
 # already ~4x the autocorrelation's. At 60 bpm the +-8% sharpness band still
 # spans five bins, which is what the metric needs.
 SPEC_SHARP_MIN = 0.20   # share of band energy within +-8% of the peak
-SPEC_RATIO_MIN = 1.30   # peak vs the tallest competitor outside its own skirt
+SPEC_RATIO_MIN = 1.50   # peak vs the tallest competitor outside its own skirt
+# Raised from 1.30 on 2026-08-13. The daytime curve had 20-50%% outliers every
+# day for a week while the night was clean, and the first daytime windows ever
+# captured showed why: the two worst values (132 and 206 bpm, on 2026-08-12
+# evening) came ENTIRELY from this fallback — the autocorrelation refused both,
+# correctly, and their gate values (ratio 1.40 and 1.31) merely grazed the old
+# threshold. Night windows the autocorrelation answers score 1.66-2.00.
+#
+# Cost, measured on the 138 labelled windows: recoveries fall from 44 to 36 and
+# the error count is unchanged. Benefit is measured on TWO windows, because five
+# is all the daytime material that exists — thin, and the number should be
+# revisited once a real daytime sample exists.
 
 
 def hann(n):
