@@ -37,6 +37,7 @@
 #include <rtdbg.h>
 
 #include "gui_app_pm.h" /* always — gui_is_active() gates the IMU consumer */
+#include "gesture_debug_led.h" /* stage-1 診斷燈;只寫 volatile,不碰 LVGL */
 
 // ============================================================================
 // Waveform Capture Configuration (migrated from LCPU gesture_detect.c)
@@ -845,6 +846,10 @@ static void gesture_event_capture_hcpu(uint16_t freq, time_t ts,
             {
                 notify_gesture_dataset_hcpu(rt_tick_get(), target_samples,
                                             targetWave_algo);
+                /* 診斷燈 1:視窗真的交到 stage 2 手上了。放在這裡而不是
+                   gesture_capture_report 旁邊,是因為那個報告 DROP 也會印,而燈 1
+                   要代表的正是「有東西送出去」。只寫 volatile,不碰 LVGL。 */
+                gesture_led_notify_capture();
             }
         }
         gesture_capture_report(type, cap, calculate_median_difference_accel(75),

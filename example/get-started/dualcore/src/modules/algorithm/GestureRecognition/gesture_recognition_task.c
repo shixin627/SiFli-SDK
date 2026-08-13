@@ -68,6 +68,7 @@
 #include "main_functions.h"
 #include "constants.h"
 #include "gesture_handler.h"
+#include "gesture_debug_led.h" /* stage-2 判決燈;只寫 volatile,不碰 LVGL */
 #include "watch_system_interact.h"
 #include "bloc_peripheral.h"
 #include "bloc_setting.h"
@@ -329,6 +330,13 @@ static void gesture_recognition_algorithm(gesture_data_t *gesture)
                             tap_recognition_score);
                 gesture_stage2_report(verdict);
             }
+            /* 診斷燈 2:報「模型說了什麼」,不是「UI 做了什麼」。所以放在判決一算
+               出來就點,而不是放進下面各個動作分支 —— 飛鼠模式等分支也才會亮。
+               score 1 = tap(綠)、0 = release(藍)、其他 = 認不出來(不亮)。 */
+            gesture_led_notify_verdict(
+                tap_recognition_score == 1   ? GESTURE_LED_VERDICT_TAP
+                : tap_recognition_score == 0 ? GESTURE_LED_VERDICT_RELEASE
+                                             : GESTURE_LED_VERDICT_NONE);
             if (tap_recognition_score == 1)
             {
                 if (app_control_get_mouse_mode())
@@ -434,6 +442,12 @@ static void gesture_recognition_algorithm(gesture_data_t *gesture)
                 recognize_gesture_release(release_identifyWindow);
             rt_tick_t tick_time_end = rt_tick_get();
             rt_tick_t cost_tick = tick_time_end - tick_time_start;
+            /* 診斷燈 2:RELEASE 視窗的判決。過門檻 = release(藍),否則認不出來
+               (不亮)。這條路徑產生不了 tap,所以沒有綠燈分支。 */
+            gesture_led_notify_verdict(
+                release_recognition_score > gesture_recognition_threshold
+                    ? GESTURE_LED_VERDICT_RELEASE
+                    : GESTURE_LED_VERDICT_NONE);
             if (release_recognition_score > gesture_recognition_threshold)
             {
                 handle_gesture_unlock();

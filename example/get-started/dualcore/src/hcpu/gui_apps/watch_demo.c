@@ -44,6 +44,7 @@
 #endif                  /* BSP_USING_PM */
 #include "gui_app_pm.h" /* always — gui_is_active / gui_pm_fsm referenced unconditionally */
 #include "disp_refr_governor.h"
+#include "gesture_debug_led.h"
 
 #include "data_service_subscriber.h"
 
@@ -241,6 +242,9 @@ void ui_layer_system_builder(void)
     tap_indicator_builder(lv_layer_sys(), gui_app_get_gesture_indicator());
     ungrab_indicator_builder(lv_layer_sys(), gui_app_get_gesture_indicator());
 #endif
+    /* 兩顆手勢診斷燈(擷取 | 判決)。掛在 sys layer 上,所以每一頁都看得到。
+       這裡是 GUI 執行緒,是唯一可以建 LVGL 物件的地方。 */
+    gesture_led_init();
     // create_message_toast(lv_layer_sys());
 }
 
