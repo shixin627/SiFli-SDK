@@ -101,7 +101,11 @@ jobs:
           # Detached on purpose: nothing here should move a branch pointer.
           git checkout -f --detach $target
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-          git submodule update --init --recursive
+          # No --init: tools/SiliconSchema resolves to a repo that does not
+          # exist on this fork, and nothing in the firmware build needs it.
+          # Bare `update` moves the submodules the bench already has and leaves
+          # the uninitialised ones alone.
+          git submodule update --recursive
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
       - name: Record working tree state
