@@ -211,6 +211,15 @@ void hr_set_power(uint8_t arg)
         LOG_I("PPG power request (%d) vetoed: continuous HR diag active", arg);
         return;
     }
+    /* A burst owns the light until it finishes -- see hr_service_bg_burst_active.
+     * Power-DOWN only; a redundant power-ON during a burst is the driver's
+     * existing same-mode problem, not this one's. */
+    extern bool hr_service_bg_burst_active(void);
+    if (arg == 0 && hr_service_bg_burst_active())
+    {
+        LOG_I("PPG power-down vetoed: bg_hr burst in flight");
+        return;
+    }
 #endif
 #ifdef RT_USING_PM
     rt_pm_request(PM_SLEEP_MODE_IDLE);
@@ -1747,8 +1756,27 @@ static void bg_hr_flush_bucket(uint32_t bucket_start_ts)
     for (int i = 0; i < BGHR_REASON_CNT; i++) bg_hr_bucket_reason[i] = 0;
 }
 
-/* Same gate as before, but returns the SPECIFIC reason instead of a bool so
-   the instrumentation can attribute every skipped tick. BGHR_OK => sample. */
+/* Returns the SPECIFIC reason a tick was skipped instead of a bool, so the
+   instrumentation can attribute every one. BGHR_OK => sample.
+ *
+ * WEAR DETECTION IS NO LONGER A GATE HERE (founder call, 2026-08-15: "心律量測
+ * 先不要用配戴偵測去斷,因為配戴偵測還不准"). It was measured wrong often enough to
+ * be disqualified from the decision: over 2026-08-14 02:00-19:00, a window the
+ * founder confirmed the watch never left the wrist, 42 of 96 ticks were skipped
+ * as off-wrist and never turned the LED on -- including one unbroken 5 h 37 min
+ * stretch. The mechanism is understood (a session baseline re-seeded ~9% high
+ * right after the charger, whose re-entry band then excluded 30% of genuinely
+ * worn samples, with no way back because re-entry needs motion and the wrist
+ * was asleep) but the fix belongs in wear_detect.c, and until it lands the
+ * measurement must not be hostage to it.
+ *
+ * Demoted to a LABEL: when a burst runs and finds nothing, the wear verdict is
+ * reported as the reason (@ref bg_hr_finish_burst). That is what it is actually
+ * good for -- it is only ever wrong when there IS a pulse to find, and in that
+ * case the burst now finds it and the verdict is silently overruled.
+ *
+ * The charger gate stays: on the cradle there is definitively no wrist, and it
+ * costs nothing to keep. */
 static int bg_hr_skip_reason(void)
 {
     if (hr_service_env.is_ready != RT_TRUE) return BGHR_NOT_READY;
@@ -1762,8 +1790,32 @@ static int bg_hr_skip_reason(void)
        trade-off. */
     if (battery_get_charge_state()->is_charging) return BGHR_CHARGING; /* on charger */
 #endif
-    if (!wear_detect_is_wearing()) return BGHR_NOT_WORN;               /* off wrist  */
     return BGHR_OK;
+}
+
+/* True while a background burst holds the PPG LED. wear_detect powers PPG down
+   when its probe window expires; now that bursts no longer wait for its verdict
+   the two overlap, and a probe closing mid-burst would cut the light off and
+   manufacture exactly the NO_LOCK holes this is meant to close. Consulted by
+   hr_set_power for power-DOWN requests only. */
+bool hr_service_bg_burst_active(void)
+{
+    return bg_hr_bursting == RT_TRUE;
+}
+
+/* Have we seen a real pulse recently? This replaces wear_detect as the trigger
+   for the aggressive retry (@ref BG_HR_RETRY_MS, @ref BGHR_EXTEND_MAX) -- it is
+   self-evidencing rather than inferred, and it bounds the battery cost that
+   removing the wear gate would otherwise create: a watch lying on a table never
+   locks, so it never earns the aggressive mode and stays at the plain 40 s per
+   20 min. A wrist that was reading fine a moment ago earns it, which is exactly
+   the case worth spending light on. */
+#define BGHR_PULSE_EVIDENCE_MS  (30 * 60 * 1000)
+static uint32_t bg_hr_last_ok_ms = 0;
+static bool bg_hr_pulse_recent(void)
+{
+    return bg_hr_last_ok_ms != 0 &&
+           (rt_tick_get_millisecond() - bg_hr_last_ok_ms) < BGHR_PULSE_EVIDENCE_MS;
 }
 
 static void bg_hr_finish_burst(void)
@@ -1783,6 +1835,7 @@ static void bg_hr_finish_burst(void)
      * 2-4 consecutive NO_LOCK bursts. A 40 s look at a wrist that has not
      * settled is simply too short a look. */
     if (!bg_hr_sleep_active && bg_hr_burst_extends < BGHR_EXTEND_MAX &&
+        bg_hr_pulse_recent() &&          /* a table never earns the extra light */
         (bg_hr_burst_best == 0 ||
          !curve_judge((uint32_t)time(NULL), bg_hr_burst_best, RT_NULL)))
     {
@@ -1861,6 +1914,7 @@ static void bg_hr_finish_burst(void)
             watch_sys_sync.notify_hr_sample(now_s, bg_hr_burst_best);
             bg_hr_last_published = bg_hr_burst_best;  /* baseline for next burst */
             bghr_published = true;
+            bg_hr_last_ok_ms = rt_tick_get_millisecond();  /* @ref bg_hr_pulse_recent */
             bg_hr_note(BGHR_OK);
         }
         else
@@ -1879,20 +1933,29 @@ static void bg_hr_finish_burst(void)
     }
     else
     {
-        /* Burst ran to completion but PPG never locked a valid BPM (best==0).
-           This is the single most common "missing HR point" cause during
-           sleep: motion artefact / loose fit / poor optical contact. */
-        bg_hr_note(BGHR_NO_LOCK);
+        /* Burst ran to completion but PPG never locked a valid BPM (best==0):
+           motion artefact / loose fit / poor optical contact -- or simply no
+           wrist. wear_detect no longer decides whether to measure (@ref
+           bg_hr_skip_reason) but its verdict is still the best available
+           EXPLANATION for a burst that found nothing, so it labels this one.
+           When it is wrong there was a pulse, the burst found it, and control
+           never reached here. */
+        bg_hr_note(wear_detect_is_wearing() ? BGHR_NO_LOCK : BGHR_NOT_WORN);
     }
 
     /* @ref BG_HR_RETRY_MS — a burst that put nothing on the curve keeps the
        tick short and the throttle bypassed until one does. Every exit above
        that is not a publish counts, including the curve-gate refusal: the user
        cannot tell "refused" from "never locked" by looking at the graph, and
-       both are a blank stretch that has to close. */
-    bg_hr_retry_soon = bghr_published ? RT_FALSE : RT_TRUE;
-    if (bghr_published)          bg_hr_set_period(RT_FALSE);
-    else if (!bg_hr_sleep_active) bg_hr_set_period(RT_TRUE);
+       both are a blank stretch that has to close.
+
+       Gated on recent pulse evidence rather than on the wear verdict (@ref
+       bg_hr_pulse_recent): with the wear gate gone, a watch on a table would
+       otherwise fail forever and hold the aggressive retry on forever with it. */
+    bg_hr_retry_soon = (!bghr_published && bg_hr_pulse_recent()) ? RT_TRUE : RT_FALSE;
+    if (bghr_published)              bg_hr_set_period(RT_FALSE);
+    else if (bg_hr_retry_soon && !bg_hr_sleep_active) bg_hr_set_period(RT_TRUE);
+    else                             bg_hr_set_period(RT_FALSE);
 
     /* Publish the burst's HR window for sleep_fusion (wake-veto + staging).
        The headline value is the burst's FINAL rolling median — the converged,
@@ -1921,6 +1984,12 @@ static void bg_hr_finish_burst(void)
         extern int bmi270_set_hr_accel_stream(int en);
         (void)bmi270_set_hr_accel_stream(0);   /* pairs with bg_hr_start_burst */
     }
+    /* Release the light BEFORE asking for power-down: hr_set_power vetoes a
+       power-down while this flag is up (@ref hr_service_bg_burst_active), and
+       that veto must not block the burst's own teardown. Safe to clear here --
+       the sample and period callbacks both run on the soft-timer thread, so
+       nothing can start a new burst inside this function. */
+    bg_hr_bursting = RT_FALSE;
     /* Only power down if no foreground (Exercise app) subscriber needs PPG.
        There is a tiny (two-statement) window where a subscribe on the ds_proc
        thread could flip ref_count between this read and hr_set_power(0); the
@@ -1932,7 +2001,6 @@ static void bg_hr_finish_burst(void)
         hr_set_power(0);
     }
     ppg_pi_finish();   /* finalize this burst's PI for sleep_diag capture */
-    bg_hr_bursting = RT_FALSE;
 }
 
 static void bg_hr_sample_cb(void *param)
