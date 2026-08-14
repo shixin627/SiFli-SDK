@@ -1,0 +1,92 @@
+name: Watch Bench Diagnostics
+
+# Read-only look at the bench fixture, for when a release dies on
+# "uart comN open fail" and you are not standing next to the PC.
+#
+# It answers three things the release log cannot: which COM ports the OS can
+# actually see, whether each one opens or is held by something else, and
+# whether the watch still answers MSH on the HCPU port. `version` is the only
+# thing sent — nothing here flashes, reboots or writes to the watch.
+
+on:
+  workflow_dispatch:
+    inputs:
+      flash_port:
+        description: "燒錄 COM（boot ROM download）"
+        default: "COM4"
+      hcpu_port:
+        description: "HCPU 指令/log COM"
+        default: "COM3"
+
+# Shares the release group: never probe a port while a release is using it.
+concurrency:
+  group: watch-bench
+  cancel-in-progress: false
+
+jobs:
+  diag:
+    runs-on: [self-hosted, windows, watch-bench]
+    timeout-minutes: 10
+    env:
+      IN_FLASH_PORT: ${{ inputs.flash_port }}
+      IN_HCPU_PORT: ${{ inputs.hcpu_port }}
+
+    steps:
+      - name: Enumerate serial ports
+        run: |
+          "## Bench serial ports" | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Append -Encoding utf8
+          $names = [System.IO.Ports.SerialPort]::GetPortNames()
+          if ($names) {
+            "SerialPort.GetPortNames(): $($names -join ', ')"
+          } else {
+            "SerialPort.GetPortNames(): (none — no USB serial device is enumerated)"
+          }
+          "- ports: ``$($names -join ', ')``" | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Append -Encoding utf8
+
+          # The PnP view catches a device that is present but in an error state,
+          # which GetPortNames() hides completely.
+          Get-CimInstance Win32_PnPEntity |
+            Where-Object { $_.Name -match '\(COM\d+\)' } |
+            Select-Object Name, Status, ConfigManagerErrorCode |
+            Format-Table -AutoSize | Out-String | Write-Host
+
+      - name: Try to open each port
+        run: |
+          foreach ($p in @($env:IN_FLASH_PORT, $env:IN_HCPU_PORT)) {
+            # Open/Close tells the three cases apart: "does not exist" (the
+            # watch/fixture is gone), "access denied" (a log monitor holds it,
+            # harmless for the other channel), and "opens fine".
+            try {
+              $sp = New-Object System.IO.Ports.SerialPort($p, 1000000)
+              $sp.Open()
+              $sp.Close()
+              "$p : OPEN OK"
+            } catch {
+              "$p : FAIL — $($_.Exception.Message)"
+            }
+          }
+
+      - name: Ask the watch for its version over MSH
+        continue-on-error: true
+        run: |
+          $sp = New-Object System.IO.Ports.SerialPort($env:IN_HCPU_PORT, 1000000)
+          $sp.ReadTimeout = 500
+          try { $sp.Open() } catch {
+            Write-Host "$env:IN_HCPU_PORT 打不開：$($_.Exception.Message)"
+            exit 0
+          }
+          try {
+            $sp.DiscardInBuffer()
+            $sp.WriteLine("")
+            Start-Sleep -Milliseconds 300
+            $sp.WriteLine("version")
+            $deadline = (Get-Date).AddSeconds(5)
+            $buf = ""
+            while ((Get-Date) -lt $deadline) {
+              try { $buf += $sp.ReadExisting() } catch {}
+              Start-Sleep -Milliseconds 200
+            }
+            if ($buf.Trim()) { Write-Host $buf } else {
+              Write-Host "(port 開得起來但 5 秒內沒有任何輸出 — 手錶可能沒在跑)"
+            }
+          } finally { $sp.Close() }
