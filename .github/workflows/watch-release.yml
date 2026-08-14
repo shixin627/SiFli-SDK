@@ -101,11 +101,13 @@ jobs:
           # Detached on purpose: nothing here should move a branch pointer.
           git checkout -f --detach $target
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-          # No --init: tools/SiliconSchema resolves to a repo that does not
-          # exist on this fork, and nothing in the firmware build needs it.
-          # Bare `update` moves the submodules the bench already has and leaves
-          # the uninitialised ones alone.
-          git submodule update --recursive
+          # Named explicitly rather than swept: tools/SiliconSchema is
+          # registered in the bench's .git/config but its URL resolves to a
+          # repo this fork does not have, so any blanket `submodule update`
+          # tries to clone it and aborts the release over a submodule the
+          # firmware build never touches. middleware/bluetooth is the one that
+          # matters.
+          git submodule update -- middleware/bluetooth
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
       - name: Record working tree state
