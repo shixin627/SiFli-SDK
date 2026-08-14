@@ -1158,6 +1158,14 @@ static rt_bool_t bg_hr_bursting = RT_FALSE;
 #define BG_HR_RETRY_MS       (4 * 60 * 1000)
 static rt_bool_t bg_hr_retry_soon = RT_FALSE;   /* last burst produced nothing  */
 static rt_bool_t bg_hr_period_short = RT_FALSE; /* timer is at BG_HR_RETRY_MS   */
+
+/* How many extra BG_HR_BURST_MS_AWAKE slices a failing awake burst may take
+   before giving up and letting the retry tick have it. 40 s base + 5 slices =
+   4 min of continuous reading, the same order as the sleep burst that was
+   already lengthened to converge. Beyond that the wrist is not going to yield
+   to more staring, and the LED should rest before the next attempt. */
+#define BGHR_EXTEND_MAX      5
+static uint8_t bg_hr_burst_extends = 0;
 static void bg_hr_set_period(rt_bool_t shortened);   /* defined with the timer  */
 static uint32_t bg_hr_burst_deadline_ms = 0;
 static uint32_t bg_hr_burst_start_seq = 0;   /* gh3018 HR-update seq at burst start; warm-up baseline */
@@ -1440,39 +1448,49 @@ static void curve_push(uint32_t now_s, uint8_t bpm)
     }
 }
 
-static bool curve_accept(uint32_t now_s, uint8_t bpm)
+/* Pure judgement — no state touched, so a burst still in flight can ask "is what
+   I have so far going to be published?" before deciding whether to keep reading.
+   @param reestablish out: accepted only because it confirms a refused level. */
+static bool curve_judge(uint32_t now_s, uint8_t bpm, bool *reestablish)
 {
+    if (reestablish) *reestablish = false;
+
     uint8_t live[CURVE_HIST_N]; uint8_t n = 0;
     for (uint8_t i = 0; i < s_curve_n; i++)
         if (now_s - s_curve_t[i] <= CURVE_MAX_AGE_S) live[n++] = s_curve_v[i];
+    if (n < 2) return true;                      /* no context yet -> no opinion */
 
-    bool accept = true;
-    if (n >= 2)
+    for (uint8_t i = 1; i < n; i++)              /* insertion sort, n <= 5 */
     {
-        for (uint8_t i = 1; i < n; i++)          /* insertion sort, n <= 5 */
-        {
-            uint8_t v = live[i]; int j = i - 1;
-            while (j >= 0 && live[j] > v) { live[j + 1] = live[j]; j--; }
-            live[j + 1] = v;
-        }
-        uint32_t med = live[n / 2];
-        uint32_t lo = med * CURVE_LO_PCT, hi = med * CURVE_HI_PCT;
-        uint32_t x  = (uint32_t)bpm * 100;
-        if (x <= lo || x >= hi)
-        {
-            /* off the baseline — unless the previous burst was refused at the
-               same level, in which case this is a real change, not a slip */
-            if (s_curve_pending > 0 &&
-                (uint32_t)bpm * 100 >= (uint32_t)s_curve_pending * CURVE_CONFIRM_LO &&
-                (uint32_t)bpm * 100 <= (uint32_t)s_curve_pending * CURVE_CONFIRM_HI)
-            {
-                s_curve_n = 0;                   /* re-establish, do not fight */
-            }
-            else accept = false;
-        }
+        uint8_t v = live[i]; int j = i - 1;
+        while (j >= 0 && live[j] > v) { live[j + 1] = live[j]; j--; }
+        live[j + 1] = v;
     }
+    uint32_t med = live[n / 2];
+    uint32_t x   = (uint32_t)bpm * 100;
+    if (x > med * CURVE_LO_PCT && x < med * CURVE_HI_PCT) return true;
 
-    if (!accept) { s_curve_pending = bpm; return false; }
+    /* Off the baseline — unless the previous burst was refused at this same
+       level, in which case this is a real change, not a slip. */
+    if (s_curve_pending > 0 &&
+        x >= (uint32_t)s_curve_pending * CURVE_CONFIRM_LO &&
+        x <= (uint32_t)s_curve_pending * CURVE_CONFIRM_HI)
+    {
+        if (reestablish) *reestablish = true;
+        return true;
+    }
+    return false;
+}
+
+static bool curve_accept(uint32_t now_s, uint8_t bpm)
+{
+    bool reestablish = false;
+    if (!curve_judge(now_s, bpm, &reestablish))
+    {
+        s_curve_pending = bpm;
+        return false;
+    }
+    if (reestablish) s_curve_n = 0;              /* re-seed, do not fight it */
     s_curve_pending = 0;
     curve_push(now_s, bpm);
     return true;
@@ -1750,6 +1768,30 @@ static int bg_hr_skip_reason(void)
 
 static void bg_hr_finish_burst(void)
 {
+    /* KEEP READING RATHER THAN END AND START OVER. @ref BGHR_EXTEND_MAX.
+     *
+     * Before tearing anything down, ask whether this burst is going to put a
+     * point on the curve at all -- either it never locked, or what it locked
+     * will be refused by the curve gate. If not, hold the LED on and carry on
+     * sampling instead of finishing and re-bursting later: a restart costs an
+     * LED off/on, a GH3018 re-init and the whole warm-up over again, and buys
+     * nothing the extra seconds would not have bought.
+     *
+     * The evidence that longer works is already in this file: the SLEEP burst
+     * is 3 minutes because that is "long enough to converge past a cold-start
+     * harmonic lock". Awake gets 40 s, and on 2026-08-14 that produced runs of
+     * 2-4 consecutive NO_LOCK bursts. A 40 s look at a wrist that has not
+     * settled is simply too short a look. */
+    if (!bg_hr_sleep_active && bg_hr_burst_extends < BGHR_EXTEND_MAX &&
+        (bg_hr_burst_best == 0 ||
+         !curve_judge((uint32_t)time(NULL), bg_hr_burst_best, RT_NULL)))
+    {
+        bg_hr_burst_extends++;
+        bg_hr_burst_deadline_ms += BG_HR_BURST_MS_AWAKE;
+        bg_hr_burst_ms += BG_HR_BURST_MS_AWAKE;  /* keep frame accounting honest */
+        return;                                  /* sampler is still running */
+    }
+
     /* Burst summary for on-wrist tuning (LCPU console / uart4). qmin = lowest
        Goodix valid_score this burst; correlate low qmin with spiky bursts to
        calibrate a future signal-quality gate. */
@@ -2320,6 +2362,7 @@ static void bg_hr_period_cb(void *param)
     bg_hr_burst_confi_max = 0;
     bg_hr_burst_snr_max = 0;
     bg_hr_burst_qlevel = 0;
+    bg_hr_burst_extends = 0;          /* @ref BGHR_EXTEND_MAX */
     bg_hr_burst_ms = bg_hr_sleep_active ? BG_HR_BURST_MS_SLEEP : BG_HR_BURST_MS_AWAKE;
     uint32_t bg_now_ms = rt_tick_get_millisecond();
     bg_hr_burst_start_seq = gh3018_get_hr_update_seq();  /* warm-up baseline: accept once the algo emits a NEW locked value past this */
