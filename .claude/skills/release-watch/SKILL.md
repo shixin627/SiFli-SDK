@@ -61,6 +61,13 @@ also in `_watch_build.log`, flashing errors in
   on disk, uncommitted changes included, because the Keil toolchain, the watch
   fixture and `oss_credentials.json` all live there. The run summary records
   `git rev-parse HEAD` and any dirty files — check it before publishing.
+  **The bench never pulls on its own**, so releasing work done on another
+  machine means passing `-f ref=<branch-or-sha>` (push it first): the job then
+  fetches and `checkout -f --detach`es that commit *in the same tree*, keeping
+  the untracked toolchain/credentials/fixture. `-f` discards whatever the tree
+  was carrying — normally just the RELEASE-mode flags the previous run left
+  behind — and the discarded list goes into the run summary. Leave `ref` empty
+  to keep the old behaviour.
 - **No `set_build_mode.py dev` afterwards.** The tree is left in RELEASE mode;
   switch back in the GUI (「切換到開發模式」) before resuming development.
 - **No RSSI gate.** The BLE step assigns a new MAC and verifies advertising +
