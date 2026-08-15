@@ -5937,6 +5937,8 @@ void append_text_to_mouse_input(void)
 {
     extern char *get_combined_voice2text(void);
     char *text = get_combined_voice2text();
+    /* TEMP DIAG(2026-08-16 鍵盤語音沒文字):W 級確認文字有走到滑鼠輸入列這一站。 */
+    LOG_W("[v2t] -> mouse input len=%d", text ? (int)strlen(text) : -1);
     if (text == NULL)
         return;
     lvgl_msg_t msg;

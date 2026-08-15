@@ -460,11 +460,24 @@ void interact_voice_recognition(VOICE_RECOGNITION_PAYLOAD *msgData)
 {
     if (msgData == NULL)
         return;
+    /* TEMP DIAG(2026-08-16 鍵盤語音沒文字):這隻 dev 錶 console 只印 W/E,收到轉錄與
+       路由分支全是 I/D 級看不到 —— W 級印一行「收到+各旗標」,哪個 claim 分支吃掉
+       轉錄一眼可判。定位完拿掉。 */
+    {
+        extern bool chat_page_is_open(void);
+        extern bool get_is_open_instruction_list_ai(void);
+        extern bool instruction_list_lift_input_view_open(void);
+        LOG_W("[v2t] rx hdr=%d coding=%d len=%d chat=%d spk_ai=%d lift=%d ai_open=%d",
+              (int)msgData->header, (int)get_speech_coding(), (int)msgData->length,
+              (int)chat_page_is_open(), (int)check_if_user_speaking_to_ai(),
+              (int)instruction_list_lift_input_view_open(),
+              (int)get_is_open_instruction_list_ai());
+    }
     if (get_speech_coding() != msgData->header)
     {
         /* TEMP DIAG(2026-07-31):coding 不匹配會把整筆轉錄丟掉,是「文字沒出現」的候選原因
            之一。定位完拿掉。 */
-        LOG_I("[lift_input][diag] interact_voice DROPPED: coding %d != header %d",
+        LOG_W("[lift_input][diag] interact_voice DROPPED: coding %d != header %d",
               (int)get_speech_coding(), (int)msgData->header);
         return;
     }
@@ -519,7 +532,7 @@ void interact_voice_recognition(VOICE_RECOGNITION_PAYLOAD *msgData)
         extern bool instruction_list_lift_input_view_open(void);
         bool lift_open = instruction_list_lift_input_view_open();
         /* TEMP DIAG(2026-07-31):確認轉錄有進到這條分支、以及走了哪一邊。定位完拿掉。 */
-        LOG_I("[lift_input][diag] interact_voice: MOUSE branch, lift_open=%d", (int)lift_open);
+        LOG_W("[lift_input][diag] interact_voice: MOUSE branch, lift_open=%d", (int)lift_open);
         if (lift_open && (msgData->p_msg_value == NULL || msgData->length == 0))
         {
             /* 使用者把字刪光了。handle_v2t_result() 對空 payload 直接 return,手錶自己那份
