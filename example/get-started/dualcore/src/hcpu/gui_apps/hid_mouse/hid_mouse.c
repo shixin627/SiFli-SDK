@@ -640,6 +640,11 @@ static void update_cursor_position(void);
 #define KBD_MIC_PULSE_MAX_SIZE 100
 #define KBD_MIC_PULSE_PERIOD_MS 1200
 static bool kbd_lower_is_keyboard = false; // false = mic 區顯示，true = 鍵盤顯示
+/* 2026-08-15 hosted 滑鼠 OOM 修:語音站進場只建輸入列+mic 區,圓形鍵盤(鍵盤模式 38K 裡的
+   大頭)延到使用者真的切去鍵盤站(kbd_lower_switch(true) 的 lazy 分支)才建。hosted 滑鼠
+   free 約 42K,整包建下去只剩 4.6K,隨後任何配置 lv_obj_create 回 NULL → hard fault
+   (真機兩度複現,[heap] kbd-build:after free=4672 緊接 mem manage fault)。 */
+static bool s_kbd_build_defer_wheel = false;
 // collapse 動畫進行中：擋掉外部入口（outside-click / down-arrow / drag）重複觸發
 static bool collapse_anim_running = false;
 
@@ -5371,7 +5376,12 @@ static void mouse_open_voice_station(void)
         lv_obj_del(keyboard_container);
         create_circular_keyboard_layout(kb_parent);
     }
+    /* 首次建置(kbd_ensure_built)走輕量版:語音站用不到圓形鍵盤,別為它把 heap 壓到
+       個位數 KB(hosted 滑鼠 OOM,見 s_kbd_build_defer_wheel)。已建過(上面 rebuild
+       分支)不受影響。 */
+    s_kbd_build_defer_wheel = true;
     apply_hid_mode(HID_MODE_KEYBOARD);
+    s_kbd_build_defer_wheel = false;
     if (keyboard_container != NULL)
     {
         lv_anim_del(keyboard_container, NULL);
@@ -7379,7 +7389,10 @@ static void create_keyboard_mode_ui(lv_obj_t *parent)
     lv_img_set_zoom(input_enter_img, 256);
 
     // 鍵盤 layout（內部創建 keyboard_container, custom_keyboard, 所有按鍵）
-    create_circular_keyboard_layout(parent);
+    // 語音站進場(s_kbd_build_defer_wheel)不建 —— kbd_lower_switch(true) 的 lazy
+    // 分支會在使用者真的切去鍵盤站時補建(heap 見 s_kbd_build_defer_wheel 註解)。
+    if (!s_kbd_build_defer_wheel)
+        create_circular_keyboard_layout(parent);
     if (keyboard_container)
     {
         // 預設藏起鍵盤，由下方 mic 區的右箭頭/左滑切換顯示
@@ -8318,6 +8331,23 @@ static void kbd_scroll_to_caret_async(void *unused)
 
 static void kbd_lower_switch(bool to_kbd)
 {
+    /* 2026-08-15:鍵盤輪盤是 lazy 建的(見 s_kbd_build_defer_wheel),建置要 ~21K;hosted
+       滑鼠常態只剩 ~25K,實測建到一半 heap 見底直接 hard fault。不夠就**優雅拒絕**切換
+       (短震提示、留在語音站),別讓使用者換來一次重開機。真正的解=hosted 頂部面板各頁
+       也做 R32 式釋放,掛帳。 */
+    if (to_kbd && keyboard_container == NULL)
+    {
+        rt_uint32_t total = 0, used = 0, max_used = 0;
+        rt_memory_info(&total, &used, &max_used);
+        if (total - used < 28 * 1024)
+        {
+            LOG_W("[kbd] switch to keyboard refused: free=%u < 28K (wheel build would OOM)",
+                  (unsigned)(total - used));
+            extern void motor_pattern_damping(void);
+            motor_pattern_damping();
+            return;
+        }
+    }
     kbd_bar_set_voice_box(!to_kbd);
     if (to_kbd && mouse_v2t_active)
     {
@@ -8326,6 +8356,21 @@ static void kbd_lower_switch(bool to_kbd)
 
     if (to_kbd)
     {
+        /* 語音站輕量進場(s_kbd_build_defer_wheel)沒建圓形鍵盤 —— 使用者現在真的要切
+           鍵盤站,在這裡補建(建在鍵盤 mode container 上,同 create_keyboard_mode_ui
+           的 parent);建完照走下面的升起動畫。 */
+        if (keyboard_container == NULL && mode_container[HID_MODE_KEYBOARD] != NULL)
+        {
+            kbd_pinyin_clear();
+            current_keyboard_mode = KEYBOARD_MODE_LETTERS;
+            create_circular_keyboard_layout(mode_container[HID_MODE_KEYBOARD]);
+            if (keyboard_container != NULL)
+            {
+                lv_obj_set_style_translate_y(keyboard_container, 0, 0);
+                lv_obj_align(keyboard_container, LV_ALIGN_BOTTOM_MID, 0, 0);
+                lv_obj_add_flag(keyboard_container, LV_OBJ_FLAG_HIDDEN);
+            }
+        }
         /* 語音→英文,把循環閉合(founder 2026-08-03:英文→中文→數字→語音→英文)。
            語音那一站是從數字進來的,mode 變數還停在 NUMBERS,不重建的話會回到數字鍵盤。
            要在下面的升起動畫之前重建 —— 動畫抓的是 keyboard_container,重建會換掉它。 */
@@ -10326,6 +10371,14 @@ bool hid_mouse_owns_active_target(void)
     extern bool app_control_get_mouse_mode(void);
     return (gui_app_is_actived(APP_ID_MOUSE) || app_control_get_mouse_mode()) &&
            s_dev_active_id[0] != '\0';
+}
+
+/* 公開:滑鼠的鍵盤/語音站模式是否開著。instruction_list 的 R33 加固用 —— 這段期間
+   鍵盤 UI 佔著 heap,隱藏中的共享清單不准重建(2026-08-15 真機 sys memory full)。 */
+bool hid_mouse_keyboard_mode_active(void)
+{
+    extern bool app_control_get_mouse_mode(void);
+    return app_control_get_mouse_mode() && current_hid_mode == HID_MODE_KEYBOARD;
 }
 
 /* 自有底部 bar(trackpad_mic_btn,只放 skaibar 圖)的隱藏邏輯：instruction_list 浮層 bar/

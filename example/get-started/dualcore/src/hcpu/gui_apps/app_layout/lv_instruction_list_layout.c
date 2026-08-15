@@ -3712,6 +3712,15 @@ bool instruction_list_prepare_single_device(const char *device_id)
         if (!p_instruction_list_layout)
             return false;
     }
+    /* R32/R33(2026-08-15 真機抓到「點 bar 沒有選項」):hosted 滑鼠進場會 release 列 UI
+       換 heap,此後 refresh 一律 defer —— 底下 feed 的 refresh 會靜默無效=空清單;
+       長按直開語音框(animate_open_ai_widget)那條更完全不經 open_browse 的 ensure。
+       用 for_feed 輕量版:只解除 deferral,讓 feed 的 refresh 一次建出單設備清單
+       (完整 ensure_ui 會先建舊清單再拆,heap 尖峰壓垮過聊天室,見該函式註解)。 */
+    {
+        extern void instruction_list_ensure_ui_for_feed(void);
+        instruction_list_ensure_ui_for_feed();
+    }
     s_bar_single_device = true;
     feed_single_device_options(device_id); /* 同時把 device_id 記進 s_single_device_id */
     return true;
@@ -4016,6 +4025,18 @@ static void inst_list_slide_out_done_cb(lv_anim_t *a)
     if (s_bar_single_device)
     {
         s_bar_single_device = false;
+        /* R32 heap 紀律(2026-08-15):先釋放列 UI、再還原資料 —— restore_base 的 refresh
+           會撞 R33 deferral 只還原 list_items[](不重建 9 列 UI),聊天室/觸控板才有 heap;
+           順序反過來=restore 先建 9 列、下面 release 再拆=白付一次 heap 尖峰(這尖峰在
+           聊天室第二輪把 lv_obj_create 壓到回 NULL,hard fault 實測)。 */
+        {
+            extern bool app_control_get_mouse_mode(void);
+            if (app_control_get_mouse_mode())
+            {
+                extern void instruction_list_release_ui(void);
+                instruction_list_release_ui();
+            }
+        }
         extern void instruction_list_restore_base(void);
         instruction_list_restore_base();
         /* 關鍵:把整個全域 bar overlay(s_global_bar_layer,layer_top 全螢幕)一起隱藏。滑鼠 app
@@ -5679,6 +5700,17 @@ static void reset_list_internal(void)
     {
         return;
     }
+    /* R32(2026-08-15):列 UI 已釋放(滑鼠模式抽屜收合後)—— list 本體還在但列物件/dot
+       句柄全 NULL,底下的 scroll_center_item/update dots/open_selected_widget 是懸空
+       操作。ensure 重建時 refresh 會重跑落點,這裡直接跳過。 */
+    {
+        extern bool instruction_list_ui_is_released(void);
+        if (instruction_list_ui_is_released())
+        {
+            LOG_W("[land] reset skipped (list UI released)");
+            return;
+        }
+    }
     open_scroll_motor = false;
     disable_scrolling_motor_vibrate();
     set_paused_control_with_arm(false);
@@ -6577,6 +6609,27 @@ void refresh_custom_instructions(void)
     {
         LOG_W("[R33] refresh deferred: list UI released (mouse page owns the heap)");
         return;
+    }
+    /* R33 加固(2026-08-15 真機:語音站開著時一條 refresh 把隱藏清單重建 8 列 →
+       EPIC render `sys memory is full!` → assert 重開):滑鼠的鍵盤/語音站模式佔著
+       heap 期間,清單又是**隱藏**狀態(抽屜沒開)就沒有任何理由重建 —— 不管 released
+       旗標此刻是誰清的,一律重新釋放+defer。抽屜真的要開時 prepare 的 ensure_for_feed
+       會解鎖。 */
+    {
+        extern bool hid_mouse_keyboard_mode_active(void);
+        bool list_hidden =
+            p_instruction_list_layout == NULL ||
+            p_instruction_list_layout->p_instruction_list_bg == NULL ||
+            !lv_obj_is_valid(p_instruction_list_layout->p_instruction_list_bg) ||
+            lv_obj_has_flag(p_instruction_list_layout->p_instruction_list_bg,
+                            LV_OBJ_FLAG_HIDDEN);
+        if (hid_mouse_keyboard_mode_active() && list_hidden)
+        {
+            extern void instruction_list_release_ui(void);
+            instruction_list_release_ui();
+            LOG_W("[R33] refresh deferred: keyboard mode owns the heap");
+            return;
+        }
     }
     open_scroll_motor = false;
     if (p_instruction_list_layout == NULL ||
@@ -8488,6 +8541,26 @@ void instruction_list_ensure_ui(void)
 void instruction_list_mark_ui_rebuilt(void)
 {
     s_list_ui_released = false;
+}
+
+/** 同 ensure_ui,但**不**先用當前(舊)資料重建 —— 給「呼叫端接著馬上 clear+feed 新資料」
+    的路徑(滑鼠單設備抽屜)。ensure_ui 會先把錶盤那份 9 列(含 session)整包建回來,feed
+    再拆掉重建一次:白付一次工,更重要的是 heap 尖峰 —— 滑鼠 UI+聊天室都活著時多這一份
+    舊清單就會把 lv_obj_create 壓到回 NULL(R32 記錄過的 lv_obj_class_init_obj hard
+    fault,2026-08-15 真機在聊天室第二次返回時複現)。這裡只解除 R33 deferral+清去抖,
+    讓 feed 的 refresh 直接一次建出新(較小的)單設備清單。 */
+void instruction_list_ensure_ui_for_feed(void)
+{
+    if (!s_list_ui_released)
+        return;
+    s_list_ui_released = false;
+    s_last_refresh_tick = 0;
+    if (s_pending_refresh_timer != NULL)
+    {
+        lv_timer_del(s_pending_refresh_timer);
+        s_pending_refresh_timer = NULL;
+    }
+    s_restore_rebuild = true; /* 同 ensure_ui:別把已解碼的圖丟掉(R42) */
 }
 
 /** R33:目前列的 UI 是不是處於已釋放狀態(refresh 用來決定要不要重建)。 */

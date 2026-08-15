@@ -133,6 +133,8 @@ static bool s_recording = false;
 
 static void chat_set_mic_visual(bool recording)
 {
+    /* TEMP DIAG(2026-08-15):錄音視覺(含 scrim 顯示)切換點。定位完拿掉。 */
+    LOG_W("[chat] mic visual rec=%d", (int)recording);
     /* While recording the mic glyph is REPLACED by the input box + a send glyph (founder 2026-06-29):
        hide the mic, show the box (listening hint until words land) + the send icon; reverse when idle. */
     if (s_mic_btn != NULL && lv_obj_is_valid(s_mic_btn))
@@ -367,6 +369,8 @@ static void chat_cancel_recording(void)
 
 static void chat_scrim_cb(lv_event_t *e)
 {
+    /* TEMP DIAG(2026-08-15 聊天室退不出去):scrim 有沒有把左緣手勢吃掉。定位完拿掉。 */
+    LOG_W("[chat] scrim evt=%d rec=%d", (int)lv_event_get_code(e), (int)s_recording);
     if (lv_event_get_code(e) == LV_EVENT_CLICKED)
         chat_cancel_recording();
 }
