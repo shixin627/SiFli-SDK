@@ -5386,31 +5386,11 @@ static void hw_btn_mode_cb(lv_event_t *e)
    實作刻意重用 hw_btn_mode_cb 那條已驗過的「切進鍵盤模式」序列,末端再走
    kbd_lower_switch(false) 切到語音站,不自己手刻輸入列幾何(鍵盤站與語音站的
    bar 尺寸/位置是兩套,手刻很容易變成 founder 2026-07-22 那個「下層多一個輸入框」)。 */
-/* 2026-08-15:語音站**首次**建置(輕量版 ~17.5K)+EPIC 渲染還要 ~15K 頭寸;聊天回合後
-   free 常掉到 ~31K,建完 14K 渲染直接 sys memory is full 重開(真機)。<38K 就優雅拒絕
-   (短震、留在觸控板);已建過的 re-entry 不花錢、不 gate。真解=hosted 頂部面板 R32 式
-   釋放(掛帳),那輪做完這個 gate 幾乎不會再觸發。 */
-static bool mouse_voice_station_heap_ok(void)
-{
-    if (s_kbd_ui_built)
-        return true;
-    rt_uint32_t total = 0, used = 0, max_used = 0;
-    rt_memory_info(&total, &used, &max_used);
-    if (total - used < 38 * 1024)
-    {
-        LOG_W("[voice] station refused: free=%u < 38K (build+render would OOM)",
-              (unsigned)(total - used));
-        extern void motor_pattern_damping(void);
-        motor_pattern_damping();
-        return false;
-    }
-    return true;
-}
+/* 2026-08-16 heap 根治輪之後 gate 移除:hosted 頂部面板三頁改「用時建、離場放」,
+   進場 free 常態 ~80K,原本「聊天回合後只剩 ~31K → <38K 拒絕」的處境不存在了。 */
 
 static bool mouse_open_voice_station(void)
 {
-    if (!mouse_voice_station_heap_ok())
-        return false;
     kbd_pinyin_clear();
     current_keyboard_mode = KEYBOARD_MODE_LETTERS;
     if (keyboard_container != NULL)
@@ -8377,23 +8357,9 @@ static void kbd_scroll_to_caret_async(void *unused)
 
 static void kbd_lower_switch(bool to_kbd)
 {
-    /* 2026-08-15:鍵盤輪盤是 lazy 建的(見 s_kbd_build_defer_wheel),建置要 ~21K;hosted
-       滑鼠常態只剩 ~25K,實測建到一半 heap 見底直接 hard fault。不夠就**優雅拒絕**切換
-       (短震提示、留在語音站),別讓使用者換來一次重開機。真正的解=hosted 頂部面板各頁
-       也做 R32 式釋放,掛帳。 */
-    if (to_kbd && keyboard_container == NULL)
-    {
-        rt_uint32_t total = 0, used = 0, max_used = 0;
-        rt_memory_info(&total, &used, &max_used);
-        if (total - used < 28 * 1024)
-        {
-            LOG_W("[kbd] switch to keyboard refused: free=%u < 28K (wheel build would OOM)",
-                  (unsigned)(total - used));
-            extern void motor_pattern_damping(void);
-            motor_pattern_damping();
-            return;
-        }
-    }
+    /* 2026-08-16 heap 根治輪之後 gate 移除:hosted 進場 free 常態 ~80K,輪盤建置
+       (~21K)不再有 OOM 風險;輸入法切換的低 heap 防護改在 Mode 鍵的
+       「free<60K 免並存動畫」那裡(降級而非拒絕)。 */
     kbd_bar_set_voice_box(!to_kbd);
     if (to_kbd && mouse_v2t_active)
     {

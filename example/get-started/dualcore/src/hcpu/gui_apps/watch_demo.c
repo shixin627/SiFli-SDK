@@ -127,13 +127,6 @@ static void handle_back_event(bool is_button)
     {
         lv_disp_trig_activity(NULL);
     }
-    /* TEMP DIAG(2026-08-15 聊天室退不出去):W 級,確認 ESC 有沒有進來、走哪個分支。定位完拿掉。 */
-    {
-        extern bool chat_page_is_open(void);
-        extern bool app_control_get_mouse_mode(void);
-        LOG_W("[back] esc btn=%d chat=%d mouse=%d", (int)is_button,
-              (int)chat_page_is_open(), (int)app_control_get_mouse_mode());
-    }
     /* The @-conversation chat room (lv_chat_page) is a lv_layer_top overlay ABOVE the instruction
        list — a back gesture/ESC must close IT first. Otherwise this falls through to the
        is_at_instruction_list arm below and closes the list UNDER the still-visible chat panel, so the

@@ -1874,14 +1874,6 @@ static void set_clock_main_status_opa(uint8_t opa, bool mask)
     (void)mask;
     if (lv_obj_is_valid(gaus_dial_img))
     {
-        /* 診斷用(2026-08-11):模糊圖在下拉過程中「應該是 255 卻看不到」,而這個 setter 是
-           全檔唯一改它濃度的入口。只在值真的變動時印,所以拉一次最多幾行。 */
-        static int s_last = -1;
-        if ((int)opa != s_last)
-        {
-            s_last = (int)opa;
-            LOG_W("[sp-blur] img_opa -> %d", (int)opa);
-        }
         lv_obj_set_style_img_opa(gaus_dial_img, opa,
                                  LV_PART_MAIN | LV_STATE_DEFAULT);
     }
