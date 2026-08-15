@@ -627,6 +627,14 @@ void chat_page_open(const char *title, const char *icon_src)
         extern void display_gesture_detect_objs(uint32_t idx, bool display);
         extern void lvsf_gesture_bring_to_front(void);
         display_gesture_detect_objs(0, true);
+        /* R76(founder:「聊天室底部的麥克風點了沒反應」):bring_to_front 抬的是**四條**
+           透明邊緣 bar,idx3 是整寬的 BOTTOM bar —— 跟底部麥克風完全重疊。若上一個 app
+           離開時手勢處於啟用狀態(gesture_enable_update(true) 四條全顯示),抬到面板上方
+           的底部 bar 會把 mic 的 tap 整顆吃掉(透明的,看起來就是沒反應);時好時壞取決
+           於進房前的 app 路徑。聊天室只需要左緣返回,其餘三條明確藏掉。 */
+        display_gesture_detect_objs(1, false);
+        display_gesture_detect_objs(2, false);
+        display_gesture_detect_objs(3, false);
         lvsf_gesture_bring_to_front();
     }
 
