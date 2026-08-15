@@ -644,6 +644,7 @@ static void sp_inject_sessions_into_actions(void)
             changed = true;
     }
 
+    LOG_W("[land] inject changed=%d devs=%d", (int)changed, s_device_count);
     if (changed)
         refresh_custom_instructions();
 }
@@ -1239,6 +1240,8 @@ static void sp_apply_list(void)
             /* R68:房間可能在點下去的當下就先開了(免得使用者盯著錶盤等 4 秒)。已經開著就
                只綁定、不重開 —— chat_page_open 會先 close 再 build,重開會是看得見的一閃。 */
             extern void chat_page_open(const char *title, const char *icon_src);
+            extern void chat_page_set_style_hermes(bool hermes);
+            chat_page_set_style_hermes(true); /* walk-in 只發生在 Hermes session */
             if (!chat_page_is_open())
                 chat_page_open(ns->title[0] ? ns->title : "Session", NULL);
             sp_flush_await_prompt();
@@ -1251,6 +1254,8 @@ static void sp_apply_list(void)
         const session_meta_t *ns = &dev->items[fresh];
         commu_send_conv_open(ns->title, ns->id, 0);
         extern void chat_page_open(const char *title, const char *icon_src);
+        extern void chat_page_set_style_hermes(bool hermes);
+        chat_page_set_style_hermes(true); /* walk-in 只發生在 Hermes session */
         chat_page_open(ns->title[0] ? ns->title : "Session", NULL);
         sp_flush_await_prompt();
         return;
@@ -1339,8 +1344,12 @@ void session_pager_apply_pending(void)
 {
     int kind = s_pending_kind;
     s_pending_kind = SP_PENDING_NONE;
-    if (s_root == NULL || !lv_obj_is_valid(s_root))
-        return;
+    /* R79(founder:「是不是我在進去之前拿到的 session 都不會刷上去?」):對 —— 這裡原本
+       整支被 s_root gate 擋住,pager UI 沒建(開機停在錶盤)時,收到的清單全部堆在
+       pending;首次進左頁才一台一台灌進來,落點跟著逐包跳(手電筒→A 台→B 台)。
+       清單那半(s_devices 模型 + 注入浮動 actions 清單)完全不需要 pager UI ——
+       sp_rebuild_list / walk-in / chat 分支各自有 NULL/狀態防護 —— 所以 LIST 一律照灌,
+       只有 STATE(開著的聊天室泡泡)才需要 UI。 */
 
     /* Drain EVERY desktop that has something waiting — two desktops answer nearly
        together and this callback runs once per LVGL message. */
@@ -1359,7 +1368,7 @@ void session_pager_apply_pending(void)
         sp_apply_list();
     }
 
-    if (kind == SP_PENDING_STATE)
+    if (kind == SP_PENDING_STATE && s_root != NULL && lv_obj_is_valid(s_root))
         sp_apply_state();
 }
 

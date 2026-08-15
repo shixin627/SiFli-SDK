@@ -102,6 +102,32 @@
 /* Global variables */
 VoiceProvider voice_provider;
 
+/* ── Voice-pipeline heap guard (see bloc_v2t.h doc) ───────────────────────
+   Statically-initialised recursive mutex: usable from the first caller with
+   no init-order dependency on the INIT_APP_EXPORT sequence. */
+static struct rt_mutex s_voice_pl_mutex;
+static bool s_voice_pl_mutex_inited = false;
+
+void voice_pipeline_lock(void)
+{
+    if (!s_voice_pl_mutex_inited)
+    {
+        rt_base_t level = rt_hw_interrupt_disable();
+        if (!s_voice_pl_mutex_inited)
+        {
+            rt_mutex_init(&s_voice_pl_mutex, "voice_pl", RT_IPC_FLAG_PRIO);
+            s_voice_pl_mutex_inited = true;
+        }
+        rt_hw_interrupt_enable(level);
+    }
+    rt_mutex_take(&s_voice_pl_mutex, RT_WAITING_FOREVER);
+}
+
+void voice_pipeline_unlock(void)
+{
+    rt_mutex_release(&s_voice_pl_mutex);
+}
+
 /* Static variables */
 static bool _vad_status = false;
 static int rec_fd = -1;
@@ -178,6 +204,149 @@ void opus_heap_free(void *p)
     }
 }
 
+#endif /* ENABLE_OPUS_ENCODER (heap backend below is opus-independent) */
+
+/* ── WebRTC (NS/AGC/VAD/AECM) heap backend → dedicated PSRAM memheap ──────
+   webrtc_mem.h maps the whole WebRTC package's malloc/free onto these. The old
+   mapping went to audio_mem_malloc = bare rt_malloc + RT_ASSERT on the SRAM
+   heap, which is ~99 % full during voice — and the SiFli port's AUDIO_MEM_ALLOC
+   mode makes NSX allocate ~a dozen scratch buffers PER 10 ms FRAME, so mic
+   start/processing died with "audio_mem_malloc:163 (ptr)" whenever the heap
+   couldn't serve one more block. Route it all to PSRAM instead (>1.8 MB free).
+
+   app_cache_alloc/free CANNOT back per-frame churn directly: app_cache_free is
+   deferred (64-slot queue drained only when the GPU goes idle) and overflows
+   → leak. So we grab ONE long-lived 128 KB block from the PSRAM image pool at
+   first use and run a private rt_memheap (thread-safe, frees immediately)
+   inside it. Every block gets an 8-byte header below an 8-aligned user
+   pointer: [-1]=raw base, [-2]=size<<1|origin (origin: 1=pool, 0=rt_malloc
+   fallback when the pool is full — degrades to the old behaviour instead of
+   failing). CPU-only DSP state, no DMA → cached PSRAM is safe (opus/framebuf
+   precedent). */
+#define WEBRTC_PSRAM_POOL_SIZE (128 * 1024)
+#define WEBRTC_HEAP_ALIGN 8u
+static struct rt_memheap s_webrtc_memheap;
+static volatile bool s_webrtc_heap_ready = false;
+static volatile bool s_webrtc_heap_initing = false;
+
+static void webrtc_heap_ensure(void)
+{
+    if (s_webrtc_heap_ready)
+    {
+        return;
+    }
+    bool doit = false;
+    rt_base_t lv = rt_hw_interrupt_disable();
+    if (!s_webrtc_heap_ready && !s_webrtc_heap_initing)
+    {
+        s_webrtc_heap_initing = true;
+        doit = true;
+    }
+    rt_hw_interrupt_enable(lv);
+    if (doit)
+    {
+        void *mem = app_cache_alloc(WEBRTC_PSRAM_POOL_SIZE, IMAGE_CACHE_PSRAM);
+        if (mem)
+        {
+            rt_memheap_init(&s_webrtc_memheap, "webrtc_ps", mem,
+                            WEBRTC_PSRAM_POOL_SIZE);
+            s_webrtc_heap_ready = true;
+        }
+        else
+        {
+            LOG_E("webrtc PSRAM pool alloc failed, falling back to SRAM");
+            s_webrtc_heap_initing = false; /* retry on next call */
+        }
+    }
+    else
+    {
+        /* Another thread is initialising — brief spin, then either use the
+           pool or fall back to rt_malloc for this one allocation. */
+        for (int i = 0; i < 10 && s_webrtc_heap_initing && !s_webrtc_heap_ready; i++)
+        {
+            rt_thread_mdelay(1);
+        }
+    }
+}
+
+void *webrtc_heap_malloc(uint32_t size)
+{
+    webrtc_heap_ensure();
+    uint32_t origin = 1;
+    uint8_t *raw = NULL;
+    if (s_webrtc_heap_ready)
+    {
+        raw = (uint8_t *)rt_memheap_alloc(&s_webrtc_memheap,
+                                          size + WEBRTC_HEAP_ALIGN + 8);
+    }
+    if (!raw)
+    {
+        /* Pool missing/full → SRAM system heap, i.e. the old behaviour. */
+        origin = 0;
+        raw = (uint8_t *)rt_malloc(size + WEBRTC_HEAP_ALIGN + 8);
+    }
+    if (!raw)
+    {
+        LOG_E("webrtc_heap_malloc %u failed", (unsigned)size);
+        return NULL;
+    }
+    uintptr_t aligned = ((uintptr_t)raw + 8 + (WEBRTC_HEAP_ALIGN - 1))
+                        & ~(uintptr_t)(WEBRTC_HEAP_ALIGN - 1);
+    ((void **)aligned)[-1] = raw;
+    ((uint32_t *)aligned)[-2] = (size << 1) | origin;
+    return (void *)aligned;
+}
+
+void webrtc_heap_free(void *p)
+{
+    if (!p)
+    {
+        return;
+    }
+    void *raw = ((void **)p)[-1];
+    if (((uint32_t *)p)[-2] & 1)
+    {
+        rt_memheap_free(raw);
+    }
+    else
+    {
+        rt_free(raw);
+    }
+}
+
+void *webrtc_heap_calloc(uint32_t count, uint32_t size)
+{
+    uint32_t total = count * size;
+    void *p = webrtc_heap_malloc(total);
+    if (p)
+    {
+        memset(p, 0, total);
+    }
+    return p;
+}
+
+void *webrtc_heap_realloc(void *p, uint32_t newsize)
+{
+    if (!p)
+    {
+        return webrtc_heap_malloc(newsize);
+    }
+    if (newsize == 0)
+    {
+        webrtc_heap_free(p);
+        return NULL;
+    }
+    uint32_t oldsize = ((uint32_t *)p)[-2] >> 1;
+    void *np = webrtc_heap_malloc(newsize);
+    if (np)
+    {
+        memcpy(np, p, oldsize < newsize ? oldsize : newsize);
+        webrtc_heap_free(p);
+    }
+    return np;
+}
+
+#ifdef ENABLE_OPUS_ENCODER
 static uint8_t rec_opus_output[OPUS_REC_MAX_PACKET] __attribute__((aligned(4)));
 static int16_t rec_pcm_buffer[OPUS_REC_FRAME_SIZE];
 static uint16_t rec_pcm_buffer_idx = 0;
@@ -188,14 +357,17 @@ static uint16_t rec_pcm_buffer_idx = 0;
    just returns the live encoder. */
 static OpusEncoder *opus_enc_acquire(opus_owner_t owner)
 {
+    voice_pipeline_lock();
     if (opus_enc_owner != OPUS_OWNER_NONE && opus_enc_owner != owner)
     {
         LOG_W("opus encoder busy (owner=%d), request %d denied\n",
               opus_enc_owner, owner);
+        voice_pipeline_unlock();
         return NULL;
     }
     if (shared_opus_encoder != NULL && opus_enc_owner == owner)
     {
+        voice_pipeline_unlock();
         return shared_opus_encoder;
     }
 
@@ -205,6 +377,7 @@ static OpusEncoder *opus_enc_acquire(opus_owner_t owner)
     if (err != OPUS_OK || enc == NULL)
     {
         LOG_E("opus_encoder_create failed err=%d\n", err);
+        voice_pipeline_unlock();
         return NULL;
     }
 
@@ -239,19 +412,26 @@ static OpusEncoder *opus_enc_acquire(opus_owner_t owner)
     shared_opus_encoder = enc;
     opus_enc_owner = owner;
     LOG_D("opus encoder acquired by owner=%d\n", owner);
+    voice_pipeline_unlock();
     return enc;
 }
 
-/* Release + destroy the shared encoder if `owner` holds it. Idempotent. */
+/* Release + destroy the shared encoder if `owner` holds it. Idempotent AND
+   thread-safe: GUI direct-stop and the voice_recognition AUTO_STOP event can
+   race here — swap-then-free under the pipeline lock so the loser sees NULL
+   instead of destroying the same encoder twice. */
 static void opus_enc_release(opus_owner_t owner)
 {
+    voice_pipeline_lock();
     if (opus_enc_owner == owner && shared_opus_encoder != NULL)
     {
-        opus_encoder_destroy(shared_opus_encoder);
+        OpusEncoder *enc = shared_opus_encoder;
         shared_opus_encoder = NULL;
         opus_enc_owner = OPUS_OWNER_NONE;
+        opus_encoder_destroy(enc);
         LOG_D("opus encoder released by owner=%d\n", owner);
     }
+    voice_pipeline_unlock();
 }
 #endif
 static uint32_t _voice_recording_time = 0;
@@ -346,10 +526,19 @@ static void speaking_debounce_timer_start(uint16_t seconds)
         speaking_debounce_timer = rt_timer_create(
             "speaking_debounce_timer", speaking_debounce_timer_callback, NULL,
             seconds, RT_TIMER_FLAG_ONE_SHOT);
+        if (!speaking_debounce_timer)
+        {
+            LOG_E("debounce timer create failed (no mem)");
+            return;
+        }
     }
     else
     {
+        /* Timer object now persists across sessions (see _stop) — re-apply
+           the requested period, which creation used to provide. */
+        rt_uint32_t t = seconds;
         rt_timer_stop(speaking_debounce_timer);
+        rt_timer_control(speaking_debounce_timer, RT_TIMER_CTRL_SET_TIME, &t);
     }
     rt_timer_start(speaking_debounce_timer);
     is_user_speaking = true;
@@ -362,12 +551,15 @@ static void speaking_debounce_timer_start(uint16_t seconds)
  */
 static void speaking_debounce_timer_stop(void)
 {
+    /* Keep the timer object alive across sessions: the old code NULLed the
+       handle without rt_timer_delete (one leaked timer control block per
+       session), and the audio thread's notify_vad_status could then hit
+       rt_timer_stop(NULL) → RTOS assert. Stop only; create-once forever. */
     if (speaking_debounce_timer)
     {
         is_user_speaking = false;
         LOG_D("SPEAK DEGUG TEST3");
         rt_timer_stop(speaking_debounce_timer);
-        speaking_debounce_timer = NULL;
     }
 }
 
@@ -427,12 +619,15 @@ static void notify_vad_status(bool status)
         {
             if (is_voice_recognition_notified_from_mouse)
             {
-                rt_uint32_t time_left = 500;
-                LOG_D("SPEAK DEGUG TEST4");
-                rt_timer_stop(speaking_debounce_timer);
-                rt_timer_control(speaking_debounce_timer,
-                                 RT_TIMER_CTRL_SET_TIME, &time_left);
-                rt_timer_start(speaking_debounce_timer);
+                if (speaking_debounce_timer)
+                {
+                    rt_uint32_t time_left = 500;
+                    LOG_D("SPEAK DEGUG TEST4");
+                    rt_timer_stop(speaking_debounce_timer);
+                    rt_timer_control(speaking_debounce_timer,
+                                     RT_TIMER_CTRL_SET_TIME, &time_left);
+                    rt_timer_start(speaking_debounce_timer);
+                }
                 is_voice_recognition_notified_from_mouse = false;
             }
             speaking_debounce_timer_start(500);
@@ -898,6 +1093,10 @@ void stop_voice_recording(void)
     peripheral_provider.subscribe_audio_mic_sensor(false);
 #endif
 
+    /* lvgl (prio 9) preempts audio_station (16): without the lock this flush
+       could destroy the encoder while the audio thread is inside opus_encode
+       on it, and close rec_fd under a concurrent write. */
+    voice_pipeline_lock();
 #ifdef ENABLE_OPUS_ENCODER
     // Flush remaining PCM samples if any (pad with zeros to complete last frame)
     if (shared_opus_encoder != NULL && rec_pcm_buffer_idx > 0)
@@ -932,6 +1131,7 @@ void stop_voice_recording(void)
     close(rec_fd);
     rec_fd = -1;
     rec_disk_full = false;
+    voice_pipeline_unlock();
 }
 
 const char* get_last_recording_file(void)
@@ -1109,14 +1309,23 @@ static void send_stop_listening_event(void)
  */
 static void vad_init(void)
 {
+    voice_pipeline_lock();
     if (voice_provider.vad_inst == NULL)
     {
-        voice_provider.vad_inst = WebRtcVad_Create();
-        if (voice_provider.vad_inst != NULL)
+        void *inst = WebRtcVad_Create();
+        if (inst != NULL)
         {
-            WebRtcVad_Init(voice_provider.vad_inst);
+            WebRtcVad_Init(inst);
+            voice_provider.vad_inst = inst;
+        }
+        else
+        {
+            /* Graceful refusal: the mic-send gate is `vad_inst && status`, so
+               a failed create just means no audio streams — no assert. */
+            LOG_E("vad create failed (no mem), voice input unavailable");
         }
     }
+    voice_pipeline_unlock();
 }
 
 /**
@@ -1126,11 +1335,18 @@ static void vad_init(void)
  */
 static void vad_deinit(void)
 {
-    if (voice_provider.vad_inst)
+    /* Swap-then-free under the pipeline lock. Callers race from three
+       threads (voice_recognition AUTO_STOP, lvgl direct stops, communicate
+       task interact paths); the unlocked check-then-free here was a real
+       double-free of vad_inst (rt_free MEM_USED assert, voice_re thread). */
+    voice_pipeline_lock();
+    void *inst = voice_provider.vad_inst;
+    voice_provider.vad_inst = NULL;
+    if (inst)
     {
-        WebRtcVad_Free(voice_provider.vad_inst);
-        voice_provider.vad_inst = NULL;
+        WebRtcVad_Free(inst);
     }
+    voice_pipeline_unlock();
 }
 
 /* ========== 語音辨識狀態管理函數 ========== */

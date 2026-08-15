@@ -1023,9 +1023,32 @@ void create_connection_tips(void)
 }
 
 extern void ble_dev_mgr_start_main_phone_check_timer(uint32_t interval_ms);
+
+/* R79b(founder:「開機後第一次進 session 列表落在 actions」;log:進頁前 conv_list
+   一次都沒拉過,devs=0):手錶只在「進左頁」才發第一個 conv list 請求,所以首次進場
+   永遠沒有 session 資料。連線一建立就先拉一次 —— 延遲 3 秒讓手機端 relay/桌面清單
+   ready,清單提早躺進 session pager 模型,首次進場直接落對。 */
+static lv_timer_t *s_conv_prefetch_timer = NULL;
+static void conv_prefetch_cb(lv_timer_t *t)
+{
+    (void)t;
+    s_conv_prefetch_timer = NULL; /* one-shot(repeat_count=1 自刪) */
+    extern bool commu_send_conv_list_req(const char *device);
+    extern bool get_bluetooth_connection_status(void);
+    if (get_bluetooth_connection_status())
+        commu_send_conv_list_req(NULL);
+}
+
 static void refresh_bluetooth_disconnection(bool connected)
 {
+    bool was_connected = is_bluetooth_connected;
     is_bluetooth_connected = connected;
+    if (connected && !was_connected && s_conv_prefetch_timer == NULL)
+    {
+        s_conv_prefetch_timer = lv_timer_create(conv_prefetch_cb, 3000, NULL);
+        if (s_conv_prefetch_timer)
+            lv_timer_set_repeat_count(s_conv_prefetch_timer, 1);
+    }
     /* Drive the watch-face instruction list: in PHONE mode a disconnect filters
        to the items the watch can run alone (apps + openApp instructions); a
        reconnect restores the full phone list. No-op in DEFAULT_APPS mode. */

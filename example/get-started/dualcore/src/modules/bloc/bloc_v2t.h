@@ -55,6 +55,16 @@ extern "C"
 	extern void start_voice_recognition(uint8_t intent);
 	extern void stop_voice_recognition(uint8_t intent);
 
+	/* Voice-pipeline heap guard. The mic frame processor (audio_station, prio
+	   16) writes into heap objects (VAD inst, NS/AGC insts, shared Opus
+	   encoder) that HIGHER-priority threads (peripheral 8 / lvgl 9) tear down:
+	   an unlucky preemption frees a state block mid-write → heap corruption →
+	   the rt_free (MEM_USED) / audio_mem_malloc asserts. Every use AND every
+	   free/create of those objects must hold this lock. Recursive (same thread
+	   may re-take) with priority inheritance. */
+	extern void voice_pipeline_lock(void);
+	extern void voice_pipeline_unlock(void);
+
 	/* One-shot override for the intent passed to start_voice_recognition()
 	   inside voice_recognition_entry's VOICE_RECOGNITION_START handler.
 	   The handler hardcodes V2T_INTENT_CHAT — callers that need a

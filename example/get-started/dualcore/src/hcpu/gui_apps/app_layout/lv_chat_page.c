@@ -799,6 +799,55 @@ static void chat_appr_chip_cb(lv_event_t *e)
     chat_page_apply_pending_state(); /* re-render without the chips */
 }
 
+/* ── Turn treatment(desktop ConversationPane parity, founder 2026-08-15)──
+   Hermes(AI session)房間照桌面的 Hermes desktop 畫法:**不是左右氣泡** ——
+     · 使用者的訊息 = 全寬玻璃卡片(SkGlassBgSoft 白6% 填色 + 1px SkGlassEdge 白8%
+       hairline、圓角 18、pad 12×8)
+     · AI 回覆 = 無框無底的平鋪全寬文字(長文是閱讀,不上聊天裝)
+   @聯絡人房間(WhatsApp/Messenger…)保留 iMessage 氣泡 —— 桌面的 `.messaging`
+   同款分流。以開房那一刻的 id 判別(conv: 前綴 = Hermes session)。 */
+static bool s_hermes_style = true;
+void chat_page_set_style_hermes(bool hermes)
+{
+    s_hermes_style = hermes;
+}
+
+/* Hermes 卡片/平鋪的共用塗裝。mine=true → 玻璃卡;false → 平鋪文字。 */
+static lv_obj_t *chat_add_hermes_turn(lv_obj_t *parent, const char *text, bool mine)
+{
+    lv_obj_t *card = lv_obj_create(parent);
+    lv_obj_set_width(card, lv_pct(100));
+    lv_obj_set_height(card, LV_SIZE_CONTENT);
+    lv_obj_clear_flag(card, LV_OBJ_FLAG_SCROLLABLE);
+    if (mine)
+    {
+        /* 桌面原值是 6%/8%(SkGlassBgSoft/SkGlassEdge),但手錶螢幕小、底是磨砂
+           深色,6% 的卡片跟平鋪的 AI 文字分不出來(founder 2026-08-15)——手錶
+           surface 的玻璃填色要加倍才讀得出「這是一張卡」:填 12%、hairline 18%。 */
+        lv_obj_set_style_bg_color(card, lv_color_white(), 0);
+        lv_obj_set_style_bg_opa(card, 31, 0);  /* white @12% */
+        lv_obj_set_style_border_width(card, 1, 0);
+        lv_obj_set_style_border_color(card, lv_color_white(), 0);
+        lv_obj_set_style_border_opa(card, 46, 0); /* white @18% hairline */
+        lv_obj_set_style_radius(card, 18, 0);
+        lv_obj_set_style_pad_hor(card, 12, 0);
+        lv_obj_set_style_pad_ver(card, 8, 0);
+    }
+    else
+    {
+        lv_obj_set_style_bg_opa(card, LV_OPA_TRANSP, 0);
+        lv_obj_set_style_border_width(card, 0, 0);
+        lv_obj_set_style_pad_hor(card, 2, 0);
+        lv_obj_set_style_pad_ver(card, 2, 0);
+    }
+    lv_obj_t *lbl = lv_label_create(card);
+    lv_label_set_long_mode(lbl, LV_LABEL_LONG_WRAP);
+    lv_obj_set_width(lbl, lv_pct(100));
+    lv_label_set_text(lbl, text);
+    lv_obj_set_style_text_color(lbl, lv_color_hex(0xFFFFFF), 0);
+    return card;
+}
+
 /* Render the pending clarify/approval under the transcript: the question as a THEIRS bubble, then
    one full-width tappable chip per option (bordered pill, desktop approval-buttons parity). */
 static void chat_render_pending_approval(void)
@@ -808,28 +857,9 @@ static void chat_render_pending_approval(void)
 
     if (s_appr_q[0] != '\0')
     {
-        lv_obj_t *row = lv_obj_create(s_msg_list);
-        lv_obj_set_width(row, lv_pct(100));
-        lv_obj_set_height(row, LV_SIZE_CONTENT);
-        lv_obj_set_style_bg_opa(row, LV_OPA_TRANSP, 0);
-        lv_obj_set_style_border_width(row, 0, 0);
-        lv_obj_set_style_pad_all(row, 0, 0);
-        lv_obj_clear_flag(row, LV_OBJ_FLAG_SCROLLABLE);
-        lv_obj_t *bubble = lv_obj_create(row);
-        lv_obj_set_width(bubble, LV_SIZE_CONTENT);
-        lv_obj_set_height(bubble, LV_SIZE_CONTENT);
-        lv_obj_set_style_pad_hor(bubble, 11, 0);
-        lv_obj_set_style_pad_ver(bubble, 7, 0);
-        lv_obj_set_style_radius(bubble, 21, 0);
-        lv_obj_set_style_border_width(bubble, 0, 0);
-        lv_obj_set_style_bg_color(bubble, lv_color_hex(0x2C2C2E), 0);
-        lv_obj_clear_flag(bubble, LV_OBJ_FLAG_SCROLLABLE);
-        lv_obj_align(bubble, LV_ALIGN_TOP_LEFT, 0, 0);
-        lv_obj_t *lbl = lv_label_create(bubble);
-        lv_label_set_long_mode(lbl, LV_LABEL_LONG_WRAP);
-        lv_obj_set_width(lbl, (LV_HOR_RES * 72) / 100);
-        lv_label_set_text(lbl, s_appr_q);
-        lv_obj_set_style_text_color(lbl, lv_color_hex(0xFFFFFF), 0);
+        /* Clarify 只發生在 Hermes 房:問題照桌面畫法 = 平鋪全寬文字(assistant turn),
+           不再上灰色氣泡。 */
+        chat_add_hermes_turn(s_msg_list, s_appr_q, false);
     }
 
     for (int i = 0; i < s_appr_count; i++)
@@ -893,6 +923,14 @@ void chat_page_apply_pending_state(void)
     {
         chat_msg_t *cm = &s_pending_msgs[i];
         bool mine = (strcmp(cm->role, "user") == 0 || strcmp(cm->role, "outgoing") == 0);
+
+        /* Hermes(AI)房:桌面 ConversationPane 同款 —— 使用者=全寬玻璃卡、AI=平鋪
+           全寬文字(見 chat_add_hermes_turn 的說明)。@聯絡人房走下面的氣泡。 */
+        if (s_hermes_style)
+        {
+            chat_add_hermes_turn(s_msg_list, cm->text, mine);
+            continue;
+        }
 
         /* Full-width transparent row → the bubble aligns left (them) / right (me) within it. */
         lv_obj_t *row = lv_obj_create(s_msg_list);

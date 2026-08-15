@@ -26,6 +26,11 @@ extern "C"
        const char*, or NULL) shown small before the name in the header. LVGL thread (the tap cb is). */
     void chat_page_open(const char *title, const char *icon_src);
 
+    /* Hermes(AI session)vs messaging(@聯絡人)畫風分流 — 開房前設定(桌面
+       ConversationPane 的 IsHermes 同款)。true = Hermes 平鋪風(使用者=全寬玻璃卡、
+       AI=平鋪全寬文字);false = iMessage 氣泡(左灰右藍)。 */
+    void chat_page_set_style_hermes(bool hermes);
+
     /* Tear the chat panel down (revealing the @-list underneath). Idempotent. LVGL thread. */
     void chat_page_close(void);
 
