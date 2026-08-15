@@ -9701,6 +9701,50 @@ static void kbd_enter_slide_async(void *unused)
     lv_anim_start(&a);
 }
 
+/* 2026-08-15:電腦「沒有」聚焦輸入框時,底部 bar 改開「這台電腦」的搜尋抽屜 ——
+   0x0E 讓電腦把 skaibar 叫出來(預設 Sessions 檢視=這台電腦的 session 列表),電腦面板的
+   可見列表經 deviceActions(0x03)鏡像回手錶浮層清單,底部浮層 mic 一點就開語音輸入框
+   (V2T_INTENT_SKAIBAR;手機在單設備模式下把轉錄同步 setSkaibarText 打進電腦面板,電腦
+   即時搜 sessions+actions+檔案,結果再鏡像回來 → 兩邊同步)。捲動清單=收框留選項+停語音
+   (既有 ai_widget_fade_on_scroll);點選項=commit 給電腦執行(既有路徑)。
+   direct_voice=true(長按)略過 browse 直接開語音框。回傳 false=沒有控制目標,呼叫端
+   fallback 語音站,tap 不落空。 */
+static bool mouse_open_device_search(bool direct_voice)
+{
+    extern bool instruction_list_prepare_single_device(const char *device_id);
+    extern void instruction_list_bar_set_visible(bool visible);
+    extern void instruction_list_open_browse(void);
+    extern void animate_open_ai_widget(void);
+    extern bool commu_send_skaibar_open_device(bool force_open);
+    if (!instruction_list_prepare_single_device(s_dev_active_id))
+        return false;
+    commu_send_skaibar_open_device(true);
+    instruction_list_bar_set_visible(true);
+    if (direct_voice)
+        animate_open_ai_widget();
+    else
+        instruction_list_open_browse();
+    return true;
+}
+
+/* 長按放開後 LVGL 還會補一顆 CLICKED —— 這面旗標讓 bottom_logo_cb 把它吃掉
+   (同 mic_bar 的 s_mic_lp_consumed pattern)。 */
+static bool s_logo_lp_consumed = false;
+
+static void bottom_logo_long_press_cb(lv_event_t *e)
+{
+    (void)e;
+    if (dev_active_offline())
+        return;
+    if (current_hid_mode == HID_MODE_KEYBOARD)
+        return;
+    extern bool instruction_list_remote_target_has_focus(void);
+    if (instruction_list_remote_target_has_focus())
+        return; /* 有聚焦輸入框:長按不特別處理,放開的 CLICKED 照走語音站 */
+    if (mouse_open_device_search(true)) /* 長按=直接進語音輸入 */
+        s_logo_lp_consumed = true;
+}
+
 static void bottom_logo_cb(lv_event_t *e)
 {
     (void)e;
@@ -9708,6 +9752,19 @@ static void bottom_logo_cb(lv_event_t *e)
         return;
     if (current_hid_mode == HID_MODE_KEYBOARD)
         return; /* 已經在輸入畫面 */
+    if (s_logo_lp_consumed)
+    {
+        s_logo_lp_consumed = false; /* 長按同一次按壓的放開,不再疊一次 tap 行為 */
+        return;
+    }
+    /* 電腦沒聚焦輸入框 → session/搜尋抽屜;有聚焦 → 原語音站(founder 2026-08-15)。
+       沒有控制目標時 fallback 語音站,維持 tap 必有反應。 */
+    {
+        extern bool instruction_list_remote_target_has_focus(void);
+        if (!instruction_list_remote_target_has_focus() &&
+            mouse_open_device_search(false))
+            return;
+    }
     /* founder 2026-08-11 R8:底部這張圖(hosted 顯示 skaibar_img)tap = 開**原本
        按鍵盤那個輸入模式** —— 只換圖,行為不變(R7 一度改成開 session,改回)。 */
     /* 2026-08-07 founder:「叫出輸入模式時可以看到他從下面出來嗎」——可以,
@@ -10554,6 +10611,8 @@ void lv_create_mouse_screen(lv_obj_t *scr)
     lv_obj_add_flag(s_top_logo, LV_OBJ_FLAG_ADV_HITTEST);
     lv_obj_add_event_cb(s_top_logo, chrome_hit_test_cb, LV_EVENT_HIT_TEST, NULL);
     lv_obj_add_event_cb(s_top_logo, bottom_logo_cb, LV_EVENT_CLICKED, NULL);
+    /* 長按=無聚焦輸入框時直接進語音搜尋(2026-08-15);其 CLICKED 由 s_logo_lp_consumed 吃掉 */
+    lv_obj_add_event_cb(s_top_logo, bottom_logo_long_press_cb, LV_EVENT_LONG_PRESSED, NULL);
 
     /* === APP 內建的媒體中心下拉層:整個退役 ==========================================
        2026-08-06 已先對「面板 host 模式」停建(founder:「APP 內上方的媒體中心可以不

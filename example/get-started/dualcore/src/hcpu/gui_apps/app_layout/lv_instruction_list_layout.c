@@ -1768,6 +1768,12 @@ static bool s_in_refresh_scroll = false;
    action 上。這個旗標把「這次是進場」記到重建之後:只要使用者還沒自己捲動過,每次重建
    都重新套用 R49 落點(最新的 session)。使用者一動手就熄掉,不再搶他的位置。 */
 static bool s_entry_landing_pending = false;
+/* R80:進場落點寬限窗 —— 兩台桌面的清單分包晚到(相隔可達數秒),第一包落完就熄掉
+   pending 會讓第二包(往往才是全域最新)不再補正(founder:「選中的還是在 desktop
+   session 第一個」)。進場後 8 秒內的每次重建都重新落到最新 session;使用者一捲動
+   (真手勢)或超時就凍結,不會在人停留頁面很久之後還亂跳(R53 的原意保留)。 */
+#define ENTRY_LANDING_GRACE_MS 8000
+static rt_tick_t s_entry_landing_tick = 0;
 /* Latched true when a horizontal drag (the left-to-close drawer) is detected on
    the list, so the item CLICKED LVGL also raises on the release — the VER-scroll
    list never loses the press on a horizontal drag — is ignored: a swipe must not
@@ -1806,9 +1812,19 @@ static void list_window_scroll_event_cb(lv_event_t *evt)
            refresh_custom_instructions makes don't collapse the box. */
         if (!s_in_refresh_scroll)
         {
+            /* R76 diagnostics: founder reports scrolling does NOT collapse the
+               open voice box on the session page — log what this path sees. */
+            LOG_W("[scr] begin is_open=%d refresh=%d touch=%d",
+                  (int)is_open_instruction_list_ai, (int)s_in_refresh_scroll,
+                  (int)is_user_touching_screen());
             ai_widget_fade_on_scroll();
-            /* R50:使用者自己捲了 → 進場落點的任務結束,之後的重建保留他的位置。 */
-            s_entry_landing_pending = false;
+            /* R50:使用者自己捲了 → 進場落點的任務結束,之後的重建保留他的位置。
+               R78(founder:「開機後第一次進 session 列表停在 actions 最下面,再進
+               一次才對」):reset_list_internal 進場的**程式化** scroll_to_view 也
+               會發 SCROLL_BEGIN,走到這裡把 pending 熄掉 → sessions 晚一步注入的
+               那次重建就不再補正。只有手真的在螢幕上才算使用者捲動。 */
+            if (is_user_touching_screen())
+                s_entry_landing_pending = false;
         }
         // LOG_D("APP LIST Scroll begin");
         break;
@@ -3452,6 +3468,12 @@ void instruction_list_close_lift_input_view(void)
     s_remote_target_has_focus = focus_before_dismiss;
 }
 
+/* Set by ai_widget_fade_on_scroll (and the session-page bar tap): THIS close
+   should collapse the voice box back to the slim bar but KEEP the floating list
+   up (browse / switch options). Consumed at the top of close_ai_widget; every
+   other close path slides the whole list out. */
+static bool s_scroll_keep_list = false;
+
 static void mic_bar_event_cb(lv_event_t *evt)
 {
     if (evt->code != LV_EVENT_CLICKED) return;
@@ -3506,7 +3528,27 @@ static void mic_bar_event_cb(lv_event_t *evt)
        close_ai_widget 收掉清單 → R24 守門看到「清單沒了但人停在左格」snap home ——
        麥克風一點就回主畫面。session 頁沒有觸控板要讓路,dismiss 規則不適用:
        這裡 tap = 開語音輸入框(R55),跟錶盤同待遇。 */
-    if (box_visible || (list_shown && !clock_main_page_is_home() && !s_session_page_mode))
+    if (box_visible && (s_session_page_mode || s_bar_single_device))
+    {
+        /* R76(founder 2026-08-15「點輸入框他會跑回主畫面」):session 檢視裡輸入框
+           開著時,落在 bar/框下緣的 tap 走了整個 dismiss → 清單沒了 → R24 snap
+           home。這裡的正確語意=收框留清單(跟捲動收框同一條路):語音停止、篩選
+           結果留在畫面上讓使用者挑。滑鼠 app 的單設備搜尋抽屜(s_bar_single_device,
+           2026-08-15)同語意:mic 再點=收框留選項,清單內容由電腦即時鏡像。 */
+        LOG_W("[mic] tap w/ box open on session page -> collapse, keep list");
+        s_scroll_keep_list = true;
+        close_ai_widget();
+    }
+    else if (list_shown && !box_visible && s_bar_single_device)
+    {
+        /* 滑鼠單設備搜尋抽屜的 browse 態(清單開著、框收著):mic tap = 重開語音輸入框
+           (與左頁 session 檢視同待遇)。不能走下面的 dismiss 分支 —— 那條「清單蓋住觸控板
+           要讓路」規則是給非搜尋流程的;這裡使用者就是來搜的,dismiss 靠左滑退出。 */
+        LOG_W("[mic] tap in single-device browse -> reopen voice box");
+        extern void animate_open_ai_widget(void);
+        animate_open_ai_widget();
+    }
+    else if (box_visible || (list_shown && !clock_main_page_is_home() && !s_session_page_mode))
     {
         LOG_I("Mic bar tapped — dismissing AI widget (box=%d list=%d)",
               (int)box_visible, (int)list_shown);
@@ -3748,8 +3790,14 @@ static void mic_hit_event_cb(lv_event_t *evt)
 static void ai_box_scroll_dismiss_cb(lv_event_t *evt)
 {
     (void)evt;
-    if (is_open_instruction_list_ai)
-        close_ai_widget();
+    if (!is_open_instruction_list_ai)
+        return;
+    /* R76: on the session page a full close empties the left tile → R24 snaps
+       home. A swipe starting on the box there = collapse the box, keep the
+       (filtered) list for browsing — same resting state as a list scroll. */
+    if (s_session_page_mode)
+        s_scroll_keep_list = true;
+    close_ai_widget();
 }
 
 /* Dismiss the AI widget when the user scrolls the instruction list while it is
@@ -3797,12 +3845,6 @@ static void skai_widget_fade_anim_cb(void *var, int32_t value)
         lv_obj_set_style_img_opa(s_voice_img, f, 0);
     }
 }
-
-/* Set by ai_widget_fade_on_scroll: THIS close should collapse the voice box back
-   to the slim bar but KEEP the floating list up (browse / switch options).
-   Consumed at the top of close_ai_widget; every other close path slides the whole
-   list out. */
-static bool s_scroll_keep_list = false;
 
 static void ai_widget_fade_on_scroll(void)
 {
@@ -4199,6 +4241,7 @@ void instruction_list_reveal_drag_begin(void)
                                  s_reveal_from_left ? -LV_HOR_RES : LV_HOR_RES, 0);
     /* R50:這次是進場 —— 落點規則要一路管到「sessions 稍後才注入」的那次重建為止。 */
     s_entry_landing_pending = true;
+    s_entry_landing_tick = rt_tick_get(); /* R80:寬限窗起點 */
     /* R54(founder:「點 session 列表下面的麥克風沒反應」):`s_session_page_mode` 原本只在
        **整頁 settle 到左頁**時才設(app_clock_status_bar 的 active_pos == MAIN_PAGE_TYPE_RIGHT),
        但從錶盤邊緣拖曳拉出來的是**浮層**這條路,tileview 根本沒換頁 → 旗標留 false →
@@ -4344,7 +4387,12 @@ void instruction_list_open_browse(void)
     }
     /* Only when parked & hidden — already up (browse/open) or sliding shut: leave it. */
     if (s_left_closing || !lv_obj_has_flag(list_bg, LV_OBJ_FLAG_HIDDEN))
+    {
+        LOG_W("[land] open_browse early-out closing=%d hidden=%d",
+              (int)s_left_closing,
+              (int)lv_obj_has_flag(list_bg, LV_OBJ_FLAG_HIDDEN));
         return;
+    }
     /* Haptic at the trigger instant: the IMU release gesture (handle_gesture_
        unlock) or the bar tap just fired and cleared the guards, so the list is
        committed to opening — buzz now, not on settle. Mirrors the drag-release
@@ -5266,6 +5314,8 @@ static void open_pending_chat_async_cb(void *unused)
        再藏掉。修在 app_mainmenu.c:_at_home 的條件加 !chat_page_is_open()(聊天開著就不是
        「在錶盤」),偵測器因此保持武裝。先前「重開清單保住 ATINST」的招沒效
        (instruction_list_open_browse 不會讓清單真的 visible),已移除。 */
+    extern void chat_page_set_style_hermes(bool hermes);
+    chat_page_set_style_hermes(true); /* 開新對話一律 Hermes 房 */
     if (!chat_page_is_open())
         chat_page_open(s_pending_chat_title, NULL);
     chat_page_seed_local_message(s_pending_chat_title); /* 自己那句先顯示,別讓房間空著 */
@@ -5341,6 +5391,12 @@ static void list_item_activate(list_item_t *item)
         if (conv_idx < 0 || conv_idx >= MAX_LIST_ITEMS)
             conv_idx = 0;
         commu_send_conv_open(item->title, item->id, (uint8_t)conv_idx);
+        /* conv: 前綴 = Hermes session(桌面 IsHermes 同款分流);其他 @ 列是
+           WhatsApp/Messenger 等 messaging 房,保留氣泡畫風。 */
+        {
+            extern void chat_page_set_style_hermes(bool hermes);
+            chat_page_set_style_hermes(strncmp(item->id, "conv:", 5) == 0);
+        }
         chat_page_open(item->title, item->icon);
         return;
     }
@@ -5475,6 +5531,10 @@ static void on_tap(void)
     if (item->category == '@' && !is_open_instruction_list_ai)
     {
         commu_send_conv_open(item->title, item->id, (uint8_t)selected_item_index);
+        {
+            extern void chat_page_set_style_hermes(bool hermes);
+            chat_page_set_style_hermes(strncmp(item->id, "conv:", 5) == 0);
+        }
         chat_page_open(item->title, item->icon);
         return;
     }
@@ -5576,6 +5636,9 @@ static void reset_list_internal(void)
         for (uint8_t i = 0; i < list_item_count; i++)
             if (strncmp(list_items[i].id, "conv:", 5) == 0)
                 newest_conv = i; /* 不 break:要的是**最後一個** conv 項 */
+        LOG_W("[land] reset count=%u conv=%d pending=%d",
+              (unsigned)list_item_count, (int)(int8_t)newest_conv,
+              (int)s_entry_landing_pending);
         if (newest_conv != (uint8_t)-1)
         {
             app_scroll_target_item = newest_conv;
@@ -5599,8 +5662,9 @@ static void reset_list_internal(void)
                落點已經落在 session 上 → 進場定位的任務就結束,之後手機推播走的是
                R48 的「還原原本那一項」,位置不動。
                沒有 conv 項的那條 fallback 不清旗標:那代表 session 還沒到,等它到達時
-               仍要補正一次(founder 的規則是「沒有 session 才停在 actions 最下面」)。 */
-            s_entry_landing_pending = false;
+               仍要補正一次(founder 的規則是「沒有 session 才停在 actions 最下面」)。
+               R80:落在 conv 上也**不再立刻清** —— 另一台桌面的清單可能晚幾秒才到、
+               全域最新在那包裡。寬限窗(refresh 的 R50 分支)負責到期/手勢時熄掉。 */
             update_indicator_dots_position(gesture_starting_value);
             open_selected_widget(false);
             is_widget_animation_active = false;
@@ -6671,6 +6735,11 @@ void refresh_custom_instructions(void)
         s_entry_landing_pending = false;
         s_force_scroll_to_last = false;
     }
+    /* R80:寬限窗到期 → 進場落點任務結束,改走 R48「還原原本那一項」。 */
+    if (s_entry_landing_pending &&
+        (rt_tick_get() - s_entry_landing_tick) >
+            rt_tick_from_millisecond(ENTRY_LANDING_GRACE_MS))
+        s_entry_landing_pending = false;
     if (s_entry_landing_pending && list_item_count > 0)
     {
         /* R50:這次重建屬於「剛進場」 → 重新套用落點規則(最新的 session,沒有就最後一項),
@@ -6679,6 +6748,8 @@ void refresh_custom_instructions(void)
         for (uint8_t i = 0; i < list_item_count; i++)
             if (strncmp(list_items[i].id, "conv:", 5) == 0)
                 target = i; /* 最後一個 conv 項 = 最新的 session */
+        LOG_W("[land] refresh re-land target=%u id=%s", (unsigned)target,
+              list_items[target].id);
         app_scroll_target_item = target;
         selected_item_index = target;
         scroll_center_item(list, target);
@@ -6686,10 +6757,8 @@ void refresh_custom_instructions(void)
         scroll_list(list, 0);
         selected_item_index = target;
         app_scroll_target_item = target;
-        /* R53:補正只做這一次 —— 落到 session 上就交棒給 R48 的位置保留。清單裡還是
-           一個 session 都沒有時保持 pending,等 session 真的到達再補。 */
-        if (strncmp(list_items[target].id, "conv:", 5) == 0)
-            s_entry_landing_pending = false;
+        /* R80(取代 R53 的「落到 conv 就清」):寬限窗內保持 pending —— 另一台桌面的
+           清單晚幾秒才到時還要再補正一次;窗由本函式開頭的到期檢查與使用者手勢負責關。 */
     }
     else if (s_force_scroll_to_last && list_item_count > 0)
     {
@@ -7716,6 +7785,21 @@ static void pack_text_filter(void)
         s_cat_backup_count = list_item_count;
         s_cat_backup_valid = true;
     }
+    /* R77(founder:「有出現篩選了,但為什麼 new session 還在?」):先數這輪真正
+       比中的項目 —— 有比中就不該出現任何「開新對話」列(先前合成的、手機推來的
+       「問 SKAI」列一律丟),沒比中才補。 */
+    uint8_t real_matches = 0;
+    for (uint8_t r = 0; r < list_item_count; r++)
+    {
+        if (strncmp(list_items[r].id, NEW_SESSION_ITEM_ID,
+                    sizeof(NEW_SESSION_ITEM_ID) - 1) == 0)
+            continue;
+        if (strstr(list_items[r].title, "SKAI") != NULL ||
+            strstr(list_items[r].title, "Skai") != NULL)
+            continue;
+        if (text_contains_ci(list_items[r].title, s_text_filter))
+            real_matches++;
+    }
     uint8_t w = 0;
     bool has_new_session_row = false;
     for (uint8_t r = 0; r < list_item_count; r++)
@@ -7728,6 +7812,9 @@ static void pack_text_filter(void)
         if (strncmp(list_items[r].id, NEW_SESSION_ITEM_ID,
                     sizeof(NEW_SESSION_ITEM_ID) - 1) == 0)
         {
+            /* R77:這輪有真比中 → 先前合成的「開新對話」列不再保留。 */
+            if (real_matches > 0)
+                continue;
             if (w != r)
                 memcpy(&list_items[w], &list_items[r], sizeof(list_item_t));
             has_new_session_row = true;
@@ -7740,7 +7827,8 @@ static void pack_text_filter(void)
         if (strstr(list_items[r].title, "SKAI") != NULL ||
             strstr(list_items[r].title, "Skai") != NULL)
         {
-            if (has_new_session_row)
+            /* R77:有真比中 → 手機推來的「問 SKAI」列直接丟,不轉成開新對話。 */
+            if (real_matches > 0 || has_new_session_row)
                 continue;
             if (w != r)
                 memcpy(&list_items[w], &list_items[r], sizeof(list_item_t));
@@ -7758,7 +7846,7 @@ static void pack_text_filter(void)
             memcpy(&list_items[w], &list_items[r], sizeof(list_item_t));
         w++;
     }
-    if (!has_new_session_row)
+    if (real_matches == 0 && !has_new_session_row)
     {
         /* R61:一個都沒中 → **每一台已知桌面各一列**「開新對話」,右緣圓框放設備名
            (create_indicator_dots 會依 id 前綴去查),使用者自己挑開在哪台。設備 id 直接
@@ -7800,6 +7888,55 @@ static void pack_text_filter(void)
         selected_item_index = list_item_count ? (list_item_count - 1) : 0;
 }
 
+/* R75(founder:說「語音辨識」只得到 new-session 列,「語音辨識測試」沒被留下;log:
+   [flt] set 了 15 bytes = 「語音辨識。」):STT 轉錄尾端帶標點(全形「。」等),拿去做
+   子字串比對永遠比不中任何標題。設定篩選字前先剝掉頭部空白與尾端標點(ASCII + 常見
+   全形)。同一份字串也是開新對話的第一句,剝掉尾標點無害。 */
+static void text_filter_sanitize(char *s)
+{
+    /* leading spaces */
+    size_t lead = 0;
+    while (s[lead] == ' ' || s[lead] == '\t')
+        lead++;
+    if (lead)
+        memmove(s, s + lead, strlen(s + lead) + 1);
+    /* trailing ASCII punctuation/space + full-width punctuation (3-byte UTF-8) */
+    static const char *fw_punct[] = {
+        "\xE3\x80\x82" /* 。 */, "\xEF\xBC\x8C" /* , */, "\xEF\xBC\x81" /* ! */,
+        "\xEF\xBC\x9F" /* ? */, "\xE3\x80\x81" /* 、 */, "\xEF\xBC\x9B" /* ; */,
+        "\xEF\xBC\x9A" /* : */,
+    };
+    size_t len = strlen(s);
+    for (;;)
+    {
+        if (len == 0)
+            break;
+        char c = s[len - 1];
+        if (c == '.' || c == ',' || c == '!' || c == '?' || c == ';' ||
+            c == ':' || c == ' ' || c == '\t')
+        {
+            len--;
+            continue;
+        }
+        bool stripped = false;
+        if (len >= 3)
+        {
+            for (size_t i = 0; i < sizeof(fw_punct) / sizeof(fw_punct[0]); i++)
+            {
+                if (memcmp(s + len - 3, fw_punct[i], 3) == 0)
+                {
+                    len -= 3;
+                    stripped = true;
+                    break;
+                }
+            }
+        }
+        if (!stripped)
+            break;
+    }
+    s[len] = '\0';
+}
+
 /* R55:文字篩選層 —— 由輸入框的轉錄驅動。空字串 = 清掉,回到原本的清單。 */
 void instruction_list_set_text_filter(const char *text)
 {
@@ -7809,6 +7946,7 @@ void instruction_list_set_text_filter(const char *text)
     {
         strncpy(next, text, sizeof(next) - 1);
         next[sizeof(next) - 1] = '\0';
+        text_filter_sanitize(next);
     }
     if (strcmp(next, s_text_filter) == 0)
         return; /* 轉錄會重複推同一串:沒變就別重繪 */

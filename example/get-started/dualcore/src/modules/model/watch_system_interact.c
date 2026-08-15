@@ -532,7 +532,14 @@ void interact_voice_recognition(VOICE_RECOGNITION_PAYLOAD *msgData)
             append_text_to_input_message();
             return;
         }
+        extern bool get_is_open_instruction_list_ai(void);
         if (lift_open)
+            append_text_to_input_message();
+        else if (get_is_open_instruction_list_ai())
+            /* 單設備搜尋抽屜的語音框(2026-08-15)開著:轉錄屬於它,走共用 router
+               (claim 鏈的 get_is_open_instruction_list_ai 分支)。正常情況 VAD gate 會把
+               is_user_speaking_to_ai arm 起來、上面那條 speaking_to_ai 分支先接手;這裡
+               只兜 VAD 還沒觸發的第一段,別讓它掉進滑鼠語音站的 input_buffer。 */
             append_text_to_input_message();
         else
             append_text_to_mouse_input();

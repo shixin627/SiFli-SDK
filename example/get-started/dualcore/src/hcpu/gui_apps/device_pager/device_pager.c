@@ -668,6 +668,17 @@ void device_pager_refresh(void)
         instruction_list_refeed_single_device();
         return;
     }
+    /* Hosted 滑鼠(錶盤圖層 hid_mouse_build_ui,Main 活著、APP_ID_MOUSE 非 active)開著
+       單設備搜尋抽屜時,0x03 的即時選項也要重餵到浮層清單 —— refeed 自帶
+       s_bar_single_device gate,非單設備模式是 no-op。不 return:device_pager 本體照常刷。 */
+    {
+        extern bool app_control_get_mouse_mode(void);
+        if (app_control_get_mouse_mode())
+        {
+            extern void instruction_list_refeed_single_device(void);
+            instruction_list_refeed_single_device();
+        }
+    }
     if (p) load_devices_from_registry();
     /* The rebind in refresh() programmatically scrolls the list, which would
        otherwise fire list_scroll_cb -> skaibar_close. When a phone sync arrives
