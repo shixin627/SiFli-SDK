@@ -5374,6 +5374,10 @@ static void sd_open_chat_async_cb(void *unused)
     (void)unused;
     extern void chat_page_set_style_hermes(bool hermes);
     extern void chat_page_open(const char *title, const char *icon_src);
+    /* 聊天 overlay 不透明蓋全螢幕:先把錶盤模糊圖硬藏,別讓它的 opa 動畫在低 heap 時
+       把 EPIC render 壓爆(sys memory is full,2026-08-15 真機)。 */
+    extern void clock_main_blur_force_hide(void);
+    clock_main_blur_force_hide();
     chat_page_set_style_hermes(strncmp(s_sd_chat_id, "conv:", 5) == 0);
     chat_page_open(s_sd_chat_title, NULL);
 }

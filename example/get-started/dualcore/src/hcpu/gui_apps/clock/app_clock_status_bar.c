@@ -1203,6 +1203,17 @@ void instruction_list_bar_set_blur(bool on)
     }
 }
 
+/* 公開(2026-08-15 滑鼠抽屜→聊天室):聊天 overlay 全螢幕不透明,底下的錶盤模糊圖
+   還在跑 opa 動畫=每幀白付一次 EPIC 全螢幕合成 —— 低 heap(聊天回合後 ~31K)時
+   render 直接 `sys memory is full` assert 重開(真機)。開聊天室前硬藏。 */
+void clock_main_blur_force_hide(void)
+{
+    if (gaus_dial_bg && lv_obj_is_valid(gaus_dial_bg))
+        lv_obj_add_flag(gaus_dial_bg, LV_OBJ_FLAG_HIDDEN);
+    set_clock_main_status_opa(0, false);
+    s_bar_blur_active = false;
+}
+
 /* Same gaus_dial_bg blur as instruction_list_bar_set_blur, but at an arbitrary
    strength so the left reveal can fade it in WITH the pull (finger-follow),
    mirroring app_clock_device_change_bar_event_cb's scroll→opa ramp. Turn it back
