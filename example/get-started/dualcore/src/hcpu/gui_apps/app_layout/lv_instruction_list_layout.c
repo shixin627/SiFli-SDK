@@ -5340,6 +5340,48 @@ void instruction_list_open_pending_chat(const char *title)
     lv_async_call(open_pending_chat_async_cb, NULL);
 }
 
+/* ── 滑鼠單設備抽屜:tap 落在 session 列 → 手錶自己走進聊天室(2026-08-15 founder:
+   「點session手錶也需要開那個聊天室」)。抽屜的 0x03 鏡像列只有 title,用那台的 0x20
+   清單按 title 反查 conv id;查得到=session 列,查不到=一般選項照走 commit 給桌面。
+   聊天室 overlay 的建立走 lv_async_call —— R70 鐵律:清單自己的點擊處理中途不准建
+   layer_top 浮層(close_ai_widget 正在收清單,GUI 會當在半拆半建的樹上)。 */
+static char s_sd_chat_title[96];
+static char s_sd_chat_id[96];
+
+static void sd_open_chat_async_cb(void *unused)
+{
+    (void)unused;
+    extern void chat_page_set_style_hermes(bool hermes);
+    extern void chat_page_open(const char *title, const char *icon_src);
+    chat_page_set_style_hermes(strncmp(s_sd_chat_id, "conv:", 5) == 0);
+    chat_page_open(s_sd_chat_title, NULL);
+}
+
+static bool single_device_try_open_session(const list_item_t *item)
+{
+    if (!s_bar_single_device || item == NULL)
+        return false;
+    extern const char *session_list_find_conv_id(const char *device_id, const char *title);
+    const char *conv_id = session_list_find_conv_id(s_single_device_id, item->title);
+    if (conv_id == NULL)
+        return false;
+    strncpy(s_sd_chat_title, item->title, sizeof(s_sd_chat_title) - 1);
+    s_sd_chat_title[sizeof(s_sd_chat_title) - 1] = '\0';
+    strncpy(s_sd_chat_id, conv_id, sizeof(s_sd_chat_id) - 1);
+    s_sd_chat_id[sizeof(s_sd_chat_id) - 1] = '\0';
+    LOG_W("[act] single-device session \"%s\" -> chat (%s)", s_sd_chat_title, s_sd_chat_id);
+    extern bool commu_send_conv_open(const char *title, const char *id, uint8_t index);
+    commu_send_conv_open(s_sd_chat_title, s_sd_chat_id, 0);
+    /* 先收抽屜回觸控板:聊天室 overlay 疊在觸控板上,左緣右滑關聊天室後落回觸控板
+       (founder:「從左邊邊緣往右滑動回到觸碰板」)。非 cancel:滑出 ready_cb 會
+       restore_base + 清 s_bar_single_device;不送 0x0C(同 commit 路徑,避免跟下一次
+       點 bar 的 summon 打架)。 */
+    s_close_is_cancel = false;
+    close_ai_widget();
+    lv_async_call(sd_open_chat_async_cb, NULL);
+    return true;
+}
+
 static void list_item_activate(list_item_t *item)
 {
     if (s_activate_suppress_until != 0 &&
@@ -5350,6 +5392,9 @@ static void list_item_activate(list_item_t *item)
     }
     s_activate_suppress_until = 0;
     LOG_W("[act] id=\"%s\" title=\"%s\"", item->id, item->title);
+    /* 滑鼠單設備抽屜的 session 列:手錶自己進聊天室,不交給桌面執行。 */
+    if (single_device_try_open_session(item))
+        return;
     /* R55:合成的「開新 session」列 —— 篩不到任何既有項目時才存在。點它就用目前控制中
        的那台電腦開新 session(清單推回來後 session pager 自己走進聊天室),然後收掉輸入框
        與文字篩選,讓清單回到完整狀態。 */
@@ -5551,6 +5596,10 @@ static void on_tap(void)
     if (item->is_instruction)
     {
         LOG_I("Custom instruction tapped via gesture: id=%s", item->id);
+        /* 滑鼠單設備抽屜的 session 列(手勢路徑,與 list_item_activate 同攔截):
+           手錶自己進聊天室,不交給桌面執行。 */
+        if (single_device_try_open_session(item))
+            return;
         /* Offline "open a watch app" instruction — run locally on the watch
            with no phone relay, same as list_item_click_event_cb's open_app
            branch. This gesture/ENTER path is the one users hit most (raise-

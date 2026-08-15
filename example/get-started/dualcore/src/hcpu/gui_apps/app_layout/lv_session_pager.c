@@ -666,6 +666,36 @@ void session_list_actions_changed(void)
     sp_inject_sessions_into_actions();
 }
 
+/** 公開:滑鼠單設備搜尋抽屜用 —— 在 device_id 那台的 0x20 session 清單裡按 title
+    反查 conv id(抽屜的 0x03 鏡像列只有 title,沒有 id)。同名 session 取 ts 最新那筆。
+    回傳內部儲存的指標(呼叫端當下使用,不可保存);找不到(含 device 未知)回 NULL,
+    呼叫端就走原本的 commit 路徑交給桌面執行。LVGL 執行緒呼叫。 */
+const char *session_list_find_conv_id(const char *device_id, const char *title)
+{
+    if (device_id == NULL || device_id[0] == '\0' || title == NULL || title[0] == '\0')
+        return NULL;
+    for (int d = 0; d < s_device_count; d++)
+    {
+        if (strncmp(s_devices[d].id, device_id, SESSION_ID_LEN) != 0)
+            continue;
+        const char *best = NULL;
+        uint32_t best_ts = 0;
+        for (int k = 0; k < s_devices[d].count; k++)
+        {
+            const session_meta_t *s = &s_devices[d].items[k];
+            if (strcmp(s->title, title) != 0)
+                continue;
+            if (best == NULL || s->ts >= best_ts)
+            {
+                best = s->id;
+                best_ts = s->ts;
+            }
+        }
+        return best;
+    }
+    return NULL;
+}
+
 /** R61(founder:「開新 SESSION 選項先每個設備都出現一個,右邊圖片裡放設備名稱」):
     左頁語音搜尋沒中任何東西時,要為**每一台已知的桌面**各長出一個「開新對話」——
     使用者自己挑要開在哪台,不必猜(先前一律送去「目前控制中的那台」,實測選到的是
