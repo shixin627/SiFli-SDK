@@ -10314,11 +10314,18 @@ static void update_ctrl_dev_label(void)
     }
 }
 
-/* device_pager_refresh(跑在每次手機 E7 同步)會把 active 清成 ""；當 standalone 滑鼠
-   app 開著且已選設備時，它擁有 active relay 目標、不該被清掉。device_pager 用此 gate。 */
+/* device_pager_refresh(跑在每次手機 E7 同步)會把 active 清成 ""；滑鼠介面開著且已選
+   設備時，它擁有 active relay 目標、不該被清掉。device_pager 用此 gate。
+   2026-08-15 真機抓到:hosted 滑鼠(錶盤頂部面板 hid_mouse_build_ui,APP_ID_MOUSE 非
+   active)之前不算「擁有」→ 進滑鼠後第一次 E7 同步(~60s)就把 relay 目標洗掉 → 手機
+   singleDeviceMode 垮掉、聚合 actions 回灌單設備抽屜、0x0E summon 路由無目標被丟
+   (「再點 skaibar_img 出來的是手機 actions」)。app_control_get_mouse_mode 兩條路徑
+   (standalone/hosted)都會設,拿它補上。 */
 bool hid_mouse_owns_active_target(void)
 {
-    return gui_app_is_actived(APP_ID_MOUSE) && s_dev_active_id[0] != '\0';
+    extern bool app_control_get_mouse_mode(void);
+    return (gui_app_is_actived(APP_ID_MOUSE) || app_control_get_mouse_mode()) &&
+           s_dev_active_id[0] != '\0';
 }
 
 /* 自有底部 bar(trackpad_mic_btn,只放 skaibar 圖)的隱藏邏輯：instruction_list 浮層 bar/
