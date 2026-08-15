@@ -211,6 +211,15 @@ void hr_set_power(uint8_t arg)
         LOG_I("PPG power request (%d) vetoed: continuous HR diag active", arg);
         return;
     }
+    /* A burst owns the light until it finishes -- see hr_service_bg_burst_active.
+     * Power-DOWN only; a redundant power-ON during a burst is the driver's
+     * existing same-mode problem, not this one's. */
+    extern bool hr_service_bg_burst_active(void);
+    if (arg == 0 && hr_service_bg_burst_active())
+    {
+        LOG_I("PPG power-down vetoed: bg_hr burst in flight");
+        return;
+    }
 #endif
 #ifdef RT_USING_PM
     rt_pm_request(PM_SLEEP_MODE_IDLE);
@@ -1137,6 +1146,36 @@ extern uint32_t gh3018_get_hr_update_seq(void);
 static rt_timer_t bg_hr_period_timer = RT_NULL;
 static rt_timer_t bg_hr_sample_timer = RT_NULL;
 static rt_bool_t bg_hr_bursting = RT_FALSE;
+/* RETRY-UNTIL-MEASURED (awake only).
+ *
+ * A burst that produces nothing -- PPG never locked, or the curve gate refused
+ * the value -- leaves a hole in the daily curve, and at the normal awake cadence
+ * that hole is 40 minutes wide (bursts 20 min apart). Consecutive failures stack:
+ * measured on 2026-08-14, runs of 2-4 NO_LOCK bursts produced 30, 40, 40 and 50
+ * minute holes. A curve that blank for that long reads as broken whatever the
+ * reason field says.
+ *
+ * So while awake and on the wrist, a failed burst switches the period timer to
+ * BG_HR_RETRY_MS and keeps measuring until one succeeds -- worst case above
+ * becomes ~16 min instead of 50. The cost is LED duty (a 40 s burst every 4 min
+ * = 17%) and it is paid ONLY during a failing run on a worn wrist, which is
+ * exactly the case where the user is looking at a blank curve.
+ *
+ * Asleep is excluded: bursts there are 3 minutes long and already fire every
+ * tick, so a 4-minute period would run the LED near-continuously all night for
+ * no gain. */
+#define BG_HR_RETRY_MS       (4 * 60 * 1000)
+static rt_bool_t bg_hr_retry_soon = RT_FALSE;   /* last burst produced nothing  */
+static rt_bool_t bg_hr_period_short = RT_FALSE; /* timer is at BG_HR_RETRY_MS   */
+
+/* How many extra BG_HR_BURST_MS_AWAKE slices a failing awake burst may take
+   before giving up and letting the retry tick have it. 40 s base + 5 slices =
+   4 min of continuous reading, the same order as the sleep burst that was
+   already lengthened to converge. Beyond that the wrist is not going to yield
+   to more staring, and the LED should rest before the next attempt. */
+#define BGHR_EXTEND_MAX      5
+static uint8_t bg_hr_burst_extends = 0;
+static void bg_hr_set_period(rt_bool_t shortened);   /* defined with the timer  */
 static uint32_t bg_hr_burst_deadline_ms = 0;
 static uint32_t bg_hr_burst_start_seq = 0;   /* gh3018 HR-update seq at burst start; warm-up baseline */
 /* PPG frame accounting for the 2x-harmonic investigation. The algo is told
@@ -1358,6 +1397,113 @@ static uint32_t bghr_accel_delta(void)   /* 0 = read failed / first sample of bu
 static uint8_t bghr_med_buf[BGHR_MED_WIN];
 static uint8_t bghr_med_cnt = 0;
 static uint8_t bghr_med_idx = 0;
+
+
+/* ---- curve-level plausibility gate ---------------------------------------
+ *
+ * The last defence, and the only one that uses information the estimator cannot
+ * see. Everything inside a single 10 s window has been tried and measured on the
+ * 44 daytime windows captured 2026-08-14, and none of it separates a good
+ * reading from a bad one: peak height, confidence and spectral sharpness all
+ * overlap almost completely (good conf 37-69, bad conf 36-60), tightening the
+ * spectral gate missed the two worst values outright, and the error rate does
+ * not even rise monotonically with wrist activity (0% in the 120-199 band, 57%
+ * above 200).
+ *
+ * What DOES separate them is time. Every daytime failure in that day was an
+ * ISOLATED point sitting between plausible neighbours — 42 between 76 and 90,
+ * 30 between 78 and 52, 196 between 90 and 84. A heart does not halve and come
+ * back inside ten minutes.
+ *
+ * REFUSES, never substitutes. A gap in the curve is an honest "I could not
+ * measure this"; an invented number is not, and this project has already
+ * shipped one filter that invented values (the octave tracker pinned a genuine
+ * 120 to 60 indefinitely).
+ *
+ * Causal, because the watch is where the value is born. Doing this on the phone
+ * would leave the watch's own face and every other consumer showing the value
+ * this rejects. The cost of having no future neighbour is one point: measured
+ * over the confirmed-worn window of 2026-08-14, the acausal rule keeps 33 of 38
+ * and this keeps 32, both with zero surviving outliers, and both preserve the
+ * genuine 134 bpm excursion at 16:03.
+ *
+ * A deviation is refused ONCE. If the next burst confirms the same new level,
+ * it is accepted and the history moves there — so a real change (standing up,
+ * exercise) costs a single point rather than being suppressed for as long as it
+ * lasts. */
+#define CURVE_HIST_N       5
+#define CURVE_LO_PCT      65        /* below this share of the median: refuse   */
+#define CURVE_HI_PCT     160        /* above this share of the median: refuse   */
+#define CURVE_MAX_AGE_S 5400        /* history older than 90 min is not context */
+#define CURVE_CONFIRM_LO  85        /* the next reading confirms the new level  */
+#define CURVE_CONFIRM_HI 118        /* if it lands within this of the refused one */
+
+static uint8_t  s_curve_v[CURVE_HIST_N];
+static uint32_t s_curve_t[CURVE_HIST_N];
+static uint8_t  s_curve_n;
+static uint8_t  s_curve_pending;    /* value refused last time, 0 = none        */
+
+static void curve_push(uint32_t now_s, uint8_t bpm)
+{
+    if (s_curve_n < CURVE_HIST_N)
+    {
+        s_curve_v[s_curve_n] = bpm; s_curve_t[s_curve_n] = now_s; s_curve_n++;
+    }
+    else
+    {
+        for (uint8_t i = 1; i < CURVE_HIST_N; i++)
+        { s_curve_v[i-1] = s_curve_v[i]; s_curve_t[i-1] = s_curve_t[i]; }
+        s_curve_v[CURVE_HIST_N-1] = bpm; s_curve_t[CURVE_HIST_N-1] = now_s;
+    }
+}
+
+/* Pure judgement — no state touched, so a burst still in flight can ask "is what
+   I have so far going to be published?" before deciding whether to keep reading.
+   @param reestablish out: accepted only because it confirms a refused level. */
+static bool curve_judge(uint32_t now_s, uint8_t bpm, bool *reestablish)
+{
+    if (reestablish) *reestablish = false;
+
+    uint8_t live[CURVE_HIST_N]; uint8_t n = 0;
+    for (uint8_t i = 0; i < s_curve_n; i++)
+        if (now_s - s_curve_t[i] <= CURVE_MAX_AGE_S) live[n++] = s_curve_v[i];
+    if (n < 2) return true;                      /* no context yet -> no opinion */
+
+    for (uint8_t i = 1; i < n; i++)              /* insertion sort, n <= 5 */
+    {
+        uint8_t v = live[i]; int j = i - 1;
+        while (j >= 0 && live[j] > v) { live[j + 1] = live[j]; j--; }
+        live[j + 1] = v;
+    }
+    uint32_t med = live[n / 2];
+    uint32_t x   = (uint32_t)bpm * 100;
+    if (x > med * CURVE_LO_PCT && x < med * CURVE_HI_PCT) return true;
+
+    /* Off the baseline — unless the previous burst was refused at this same
+       level, in which case this is a real change, not a slip. */
+    if (s_curve_pending > 0 &&
+        x >= (uint32_t)s_curve_pending * CURVE_CONFIRM_LO &&
+        x <= (uint32_t)s_curve_pending * CURVE_CONFIRM_HI)
+    {
+        if (reestablish) *reestablish = true;
+        return true;
+    }
+    return false;
+}
+
+static bool curve_accept(uint32_t now_s, uint8_t bpm)
+{
+    bool reestablish = false;
+    if (!curve_judge(now_s, bpm, &reestablish))
+    {
+        s_curve_pending = bpm;
+        return false;
+    }
+    if (reestablish) s_curve_n = 0;              /* re-seed, do not fight it */
+    s_curve_pending = 0;
+    curve_push(now_s, bpm);
+    return true;
+}
 
 static uint8_t bghr_median_push(uint8_t v)
 {
@@ -1610,8 +1756,27 @@ static void bg_hr_flush_bucket(uint32_t bucket_start_ts)
     for (int i = 0; i < BGHR_REASON_CNT; i++) bg_hr_bucket_reason[i] = 0;
 }
 
-/* Same gate as before, but returns the SPECIFIC reason instead of a bool so
-   the instrumentation can attribute every skipped tick. BGHR_OK => sample. */
+/* Returns the SPECIFIC reason a tick was skipped instead of a bool, so the
+   instrumentation can attribute every one. BGHR_OK => sample.
+ *
+ * WEAR DETECTION IS NO LONGER A GATE HERE (founder call, 2026-08-15: "心律量測
+ * 先不要用配戴偵測去斷,因為配戴偵測還不准"). It was measured wrong often enough to
+ * be disqualified from the decision: over 2026-08-14 02:00-19:00, a window the
+ * founder confirmed the watch never left the wrist, 42 of 96 ticks were skipped
+ * as off-wrist and never turned the LED on -- including one unbroken 5 h 37 min
+ * stretch. The mechanism is understood (a session baseline re-seeded ~9% high
+ * right after the charger, whose re-entry band then excluded 30% of genuinely
+ * worn samples, with no way back because re-entry needs motion and the wrist
+ * was asleep) but the fix belongs in wear_detect.c, and until it lands the
+ * measurement must not be hostage to it.
+ *
+ * Demoted to a LABEL: when a burst runs and finds nothing, the wear verdict is
+ * reported as the reason (@ref bg_hr_finish_burst). That is what it is actually
+ * good for -- it is only ever wrong when there IS a pulse to find, and in that
+ * case the burst now finds it and the verdict is silently overruled.
+ *
+ * The charger gate stays: on the cradle there is definitively no wrist, and it
+ * costs nothing to keep. */
 static int bg_hr_skip_reason(void)
 {
     if (hr_service_env.is_ready != RT_TRUE) return BGHR_NOT_READY;
@@ -1625,12 +1790,61 @@ static int bg_hr_skip_reason(void)
        trade-off. */
     if (battery_get_charge_state()->is_charging) return BGHR_CHARGING; /* on charger */
 #endif
-    if (!wear_detect_is_wearing()) return BGHR_NOT_WORN;               /* off wrist  */
     return BGHR_OK;
+}
+
+/* True while a background burst holds the PPG LED. wear_detect powers PPG down
+   when its probe window expires; now that bursts no longer wait for its verdict
+   the two overlap, and a probe closing mid-burst would cut the light off and
+   manufacture exactly the NO_LOCK holes this is meant to close. Consulted by
+   hr_set_power for power-DOWN requests only. */
+bool hr_service_bg_burst_active(void)
+{
+    return bg_hr_bursting == RT_TRUE;
+}
+
+/* Have we seen a real pulse recently? This replaces wear_detect as the trigger
+   for the aggressive retry (@ref BG_HR_RETRY_MS, @ref BGHR_EXTEND_MAX) -- it is
+   self-evidencing rather than inferred, and it bounds the battery cost that
+   removing the wear gate would otherwise create: a watch lying on a table never
+   locks, so it never earns the aggressive mode and stays at the plain 40 s per
+   20 min. A wrist that was reading fine a moment ago earns it, which is exactly
+   the case worth spending light on. */
+#define BGHR_PULSE_EVIDENCE_MS  (30 * 60 * 1000)
+static uint32_t bg_hr_last_ok_ms = 0;
+static bool bg_hr_pulse_recent(void)
+{
+    return bg_hr_last_ok_ms != 0 &&
+           (rt_tick_get_millisecond() - bg_hr_last_ok_ms) < BGHR_PULSE_EVIDENCE_MS;
 }
 
 static void bg_hr_finish_burst(void)
 {
+    /* KEEP READING RATHER THAN END AND START OVER. @ref BGHR_EXTEND_MAX.
+     *
+     * Before tearing anything down, ask whether this burst is going to put a
+     * point on the curve at all -- either it never locked, or what it locked
+     * will be refused by the curve gate. If not, hold the LED on and carry on
+     * sampling instead of finishing and re-bursting later: a restart costs an
+     * LED off/on, a GH3018 re-init and the whole warm-up over again, and buys
+     * nothing the extra seconds would not have bought.
+     *
+     * The evidence that longer works is already in this file: the SLEEP burst
+     * is 3 minutes because that is "long enough to converge past a cold-start
+     * harmonic lock". Awake gets 40 s, and on 2026-08-14 that produced runs of
+     * 2-4 consecutive NO_LOCK bursts. A 40 s look at a wrist that has not
+     * settled is simply too short a look. */
+    if (!bg_hr_sleep_active && bg_hr_burst_extends < BGHR_EXTEND_MAX &&
+        bg_hr_pulse_recent() &&          /* a table never earns the extra light */
+        (bg_hr_burst_best == 0 ||
+         !curve_judge((uint32_t)time(NULL), bg_hr_burst_best, RT_NULL)))
+    {
+        bg_hr_burst_extends++;
+        bg_hr_burst_deadline_ms += BG_HR_BURST_MS_AWAKE;
+        bg_hr_burst_ms += BG_HR_BURST_MS_AWAKE;  /* keep frame accounting honest */
+        return;                                  /* sampler is still running */
+    }
+
     /* Burst summary for on-wrist tuning (LCPU console / uart4). qmin = lowest
        Goodix valid_score this burst; correlate low qmin with spiky bursts to
        calibrate a future signal-quality gate. */
@@ -1690,11 +1904,26 @@ static void bg_hr_finish_burst(void)
         watch_sys_sync.notify_hr_window(&bg_hr_win_dump);
     }
 
+    bool bghr_curve_refused = false;
+    bool bghr_published = false;
     if (bg_hr_burst_best > 0 && watch_sys_sync.notify_hr_sample)
     {
-        watch_sys_sync.notify_hr_sample((uint32_t)time(NULL), bg_hr_burst_best);
-        bg_hr_last_published = bg_hr_burst_best;   /* baseline for the next burst */
-        bg_hr_note(BGHR_OK);
+        uint32_t now_s = (uint32_t)time(NULL);
+        if (curve_accept(now_s, bg_hr_burst_best))
+        {
+            watch_sys_sync.notify_hr_sample(now_s, bg_hr_burst_best);
+            bg_hr_last_published = bg_hr_burst_best;  /* baseline for next burst */
+            bghr_published = true;
+            bg_hr_last_ok_ms = rt_tick_get_millisecond();  /* @ref bg_hr_pulse_recent */
+            bg_hr_note(BGHR_OK);
+        }
+        else
+        {
+            /* Publish nothing. @ref curve_accept — a gap says "not measured",
+               which is true; a number here would not be. */
+            bghr_curve_refused = true;
+            LOG_I("[BGHR] curve gate refused %u", (unsigned)bg_hr_burst_best);
+        }
     }
     else if (bg_hr_burst_reads > 0 && bg_hr_burst_readfail == bg_hr_burst_reads)
     {
@@ -1704,11 +1933,30 @@ static void bg_hr_finish_burst(void)
     }
     else
     {
-        /* Burst ran to completion but PPG never locked a valid BPM (best==0).
-           This is the single most common "missing HR point" cause during
-           sleep: motion artefact / loose fit / poor optical contact. */
-        bg_hr_note(BGHR_NO_LOCK);
+        /* Burst ran to completion but PPG never locked a valid BPM (best==0):
+           motion artefact / loose fit / poor optical contact -- or simply no
+           wrist. wear_detect no longer decides whether to measure (@ref
+           bg_hr_skip_reason) but its verdict is still the best available
+           EXPLANATION for a burst that found nothing, so it labels this one.
+           When it is wrong there was a pulse, the burst found it, and control
+           never reached here. */
+        bg_hr_note(wear_detect_is_wearing() ? BGHR_NO_LOCK : BGHR_NOT_WORN);
     }
+
+    /* @ref BG_HR_RETRY_MS — a burst that put nothing on the curve keeps the
+       tick short and the throttle bypassed until one does. Every exit above
+       that is not a publish counts, including the curve-gate refusal: the user
+       cannot tell "refused" from "never locked" by looking at the graph, and
+       both are a blank stretch that has to close.
+
+       Gated on recent pulse evidence rather than on the wear verdict (@ref
+       bg_hr_pulse_recent): with the wear gate gone, a watch on a table would
+       otherwise fail forever and hold the aggressive retry on forever with it. */
+    bg_hr_retry_soon = (!bghr_published && bg_hr_pulse_recent()) ? RT_TRUE : RT_FALSE;
+    if (bghr_published)              bg_hr_set_period(RT_FALSE);
+    else if (bg_hr_retry_soon && !bg_hr_sleep_active) bg_hr_set_period(RT_TRUE);
+    else                             bg_hr_set_period(RT_FALSE);
+
     /* Publish the burst's HR window for sleep_fusion (wake-veto + staging).
        The headline value is the burst's FINAL rolling median — the converged,
        outlier-rejected read, identical to what the phone curve stores — NOT
@@ -1722,8 +1970,11 @@ static void bg_hr_finish_burst(void)
     {
         /* An over-ceiling burst still publishes to the curve (see above) but must
            never reach staging / the wake-veto: mean 0 makes sleep_service skip this
-           window entirely, exactly as the old zeroing did. */
-        bg_hr_win_mean = bghr_over_ceiling ? 0 : bg_hr_burst_best;
+           window entirely, exactly as the old zeroing did. A curve-gate refusal
+           takes the same exit for the same reason -- having just declared the
+           value untrustworthy for the curve, feeding it to the wake-veto (where a
+           spurious 196 reads as "awake") would only move the lie downstream. */
+        bg_hr_win_mean = (bghr_over_ceiling || bghr_curve_refused) ? 0 : bg_hr_burst_best;
         bg_hr_win_std = bg_hr_std_from_sums(bg_hr_burst_sum, bg_hr_burst_sum_sq,
                                             bg_hr_burst_cnt);
         bg_hr_win_tick_ms = rt_tick_get_millisecond();
@@ -1733,6 +1984,12 @@ static void bg_hr_finish_burst(void)
         extern int bmi270_set_hr_accel_stream(int en);
         (void)bmi270_set_hr_accel_stream(0);   /* pairs with bg_hr_start_burst */
     }
+    /* Release the light BEFORE asking for power-down: hr_set_power vetoes a
+       power-down while this flag is up (@ref hr_service_bg_burst_active), and
+       that veto must not block the burst's own teardown. Safe to clear here --
+       the sample and period callbacks both run on the soft-timer thread, so
+       nothing can start a new burst inside this function. */
+    bg_hr_bursting = RT_FALSE;
     /* Only power down if no foreground (Exercise app) subscriber needs PPG.
        There is a tiny (two-statement) window where a subscribe on the ds_proc
        thread could flip ref_count between this read and hr_set_power(0); the
@@ -1744,7 +2001,6 @@ static void bg_hr_finish_burst(void)
         hr_set_power(0);
     }
     ppg_pi_finish();   /* finalize this burst's PI for sleep_diag capture */
-    bg_hr_bursting = RT_FALSE;
 }
 
 static void bg_hr_sample_cb(void *param)
@@ -2052,9 +2308,27 @@ void hr_service_set_hr_continuous(bool enable)
     }
 }
 
+/* Retarget the periodic tick. @ref BG_HR_RETRY_MS. RT-Thread needs the timer
+   stopped before SET_TIME takes effect on a running periodic timer. */
+static void bg_hr_set_period(rt_bool_t shortened)
+{
+    if (bg_hr_period_short == shortened || bg_hr_period_timer == RT_NULL) return;
+    bg_hr_period_short = shortened;
+    rt_tick_t t = rt_tick_from_millisecond(shortened ? BG_HR_RETRY_MS
+                                                     : BG_HR_PERIOD_MS);
+    rt_timer_stop(bg_hr_period_timer);
+    rt_timer_control(bg_hr_period_timer, RT_TIMER_CTRL_SET_TIME, &t);
+    rt_timer_start(bg_hr_period_timer);
+    LOG_I("[BGHR] tick -> %u s", (unsigned)((shortened ? BG_HR_RETRY_MS
+                                                       : BG_HR_PERIOD_MS) / 1000));
+}
+
 static void bg_hr_period_cb(void *param)
 {
     (void)param;
+    /* Sleep bursts are 3 min long and already run every tick — a shortened
+       period there would hold the LED on all night. Always the base tick. */
+    if (bg_hr_sleep_active && bg_hr_period_short) bg_hr_set_period(RT_FALSE);
     /* Continuous diag owns the sensor; its timer is stopped on enable, but a tick
        already queued when the toggle flipped would still land here. */
     if (bg_hr_cont_enabled) return;
@@ -2082,7 +2356,15 @@ static void bg_hr_period_cb(void *param)
     if (imu_rawdata_collection_active()) { bg_hr_note(BGHR_BUSY); return; }
 
     int reason = bg_hr_skip_reason();
-    if (reason != BGHR_OK) { bg_hr_note(reason); return; }
+    if (reason != BGHR_OK)
+    {
+        /* Off-wrist / charging / not-ready: nothing will be measured until this
+           clears, so drop the short retry tick (@ref BG_HR_RETRY_MS) rather
+           than spin it against a condition a faster tick cannot fix. */
+        bg_hr_set_period(RT_FALSE);
+        bg_hr_note(reason);
+        return;
+    }
 
     /* Exercise app already measuring -> just forward its latest value, no
        extra LED burst. */
@@ -2091,7 +2373,15 @@ static void bg_hr_period_cb(void *param)
         uint8_t bpm = hr_service_get_latest_bpm();
         if (bpm > 0 && watch_sys_sync.notify_hr_sample)
         {
-            watch_sys_sync.notify_hr_sample((uint32_t)time(NULL), bpm);
+            uint32_t now_s = (uint32_t)time(NULL);
+            /* NOT gated: the Exercise app is a continuous read the user is
+               watching live, and exercise is exactly when a legitimate value
+               leaves the resting baseline fastest. But it MUST feed the history,
+               or the baseline stays at the pre-workout resting rate and the first
+               background burst after the session gets refused for being real. */
+            watch_sys_sync.notify_hr_sample(now_s, bpm);
+            curve_push(now_s, bpm);
+            s_curve_pending = 0;
             bg_hr_note(BGHR_OK);
         }
         else
@@ -2105,8 +2395,12 @@ static void bg_hr_period_cb(void *param)
        Asleep: burst every tick for dense staging HR. */
     if (!bg_hr_sleep_active)
     {
-        if (++bg_hr_awake_ticks < BG_HR_AWAKE_SKIP) { bg_hr_note(BGHR_THROTTLE); return; }
-        bg_hr_awake_ticks = 0;
+        /* @ref BG_HR_RETRY_MS — while the last burst produced nothing, measure
+           every tick (and the tick itself is shortened) until one lands. The
+           flag is cleared by a successful publish, not here. */
+        if (bg_hr_retry_soon) bg_hr_awake_ticks = 0;
+        else if (++bg_hr_awake_ticks < BG_HR_AWAKE_SKIP) { bg_hr_note(BGHR_THROTTLE); return; }
+        else bg_hr_awake_ticks = 0;
     }
 
     /* Start a fresh burst: power the LED, read at 1 Hz until the deadline.
@@ -2136,6 +2430,7 @@ static void bg_hr_period_cb(void *param)
     bg_hr_burst_confi_max = 0;
     bg_hr_burst_snr_max = 0;
     bg_hr_burst_qlevel = 0;
+    bg_hr_burst_extends = 0;          /* @ref BGHR_EXTEND_MAX */
     bg_hr_burst_ms = bg_hr_sleep_active ? BG_HR_BURST_MS_SLEEP : BG_HR_BURST_MS_AWAKE;
     uint32_t bg_now_ms = rt_tick_get_millisecond();
     bg_hr_burst_start_seq = gh3018_get_hr_update_seq();  /* warm-up baseline: accept once the algo emits a NEW locked value past this */

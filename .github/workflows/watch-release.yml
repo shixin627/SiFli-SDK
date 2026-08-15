@@ -11,11 +11,17 @@ name: Watch Release
 # There is deliberately no actions/checkout: the toolchain (SiFli env, Keil),
 # the watch fixture and the OSS credentials all live in the working tree at
 # WATCH_REPO, and a fresh clone would rebuild ~2.5 MB of firmware from zero.
-# The commit that was actually released is recorded in the run summary.
+# `ref` instead moves that same tree onto the commit you want to release, which
+# keeps the untracked toolchain/credentials/fixture in place. Leave it empty to
+# build the bench disk exactly as it stands. The commit that was actually
+# released is recorded in the run summary either way.
 
 on:
   workflow_dispatch:
     inputs:
+      ref:
+        description: "要發布的 commit / branch（留空 = bench 工作樹當下的狀態）"
+        default: ""
       version:
         description: "發布版號 X.Y.Z（留空 = OSS 上最新版號 +1）"
         default: ""
@@ -68,6 +74,42 @@ jobs:
       PYTHONIOENCODING: utf-8
 
     steps:
+      - name: Sync working tree to the requested ref
+        if: inputs.ref != ''
+        working-directory: ${{ env.WATCH_REPO }}
+        env:
+          IN_REF: ${{ inputs.ref }}
+        run: |
+          # `checkout -f` throws away whatever the tree is carrying. Usually
+          # that is only the RELEASE-mode flags the previous run left behind
+          # (set_build_mode.py rewrites them anyway), but record it first so a
+          # discarded local edit is at least traceable afterwards.
+          $dirty = git status --short
+          if ($dirty) {
+            "### Discarded before checkout" | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Append -Encoding utf8
+            '```' + "`n$dirty`n" + '```' | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Append -Encoding utf8
+          }
+          git fetch origin --prune --tags
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          # Resolve remote-first: a stale local branch of the same name would
+          # otherwise build older code than the one that was just pushed.
+          $target = git rev-parse --verify --quiet ("origin/" + $env:IN_REF + '^{commit}')
+          if (-not $target) {
+            $target = git rev-parse --verify --quiet ($env:IN_REF + '^{commit}')
+          }
+          if (-not $target) { Write-Error "找不到 ref: $env:IN_REF"; exit 1 }
+          # Detached on purpose: nothing here should move a branch pointer.
+          git checkout -f --detach $target
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          # Named explicitly rather than swept: tools/SiliconSchema is
+          # registered in the bench's .git/config but its URL resolves to a
+          # repo this fork does not have, so any blanket `submodule update`
+          # tries to clone it and aborts the release over a submodule the
+          # firmware build never touches. middleware/bluetooth is the one that
+          # matters.
+          git submodule update -- middleware/bluetooth
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
       - name: Record working tree state
         working-directory: ${{ env.WATCH_REPO }}
         run: |
