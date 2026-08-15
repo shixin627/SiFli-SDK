@@ -2179,6 +2179,26 @@ static void handle_proximity_input(lv_event_t *e)
                         bool was_visible =
                             !lv_obj_has_flag(old_kbd, LV_OBJ_FLAG_HIDDEN);
 
+                        /* 2026-08-16 真機當機(founder「切到下個鍵盤才當」):並存的
+                           新舊兩塊輪盤(~21K)+中文站首批 CJK glyph(FT clean_cache
+                           560K/700K 同刻觸發)+雙輪盤 EPIC 合成,把主 heap 從 ~41K
+                           一路吃到 0 → data_proxy_process `RT_NULL != body` assert
+                           重開。free 不到 60K 就放棄換頁動畫,先刪舊再建新(同
+                           Caps 鍵路徑) —— 峰值少一塊輪盤、合成面積也減半。 */
+                        bool slide_ok;
+                        {
+                            rt_uint32_t kb_total = 0, kb_used = 0, kb_mx = 0;
+                            rt_memory_info(&kb_total, &kb_used, &kb_mx);
+                            slide_ok = (kb_total - kb_used >= 60 * 1024);
+                            LOG_W("[kbd] mode-switch free=%u slide=%d",
+                                  (unsigned)(kb_total - kb_used), (int)slide_ok);
+                        }
+                        if (!slide_ok)
+                        {
+                            lv_obj_del(old_kbd);
+                            old_kbd = NULL;
+                        }
+
                         keyboard_container = NULL;
                         create_circular_keyboard_layout(parent);
                         if (was_visible)
