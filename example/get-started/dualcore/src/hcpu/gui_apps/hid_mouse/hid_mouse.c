@@ -5366,8 +5366,31 @@ static void hw_btn_mode_cb(lv_event_t *e)
    實作刻意重用 hw_btn_mode_cb 那條已驗過的「切進鍵盤模式」序列,末端再走
    kbd_lower_switch(false) 切到語音站,不自己手刻輸入列幾何(鍵盤站與語音站的
    bar 尺寸/位置是兩套,手刻很容易變成 founder 2026-07-22 那個「下層多一個輸入框」)。 */
-static void mouse_open_voice_station(void)
+/* 2026-08-15:語音站**首次**建置(輕量版 ~17.5K)+EPIC 渲染還要 ~15K 頭寸;聊天回合後
+   free 常掉到 ~31K,建完 14K 渲染直接 sys memory is full 重開(真機)。<38K 就優雅拒絕
+   (短震、留在觸控板);已建過的 re-entry 不花錢、不 gate。真解=hosted 頂部面板 R32 式
+   釋放(掛帳),那輪做完這個 gate 幾乎不會再觸發。 */
+static bool mouse_voice_station_heap_ok(void)
 {
+    if (s_kbd_ui_built)
+        return true;
+    rt_uint32_t total = 0, used = 0, max_used = 0;
+    rt_memory_info(&total, &used, &max_used);
+    if (total - used < 38 * 1024)
+    {
+        LOG_W("[voice] station refused: free=%u < 38K (build+render would OOM)",
+              (unsigned)(total - used));
+        extern void motor_pattern_damping(void);
+        motor_pattern_damping();
+        return false;
+    }
+    return true;
+}
+
+static bool mouse_open_voice_station(void)
+{
+    if (!mouse_voice_station_heap_ok())
+        return false;
     kbd_pinyin_clear();
     current_keyboard_mode = KEYBOARD_MODE_LETTERS;
     if (keyboard_container != NULL)
@@ -5395,6 +5418,7 @@ static void mouse_open_voice_station(void)
     kbd_cand_refresh();
     kbd_lower_switch(false); /* 立刻退到語音站(輸入列高度由它的動畫帶下去) */
     LOG_I("[voice] open voice station (top-logo tap)");
+    return true;
 }
 
 /* 本地軌跡:清空全部筆畫。 */
@@ -9821,7 +9845,8 @@ static void bottom_logo_cb(lv_event_t *e)
        keyboard_container 藏起來先進語音站,所以重建不會被看到。 */
     /* 這裡**不要**再重建一次鍵盤版面 —— mouse_open_voice_station() 內部已經做了。
        重複一次等於白付一次數百 ms 的停頓,正是動畫被吃掉的主因。 */
-    mouse_open_voice_station(); /* 落地狀態=現行語音站版面,一個像素都不動 */
+    if (!mouse_open_voice_station()) /* 落地狀態=現行語音站版面,一個像素都不動 */
+        return; /* heap 不足被拒:留在觸控板,別跑進場動畫(容器沒切) */
     lv_obj_t *kc = mode_container[HID_MODE_KEYBOARD];
     if (kc == NULL || !lv_obj_is_valid(kc))
         return;
