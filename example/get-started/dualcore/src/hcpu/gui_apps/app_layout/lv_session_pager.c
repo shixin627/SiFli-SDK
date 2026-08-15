@@ -748,10 +748,22 @@ const char *session_list_device_name_for(const char *conv_id)
 
 /* 合併重建:全設備的 sessions 收成一份,有 ts 就按 ts 由新到舊,沒 ts 的
    (舊 APK)排在有 ts 的後面、按設備順序群聚 —— 穩定插入排序,量級 4x8=32。 */
+/* heap 輪(2026-08-16):這份清單是 R8 之後的**隱藏備援**(左頁真身=浮動 actions
+   清單),平常永遠看不到,卻在每次 0x20 重推時重建整排卡片常駐吃 heap。隱藏時
+   不建列、只立 dirty 旗,真要顯示(sp_list_view_show)才補建。 */
+static bool s_list_dirty = false;
+
 static void sp_rebuild_list(void)
 {
     if (s_list_view == NULL || !lv_obj_is_valid(s_list_view))
         return;
+    if (lv_obj_has_flag(s_list_view, LV_OBJ_FLAG_HIDDEN))
+    {
+        lv_obj_clean(s_list_view); /* 舊列也不留:隱藏備援零常駐 */
+        s_list_dirty = true;
+        return;
+    }
+    s_list_dirty = false;
     lv_obj_clean(s_list_view);
 
     struct
@@ -804,6 +816,17 @@ static void sp_rebuild_list(void)
     }
 
     sp_append_actions(s_list_view);
+}
+
+/** 備援清單要亮相的兩個點(sp_leave_chat / 開著的房被桌面刪掉)走這裡:
+    先解除隱藏(rebuild 的隱藏 early-out 才不會擋路),dirty 才補建。 */
+static void sp_list_view_show(void)
+{
+    if (s_list_view == NULL || !lv_obj_is_valid(s_list_view))
+        return;
+    lv_obj_clear_flag(s_list_view, LV_OBJ_FLAG_HIDDEN);
+    if (s_list_dirty)
+        sp_rebuild_list();
 }
 
 /* ── CHAT layer ──────────────────────────────────────────────────────────── */
@@ -862,8 +885,7 @@ static void sp_leave_chat(void)
     }
     s_in_chat = false;
     lv_obj_add_flag(s_chat_view, LV_OBJ_FLAG_HIDDEN);
-    if (s_list_view != NULL && lv_obj_is_valid(s_list_view))
-        lv_obj_clear_flag(s_list_view, LV_OBJ_FLAG_HIDDEN);
+    sp_list_view_show();
 }
 
 /* ── Back gesture (CHAT → LIST) ──────────────────────────────────────────────
@@ -1317,8 +1339,7 @@ static void sp_apply_list(void)
         s_open_id[0] = '\0';
         s_in_chat = false;
         lv_obj_add_flag(s_chat_view, LV_OBJ_FLAG_HIDDEN);
-        if (s_list_view != NULL && lv_obj_is_valid(s_list_view))
-            lv_obj_clear_flag(s_list_view, LV_OBJ_FLAG_HIDDEN);
+        sp_list_view_show();
     }
 }
 

@@ -642,6 +642,14 @@ void chat_page_open(const char *title, const char *icon_src)
         lvsf_gesture_bring_to_front();
     }
 
+    /* heap 輪:hosted 滑鼠模式下,聊天 overlay 不透明蓋全螢幕 —— 底下的滑鼠圖層
+       藏掉,別讓看不見的整層白付 EPIC 合成(低 heap 時就是 render OOM 的差額)。
+       chat_page_close 對稱還原;非滑鼠模式 no-op。 */
+    {
+        extern void lv_top_panel_mouse_layer_set_covered(bool covered);
+        lv_top_panel_mouse_layer_set_covered(true);
+    }
+
     LOG_I("chat page opened: %s", (title && title[0]) ? title : "(none)");
 }
 
@@ -670,6 +678,10 @@ void chat_page_close(void)
     s_transcript_label = NULL;
     s_transcript_pill = NULL;
     s_input_scrim = NULL;
+    {
+        extern void lv_top_panel_mouse_layer_set_covered(bool covered);
+        lv_top_panel_mouse_layer_set_covered(false);
+    }
     LOG_I("chat page closed");
 }
 

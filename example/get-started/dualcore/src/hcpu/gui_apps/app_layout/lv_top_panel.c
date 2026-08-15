@@ -148,6 +148,21 @@ static void mouse_layer_set(bool on)
 
 bool lv_top_panel_mouse_mode(void) { return s_mouse_mode; }
 
+/* heap 輪(2026-08-16):聊天室 overlay 不透明蓋全螢幕時,滑鼠圖層(全螢幕黑底+
+   觸控板 UI)整層看不到卻照樣進 EPIC 繪製清單吃合成緩衝(同 R34 gaus_dial_bg 的
+   教訓)。聊天室開/關時把圖層整個 hide/show —— mouse_layer_prepare 本來就會
+   clear HIDDEN,狀態不會卡死。非滑鼠模式 no-op。 */
+void lv_top_panel_mouse_layer_set_covered(bool covered)
+{
+    if (!s_mouse_mode || s_mouse_layer == NULL || !lv_obj_is_valid(s_mouse_layer))
+        return;
+    if (covered)
+        lv_obj_add_flag(s_mouse_layer, LV_OBJ_FLAG_HIDDEN);
+    else
+        lv_obj_clear_flag(s_mouse_layer, LV_OBJ_FLAG_HIDDEN);
+    LOG_I("[top_panel] mouse layer %s (chat overlay)", covered ? "covered" : "restored");
+}
+
 /* enter_mode 很重（IMU 資料流），settle 那一幀先只把圖層亮出來，下一輪
    lv_timer_handler 再開，settle 的重繪才不會被它卡住。 */
 static void mouse_activate_async_cb(void *unused)
