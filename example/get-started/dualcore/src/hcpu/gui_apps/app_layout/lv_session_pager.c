@@ -550,6 +550,16 @@ static void sp_inject_sessions_into_actions(void)
     extern const char *instruction_list_export_id(uint8_t i);
     extern const char *instruction_list_export_title(uint8_t i);
 
+    /* 滑鼠 app 單設備模式(搜尋抽屜/立起面板)佔用共享清單期間**整段跳過**:那份清單是
+       「正在控制那一台電腦」面板的鏡像(0x03),把 s_devices 全部設備的 session upsert
+       進去=別台的 session 混進單設備搜尋結果(2026-08-15 真機抓到)。抽屜收掉
+       restore_base 還原錶盤清單後,下一次 0x20/輪詢會照常補注入,不會漏。 */
+    {
+        extern bool instruction_list_single_device_active(void);
+        if (instruction_list_single_device_active())
+            return;
+    }
+
     bool changed = false;
 
     /* 移除:清單裡 conv: 開頭、但儲存裡已不存在的(桌面刪了 session)。 */

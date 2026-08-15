@@ -3724,6 +3724,15 @@ bool instruction_list_remote_target_has_focus(void)
     return s_remote_target_has_focus;
 }
 
+/* 公開：滑鼠 app 單設備模式(搜尋抽屜/立起面板)是否正佔用共享清單。session_pager 的
+   sp_inject_sessions_into_actions 用它擋注入 —— 單設備清單=「那一台電腦面板」的鏡像,
+   各台桌面 0x20 定時重推的 session 不該混進來(2026-08-15 founder:「為什麼別台設備的
+   session也會進來」)。單一 bool 讀取,任何執行緒皆可。 */
+bool instruction_list_single_device_active(void)
+{
+    return s_bar_single_device;
+}
+
 
 /* 公開：滑鼠 app 離開(destroy / Exit)時呼叫 —— 若還在單設備模式,把共享清單還原成錶盤清單、
    通知電腦收掉它的 skaibar、清旗標,避免設備選項殘留在下次錶盤底部 bar。idempotent。 */
