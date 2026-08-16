@@ -1630,8 +1630,25 @@ extern void HBD_HbaSleepFlagConfig(unsigned char sleep_flg);
    self-correct). Cleared -> back to the ~15 min curve rate. */
 void hr_service_set_sleep_active(bool active)
 {
+    /* Re-arm the awake skip cadence on the EDGE into awake, never on a repeat.
+     *
+     * This is a transition action, but the caller is not a transition: while
+     * wear_detect reports off-wrist, sleep_service's 1 Hz prv_timer_cb calls
+     * this with false EVERY SECOND (sleep_service.c, the !prv_is_worn() branch;
+     * the "called every minute-eval" note below is only true on the worn path).
+     * Clearing the counter unconditionally therefore reset it once a second,
+     * while the counter is only incremented once per 10-minute HR tick -- so it
+     * could never reach BG_HR_AWAKE_SKIP and every tick throttled. The watch
+     * never turned the LED on at all.
+     *
+     * That silently cancelled the removal of the wear gate in
+     * bg_hr_skip_reason(): measurement still did not happen when wear_detect was
+     * wrong, only the label changed from NOT_WORN to POWER_SAVE. Measured on
+     * 2026-08-16, 03:41-05:11 -- 90 minutes, 8 consecutive throttle markers,
+     * zero bursts. */
+    rt_bool_t was_sleep = bg_hr_sleep_active;
     bg_hr_sleep_active = active ? RT_TRUE : RT_FALSE;
-    if (!active) bg_hr_awake_ticks = 0; /* re-arm the awake skip cadence */
+    if (!active && was_sleep) bg_hr_awake_ticks = 0;
 
     /* Latch the Goodix sleep context on EDGES only (called every minute-eval).
        scene/mode are read at each burst's algo init, so the next burst picks
