@@ -1090,41 +1090,41 @@ extern void gh3018_get_hr_acc_state(uint32_t *acc_info, uint32_t *acc_scene);
    ends warm-up the moment it moves (= algo locked this burst). See gh3018 port. */
 extern uint32_t gh3018_get_hr_update_seq(void);
 
-/* Two-stage HR sampling (literature pattern: a low-power signal prescreens
-   sleep, PPG activates only when needed). The period timer ticks at the SLEEP
-   cadence; while AWAKE we actually burst only every BG_HR_AWAKE_SKIP ticks, so
-   the daily HR curve keeps its ~15 min rate and daytime PPG power is unchanged.
-   Once sleep_fusion reports asleep (accel-only decision), sleep_service flips
-   bg_hr_sleep_active and we burst every tick with a ≥60 s window so HR mean +
-   std (HRV proxy) are valid for Deep/REM staging. PPG stays OFF while awake. */
-/* Sparse-but-long night cadence (2026-07-28 experiment): the residual harmonic
-   locks all happen in the first seconds after a cold start, and the workout app
-   (continuous measurement) tracks Apple closely on the same wrist — evidence
-   that convergence time, not sensor quality, is the limit. Trade burst COUNT for
-   burst LENGTH: 10 min apart, 3 min each. Night LED duty 33% -> 30%, so this is
-   power-neutral while giving the algo 3x longer to converge. Sleep-staging HR
-   thins to one window per 10 min; keep SLEEP_HR_WINDOW_MAX_AGE_MS
-   (sleep_service.c) >= this period so no minute is left without HR features.
-   Revert both together. */
-#define BG_HR_PERIOD_MS      (10 * 60 * 1000) /* base tick = sleep-mode cadence   */
-/* Back to the normal intermittent cadence (2026-08-04). The dense daytime
-   diagnostic ran its course: it was there to cross-check against a reference
-   watch without waiting a night per experiment, and it did — the doubling is now
-   characterised and reproduced. Holding PPG at ~30% daytime duty for a question
-   that has been answered is just battery. */
-#define BG_HR_AWAKE_SKIP     2               /* awake: burst every 2nd tick = 20 min */
+/* ONE CADENCE, ONE BURST LENGTH — no awake/asleep split (founder call,
+ * 2026-08-16: "先全部都用10分鐘量3分鐘…先不分睡眠，因為心率要先正確才能夠判斷
+ * 睡眠；睡眠跟醒來的差別理論上來說也只差在量測的頻率").
+ *
+ * The split was keyed on bg_hr_sleep_active, which comes from sleep_service,
+ * which is suspended whenever wear_detect reports off-wrist -- so the sleep
+ * verdict inherits wear_detect's error rate, and the HR cadence inherited it
+ * twice over. It is also the wrong dependency direction: sleep staging is
+ * DOWNSTREAM of heart rate, so keying heart rate on the sleep verdict makes the
+ * measurement depend on a conclusion drawn from it.
+ *
+ * And the errors are asymmetric. Wrongly "asleep" costs battery and gives
+ * better data; wrongly "awake" shortened the burst to 40 s and thinned the
+ * cadence to 20 min -- which is where the damage was. Measured on 2026-08-14,
+ * 40 s bursts at rest in the evening returned 196, 188 and a sustained
+ * 150/156/164/184 run, against 3-minute bursts on 2026-08-16 whose consecutive
+ * readings differ by a median of 3-5 bpm. The sustained run matters: the curve
+ * gate refuses ISOLATED deviations by design, so a burst length that locks onto
+ * the 2x harmonic for a whole stretch sails straight through it.
+ *
+ * So: always the long burst, always the dense tick. This is the ~30% daytime
+ * PPG duty that 2026-08-04 deliberately backed away from -- knowingly re-taken,
+ * because heart rate has to be right before anything derived from it can be. */
+#define BG_HR_PERIOD_MS      (10 * 60 * 1000)
 /* The HBA algo restarts cold each burst and needs ~30 s to lock (hba_out_flag
    stays 0 until then); before that gh3018_get_hr() still returns the PREVIOUS
    burst's stale value, so reads are gated on a real lock (HR update-seq moving)
    rather than on elapsed time -- keep every burst comfortably longer than ~30 s
    or it will lock nothing and report NO_LOCK. */
-/* 40 s awake / 3 min asleep. Both are sized by hr_autocorr's 10.24 s window plus
-   margin for the median below — NOT by the vendor algorithm's ~30 s cold-start
-   convergence any more, since its answer is no longer the one published. The
-   sleep burst stays long because that is where the artefacts live and more
-   independent estimates make the median robust. */
-#define BG_HR_BURST_MS_AWAKE (40 * 1000)
-#define BG_HR_BURST_MS_SLEEP (3 * 60 * 1000) /* long enough to converge past a cold-start harmonic lock */
+/* Sized for hr_autocorr's 10.24 s window plus margin for the rolling median,
+   and long enough to converge past a cold-start harmonic lock -- the failure
+   mode that neither the curve gate nor a convergence test can catch, because a
+   harmonic lock is STABLE and therefore looks like agreement. Only time helps
+   here, which is why this is not adaptive downward. */
+#define BG_HR_BURST_MS       (3 * 60 * 1000)
 #define BG_HR_SAMPLE_MS      (1000)          /* read cadence during the burst      */
 /* HR output motion gate: each 1 Hz read also samples BMI270 accel; if the wrist
    moved this second (or within the guard window after), drop that HR read from
@@ -1146,36 +1146,23 @@ extern uint32_t gh3018_get_hr_update_seq(void);
 static rt_timer_t bg_hr_period_timer = RT_NULL;
 static rt_timer_t bg_hr_sample_timer = RT_NULL;
 static rt_bool_t bg_hr_bursting = RT_FALSE;
-/* RETRY-UNTIL-MEASURED (awake only).
+/* KEEP MEASURING UNTIL IT MEASURES.
  *
  * A burst that produces nothing -- PPG never locked, or the curve gate refused
- * the value -- leaves a hole in the daily curve, and at the normal awake cadence
- * that hole is 40 minutes wide (bursts 20 min apart). Consecutive failures stack:
- * measured on 2026-08-14, runs of 2-4 NO_LOCK bursts produced 30, 40, 40 and 50
- * minute holes. A curve that blank for that long reads as broken whatever the
- * reason field says.
+ * the value -- leaves a hole in the curve, and the user cannot tell that hole
+ * apart from a broken watch. So a failing burst does not end and wait for the
+ * next tick: it keeps the LED on and keeps reading, one BGHR_EXTEND_SLICE_MS at
+ * a time, until it has something to publish.
  *
- * So while awake and on the wrist, a failed burst switches the period timer to
- * BG_HR_RETRY_MS and keeps measuring until one succeeds -- worst case above
- * becomes ~16 min instead of 50. The cost is LED duty (a 40 s burst every 4 min
- * = 17%) and it is paid ONLY during a failing run on a worn wrist, which is
- * exactly the case where the user is looking at a blank curve.
- *
- * Asleep is excluded: bursts there are 3 minutes long and already fire every
- * tick, so a 4-minute period would run the LED near-continuously all night for
- * no gain. */
-#define BG_HR_RETRY_MS       (4 * 60 * 1000)
-static rt_bool_t bg_hr_retry_soon = RT_FALSE;   /* last burst produced nothing  */
-static rt_bool_t bg_hr_period_short = RT_FALSE; /* timer is at BG_HR_RETRY_MS   */
-
-/* How many extra BG_HR_BURST_MS_AWAKE slices a failing awake burst may take
-   before giving up and letting the retry tick have it. 40 s base + 5 slices =
-   4 min of continuous reading, the same order as the sleep burst that was
-   already lengthened to converge. Beyond that the wrist is not going to yield
-   to more staring, and the LED should rest before the next attempt. */
-#define BGHR_EXTEND_MAX      5
+ * Bounded two ways, both self-evidencing rather than inferred:
+ *   - BGHR_EXTEND_MAX slices, so a single burst cannot outlive its own tick;
+ *   - bg_hr_pulse_recent(), so a watch lying on a table -- which never locks and
+ *     would otherwise extend forever -- never earns the extra light at all.
+ * A wrist that was reading fine a moment ago earns it, which is exactly the
+ * case worth spending light on. */
+#define BGHR_EXTEND_SLICE_MS (60 * 1000)
+#define BGHR_EXTEND_MAX      5               /* 3 min base + 5 min = 8 min cap */
 static uint8_t bg_hr_burst_extends = 0;
-static void bg_hr_set_period(rt_bool_t shortened);   /* defined with the timer  */
 static uint32_t bg_hr_burst_deadline_ms = 0;
 static uint32_t bg_hr_burst_start_seq = 0;   /* gh3018 HR-update seq at burst start; warm-up baseline */
 /* PPG frame accounting for the 2x-harmonic investigation. The algo is told
@@ -1333,8 +1320,7 @@ uint16_t hr_service_get_last_rate_info(void) { return bg_hr_win_rate_info; }
    says we're asleep OR the wrist is still inside the overnight rest window
    (rest-candidate) -> dense bursts; cleared otherwise -> ~15 min curve rate. */
 static rt_bool_t bg_hr_sleep_active = RT_FALSE;
-static uint8_t   bg_hr_awake_ticks = 0;                    /* awake skip counter */
-static uint32_t  bg_hr_burst_ms = BG_HR_BURST_MS_AWAKE;    /* current burst len  */
+static uint32_t  bg_hr_burst_ms = BG_HR_BURST_MS;          /* current burst len  */
 
 /* Per-burst HR accumulators (Σ, Σ², count) over the burst's 1 Hz reads, used
    to publish a mean + std (HRV proxy) window for sleep_fusion. */
@@ -1617,38 +1603,26 @@ bool hr_service_get_hr_window(uint8_t *mean_bpm, uint8_t *std_bpm, uint32_t *age
    cold-started blind every burst. Derive from the actual cadence so the two can
    never drift apart. */
 #define GH_HBA_SENSELESS_STEP_S (BG_HR_PERIOD_MS / 1000)      /* gap between bursts */
-#define GH_HBA_SENSELESS_DUR_S  (BG_HR_BURST_MS_SLEEP / 1000) /* length of a burst  */
+#define GH_HBA_SENSELESS_DUR_S  (BG_HR_BURST_MS / 1000)       /* length of a burst  */
 extern signed char HBD_HbAlgoScenarioConfig(int scenario);
 extern void HBD_HbaTestModeConfig(int mode, unsigned short step,
                                   unsigned short duration);
 extern void HBD_HbaSleepFlagConfig(unsigned char sleep_flg);
 
-/* Dense-burst gate. sleep_service asserts this while accel-detected sleep is
-   active OR the wrist is still inside the overnight rest window
-   (verdict-independent — see sleep_service.c SLEEP_REST_*; keeps a mis-scored
-   night from starving itself of the dense HR the wake-veto needs to
-   self-correct). Cleared -> back to the ~15 min curve rate. */
+/* Sleep context for the Goodix algorithm, and the sleep-only artefact ceiling.
+   NO LONGER STEERS THE CADENCE OR THE BURST LENGTH -- both are now unconditional
+   (@ref BG_HR_PERIOD_MS). Anything added here must stay free of that: this is
+   called at 1 Hz while wear_detect reports off-wrist (sleep_service.c's
+   !prv_is_worn() branch; the "called every minute-eval" note below is true only
+   of the worn path), and the previous version cleared the awake-throttle counter
+   here on every one of those calls. The counter only advanced once per 10-minute
+   tick, so it could never reach its threshold: every tick throttled and the LED
+   never came on. That silently cancelled the removal of the wear gate in
+   bg_hr_skip_reason() -- 2026-08-16 03:41-05:11 was 90 minutes, 8 consecutive
+   throttle markers, zero bursts. The counter is gone with the throttle. */
 void hr_service_set_sleep_active(bool active)
 {
-    /* Re-arm the awake skip cadence on the EDGE into awake, never on a repeat.
-     *
-     * This is a transition action, but the caller is not a transition: while
-     * wear_detect reports off-wrist, sleep_service's 1 Hz prv_timer_cb calls
-     * this with false EVERY SECOND (sleep_service.c, the !prv_is_worn() branch;
-     * the "called every minute-eval" note below is only true on the worn path).
-     * Clearing the counter unconditionally therefore reset it once a second,
-     * while the counter is only incremented once per 10-minute HR tick -- so it
-     * could never reach BG_HR_AWAKE_SKIP and every tick throttled. The watch
-     * never turned the LED on at all.
-     *
-     * That silently cancelled the removal of the wear gate in
-     * bg_hr_skip_reason(): measurement still did not happen when wear_detect was
-     * wrong, only the label changed from NOT_WORN to POWER_SAVE. Measured on
-     * 2026-08-16, 03:41-05:11 -- 90 minutes, 8 consecutive throttle markers,
-     * zero bursts. */
-    rt_bool_t was_sleep = bg_hr_sleep_active;
     bg_hr_sleep_active = active ? RT_TRUE : RT_FALSE;
-    if (!active && was_sleep) bg_hr_awake_ticks = 0;
 
     /* Latch the Goodix sleep context on EDGES only (called every minute-eval).
        scene/mode are read at each burst's algo init, so the next burst picks
@@ -1686,7 +1660,10 @@ enum
     BGHR_BUSY,      /* previous burst still running                    */
     BGHR_NO_TIMER,  /* sample timer missing (creation failed)          */
     BGHR_FWD_ZERO,  /* Exercise app subscribed but reported 0 bpm      */
-    BGHR_THROTTLE,    /* awake skip -- normal ~15 min daytime cadence  */
+    BGHR_THROTTLE,    /* DEAD since the awake throttle was removed (@ref
+                         BG_HR_PERIOD_MS). Kept: the wire code is a frozen
+                         contract (ADR-0011 D2) and the phone still decodes it,
+                         so old curves keep rendering. Never emitted now.  */
     BGHR_SENSOR_FAULT,/* every sensor read this burst failed (I2C / HW) */
     BGHR_REASON_CNT
 };
@@ -1821,12 +1798,11 @@ bool hr_service_bg_burst_active(void)
 }
 
 /* Have we seen a real pulse recently? This replaces wear_detect as the trigger
-   for the aggressive retry (@ref BG_HR_RETRY_MS, @ref BGHR_EXTEND_MAX) -- it is
-   self-evidencing rather than inferred, and it bounds the battery cost that
-   removing the wear gate would otherwise create: a watch lying on a table never
-   locks, so it never earns the aggressive mode and stays at the plain 40 s per
-   20 min. A wrist that was reading fine a moment ago earns it, which is exactly
-   the case worth spending light on. */
+   for extending a failing burst (@ref BGHR_EXTEND_MAX) -- it is self-evidencing
+   rather than inferred, and it bounds the battery cost that removing the wear
+   gate would otherwise create: a watch lying on a table never locks, so it never
+   earns the extra light and stays at the plain one burst per tick. A wrist that
+   was reading fine a moment ago earns it. */
 #define BGHR_PULSE_EVIDENCE_MS  (30 * 60 * 1000)
 static uint32_t bg_hr_last_ok_ms = 0;
 static bool bg_hr_pulse_recent(void)
@@ -1844,21 +1820,15 @@ static void bg_hr_finish_burst(void)
      * will be refused by the curve gate. If not, hold the LED on and carry on
      * sampling instead of finishing and re-bursting later: a restart costs an
      * LED off/on, a GH3018 re-init and the whole warm-up over again, and buys
-     * nothing the extra seconds would not have bought.
-     *
-     * The evidence that longer works is already in this file: the SLEEP burst
-     * is 3 minutes because that is "long enough to converge past a cold-start
-     * harmonic lock". Awake gets 40 s, and on 2026-08-14 that produced runs of
-     * 2-4 consecutive NO_LOCK bursts. A 40 s look at a wrist that has not
-     * settled is simply too short a look. */
-    if (!bg_hr_sleep_active && bg_hr_burst_extends < BGHR_EXTEND_MAX &&
+     * nothing the extra seconds would not have bought. */
+    if (bg_hr_burst_extends < BGHR_EXTEND_MAX &&
         bg_hr_pulse_recent() &&          /* a table never earns the extra light */
         (bg_hr_burst_best == 0 ||
          !curve_judge((uint32_t)time(NULL), bg_hr_burst_best, RT_NULL)))
     {
         bg_hr_burst_extends++;
-        bg_hr_burst_deadline_ms += BG_HR_BURST_MS_AWAKE;
-        bg_hr_burst_ms += BG_HR_BURST_MS_AWAKE;  /* keep frame accounting honest */
+        bg_hr_burst_deadline_ms += BGHR_EXTEND_SLICE_MS;
+        bg_hr_burst_ms += BGHR_EXTEND_SLICE_MS;  /* keep frame accounting honest */
         return;                                  /* sampler is still running */
     }
 
@@ -1960,19 +1930,6 @@ static void bg_hr_finish_burst(void)
         bg_hr_note(wear_detect_is_wearing() ? BGHR_NO_LOCK : BGHR_NOT_WORN);
     }
 
-    /* @ref BG_HR_RETRY_MS — a burst that put nothing on the curve keeps the
-       tick short and the throttle bypassed until one does. Every exit above
-       that is not a publish counts, including the curve-gate refusal: the user
-       cannot tell "refused" from "never locked" by looking at the graph, and
-       both are a blank stretch that has to close.
-
-       Gated on recent pulse evidence rather than on the wear verdict (@ref
-       bg_hr_pulse_recent): with the wear gate gone, a watch on a table would
-       otherwise fail forever and hold the aggressive retry on forever with it. */
-    bg_hr_retry_soon = (!bghr_published && bg_hr_pulse_recent()) ? RT_TRUE : RT_FALSE;
-    if (bghr_published)              bg_hr_set_period(RT_FALSE);
-    else if (bg_hr_retry_soon && !bg_hr_sleep_active) bg_hr_set_period(RT_TRUE);
-    else                             bg_hr_set_period(RT_FALSE);
 
     /* Publish the burst's HR window for sleep_fusion (wake-veto + staging).
        The headline value is the burst's FINAL rolling median — the converged,
@@ -2325,35 +2282,19 @@ void hr_service_set_hr_continuous(bool enable)
     }
 }
 
-/* Retarget the periodic tick. @ref BG_HR_RETRY_MS. RT-Thread needs the timer
-   stopped before SET_TIME takes effect on a running periodic timer. */
-static void bg_hr_set_period(rt_bool_t shortened)
-{
-    if (bg_hr_period_short == shortened || bg_hr_period_timer == RT_NULL) return;
-    bg_hr_period_short = shortened;
-    rt_tick_t t = rt_tick_from_millisecond(shortened ? BG_HR_RETRY_MS
-                                                     : BG_HR_PERIOD_MS);
-    rt_timer_stop(bg_hr_period_timer);
-    rt_timer_control(bg_hr_period_timer, RT_TIMER_CTRL_SET_TIME, &t);
-    rt_timer_start(bg_hr_period_timer);
-    LOG_I("[BGHR] tick -> %u s", (unsigned)((shortened ? BG_HR_RETRY_MS
-                                                       : BG_HR_PERIOD_MS) / 1000));
-}
-
 static void bg_hr_period_cb(void *param)
 {
     (void)param;
-    /* Sleep bursts are 3 min long and already run every tick — a shortened
-       period there would hold the LED on all night. Always the base tick. */
-    if (bg_hr_sleep_active && bg_hr_period_short) bg_hr_set_period(RT_FALSE);
     /* Continuous diag owns the sensor; its timer is stopped on enable, but a tick
        already queued when the toggle flipped would still land here. */
     if (bg_hr_cont_enabled) return;
 
     /* Roll the wall-clock 5-min bucket BEFORE any early-return below, so every
-       tick is attributed and a rollover is never missed. period tick (3 min) <
-       bucket (5 min) guarantees each bucket is visited at least once. While the
-       RTC is unset time() stays tiny -> bucket_now small, no bogus uplink. */
+       tick is attributed and a rollover is never missed. NOTE the tick (10 min)
+       is WIDER than the bucket (5 min), so buckets are skipped rather than all
+       visited -- the flush only ever describes the bucket a tick landed in.
+       While the RTC is unset time() stays tiny -> bucket_now small, no bogus
+       uplink. */
     uint32_t bucket_now = (uint32_t)time(NULL) / BG_HR_BUCKET_SEC;
     if (bg_hr_bucket_id == 0)
         bg_hr_bucket_id = bucket_now;                 /* first run: no flush */
@@ -2375,10 +2316,6 @@ static void bg_hr_period_cb(void *param)
     int reason = bg_hr_skip_reason();
     if (reason != BGHR_OK)
     {
-        /* Off-wrist / charging / not-ready: nothing will be measured until this
-           clears, so drop the short retry tick (@ref BG_HR_RETRY_MS) rather
-           than spin it against a condition a faster tick cannot fix. */
-        bg_hr_set_period(RT_FALSE);
         bg_hr_note(reason);
         return;
     }
@@ -2408,17 +2345,7 @@ static void bg_hr_period_cb(void *param)
         return;
     }
 
-    /* Awake: throttle to the ~15 min daily-curve rate (burst every 5th tick).
-       Asleep: burst every tick for dense staging HR. */
-    if (!bg_hr_sleep_active)
-    {
-        /* @ref BG_HR_RETRY_MS — while the last burst produced nothing, measure
-           every tick (and the tick itself is shortened) until one lands. The
-           flag is cleared by a successful publish, not here. */
-        if (bg_hr_retry_soon) bg_hr_awake_ticks = 0;
-        else if (++bg_hr_awake_ticks < BG_HR_AWAKE_SKIP) { bg_hr_note(BGHR_THROTTLE); return; }
-        else bg_hr_awake_ticks = 0;
-    }
+    /* No awake throttle: every tick bursts. @ref BG_HR_PERIOD_MS. */
 
     /* Start a fresh burst: power the LED, read at 1 Hz until the deadline.
        Bail BEFORE powering on if the sample timer is missing (creation failed)
@@ -2448,7 +2375,7 @@ static void bg_hr_period_cb(void *param)
     bg_hr_burst_snr_max = 0;
     bg_hr_burst_qlevel = 0;
     bg_hr_burst_extends = 0;          /* @ref BGHR_EXTEND_MAX */
-    bg_hr_burst_ms = bg_hr_sleep_active ? BG_HR_BURST_MS_SLEEP : BG_HR_BURST_MS_AWAKE;
+    bg_hr_burst_ms = BG_HR_BURST_MS;
     uint32_t bg_now_ms = rt_tick_get_millisecond();
     bg_hr_burst_start_seq = gh3018_get_hr_update_seq();  /* warm-up baseline: accept once the algo emits a NEW locked value past this */
     bg_hr_burst_start_frames = gh3018_get_ppg_frame_count(); /* frame-accounting baseline (see decl) */
