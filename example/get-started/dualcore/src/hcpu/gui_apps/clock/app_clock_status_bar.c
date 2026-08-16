@@ -855,7 +855,11 @@ static void app_clock_main_status_bar_event_cb(lv_event_t *event)
                 if (gaus_dial_bg && lv_obj_is_valid(gaus_dial_bg))
                     lv_obj_clear_flag(gaus_dial_bg, LV_OBJ_FLAG_HIDDEN);
                 set_clock_main_status_opa((uint8_t)opa, true);
-                set_instruction_list_battery_opa(LV_OPA_TRANSP);
+                /* founder 2026-08-16:下方控制+App List 頁頂部要有電量 ——
+                   往下頁拉時跟手漸現(與模糊底圖同一條 ramp);
+                   往頂部面板方向維持不顯示。 */
+                set_instruction_list_battery_opa(up < 0 ? (uint8_t)opa
+                                                        : LV_OPA_TRANSP);
             }
         }
         break;
@@ -1080,11 +1084,15 @@ static void app_clock_main_status_bar_event_cb(lv_event_t *event)
                               LV_OBJ_FLAG_HIDDEN);
             lv_obj_clear_flag(gaus_dial_bg, LV_OBJ_FLAG_HIDDEN);
             /* settle 收尾:模糊圖滿值、黑底退場(跟 2026-08-06 之前各頁的最終
-               狀態一致);時間/電量在非錶盤頁一律不顯示(founder 2026-08-11)。 */
+               狀態一致);時間在非錶盤頁一律不顯示(founder 2026-08-11)。
+               電量:founder 2026-08-16 要求下方控制+App List 頁頂部顯示,
+               其餘頁維持不顯示。 */
             if (gaus_dial_bg && lv_obj_is_valid(gaus_dial_bg))
                 lv_obj_set_style_bg_opa(gaus_dial_bg, LV_OPA_TRANSP, 0);
             set_instruction_list_time_opa(LV_OPA_0);
-            set_instruction_list_battery_opa(LV_OPA_TRANSP);
+            set_instruction_list_battery_opa(active_pos == MAIN_PAGE_TYPE_DOWN
+                                                 ? LV_OPA_COVER
+                                                 : LV_OPA_TRANSP);
             if (active_pos == MAIN_PAGE_TYPE_UP)
                 set_clock_main_status_opa(LV_OPA_100, true);
             else
