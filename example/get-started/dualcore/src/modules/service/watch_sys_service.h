@@ -291,6 +291,9 @@ extern "C"
 
 /* One captured hr_autocorr window (LCPU -> HCPU -> KEY_HR_WINDOW_DUMP). */
 #define WATCH_SYS_HR_WIN_MAX 256
+/* Paired wrist movement over the SAME window, decimated 4:1 (see
+   hr_autocorr_last_accel). 256+64+11 = 331 bytes, inside MAX_PACKET_PAYLOAD_SIZE. */
+#define WATCH_SYS_HR_ACC_MAX 64
 
     typedef struct
     {
@@ -298,7 +301,10 @@ extern "C"
         uint8_t  bpm;                      /* the implausible value             */
         uint8_t  conf;                     /* its confidence 0..100             */
         uint16_t count;                    /* samples in win[]                  */
+        uint16_t acc_count;                /* entries in acc[], 0 = none        */
+        uint8_t  acc_shift;                /* acc[] << this = raw LSB units     */
         int8_t   win[WATCH_SYS_HR_WIN_MAX];/* detrended PPG, oldest first       */
+        int8_t   acc[WATCH_SYS_HR_ACC_MAX];/* |x|+|y|+|z| about its own mean    */
     } watch_sys_hr_window_t;
 
     typedef struct

@@ -176,6 +176,25 @@ uint16_t hr_autocorr_fill(void);
  */
 uint16_t hr_autocorr_last_window(int8_t *out, uint16_t max);
 
+/** DIAGNOSTIC. The wrist movement that belongs to the window just dumped, so the
+ *  two can be read against each other offline.
+ *
+ * Why: on 2026-08-16 the daytime windows that produced nothing were shown to be
+ * dominated by 0.5-0.75 Hz optical drift, with the pulse 10-15x weaker. Motion
+ * is the obvious suspect, but sleep_diag's accel_act is a delta metric that
+ * barely responds to SLOW smooth movement -- it read LOWER on the failures than
+ * on the successes, which is either an exoneration or a blind spot, and the two
+ * are indistinguishable without the waveform.
+ *
+ * Sum of |x|+|y|+|z|, box-averaged and decimated by ACC_DUMP_DECIM, mean
+ * removed, then scaled down by *shift_out powers of two so it survives int8.
+ * Multiply by 1<<shift to recover raw LSB units. Sample i lines up with PPG
+ * samples [i*4 .. i*4+3] from hr_autocorr_last_window().
+ *
+ * @return entries written, 0 if no estimate has run yet (same guard as the PPG
+ *         dump -- a window of stale zeros reads as a real flat capture). */
+uint16_t hr_autocorr_last_accel(int8_t *out, uint16_t max, uint8_t *shift_out);
+
 #ifdef __cplusplus
 }
 #endif

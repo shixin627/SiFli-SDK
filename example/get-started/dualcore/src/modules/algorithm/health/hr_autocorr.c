@@ -45,6 +45,11 @@ static int16_t s_work[HR_AUTOCORR_WIN];
    offline suite rather than as "no data". */
 static bool s_work_valid = false;
 
+/* Decimation for the diagnostic accel dump. 25 Hz / 4 = 6.25 Hz, Nyquist 3.1 Hz
+   -- ample for the 0.5-0.75 Hz band the failing windows' optical drift sits in,
+   and it keeps the record inside MAX_PACKET_PAYLOAD_SIZE alongside the PPG. */
+#define ACC_DUMP_DECIM 4
+
 static void stage_reset(void);      /* defined with the staging state below */
 static void track_reset(void);      /* defined with the tracker at the end  */
 static void track_age_burst(void);  /* ditto                                */
@@ -260,6 +265,70 @@ static uint32_t isqrt32(uint32_t v)
     uint32_t x = v, y = (x + 1u) / 2u;
     while (y < x) { x = y; y = (x + v / x) / 2u; }
     return x;
+}
+
+uint16_t hr_autocorr_last_accel(int8_t *out, uint16_t max, uint8_t *shift_out)
+{
+    if (out == NULL || !s_work_valid) return 0;
+    if (shift_out) *shift_out = 0;
+
+    /* Sum of |axis| rather than the true vector magnitude: one isqrt per sample
+       would be pure cost for a diagnostic, and the metric only has to be
+       PROPORTIONAL to how much the wrist is moving for the offline question
+       (does the optical drift band line up with a movement band?). */
+    /* base and span copied verbatim from detrend_into_work, NOT re-derived: the
+       whole value of this dump is that entry i lines up with PPG samples i*4..
+       i*4+3, and two independent expressions for "where the window starts" is
+       exactly how that alignment would rot silently. */
+    const uint16_t base = s_head;
+    int32_t mag[HR_AUTOCORR_WIN / ACC_DUMP_DECIM];
+    uint16_t n = 0;
+    int64_t sum = 0;
+    for (uint16_t i = 0; i + ACC_DUMP_DECIM <= HR_AUTOCORR_WIN &&
+                         n < (HR_AUTOCORR_WIN / ACC_DUMP_DECIM) && n < max;
+         i += ACC_DUMP_DECIM)
+    {
+        int32_t acc = 0;
+        for (uint16_t j = 0; j < ACC_DUMP_DECIM; j++)      /* box average = crude
+                                                              anti-alias for the
+                                                              decimation below */
+        {
+            uint16_t idx = (uint16_t)((base + i + j) % HR_AUTOCORR_WIN);
+            for (int k = 0; k < NLMS_AXES; k++)
+            {
+                int32_t v = s_acc[k][idx];
+                acc += (v < 0) ? -v : v;
+            }
+        }
+        mag[n] = acc / ACC_DUMP_DECIM;
+        sum += mag[n];
+        n++;
+    }
+    if (n == 0) return 0;
+
+    /* Ship the DEVIATION about the window mean: the DC term is gravity plus the
+       wrist's posture, which says nothing about movement and would eat the whole
+       int8 range. Scale by a power of two and ship the shift so the offline side
+       can reconstruct the real units. */
+    int32_t mean = (int32_t)(sum / n);
+    int32_t peak = 0;
+    for (uint16_t i = 0; i < n; i++)
+    {
+        int32_t d = mag[i] - mean;
+        if (d < 0) d = -d;
+        if (d > peak) peak = d;
+    }
+    uint8_t sh = 0;
+    while ((peak >> sh) > 127 && sh < 15) sh++;
+    for (uint16_t i = 0; i < n; i++)
+    {
+        int32_t d = (mag[i] - mean) >> sh;
+        if (d > 127) d = 127;
+        if (d < -128) d = -128;
+        out[i] = (int8_t)d;
+    }
+    if (shift_out) *shift_out = sh;
+    return n;
 }
 
 /**

@@ -2075,6 +2075,12 @@ static void bg_hr_sample_cb(void *param)
                 bg_hr_win_dump.bpm = own_bpm;
                 bg_hr_win_dump.conf = own_conf;
                 bg_hr_win_dump.count = n;
+                /* Paired movement for the same window — @ref hr_autocorr_last_accel.
+                   Must be read HERE, while the ring still holds the samples the
+                   PPG dump above came from. */
+                bg_hr_win_dump.acc_count =
+                    hr_autocorr_last_accel(bg_hr_win_dump.acc, WATCH_SYS_HR_ACC_MAX,
+                                           &bg_hr_win_dump.acc_shift);
                 bg_hr_win_captured = true;
                 bg_hr_win_suspect = suspect;
                 if (suspect)

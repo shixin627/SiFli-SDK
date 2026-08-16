@@ -71,9 +71,14 @@ bool commu_send_sleep_diag(uint32_t ts, uint16_t score, uint8_t hr,
 /* One 10.24 s window of detrended raw PPG (KEY_HR_WINDOW_DUMP 0x16), captured
    when hr_autocorr produced an implausible estimate. At most one per burst.
    Exists because the offline synthetic suite cannot reproduce the field
-   failures — the failing window itself has to come back. Temporary. */
+   failures — the failing window itself has to come back. Temporary.
+   acc[] is the paired wrist movement over the same window, decimated 4:1 and
+   scaled down by acc_shift powers of two (@ref hr_autocorr_last_accel); pass
+   acc_count 0 to omit it. Appended after the samples, so version skew in either
+   direction degrades to "no accel" rather than to a misparse. */
 bool commu_send_hr_window(uint32_t ts, uint8_t bpm, uint8_t conf,
-                          uint16_t count, const int8_t *win);
+                          uint16_t count, const int8_t *win,
+                          uint16_t acc_count, uint8_t acc_shift, const int8_t *acc);
 /* One minute of raw 1 Hz continuous-HR samples (KEY_HR_CONT_DIAG 0x15). Only
    emitted while the Settings "continuous HR" diagnostic toggle is on; it exists
    to test whether the nightly 2x survives when the HBA algorithm is never

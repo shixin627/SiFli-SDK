@@ -442,7 +442,9 @@ static int watch_sys_service_callback(data_callback_arg_t *arg)
     {
         UNPACK_DATA(arg, watch_sys_hr_window_t, data_ind);
         commu_send_hr_window(data_ind->ts, data_ind->bpm, data_ind->conf,
-                             data_ind->count, data_ind->win);
+                             data_ind->count, data_ind->win,
+                             data_ind->acc_count, data_ind->acc_shift,
+                             data_ind->acc);
         break;
     }
     case MSG_SERVICE_SLEEP_STATE_IND:

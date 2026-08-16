@@ -415,15 +415,23 @@ bool commu_send_hr_cont(uint32_t base_ts, uint8_t interval_s, uint8_t count,
 }
 
 bool commu_send_hr_window(uint32_t ts, uint8_t bpm, uint8_t conf,
-                          uint16_t count, const int8_t *win)
+                          uint16_t count, const int8_t *win,
+                          uint16_t acc_count, uint8_t acc_shift, const int8_t *acc)
 {
-    /* 8-byte header + count int8 samples. The 256-sample window lands at 264 B,
-       inside MAX_PACKET_PAYLOAD_SIZE (507) — that single-frame fit is why the
-       samples are int8 rather than the int16 the estimator works in. */
+    /* 8-byte header + count int8 samples, then an OPTIONAL accel block appended
+       after them: {acc_count u8, acc_shift u8, acc int8[acc_count]}. 256+64
+       lands at 330 B, inside MAX_PACKET_PAYLOAD_SIZE (507) — that single-frame
+       fit is why the samples are int8 rather than the int16 the estimator works
+       in, and why the accel is decimated 4:1.
+       Appended rather than inserted so both directions of version skew are safe:
+       an old phone stops after 8+count and ignores the tail; a new phone sees no
+       tail from old firmware and reports acc_count 0. */
     if (win == NULL || count == 0) return false;
     if (count > 256) count = 256;
+    if (acc == NULL) acc_count = 0;
+    if (acc_count > 64) acc_count = 64;
 
-    uint8_t buf[8 + 256];
+    uint8_t buf[8 + 256 + 2 + 64];
     buf[0] = (uint8_t)(ts & 0xFF);
     buf[1] = (uint8_t)((ts >> 8) & 0xFF);
     buf[2] = (uint8_t)((ts >> 16) & 0xFF);
@@ -438,14 +446,23 @@ bool commu_send_hr_window(uint32_t ts, uint8_t bpm, uint8_t conf,
     buf[6] = (uint8_t)(count & 0xFF);
     buf[7] = (uint8_t)((count >> 8) & 0xFF);
     memcpy(buf + 8, win, count);
+    uint16_t len = (uint16_t)(8 + count);
+    if (acc_count > 0)
+    {
+        buf[len++] = (uint8_t)acc_count;
+        buf[len++] = acc_shift;
+        memcpy(buf + len, acc, acc_count);
+        len = (uint16_t)(len + acc_count);
+    }
     bool ok = commu_send_blob(HEALTH_DATA_COMMAND_ID, KEY_HR_WINDOW_DUMP,
-                              buf, (uint16_t)(8 + count));
+                              buf, len);
     /* The only point of the whole capture that is observable on the HCPU log:
        the decision and its LOG_I both live on the LCPU, whose console is uart4,
        not the COM12 firmware log. Without this a bench session cannot tell a
        burst that shipped a window from one that never captured. */
-    LOG_I("send hr window bpm=%u conf=%u n=%u -> %s", (unsigned)bpm,
-          (unsigned)conf, (unsigned)count, ok ? "ok" : "FAIL");
+    LOG_I("send hr window bpm=%u conf=%u n=%u acc=%u<<%u -> %s", (unsigned)bpm,
+          (unsigned)conf, (unsigned)count, (unsigned)acc_count,
+          (unsigned)acc_shift, ok ? "ok" : "FAIL");
     return ok;
 }
 
