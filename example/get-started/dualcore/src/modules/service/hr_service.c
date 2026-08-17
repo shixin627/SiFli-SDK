@@ -1647,7 +1647,8 @@ void hr_service_set_sleep_active(bool active)
    Every period tick the sampler either emits one HR point (OK_SENT) or
    bails for one specific reason. Counting each outcome lets a full night
    be classified after the fact instead of guessed: NOT_WORN => fit /
-   wear-detect, NO_LOCK => PPG signal / algorithm, CHARGING => on charger,
+   wear-detect, NO_LOCK => PPG signal / algorithm, CURVE_REFUSED => locked but
+   implausible, CHARGING => on charger,
    THROTTLE => normal daytime ~15 min rate. Read by stage A's 5-min bucket
    flush for the 0x40 uplink (phone-only; the watch can't be tethered). */
 enum
@@ -1665,6 +1666,14 @@ enum
                          contract (ADR-0011 D2) and the phone still decodes it,
                          so old curves keep rendering. Never emitted now.  */
     BGHR_SENSOR_FAULT,/* every sensor read this burst failed (I2C / HW) */
+    BGHR_CURVE_REFUSED,/* burst DID lock a BPM, but curve_accept() judged it
+                          implausible against the recent history, so nothing was
+                          published. Split out from the silent gap it used to be
+                          (2026-08-17): it and NO_LOCK draw the same hole on the
+                          curve but mean opposite things -- NO_LOCK is "there was
+                          no measurable pulse", this is "there was one and the
+                          number was wrong" -- and lumping them together misleads
+                          every downstream analysis. */
     BGHR_REASON_CNT
 };
 /* ---- 5-min bucket accumulator (stage A) -------------------------------
@@ -1699,6 +1708,9 @@ enum
     BGHR_WIRE_SENSOR_FAULT = 5,
     BGHR_WIRE_POWER_SAVE = 6,
     BGHR_WIRE_OTHER = 7,
+    BGHR_WIRE_CURVE_REFUSED = 8, /* additive (2026-08-17): firmware that predates
+                                    this drew a silent gap here, and a phone that
+                                    predates it falls through to "other". */
 };
 
 static uint8_t bg_hr_reason_to_wire(int r)
@@ -1711,6 +1723,7 @@ static uint8_t bg_hr_reason_to_wire(int r)
     case BGHR_NOT_READY:    return BGHR_WIRE_NOT_READY;
     case BGHR_SENSOR_FAULT: return BGHR_WIRE_SENSOR_FAULT;
     case BGHR_THROTTLE:     return BGHR_WIRE_POWER_SAVE;
+    case BGHR_CURVE_REFUSED: return BGHR_WIRE_CURVE_REFUSED;
     case BGHR_BUSY:
     case BGHR_NO_TIMER:
     case BGHR_FWD_ZERO:     return BGHR_WIRE_OTHER;
@@ -1909,6 +1922,7 @@ static void bg_hr_finish_burst(void)
             /* Publish nothing. @ref curve_accept — a gap says "not measured",
                which is true; a number here would not be. */
             bghr_curve_refused = true;
+            bg_hr_note(BGHR_CURVE_REFUSED);
             LOG_I("[BGHR] curve gate refused %u", (unsigned)bg_hr_burst_best);
         }
     }
