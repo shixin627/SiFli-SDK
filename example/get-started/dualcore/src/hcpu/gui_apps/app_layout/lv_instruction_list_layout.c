@@ -5940,9 +5940,16 @@ static void list_item_activate(list_item_t *item)
        category 由 0x03 鏡像帶下來('@'=chat 類 / '/'=一般 action),既有 session 列在上面
        single_device_try_open_session() 就已經接走了,所以這裡的 '@' 實際上就是「會開出一個
        新對話」的那幾種。判斷錯也安全:沒有新 session 出現時這面旗自然過期。 */
-    if (s_bar_single_device && item->category == '@')
+    /* 2026-08-17 真機修正:原本用 `item->category == '@'` 收窄,但 log 顯示「問 SKAI」那列
+       在手錶上的 category **不是** '@'(`[act]` 有印、`[walkin] armed` 沒印),武裝從沒發生。
+       改成「抽屜裡只要不是既有 session 的選項就武裝」—— 既有 session 在上面
+       single_device_try_open_session() 已經接走,剩下的本來就以「會開出新對話」為大宗。
+       判斷錯的代價很小:沒有新 session 出現時這面旗 30 秒後自然過期(房間還開著則 3 分鐘)。
+       順便印出實際的 category,之後要把條件收窄回去就有依據。 */
+    if (s_bar_single_device)
     {
         extern void session_list_arm_walkin(const char *device_id);
+        LOG_W("[walkin] drawer commit cat=%d -> arm", (int)item->category);
         session_list_arm_walkin(s_single_device_id);
     }
 
