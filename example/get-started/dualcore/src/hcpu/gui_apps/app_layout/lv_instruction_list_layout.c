@@ -5931,6 +5931,20 @@ static void list_item_activate(list_item_t *item)
         s_activate_suppress_until = rt_tick_get() + rt_tick_from_millisecond(1000);
         return;
     }
+    /* 滑鼠抽屜:點下電腦鏡像過來的 '@' 類選項(AskSkai / 開新對話那種)時,先武裝 walk-in。
+       執行本身照舊交給電腦(下面的 0x06 commit)—— session 是電腦建的,手錶再送一次
+       conv_new 會變成建兩個。武裝之後,那台電腦把新 session 推回清單時,session pager 既有的
+       walk-in 就會把使用者帶進聊天室(founder 2026-08-17:「電腦端有進聊天室但手錶上沒有」)。
+       為什麼非得這樣繞:KEY_CONV_OPEN(0x0F)是 uplink-only,電腦端沒有任何管道能主動叫
+       手錶開聊天室。
+       category 由 0x03 鏡像帶下來('@'=chat 類 / '/'=一般 action),既有 session 列在上面
+       single_device_try_open_session() 就已經接走了,所以這裡的 '@' 實際上就是「會開出一個
+       新對話」的那幾種。判斷錯也安全:沒有新 session 出現時這面旗自然過期。 */
+    if (s_bar_single_device && item->category == '@')
+    {
+        extern void session_list_arm_walkin(const char *device_id);
+        session_list_arm_walkin(s_single_device_id);
+    }
 
     /* A tapped @-contact opens the in-watch chat room (mirror the desktop @-contact
        tap). The merged mixed list has no separate @ view, so this keys off the tapped

@@ -266,6 +266,27 @@ static bool sp_request_new_session(const char *dev_id)
     return true;
 }
 
+/** 只武裝 walk-in,**不**送 conv_new(founder 2026-08-17:「我輸入 123456789 再點
+    問 SKAI,電腦端有進聊天室但手錶上沒有」)。
+    用在滑鼠抽屜點下電腦鏡像過來的 '@' 類選項(AskSkai…)那條路:session 是**電腦**收到
+    0x06 executeAction 後自己建的,手錶再送一次 conv_new 會變成建兩個。所以這裡只記下
+    「等一個新 session」,清單推回來時 sp_apply_list 的既有 walk-in 就會帶使用者進聊天室。
+    KEY_CONV_OPEN(0x0F)是 uplink-only —— 電腦沒有任何管道能主動叫手錶開聊天室,這是
+    目前唯一能讓手錶跟上的機制。
+    判斷錯了也安全:沒有新 session 出現的話,這面旗只是自然過期(30 秒 / 房間還開著則 3 分鐘)。 */
+void session_list_arm_walkin(const char *device_id)
+{
+    if (device_id == NULL || device_id[0] == '\0')
+        device_id = sp_new_session_target();
+    if (device_id == NULL || device_id[0] == '\0')
+        return;
+    s_await_new = true;
+    s_await_tick = rt_tick_get();
+    strncpy(s_await_dev_id, device_id, SESSION_ID_LEN - 1);
+    s_await_dev_id[SESSION_ID_LEN - 1] = '\0';
+    LOG_W("[walkin] armed (no conv_new) dev=%s", device_id);
+}
+
 /** 滑鼠頁底部 skaibar tap(founder 2026-08-11 R6):開「那台設備」的新 session,
     UI 與左頁 session 一樣 —— 呼叫端先把畫面切到左頁,清單推回來就 walk-in。 */
 void session_list_open_new_for_device(const char *device_id)
