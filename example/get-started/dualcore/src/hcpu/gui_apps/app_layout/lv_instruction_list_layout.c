@@ -996,6 +996,11 @@ static lv_obj_t *s_mic_bar_icon = NULL;
 /* 蓋在 mic_bar 上方的大片 tap 區(mic_hit)。單設備抽屜換成三鍵列時要連它一起藏 ——
    它是 324x106 的透明大片,不藏的話按鈕之間的縫隙全被它吃掉。 */
 static lv_obj_t *s_mic_hit = NULL;
+/* 單設備抽屜的底部三鍵列正在台上。宣告放這麼前面是因為 instruction_list_refresh_home_bar()
+   (每次 check_is_at_home poll 都跑)要拿它當閘門 —— 那支會依「清單有沒有顯示」重算
+   mic_bar 的顯藏,三鍵列上場時如果不擋住它,舊的小麥克風下一拍就被掀回來、疊在三鍵列
+   後面(founder 2026-08-17:「那三個按鈕後面怎麼還有舊的小麥克風」)。 */
+static bool s_drawer_row_shown = false;
 static void drawer_row_engage(bool on); /* 單設備抽屜的底部三鍵列上/下場 */
 
 /* mic_hit 的顯藏**永遠跟著 mic_bar 走**(founder 2026-08-17:「不管我怎麼點 skaibar_img
@@ -1272,6 +1277,12 @@ void instruction_list_refresh_home_bar(void)
     bool list_shown = bg && lv_obj_is_valid(bg) &&
                       !lv_obj_has_flag(bg, LV_OBJ_FLAG_HIDDEN);
     bool hide_pill = clock_main_page_is_home() && !list_shown;
+    /* 單設備抽屜換上三鍵列時,那條 pill(以及它身上那顆小麥克風)是被三鍵列取代掉的 ——
+       這支 poll 不知情就會依「清單有顯示」把它掀回來,疊在三鍵列後面。三鍵列在台上=
+       一律藏。長按直開語音那條(animate_open_ai_widget 要拿 mic_bar 做 morph)不受影響:
+       它走的是 push_up,三鍵列那時已經下台。 */
+    if (s_drawer_row_shown)
+        hide_pill = true;
     /* Idempotent: lv_obj_add_flag/clear_flag invalidate unconditionally (LVGL v8
        does not short-circuit when the flag is unchanged), and this runs every
        check_is_at_home poll while the watch face is up — only touch the flag when
@@ -1290,6 +1301,9 @@ void instruction_list_refresh_home_bar(void)
     }
     else
         lv_obj_clear_flag(bar, LV_OBJ_FLAG_HIDDEN);
+    /* 這支是 mic_bar 顯藏的第三個寫入點(另兩個是立起面板與抽屜三鍵列)—— 大 tap 區
+       一定要跟著,否則會出現「bar 藏了但 mic_hit 還在吃 tap」的隱形擋點(R19)。 */
+    mic_hit_follow_bar();
 }
 static bool is_at_ai_widget = false;
 static bool scroll_initialized = false;
@@ -3864,7 +3878,7 @@ static void finalize_close_ai_widget(void);
 
 static lv_obj_t *s_drawer_row = NULL;   /* 三鍵列容器(透明,只當生命週期把手) */
 static lv_obj_t *s_drawer_mic_btn = NULL;
-static bool s_drawer_row_shown = false;
+/* s_drawer_row_shown 宣告在檔案前段(refresh_home_bar 要用),見該處說明。 */
 
 static void drawer_row_release(void)
 {
