@@ -5417,9 +5417,11 @@ static void hw_btn_mode_cb(lv_event_t *e)
 /* 2026-08-16 heap 根治輪之後 gate 移除:hosted 頂部面板三頁改「用時建、離場放」,
    進場 free 常態 ~80K,原本「聊天回合後只剩 ~31K → <38K 拒絕」的處境不存在了。 */
 
+/* 注意:`s_kbd_from_drawer` 必須由**呼叫端在進來之前**設好,不能在這裡預設清掉 ——
+   本函式末端的 kbd_lower_switch(false) → kbd_bar_set_voice_box(true) 就要靠它決定
+   送給電腦的 inputOnly(抽屜流程要選項,inputOnly=false)。 */
 static bool mouse_open_voice_station(void)
 {
-    s_kbd_from_drawer = false; /* 預設「不是從抽屜來的」;抽屜路徑會在呼叫後補設 true */
     kbd_pinyin_clear();
     current_keyboard_mode = KEYBOARD_MODE_LETTERS;
     if (keyboard_container != NULL)
@@ -8391,7 +8393,12 @@ static void kbd_bar_set_voice_box(bool voice)
            這條完全沒接。兩個入口(頂部圖示 / Mode 鍵)都會經過這裡。 */
         {
             extern bool commu_send_skaibar_open_device_ex(bool force_open, bool input_only);
-            commu_send_skaibar_open_device_ex(true, true);
+            /* inputOnly:一般進語音站=true(電腦只留輸入框,並把召喚前聚焦的欄位記成
+               icon_send 的目的地)。但**從 session 抽屜進來**時要的正好相反 —— 講的話
+               是拿去搜這台電腦的 sessions/actions/檔案,電腦必須把選項算出來並鏡像回
+               手錶(0x03),所以 inputOnly=false(founder 2026-08-17:「為什麼上面沒有
+               選項?兩邊都沒有」)。 */
+            commu_send_skaibar_open_device_ex(true, !s_kbd_from_drawer);
             /* 同時把 instruction_list 的單設備 session 建起來(只建 layout + 記 device_id,
                不開任何面板)。按 logo 送出後要用它叫清單 —— 沒有這一步 open_browse() 會因為
                layout 不存在直接 return,清單靜默不出現。 */
@@ -9936,9 +9943,14 @@ bool mouse_drawer_open_input(bool want_keyboard)
     lv_obj_t *kc = mode_container[HID_MODE_KEYBOARD];
     if (kc == NULL || !lv_obj_is_valid(kc))
         return false;
-    if (!mouse_open_voice_station())
-        return false;
+    /* 先立旗再進場:mouse_open_voice_station() 內部就會送 0x0E 給電腦,而 inputOnly
+       要靠這面旗決定(抽屜流程=要選項)。 */
     s_kbd_from_drawer = true;
+    if (!mouse_open_voice_station())
+    {
+        s_kbd_from_drawer = false;
+        return false;
+    }
     mode_set_visible(HID_MODE_TRACKPAD, true); /* 滑上來時底下露觸控板 */
     lv_anim_del(kc, kbd_enter_slide_exec);
     lv_obj_set_y(kc, LV_VER_RES); /* 起點立刻就位,動畫下一輪才建(見 kbd_enter_slide_async) */
@@ -9960,15 +9972,20 @@ bool mouse_drawer_open_input(bool want_keyboard)
    (=instruction_list 的 AI widget 輸入框)。但這條流程裡那個 widget 已經被推走關掉了,
    文字就沒有任何地方顯示。走 MIC_INPUTE 才會落到滑鼠分支的 append_text_to_mouse_input()
    =語音站自己的輸入框。
-   電腦那邊不受影響:語音站本來就會把框裡的字用 commu_send_voice_station_preview()
-   推給電腦(防抖 250ms,見 voice_preview_schedule),電腦照樣即時搜、結果照樣鏡像回來 ——
-   不需要靠 SKAIBAR intent 繞手機一圈。 */
+   **intent 仍必須是 SKAIBAR**:手錶沒有任何「送 skaibar 查詢文字」的 wire,唯一能讓
+   電腦真的去搜的路徑就是這個 intent —— 轉錄經手機 routeSkaibarTranscript → setSkaibarText
+   → 電腦搜 sessions/actions/檔案 → 結果經 0x03 鏡像回手錶。語音站自己那條
+   commu_send_voice_station_preview() 走的是 KEY_LIFT_INPUT_CARET(0x1e){"preview":...},
+   那是**純顯示**的推播,電腦看得到字但不會搜(founder 2026-08-17:「電腦上的 SKAIBAR
+   也有文字輸入,但為什麼上面沒有選項」)。
+   而「SKAIBAR intent 會害手錶看不到字」的老問題已在 interact_voice_recognition() 那層
+   根治(mouse_voice_owns_transcript),不必再靠換 intent 迴避。 */
 void mouse_drawer_voice_set(bool on)
 {
     if (on)
     {
         if (!mouse_v2t_active)
-            mouse_v2t_open(); /* = V2T_INTENT_MIC_INPUTE,語音站原生那條 */
+            mouse_v2t_open_with_intent(V2T_INTENT_SKAIBAR);
     }
     else if (mouse_v2t_active)
     {
@@ -10034,6 +10051,7 @@ static void bottom_logo_cb(lv_event_t *e)
    鍵盤鈕(電腦有聚焦輸入框時)。落地狀態=現行語音站版面,一個像素都不動。 */
 static void mouse_open_input_station(void)
 {
+    s_kbd_from_drawer = false; /* 這兩個入口都不是抽屜流程:電腦只出輸入框 */
     if (!mouse_open_voice_station())
         return; /* 被拒:留在觸控板,別跑進場動畫(容器沒切) */
     lv_obj_t *kc = mode_container[HID_MODE_KEYBOARD];

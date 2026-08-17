@@ -497,6 +497,23 @@ void interact_voice_recognition(VOICE_RECOGNITION_PAYLOAD *msgData)
             return;
         }
     }
+    /* 滑鼠語音站握著轉錄時,底下的 speaking_to_ai 分支**不得**攔截(founder 2026-08-17:
+       「按麥克風說話他沒有文字回來了」)。VAD gate 會無條件把 speaking_to_ai 立起來 ——
+       與 intent 無關,所以改 intent 是修不掉的 —— 而那條分支會把轉錄送進 instruction_list
+       的 AI widget;抽屜→語音站這條流程裡那個 widget 是關著的,字就消失了。
+       真機 log 坐實:`[v2t] rx ... spk_ai=1 ai_open=0` 連續 15 筆(len 6→57)全被吃掉,
+       而 opus 有送、轉錄有回來 —— 純粹是被錯的分支認領。
+       條件收得很窄:只在「滑鼠模式 + AI widget 沒開 + 立起面板沒開」時讓路,其餘情境
+       (錶盤 skaibar 語音框、立起面板、聊天室)一律維持原行為。 */
+    bool mouse_voice_owns_transcript;
+    {
+        extern bool app_control_get_mouse_mode(void);
+        extern bool instruction_list_lift_input_view_open(void);
+        mouse_voice_owns_transcript =
+            (gui_app_is_actived(APP_ID_MOUSE) || app_control_get_mouse_mode()) &&
+            !get_is_open_instruction_list_ai() &&
+            !instruction_list_lift_input_view_open();
+    }
     if (gui_app_is_actived(APP_ID_SPEECH) ||
         gui_app_is_actived(APP_ID_MESSAGE))
     {
@@ -504,7 +521,7 @@ void interact_voice_recognition(VOICE_RECOGNITION_PAYLOAD *msgData)
               get_speech_coding());
         handle_v2t_result(msgData);
     }
-    else if (check_if_user_speaking_to_ai())
+    else if (check_if_user_speaking_to_ai() && !mouse_voice_owns_transcript)
     {
         LOG_D("[interact_voice_recognition]:%d, coding:%d, ai_coding:%d",
               msgData->header, get_speech_coding(), get_ai_coding());
