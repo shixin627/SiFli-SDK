@@ -10638,9 +10638,112 @@ void hid_mouse_set_own_bar_hidden(bool hide)
         s_last_bar_tap_tick = 0; /* 顯示時清 tap-grace，避免 poll 又把它壓回去 */
     bar_ai_sync_set_hidden(hide);
 }
+/* ==========================================================================
+   botdump —— 把螢幕底部那一帶「實際看得見」的物件全部列出來
+   --------------------------------------------------------------------------
+   founder 連六輪回報「三鍵列下方那張小圖還在」,而我每一輪都在**推測**是哪個物件
+   (mic_bar / trackpad_mic_btn / s_top_logo),結果全都不是,探針也印不出來。
+   與其再猜第七次,不如直接問畫面:走一次物件樹,把 y 落在底部帶、且祖先鏈上沒有
+   HIDDEN 的物件全印出來,含座標、是不是圖、用的是哪一張(比對已知圖檔位址)。
+
+   執行緒紀律:**不能**從 shell 執行緒走物件樹(本專案 2026-08-01 真機當過:
+   obj_valid_child 走樹時 LVGL 執行緒正在建/拆物件 → hard fault)。所以 msh 只立旗,
+   實際 dump 由這支 40ms poll(LVGL 執行緒)下一拍執行。 */
+static volatile bool s_botdump_req = false;
+
+static const char *botdump_img_name(const void *src)
+{
+    if (src == &skaibar_img)     return "skaibar_img";
+    if (src == &micro_icon)      return "micro_icon";
+    if (src == &micro_open_icon) return "micro_open_icon";
+    if (src == &keyboard_icon)   return "keyboard_icon";
+    if (src == &erth)            return "erth";
+    if (src == &down_arrow)      return "down_arrow";
+    if (src == &backspace_icon)  return "backspace_icon";
+    if (src == &icon_send)       return "icon_send";
+    if (src == &icon_mic)        return "icon_mic";
+    if (src == &img_logo)        return "img_logo";
+    if (src == &mouse_mode_icon) return "mouse_mode_icon";
+    if (src == &img_mouse)       return "img_mouse";
+    if (src == &space)           return "space";
+    return "?";
+}
+
+#define BOTDUMP_Y_MIN 340 /* 只看底部這一帶(三鍵列 y≈380..425、底部圖 y≈409..454) */
+
+static void botdump_walk(lv_obj_t *obj, int depth, const char *root)
+{
+    if (!obj || depth > 8)
+        return;
+    if (lv_obj_has_flag(obj, LV_OBJ_FLAG_HIDDEN))
+        return; /* 整棵子樹都看不見,不必往下 */
+    lv_area_t a;
+    lv_obj_get_coords(obj, &a);
+    if (a.y2 >= BOTDUMP_Y_MIN && a.y1 <= LV_VER_RES)
+    {
+        bool is_img = lv_obj_check_type(obj, &lv_img_class);
+        const void *src = is_img ? lv_img_get_src(obj) : NULL;
+        LOG_W("[bot] %s d=%d %p (%d,%d)-(%d,%d) %s%s", root, depth, (void *)obj,
+              (int)a.x1, (int)a.y1, (int)a.x2, (int)a.y2,
+              is_img ? "IMG=" : "obj",
+              is_img ? botdump_img_name(src) : "");
+    }
+    uint32_t n = lv_obj_get_child_cnt(obj);
+    for (uint32_t i = 0; i < n; i++)
+        botdump_walk(lv_obj_get_child(obj, i), depth + 1, root);
+}
+
+static void botdump_run(void)
+{
+    extern bool instruction_list_lift_input_view_open(void);
+    extern bool instruction_list_floating_bar_visible(void);
+    extern bool instruction_list_single_device_active(void);
+    LOG_W("[bot] ==== dump begin mode=%d single=%d lift=%d barlayer=%d ====",
+          (int)current_hid_mode, (int)instruction_list_single_device_active(),
+          (int)instruction_list_lift_input_view_open(),
+          (int)instruction_list_floating_bar_visible());
+    botdump_walk(lv_scr_act(), 0, "scr");
+    botdump_walk(lv_layer_top(), 0, "top");
+    LOG_W("[bot] ==== dump end ====");
+}
+
+static int botdump(int argc, char **argv)
+{
+    (void)argc; (void)argv;
+    s_botdump_req = true; /* 只立旗,實際 dump 交給 LVGL 執行緒(見上方說明) */
+    rt_kprintf("botdump queued\n");
+    return 0;
+}
+MSH_CMD_EXPORT(botdump, dump visible objects near the screen bottom);
+
 static void bar_ai_sync_timer_cb(lv_timer_t *t)
 {
     (void)t;
+    if (s_botdump_req)
+    {
+        s_botdump_req = false;
+        botdump_run();
+    }
+    /* MSH_CMD_EXPORT 那張表被 armlink 當未使用段移掉了(botdump: command not found),
+       所以改成自動觸發:浮層 bar 一出現(=抽屜開)就排一次 dump,等 600ms 讓進場動畫與
+       各路 poll 都落地後才印,印到的就是使用者當下看到的畫面。 */
+    {
+        /* 觸發訊號改用 instruction_list_is_visible():實測(2026-08-17 COM12)使用者把那個
+           畫面叫出來時,`[ATINST] 0->1 visible=1` 一定會亮,但 floating_bar_visible() 沒有
+           —— 代表那條路徑根本沒讓 s_global_bar_layer 變可見,掛在它上面的 dump 永遠不跑。 */
+        extern bool instruction_list_is_visible(void);
+        static bool s_bot_prev_engaged = false;
+        static rt_tick_t s_bot_due = 0;
+        bool bot_engaged = instruction_list_is_visible();
+        if (bot_engaged && !s_bot_prev_engaged)
+            s_bot_due = rt_tick_get() + rt_tick_from_millisecond(600);
+        s_bot_prev_engaged = bot_engaged;
+        if (s_bot_due != 0 && (int32_t)(rt_tick_get() - s_bot_due) >= 0)
+        {
+            s_bot_due = 0;
+            botdump_run();
+        }
+    }
     /* 鍵盤露出時，把新冒出來、壓在鍵盤上的浮層一律設成按下時放行(見
        kbd_guard_overlappers 的說明)。放在這支既有的 40ms poll 上，浮層晚一步
        出現也追得到；沒開鍵盤時第一行就 return，成本可忽略。 */
@@ -10655,7 +10758,15 @@ static void bar_ai_sync_timer_cb(lv_timer_t *t)
     extern bool instruction_list_lift_input_view_open(void);
     bool lift = instruction_list_lift_input_view_open();
     bar_ai_sync_set_hidden(engaged || tap_grace || lift);
-    lift_chrome_set_hidden(lift);
+    /* founder 2026-08-17(連五輪回報「三鍵列下方還有那張小麥克風圖」):**這才是那張圖**。
+       s_top_logo 是滑鼠頁底部唯一看得見的入口圖(hosted 顯示 skaibar_img,BOTTOM_MID −12,
+       正好落在三鍵列下方更靠底緣),而這支 poll 原本只在立起面板開著時收它 —— 抽屜/浮層
+       清單開著時 lift=false,於是**每一拍都主動把它清回可見**。
+       上面那支 bar_ai_sync_set_hidden 收的是 trackpad_mic_btn:那是個不放圖的空容器
+       (見其建立處註解),收它視覺上毫無效果 —— 這就是「浮層一出現就收自有 bar」這條規則
+       名存實亡、而我連追五輪都打在 mic_bar / trackpad_mic_btn 這些沒有圖的東西上的原因。
+       浮層 bar 一現(engaged)就跟立起面板同待遇:底部這張圖讓位。 */
+    lift_chrome_set_hidden(lift || engaged || tap_grace);
     /* 抽屜/語音站期間強制壓住共用清單那條舊 mic pill —— 它的顯藏有六個寫入點,而開抽屜
        進場鏈的最後一棒(reveal_drag_begin → refresh_home_bar)本身就是專門叫它出來的。
        在這支每拍都跑的 poll 上收尾,任何路徑最多只能讓它閃一幀(founder 連三輪回報)。 */

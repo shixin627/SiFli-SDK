@@ -1003,6 +1003,29 @@ static lv_obj_t *s_mic_hit = NULL;
 static bool s_drawer_row_shown = false;
 static void drawer_row_engage(bool on); /* 單設備抽屜的底部三鍵列上/下場 */
 
+/* mic_bar 身上那顆看得見的麥克風圖示。抽出成函式是為了能「刪掉再建回來」——
+   founder 2026-08-17:「那個的功能應該已經完全不需要了吧,不能直接把他整個移除嗎?」
+   在滑鼠抽屜裡確實完全不需要(三鍵列取代了它),但這顆是**共用**的:錶盤 session 清單
+   底部按住講話搜清單的也是它。所以做法是範圍內的真移除 —— 三鍵列上場時 lv_obj_del,
+   下台時原樣建回來。刪掉之後任何寫入點都動不了它(它們一律 lv_obj_is_valid 防護),
+   這比連續四輪「藏了又被誰掀回來」可靠。 */
+/* 與後面的 LMIC_ICON_Y_OFS 同值 —— 這支抽到檔案前段(refresh_home_bar 之前)才能被
+   drawer 那段呼叫,而那個 #define 在 2200 多行才出現。兩者要改一起改。 */
+#define MIC_BAR_ICON_Y_OFS 0
+static void mic_bar_build_icon(lv_obj_t *bar)
+{
+    if (!bar || !lv_obj_is_valid(bar))
+        return;
+    s_mic_bar_icon = lv_img_create(bar);
+    lv_img_set_src(s_mic_bar_icon, &micro_icon);
+    lv_img_set_pivot(s_mic_bar_icon, micro_icon.header.w / 2, micro_icon.header.h / 2);
+    lv_obj_add_flag(s_mic_bar_icon, LV_OBJ_FLAG_OVERFLOW_VISIBLE);
+    lv_img_set_zoom(s_mic_bar_icon, 128); /* 64px 原生縮 50% → 視覺 32px(founder 2026-08-06);觸控走 mic_hit,尺寸不變 */
+    lv_obj_align(s_mic_bar_icon, LV_ALIGN_CENTER, 0, MIC_BAR_ICON_Y_OFS); /* 上移避免被底緣切到 */
+    lv_obj_clear_flag(s_mic_bar_icon, LV_OBJ_FLAG_CLICKABLE);
+    lv_obj_move_background(s_mic_bar_icon); /* 重建時回到 mic_bar 子物件的最底,不擋 ripple */
+}
+
 /* mic_hit 的顯藏**永遠跟著 mic_bar 走**(founder 2026-08-17:「不管我怎麼點 skaibar_img
    都不會叫出 session 列表,是不是有透明的東西擋到」——是)。
    mic_hit 是 324x106 的**看不見但 CLICKABLE** 的大片,掛在 lv_layer_top() 的
@@ -3905,6 +3928,8 @@ static lv_obj_t *s_drawer_mic_btn = NULL;
 
 static void drawer_row_release(void)
 {
+    if (s_drawer_row)
+        LOG_W("[drawer] row release");
     if (s_drawer_row && lv_obj_is_valid(s_drawer_row))
         lv_obj_del(s_drawer_row);
     s_drawer_row = NULL;
@@ -3974,6 +3999,8 @@ static void drawer_row_show(void)
 {
     if (!s_global_bar_layer || !lv_obj_is_valid(s_global_bar_layer))
         return;
+    LOG_W("[drawer] row show single=%d built=%d", (int)s_bar_single_device,
+          (int)(s_drawer_row != NULL));
     if (s_drawer_row && lv_obj_is_valid(s_drawer_row))
     {
         lv_obj_clear_flag(s_drawer_row, LV_OBJ_FLAG_HIDDEN);
@@ -7964,13 +7991,7 @@ lv_obj_t *lv_instruction_list_layout_create(lv_obj_t *parent)
        lmic_grow_cb's existing 255->0 img-opa fade dissolves the glyph as the bar morphs into the box.
        Non-clickable so taps fall through to mic_bar / mic_hit (which open the box). */
     lv_obj_add_flag(mic_bar, LV_OBJ_FLAG_OVERFLOW_VISIBLE);
-    s_mic_bar_icon = lv_img_create(mic_bar);
-    lv_img_set_src(s_mic_bar_icon, &micro_icon);
-    lv_img_set_pivot(s_mic_bar_icon, micro_icon.header.w / 2, micro_icon.header.h / 2);
-    lv_obj_add_flag(s_mic_bar_icon, LV_OBJ_FLAG_OVERFLOW_VISIBLE);
-    lv_img_set_zoom(s_mic_bar_icon, 128); /* 64px 原生縮 50% → 視覺 32px(founder 2026-08-06);觸控走 mic_hit,尺寸不變 */
-    lv_obj_align(s_mic_bar_icon, LV_ALIGN_CENTER, 0, LMIC_ICON_Y_OFS); /* 上移避免被底緣切到 */
-    lv_obj_clear_flag(s_mic_bar_icon, LV_OBJ_FLAG_CLICKABLE);
+    mic_bar_build_icon(mic_bar);
 
     /* ONE-PIECE tap helper covering the bar + the zone above it (founder 2026-07-06:
        可按區太小 — 長按尤其難:PRESS_LOCK 已清,手指飄出物件就把 press 交出去而中斷;
