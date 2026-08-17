@@ -1805,11 +1805,25 @@ static bool kbd_keys_showing(void)
    又按不到 —— 語音站裡 keyboard_container 是藏的，防護整個沒生效)。 */
 static lv_obj_t *kbd_input_active_area(void)
 {
-    if (kbd_keys_showing())
-        return keyboard_container;
-    if (s_voice_box_on && kbd_mic_section && lv_obj_is_valid(kbd_mic_section) &&
-        !lv_obj_has_flag(kbd_mic_section, LV_OBJ_FLAG_HIDDEN))
-        return kbd_mic_section;
+    /* 前兩條是**輸入模式**的作用區,一定要先確認人真的在輸入模式(founder 2026-08-17:
+       「又按不到了,他好像是變成按到觸控板」)。
+       真兇:`s_voice_box_on` 只在 kbd_bar_set_voice_box() 寫,而回觸控板的
+       kbd_commit_to_trackpad() 從來沒清過它,卻**刻意**把 kbd_mic_section 的 HIDDEN
+       清掉(為了下次進場重新從語音站開始)。於是「進過一次語音站再回觸控板」之後:
+       旗標卡 true + section 可見 → 這裡回傳 kbd_mic_section(380 x 全高、置中),而
+       s_top_logo(BOTTOM_MID,x≈177..289)整顆落在那個範圍內 → chrome_hit_test_cb 把
+       **每一次**按下都判定為「讓給輸入區」→ tap 穿過去變成觸控板拖曳,skaibar_img
+       從此點不動、連 CLICKED 都不會發出(所以 [logo] 探針也印不出來)。
+       用 mode 當閘門是結構性的修法:不管哪個旗標日後又走味,人在觸控板上就絕不可能
+       armed 出一個輸入區來擋自己。 */
+    if (current_hid_mode == HID_MODE_KEYBOARD)
+    {
+        if (kbd_keys_showing())
+            return keyboard_container;
+        if (s_voice_box_on && kbd_mic_section && lv_obj_is_valid(kbd_mic_section) &&
+            !lv_obj_has_flag(kbd_mic_section, LV_OBJ_FLAG_HIDDEN))
+            return kbd_mic_section;
+    }
     /* 觸控板站:底部那顆「進輸入」圖示同病 —— 全螢幕的觸控板感應面有時排在它上面，
        按下就被吃掉，症狀是「圖示只有靠上一小塊按得到」(founder 2026-08-07,
        [press] 坐實 obj area=(0,0)-(465,465) 接走)。保護範圍只取圖示**本體**座標，
@@ -8805,6 +8819,12 @@ static void kbd_commit_to_trackpad(void)
         if (input_enter_btn && lv_obj_is_valid(input_enter_btn))
             lv_obj_set_style_translate_y(input_enter_btn, 0, 0);
         kbd_lower_is_keyboard = false;
+        /* 語音站的大框狀態要跟著收 —— 這裡漏清是「回觸控板後 skaibar_img 從此點不動」
+           的根源(見 kbd_input_active_area 的說明),而且它同時決定退格/游標的語意
+           (remove_from_input_buffer),留著會讓觸控板站沿用語音站的編輯行為。
+           只清旗標不呼叫 kbd_bar_set_voice_box():收合動畫已經在處理幾何,
+           不要在收尾當下再插一次版面重排。 */
+        s_voice_box_on = false;
         kbd_lower_update_arrows_visibility();
         kbd_lower_update_arrows_visibility();
         kbd_lower_update_arcs_visibility();
@@ -9875,12 +9895,14 @@ bool mouse_drawer_open_input(bool want_keyboard)
 {
     if (current_hid_mode == HID_MODE_KEYBOARD)
         return false; /* 已經在輸入畫面(重複事件) */
-    if (!mouse_open_voice_station())
-        return false;
-    s_kbd_from_drawer = true;
+    /* 容器先驗、再切模式 —— 反過來的話這個 early-return 會把 current_hid_mode 留在
+       KEYBOARD 卻沒有任何鍵盤畫面,之後每次點 bar 都被「已經在輸入畫面」擋掉。 */
     lv_obj_t *kc = mode_container[HID_MODE_KEYBOARD];
     if (kc == NULL || !lv_obj_is_valid(kc))
         return false;
+    if (!mouse_open_voice_station())
+        return false;
+    s_kbd_from_drawer = true;
     mode_set_visible(HID_MODE_TRACKPAD, true); /* 滑上來時底下露觸控板 */
     lv_anim_del(kc, kbd_enter_slide_exec);
     lv_obj_set_y(kc, LV_VER_RES); /* 起點立刻就位,動畫下一輪才建(見 kbd_enter_slide_async) */
