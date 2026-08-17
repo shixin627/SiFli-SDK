@@ -504,6 +504,11 @@ static void hw_open_from_mode_switch(void);
    顯藏由 mode_set_visible(KEYBOARD) 特例+swipe commit 的 extras sync 管。 */
 static lv_obj_t *kbd_exit_btn = NULL;
 static void kbd_exit_btn_event_cb(lv_event_t *e);
+/* 螢幕最上方的下拉感應區:往下拖=收掉輸入框/鍵盤,回到選項清單(founder 2026-08-17)。
+   高度取到輸入框上緣(VOICE_BOX_Y=107)之前,不蓋內容。 */
+#define KBD_TOP_PULL_H 100
+static lv_obj_t *kbd_top_pull = NULL;
+static void kbd_top_pull_event_cb(lv_event_t *e);
 
 /* ── 中文拼音狀態(founder 2026-07-22) ── */
 #define KBD_CAND_MAX 20 /* 候選上限;列可左右滑看更多(founder 2026-07-22) */
@@ -7491,6 +7496,37 @@ static void create_keyboard_mode_ui(lv_obj_t *parent)
     //   foreground 後 bar 在最上層，touch 直接落到輸入框 → 可以下拖收回
     if (text_input_bar_bg && lv_obj_is_valid(text_input_bar_bg))
         lv_obj_move_foreground(text_input_bar_bg);
+
+    /* 螢幕最上方的下拉感應區(founder 2026-08-17:「點畫面最上面往下拉可以把輸入框或
+       鍵盤收下來回到顯示選項」)。輸入框上緣在 VOICE_BOX_Y=107(鍵盤站的輸入列更低),
+       所以 0..KBD_TOP_PULL_H 這一帶是空的,拿來當手勢起手區不會蓋到任何內容。
+       直接複用 text_input_bar_bg 那套已驗過的下拉狀態機(跟手 progress、40px commit
+       門檻、收合落點依 s_kbd_from_drawer 決定回抽屜還是回觸控板),不另外刻一套。
+       ADV_HITTEST:kbd_guard_overlappers() 每 40ms 會把「壓在輸入作用區上的可點物件」
+       通通掛上 chrome_hit_test_cb(按下即放行給底下的鍵),那會讓這個感應區永遠收不到
+       press。它的跳過條件正是「已經有 ADV_HITTEST」——設上去即可豁免,而 LVGL 在沒有
+       HIT_TEST cb 時 res 預設為 true,命中行為與一般物件相同。
+       移到背景:上方的 icon_send / logo(VOICE_ICON_DY,y≈55)落在這一帶,要留在前景。 */
+    kbd_top_pull = lv_obj_create(parent);
+    lv_obj_remove_style_all(kbd_top_pull);
+    lv_obj_set_size(kbd_top_pull, LV_HOR_RES, KBD_TOP_PULL_H);
+    lv_obj_align(kbd_top_pull, LV_ALIGN_TOP_MID, 0, 0);
+    lv_obj_set_style_bg_opa(kbd_top_pull, LV_OPA_TRANSP, 0);
+    lv_obj_clear_flag(kbd_top_pull, LV_OBJ_FLAG_SCROLLABLE);
+    lv_obj_add_flag(kbd_top_pull, LV_OBJ_FLAG_CLICKABLE);
+    lv_obj_add_flag(kbd_top_pull, LV_OBJ_FLAG_PRESS_LOCK); /* 手指往下拖出這一區也要續收 PRESSING */
+    lv_obj_add_flag(kbd_top_pull, LV_OBJ_FLAG_ADV_HITTEST); /* 見上:豁免 kbd_guard_overlappers */
+    lv_obj_add_event_cb(kbd_top_pull, kbd_top_pull_event_cb, LV_EVENT_ALL, NULL);
+    lv_obj_move_background(kbd_top_pull);
+}
+
+/* 頂部下拉感應區 → 沿用輸入框那條下拉收合。只擋掉 SHORT_CLICKED:那條在原 handler 裡是
+   「點字移游標」,對著頂部空白區點一下不該把游標亂跳。 */
+static void kbd_top_pull_event_cb(lv_event_t *e)
+{
+    if (lv_event_get_code(e) == LV_EVENT_SHORT_CLICKED)
+        return;
+    text_input_bar_drag_event_cb(e);
 }
 
 // =====================================================================
@@ -10638,112 +10674,13 @@ void hid_mouse_set_own_bar_hidden(bool hide)
         s_last_bar_tap_tick = 0; /* 顯示時清 tap-grace，避免 poll 又把它壓回去 */
     bar_ai_sync_set_hidden(hide);
 }
-/* ==========================================================================
-   botdump —— 把螢幕底部那一帶「實際看得見」的物件全部列出來
-   --------------------------------------------------------------------------
-   founder 連六輪回報「三鍵列下方那張小圖還在」,而我每一輪都在**推測**是哪個物件
-   (mic_bar / trackpad_mic_btn / s_top_logo),結果全都不是,探針也印不出來。
-   與其再猜第七次,不如直接問畫面:走一次物件樹,把 y 落在底部帶、且祖先鏈上沒有
-   HIDDEN 的物件全印出來,含座標、是不是圖、用的是哪一張(比對已知圖檔位址)。
-
-   執行緒紀律:**不能**從 shell 執行緒走物件樹(本專案 2026-08-01 真機當過:
-   obj_valid_child 走樹時 LVGL 執行緒正在建/拆物件 → hard fault)。所以 msh 只立旗,
-   實際 dump 由這支 40ms poll(LVGL 執行緒)下一拍執行。 */
-static volatile bool s_botdump_req = false;
-
-static const char *botdump_img_name(const void *src)
-{
-    if (src == &skaibar_img)     return "skaibar_img";
-    if (src == &micro_icon)      return "micro_icon";
-    if (src == &micro_open_icon) return "micro_open_icon";
-    if (src == &keyboard_icon)   return "keyboard_icon";
-    if (src == &erth)            return "erth";
-    if (src == &down_arrow)      return "down_arrow";
-    if (src == &backspace_icon)  return "backspace_icon";
-    if (src == &icon_send)       return "icon_send";
-    if (src == &icon_mic)        return "icon_mic";
-    if (src == &img_logo)        return "img_logo";
-    if (src == &mouse_mode_icon) return "mouse_mode_icon";
-    if (src == &img_mouse)       return "img_mouse";
-    if (src == &space)           return "space";
-    return "?";
-}
-
-#define BOTDUMP_Y_MIN 340 /* 只看底部這一帶(三鍵列 y≈380..425、底部圖 y≈409..454) */
-
-static void botdump_walk(lv_obj_t *obj, int depth, const char *root)
-{
-    if (!obj || depth > 8)
-        return;
-    if (lv_obj_has_flag(obj, LV_OBJ_FLAG_HIDDEN))
-        return; /* 整棵子樹都看不見,不必往下 */
-    lv_area_t a;
-    lv_obj_get_coords(obj, &a);
-    if (a.y2 >= BOTDUMP_Y_MIN && a.y1 <= LV_VER_RES)
-    {
-        bool is_img = lv_obj_check_type(obj, &lv_img_class);
-        const void *src = is_img ? lv_img_get_src(obj) : NULL;
-        LOG_W("[bot] %s d=%d %p (%d,%d)-(%d,%d) %s%s", root, depth, (void *)obj,
-              (int)a.x1, (int)a.y1, (int)a.x2, (int)a.y2,
-              is_img ? "IMG=" : "obj",
-              is_img ? botdump_img_name(src) : "");
-    }
-    uint32_t n = lv_obj_get_child_cnt(obj);
-    for (uint32_t i = 0; i < n; i++)
-        botdump_walk(lv_obj_get_child(obj, i), depth + 1, root);
-}
-
-static void botdump_run(void)
-{
-    extern bool instruction_list_lift_input_view_open(void);
-    extern bool instruction_list_floating_bar_visible(void);
-    extern bool instruction_list_single_device_active(void);
-    LOG_W("[bot] ==== dump begin mode=%d single=%d lift=%d barlayer=%d ====",
-          (int)current_hid_mode, (int)instruction_list_single_device_active(),
-          (int)instruction_list_lift_input_view_open(),
-          (int)instruction_list_floating_bar_visible());
-    botdump_walk(lv_scr_act(), 0, "scr");
-    botdump_walk(lv_layer_top(), 0, "top");
-    LOG_W("[bot] ==== dump end ====");
-}
-
-static int botdump(int argc, char **argv)
-{
-    (void)argc; (void)argv;
-    s_botdump_req = true; /* 只立旗,實際 dump 交給 LVGL 執行緒(見上方說明) */
-    rt_kprintf("botdump queued\n");
-    return 0;
-}
-MSH_CMD_EXPORT(botdump, dump visible objects near the screen bottom);
-
 static void bar_ai_sync_timer_cb(lv_timer_t *t)
 {
     (void)t;
-    if (s_botdump_req)
-    {
-        s_botdump_req = false;
-        botdump_run();
-    }
-    /* MSH_CMD_EXPORT 那張表被 armlink 當未使用段移掉了(botdump: command not found),
-       所以改成自動觸發:浮層 bar 一出現(=抽屜開)就排一次 dump,等 600ms 讓進場動畫與
-       各路 poll 都落地後才印,印到的就是使用者當下看到的畫面。 */
-    {
-        /* 觸發訊號改用 instruction_list_is_visible():實測(2026-08-17 COM12)使用者把那個
-           畫面叫出來時,`[ATINST] 0->1 visible=1` 一定會亮,但 floating_bar_visible() 沒有
-           —— 代表那條路徑根本沒讓 s_global_bar_layer 變可見,掛在它上面的 dump 永遠不跑。 */
-        extern bool instruction_list_is_visible(void);
-        static bool s_bot_prev_engaged = false;
-        static rt_tick_t s_bot_due = 0;
-        bool bot_engaged = instruction_list_is_visible();
-        if (bot_engaged && !s_bot_prev_engaged)
-            s_bot_due = rt_tick_get() + rt_tick_from_millisecond(600);
-        s_bot_prev_engaged = bot_engaged;
-        if (s_bot_due != 0 && (int32_t)(rt_tick_get() - s_bot_due) >= 0)
-        {
-            s_bot_due = 0;
-            botdump_run();
-        }
-    }
+    /* 底部物件 dump(botdump_walk/botdump_run)已完成任務並移除 —— 它是 2026-08-17 定位
+       「三鍵列下方那張多餘小圖」的工具:走物件樹把 y>=340、祖先鏈無 HIDDEN 的物件連同
+       圖檔名印出來。需要時加回來、掛在 instruction_list_is_visible() 的上升緣即可
+       (注意 MSH_CMD_EXPORT 在這個 build 會被 armlink 當未使用段移掉,不能靠 msh 觸發)。 */
     /* 鍵盤露出時，把新冒出來、壓在鍵盤上的浮層一律設成按下時放行(見
        kbd_guard_overlappers 的說明)。放在這支既有的 40ms poll 上，浮層晚一步
        出現也追得到；沒開鍵盤時第一行就 return，成本可忽略。 */
@@ -11306,6 +11243,7 @@ void hid_mouse_destroy(void)
     }
     kbd_exit_btn = NULL; /* 物件隨 bg 子樹拆除,清 stale 引用 */
     kbd_side_btn = NULL;
+    kbd_top_pull = NULL;
     s_kbd_cand_row = NULL;
     s_kbd_py_lbl = NULL;
     for (int ci = 0; ci < KBD_CAND_MAX; ci++)
