@@ -1283,6 +1283,22 @@ void instruction_list_refresh_home_bar(void)
        它走的是 push_up,三鍵列那時已經下台。 */
     if (s_drawer_row_shown)
         hide_pill = true;
+    /* 再往外一層:**整個單設備抽屜 session 期間**這條 pill 都沒有工作了 —— 底部依序由
+       三鍵列(抽屜)、語音站自己那排(輸入模式)接管。唯一還需要它的是長按直開語音那條,
+       animate_open_ai_widget 拿它當 morph 的起點,那時 ai box 是顯示著的。
+       為什麼把判斷放在這支 poll 而不是各進場路徑:mic_bar 的顯藏有六個寫入點
+       (立起面板進/出、refresh_home_bar、抽屜三鍵列、animate_open_ai_widget、
+       close_ai_widget),任何一次性的 add_flag 都可能被其中某條在下一拍推翻。poll 是
+       唯一持續在跑的,讓它當裁決者才不會再漏第七個(founder 2026-08-17 連兩輪回報
+       「三個按鈕後面還有舊的小麥克風」)。 */
+    if (s_bar_single_device)
+    {
+        lv_obj_t *box = p_instruction_list_layout->p_instruction_list_ai_bg;
+        bool box_shown = box && lv_obj_is_valid(box) &&
+                         !lv_obj_has_flag(box, LV_OBJ_FLAG_HIDDEN);
+        if (!box_shown)
+            hide_pill = true;
+    }
     /* Idempotent: lv_obj_add_flag/clear_flag invalidate unconditionally (LVGL v8
        does not short-circuit when the flag is unchanged), and this runs every
        check_is_at_home poll while the watch face is up — only touch the flag when
@@ -3918,9 +3934,13 @@ static void drawer_mic_cb(lv_event_t *e)
     switch (lv_event_get_code(e))
     {
     case LV_EVENT_PRESSED:
-        if (mouse_drawer_open_input(false))
+    {
+        bool ok = mouse_drawer_open_input(false);
+        LOG_W("[drawer] mic press -> open_input=%d", (int)ok);
+        if (ok)
             mouse_drawer_voice_set(true);
         break;
+    }
     case LV_EVENT_RELEASED:
     case LV_EVENT_PRESS_LOST:
         mouse_drawer_voice_set(false);
@@ -4030,6 +4050,7 @@ static void drawer_slide_y_cb(void *var, int32_t v)
 static void drawer_push_up_done_cb(lv_anim_t *a)
 {
     (void)a;
+    LOG_W("[drawer] push_up done -> hide list+layer, release list UI");
     lv_obj_t *list_bg = p_instruction_list_layout
                             ? p_instruction_list_layout->p_instruction_list_bg
                             : NULL;
@@ -4063,6 +4084,9 @@ void instruction_list_drawer_push_up(void)
     if (!p_instruction_list_layout)
         return;
     lv_obj_t *list_bg = p_instruction_list_layout->p_instruction_list_bg;
+    LOG_W("[drawer] push_up bg=%d hidden=%d", (int)(list_bg != NULL),
+          (int)(list_bg && lv_obj_is_valid(list_bg) &&
+                lv_obj_has_flag(list_bg, LV_OBJ_FLAG_HIDDEN)));
     if (!list_bg || !lv_obj_is_valid(list_bg) ||
         lv_obj_has_flag(list_bg, LV_OBJ_FLAG_HIDDEN))
     {
