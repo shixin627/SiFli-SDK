@@ -9929,6 +9929,12 @@ static void bottom_logo_long_press_cb(lv_event_t *e)
 static void bottom_logo_cb(lv_event_t *e)
 {
     (void)e;
+    /* 「點了沒反應」這類回報最花時間的就是分不出**事件沒進來**和**進來了走錯分支**
+       (同 mic_bar_event_cb 的 [mic] tap 探針)。這一行印出來 = 事件確實到了滑鼠 app;
+       完全沒有這行 = 有東西在上面把 tap 吃掉了(歷史上是 layer_top 那片看不見的
+       mic_hit,見 lv_instruction_list_layout.c 的 mic_hit_follow_bar)。 */
+    LOG_W("[logo] tap offline=%d mode=%d lp=%d", (int)dev_active_offline(),
+          (int)current_hid_mode, (int)s_logo_lp_consumed);
     if (dev_active_offline())
         return;
     if (current_hid_mode == HID_MODE_KEYBOARD)

@@ -998,6 +998,29 @@ static lv_obj_t *s_mic_bar_icon = NULL;
 static lv_obj_t *s_mic_hit = NULL;
 static void drawer_row_engage(bool on); /* 單設備抽屜的底部三鍵列上/下場 */
 
+/* mic_hit 的顯藏**永遠跟著 mic_bar 走**(founder 2026-08-17:「不管我怎麼點 skaibar_img
+   都不會叫出 session 列表,是不是有透明的東西擋到」——是)。
+   mic_hit 是 324x106 的**看不見但 CLICKABLE** 的大片,掛在 lv_layer_top() 的
+   s_global_bar_layer 上、BOTTOM_MID −20 —— 正好蓋在滑鼠 app 自己那張 skaibar_img 上面。
+   它的 handler(mic_hit_event_cb)在 mic_bar 是 HIDDEN 時直接 return,**但 return 得太晚**:
+   hit-test 已經把這一下判給它了,事件不會再往下傳 → 滑鼠 app 的 bottom_logo_cb 根本沒被
+   呼叫,畫面上什麼都不會發生、log 也一片安靜。
+   會落進這個狀態的路徑:立起輸入面板(open_lift_input_view 藏 mic_bar 卻讓整層留著可見,
+   且 floating_bar_visible() 對這個情境刻意回報 false,所以滑鼠自有 bar 照樣顯示)。
+   修法=藏 mic_bar 的同時一定連它一起藏,單一真相走這支。 */
+static void mic_hit_follow_bar(void)
+{
+    if (!s_mic_hit || !lv_obj_is_valid(s_mic_hit))
+        return;
+    lv_obj_t *bar = p_instruction_list_layout ? p_instruction_list_layout->mic_bar : NULL;
+    bool bar_hidden = !bar || !lv_obj_is_valid(bar) ||
+                      lv_obj_has_flag(bar, LV_OBJ_FLAG_HIDDEN);
+    if (bar_hidden)
+        lv_obj_add_flag(s_mic_hit, LV_OBJ_FLAG_HIDDEN);
+    else
+        lv_obj_clear_flag(s_mic_hit, LV_OBJ_FLAG_HIDDEN);
+}
+
 /* Bottom mic-bar → input-box MORPH geometry (mirrors device_pager's skaibar):
    on trigger the slim bottom bar grows + slides up into the 442x252 input box,
    THEN the skai_widget pill (frame + transcript + voice button) fades in on top.
@@ -3382,6 +3405,7 @@ static void lift_input_hide_view(void)
     if (p_instruction_list_layout && p_instruction_list_layout->mic_bar &&
         lv_obj_is_valid(p_instruction_list_layout->mic_bar))
         lv_obj_clear_flag(p_instruction_list_layout->mic_bar, LV_OBJ_FLAG_HIDDEN);
+    mic_hit_follow_bar(); /* bar 回來了 → 它的大 tap 區也要回來 */
 }
 
 /* 公開：舉起手勢(motion thread→hid_mouse→這裡)呼叫。2026-07-31 起不再看電腦有沒有聚焦
@@ -3417,6 +3441,9 @@ bool instruction_list_open_lift_input_view(const char *device_id)
        「只有立起面板開著」回報成 false,滑鼠 app 自有的 bar 才不會被 overlap-sync 收掉)。 */
     if (p_instruction_list_layout->mic_bar && lv_obj_is_valid(p_instruction_list_layout->mic_bar))
         lv_obj_add_flag(p_instruction_list_layout->mic_bar, LV_OBJ_FLAG_HIDDEN);
+    /* 關鍵:mic_hit 一定要跟著藏 —— 否則它會在滑鼠自有 bar 上面「看不見地」吃掉每一次
+       tap,症狀就是「怎麼點 skaibar_img 都沒反應」(founder 2026-08-17)。 */
+    mic_hit_follow_bar();
     ensure_lift_input_view();
     if (s_lift_input_view && lv_obj_is_valid(s_lift_input_view))
     {
@@ -3828,6 +3855,7 @@ static void mic_hit_event_cb(lv_event_t *evt)
 static void reveal_settle_anim_cb(void *var, int32_t v);
 static void inst_list_slide_out_done_cb(lv_anim_t *a);
 static void page_dim_track(lv_coord_t tx);
+static void finalize_close_ai_widget(void);
 
 #define DROW_DY      170  /* = hid_mouse VOICE_ROW_DY */
 #define DROW_SIDE_DX 110  /* = hid_mouse VOICE_KBD_DX / VOICE_DEL_DX 的絕對值 */
@@ -3958,13 +3986,7 @@ static void drawer_row_engage(bool on)
         else
             lv_obj_clear_flag(bar, LV_OBJ_FLAG_HIDDEN);
     }
-    if (s_mic_hit && lv_obj_is_valid(s_mic_hit))
-    {
-        if (on)
-            lv_obj_add_flag(s_mic_hit, LV_OBJ_FLAG_HIDDEN);
-        else
-            lv_obj_clear_flag(s_mic_hit, LV_OBJ_FLAG_HIDDEN);
-    }
+    mic_hit_follow_bar(); /* 單一真相:大 tap 區永遠跟著 mic_bar 的顯藏 */
     if (on)
         drawer_row_show();
     else
@@ -4238,6 +4260,13 @@ static bool s_left_morph_busy = false;
    skaibar's `skaibar_active` gating). Blocks re-opening mid-close and re-entrant
    close calls. Cleared when the close finishes (finalize_close_ai_widget). */
 static bool s_left_closing = false;
+/* 立起旗標的時刻。s_left_closing 只在 finalize_close_ai_widget() 被清 —— 而那是一串
+   動畫(pill fade → bar shrink)的最後一棒,中間任何一段被 lv_anim_del 掉、或物件在動畫
+   途中被釋放,finalize 就永遠不會跑,旗標卡在 true → 之後**每一次**點 bar 都被
+   open_browse 開頭那個 early-out 默默擋掉,症狀=「怎麼點都不出現 session 列表」。
+   open_browse 用這個時刻做 staleness 自癒(founder 2026-08-17 回報)。 */
+static rt_tick_t s_left_closing_tick = 0;
+#define LEFT_CLOSING_STALE_TICKS 1500 /* ms;正常關閉動畫全程 < 500ms */
 /* list_bg 滑出關閉動畫進行中:擋退出途中(本地 restore 或手機重推)觸發的 UI 重繪閃變。 */
 static bool s_list_sliding_out = false;
 
@@ -4739,6 +4768,16 @@ void instruction_list_open_browse(void)
     {
         extern void instruction_list_ensure_ui(void);
         instruction_list_ensure_ui();
+    }
+    /* 自癒:關閉旗標卡住超過 LEFT_CLOSING_STALE_TICKS 就當它是死的,強制收尾後照常開。
+       沒有這一段的話,一次被中斷的關閉動畫會讓 bar 從此永遠點不開(founder 2026-08-17)。 */
+    if (s_left_closing &&
+        (rt_tick_get() - s_left_closing_tick) >
+            rt_tick_from_millisecond(LEFT_CLOSING_STALE_TICKS))
+    {
+        LOG_W("[land] stale s_left_closing (%u ticks) -> self-heal",
+              (unsigned)(rt_tick_get() - s_left_closing_tick));
+        finalize_close_ai_widget();
     }
     /* Only when parked & hidden — already up (browse/open) or sliding shut: leave it. */
     if (s_left_closing || !lv_obj_has_flag(list_bg, LV_OBJ_FLAG_HIDDEN))
@@ -5320,6 +5359,7 @@ void close_ai_widget(void)
         lv_obj_clear_flag(bar, LV_OBJ_FLAG_HIDDEN);
 
     s_left_closing = true;
+    s_left_closing_tick = rt_tick_get();
 
     /* Phase 1: fade the pill out; phase 2 (bar shrink) chains off ready_cb. */
     if (!s_skai_widget || !lv_obj_is_valid(s_skai_widget))
