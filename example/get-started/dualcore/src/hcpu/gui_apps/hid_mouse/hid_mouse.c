@@ -9952,16 +9952,23 @@ bool mouse_drawer_open_input(bool want_keyboard)
     return true;
 }
 
-/* 抽屜麥克風的按住/放開直接驅動語音站同一套後端。intent 用 SKAIBAR:手機在單設備
-   模式下把轉錄 setSkaibarText 打進電腦面板 → 電腦即時搜 sessions+actions+檔案 →
-   0x03 鏡像回手錶(下拉收合時就看得到新選項)。轉錄本身照樣回灌語音站的輸入框
-   (ai widget 沒開,錶端路由落到 append_text_to_mouse_input)。 */
+/* 抽屜麥克風的按住/放開直接驅動語音站同一套後端。
+   **intent 必須用語音站原生的 MIC_INPUTE,不能用 SKAIBAR**(founder 2026-08-17:
+   「按麥克風說話他沒有文字回來了」)—— interact_voice_recognition() 的路由鏈裡
+   `check_if_user_speaking_to_ai()` 排在滑鼠分支**前面**,而 SKAIBAR intent 會讓 VAD
+   把 speaking_to_ai 立起來,轉錄於是被上游分支接走、送進 append_text_to_input_message()
+   (=instruction_list 的 AI widget 輸入框)。但這條流程裡那個 widget 已經被推走關掉了,
+   文字就沒有任何地方顯示。走 MIC_INPUTE 才會落到滑鼠分支的 append_text_to_mouse_input()
+   =語音站自己的輸入框。
+   電腦那邊不受影響:語音站本來就會把框裡的字用 commu_send_voice_station_preview()
+   推給電腦(防抖 250ms,見 voice_preview_schedule),電腦照樣即時搜、結果照樣鏡像回來 ——
+   不需要靠 SKAIBAR intent 繞手機一圈。 */
 void mouse_drawer_voice_set(bool on)
 {
     if (on)
     {
         if (!mouse_v2t_active)
-            mouse_v2t_open_with_intent(V2T_INTENT_SKAIBAR);
+            mouse_v2t_open(); /* = V2T_INTENT_MIC_INPUTE,語音站原生那條 */
     }
     else if (mouse_v2t_active)
     {
