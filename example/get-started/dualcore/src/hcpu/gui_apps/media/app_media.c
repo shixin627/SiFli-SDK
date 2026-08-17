@@ -107,6 +107,12 @@ static void fourth_app_btn_event_cb(lv_event_t *e);
 static bool gesture_open = false;
 static uint8_t button_selection_index = 5;
 
+/* 通知列表裡的媒體 widget 支援手指上下拖曳換頁（lv_message_list_layout.c 的
+   media_card_drag_event_cb）。那一輪拖曳結束時 LVGL 照樣會送 CLICKED 給手指
+   底下的按鈕，所以動作前先問一次，免得往上滑一頁就順手切了一首歌。
+   一次性旗標：只有剛剛真的發生垂直拖曳時才回 true。 */
+extern bool message_media_click_suppressed(void);
+
 static void change_icon_image(lv_obj_t *icon, const void *new_img_src)
 {
     /* Get the image object from the button */
@@ -256,6 +262,8 @@ static void widget_vol_icon_click_cb(lv_event_t *e)
     lv_event_code_t code = lv_event_get_code(e);
     if (code == LV_EVENT_CLICKED)
     {
+        if (message_media_click_suppressed())
+            return;
         if (!widget_vol_bar_expanded)
             widget_vol_bar_expand();
         else
@@ -660,6 +668,8 @@ void clear_media_widget(void)
 
 static void widget_title_event_cb(lv_event_t *e)
 {
+    if (message_media_click_suppressed())
+        return;
     LOG_D("Media widget title clicked");
     gui_app_run(APP_ID_MEDIA);
 }
@@ -1077,6 +1087,8 @@ static void next_btn_event_cb(lv_event_t *e)
 
     if (LV_EVENT_CLICKED == event)
     {
+        if (message_media_click_suppressed())
+            return;
         LOG_D("next_btn_event_cb");
         sys_media_event_set(SYS_EVENT_NEXT);
     }
@@ -1088,6 +1100,8 @@ static void prev_btn_event_cb(lv_event_t *e)
 
     if (LV_EVENT_CLICKED == event)
     {
+        if (message_media_click_suppressed())
+            return;
         LOG_D("prev_btn_event_cb");
         sys_media_event_set(SYS_EVENT_PREV);
     }
@@ -1169,6 +1183,8 @@ static void play_pause_btn_event_cb(lv_event_t *e)
 
     if (LV_EVENT_CLICKED == event)
     {
+        if (message_media_click_suppressed())
+            return;
         LOG_D("play_pause_btn_event_cb");
         sys_media_event_set(SYS_EVENT_PLAY_PAUSE);
     }

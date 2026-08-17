@@ -1561,10 +1561,19 @@ static void widget_drag_event_cb(lv_event_t *evt)
             // 點擊判定狀態
             press_start_tick = lv_tick_get();
             press_had_movement = false;
-            // 殺掉前一輪可能還在跑的 fade-in 動畫，避免跟手勢的 opa 互打
-            lv_anim_del(obj, drag_opa_anim_exec_cb);
-            // 確保起始為完全不透明
-            apply_drag_opa_to_children(obj, LV_OPA_COVER);
+            /* 只有**中央那張**才把透明度拉回全不透明。單卡舞台裡上下的鄰居
+               只是被淡到接近全透明、沒有 HIDDEN，照樣吃得到 press —— 手指點
+               在中央卡上下的「空白」其實就是點在鄰居身上，無條件套 COVER 會
+               讓那張卡憑空浮出來，而且不捲動就沒人再把它算回去
+               （founder 2026-08-17）。中央卡才需要這一手：它接著可能被右滑
+               刪除，起手必須是全不透明。 */
+            if (obj == selected_message)
+            {
+                // 殺掉前一輪可能還在跑的 fade-in 動畫，避免跟手勢的 opa 互打
+                lv_anim_del(obj, drag_opa_anim_exec_cb);
+                // 確保起始為完全不透明
+                apply_drag_opa_to_children(obj, LV_OPA_COVER);
+            }
         }
         break;
 
@@ -1691,6 +1700,127 @@ static void widget_drag_event_cb(lv_event_t *evt)
 
     default:
         break;
+    }
+}
+
+/* ---- media widget 卡片的垂直換頁 ------------------------------------------
+ * 通知卡的上下換頁是 widget_drag_event_cb 做的（列表原生捲動關掉了）。媒體
+ * widget 這張卡不能沿用它：
+ *   1. 卡片內部整棵子樹（容器 + prev/next/play/音量鈕 + 曲名按鈕）都是
+ *      CLICKABLE，press 落在子物件身上，卡片本身收不到 PRESSED —— 這就是
+ *      founder 2026-08-17 回報的「按著音樂 widget 不能上下切換，其他通知正常」。
+ *      解法：整棵子樹掛 LV_OBJ_FLAG_EVENT_BUBBLE，事件冒泡到卡片。
+ *   2. widget_drag_event_cb 的右滑刪除分支條件是 obj == selected_message，
+ *      媒體卡停在中央時剛好成立，會拿 selected_message_index（= 通知數）去
+ *      get_notification_in_reversed_ui() 撈一筆不存在的通知。所以這裡只做
+ *      垂直換頁，不做刪除、不做 tap。
+ * 垂直拖曳成立後要擋掉這一輪的按鈕 CLICKED（LVGL 在 release 照樣送），
+ * 否則往上滑一頁就順手切了一首歌。 */
+static bool media_card_vertical_drag = false;
+static lv_coord_t media_card_drag_start_x = 0;
+static lv_coord_t media_card_drag_start_y = 0;
+static lv_coord_t media_card_drag_last_y = 0;
+static bool media_card_click_blocked = false;
+static uint32_t media_card_click_block_tick = 0;
+static bool media_card_drag_ignore = false;
+
+/* app_media.c 的按鈕 cb 在動作前問一次：這個 CLICKED 是不是垂直拖曳的殘響。
+   一次性（讀了就清），外加 500ms 逾期保險 —— 拖曳結束後若根本沒有 CLICKED
+   跟上（手指在按鈕外放開），旗標不會留到下一次真的點擊。 */
+bool message_media_click_suppressed(void)
+{
+    if (!media_card_click_blocked)
+        return false;
+    media_card_click_blocked = false;
+    return lv_tick_elaps(media_card_click_block_tick) < 500;
+}
+
+static void media_card_drag_event_cb(lv_event_t *evt)
+{
+    lv_obj_t *card = lv_event_get_current_target(evt);
+    lv_indev_t *indev = lv_indev_get_act();
+    if (indev == NULL)
+        return;
+    lv_point_t point;
+    lv_indev_get_point(indev, &point);
+
+    switch (lv_event_get_code(evt))
+    {
+    case LV_EVENT_PRESSED:
+        /* 音量條是水平滑桿，手指在它上面時整輪不換頁（垂直位移本來就會被
+           滑桿當成調音量的抖動），否則調個音量順便翻頁。 */
+        media_card_drag_ignore =
+            lv_obj_check_type(lv_event_get_target(evt), &lv_bar_class);
+        if (media_card_drag_ignore)
+            break;
+        media_card_drag_start_x = point.x;
+        media_card_drag_start_y = point.y;
+        media_card_drag_last_y = point.y;
+        media_card_vertical_drag = false;
+        media_card_click_blocked = false;
+        /* 跟通知卡同一招：按下當下就鎖祖先，等方向仲裁完才鎖已經來不及。 */
+        msg_lock_ancestors(card);
+        break;
+
+    case LV_EVENT_PRESSING:
+        if (media_card_drag_ignore)
+            break;
+        if (!media_card_vertical_drag)
+        {
+            lv_coord_t dy = point.y - media_card_drag_start_y;
+            lv_coord_t dx = point.x - media_card_drag_start_x;
+            if (LV_ABS(dy) > VERTICAL_DRAG_THRESHOLD && LV_ABS(dy) > LV_ABS(dx))
+            {
+                media_card_vertical_drag = true;
+                media_card_drag_last_y = point.y;
+                media_card_click_blocked = true;
+                media_card_click_block_tick = lv_tick_get();
+            }
+        }
+        if (media_card_vertical_drag)
+        {
+            /* 只餵增量；手指往上 (dy<0) = 列表往後捲，故取負號。 */
+            lv_coord_t step = point.y - media_card_drag_last_y;
+            media_card_drag_last_y = point.y;
+            if (step != 0)
+                message_arc_drag_cb(-step, NULL);
+        }
+        break;
+
+    case LV_EVENT_RELEASED:
+    case LV_EVENT_PRESS_LOST:
+        media_card_drag_ignore = false;
+        msg_unlock_ancestors();
+        if (media_card_vertical_drag)
+        {
+            media_card_vertical_drag = false;
+            /* 逾期保險的計時基準必須是**放開**這一刻，不是拖曳開始那一刻 ——
+               LVGL 的 CLICKED 緊接在這個 RELEASED 之後送出，而拖一整頁常常花
+               超過 500ms，用起手時間戳會讓保險先過期、click 照樣放行
+               （founder 2026-08-17：從曲名那行往下滑一則放開，音樂 app 就開了）。*/
+            media_card_click_block_tick = lv_tick_get();
+            message_arc_snap_cb(NULL);
+        }
+        break;
+
+    default:
+        break;
+    }
+}
+
+/* 讓整棵子樹的 press/release 冒泡到卡片本身（見上面的說明）。 */
+static void media_card_bubble_subtree(lv_obj_t *node)
+{
+    if (node == NULL || !lv_obj_is_valid(node))
+        return;
+    uint32_t cnt = lv_obj_get_child_cnt(node);
+    for (uint32_t i = 0; i < cnt; i++)
+    {
+        lv_obj_t *child = lv_obj_get_child(node, (int32_t)i);
+        if (child == NULL || !lv_obj_is_valid(child))
+            continue;
+        lv_obj_add_flag(child, LV_OBJ_FLAG_EVENT_BUBBLE);
+        media_card_bubble_subtree(child);
     }
 }
 
@@ -2088,6 +2218,21 @@ void refresh_notification_list(void *param)
         lv_obj_t *bg_img = lv_img_create(p_app_notification->media_widget);
         lv_obj_align(bg_img, LV_ALIGN_CENTER, 0, 0);
         lv_img_set_src(bg_img, &message_widget_bg);
+
+        /* 這張卡也要能上下換頁 —— 內部子物件全是 CLICKABLE，press 進不到卡片，
+           所以先讓子樹冒泡，再把只做垂直換頁的 cb 掛在卡片上。 */
+        lv_obj_add_flag(p_app_notification->media_widget,
+                        LV_OBJ_FLAG_CLICKABLE);
+        media_card_bubble_subtree(p_app_notification->media_widget);
+        lv_obj_add_event_cb(p_app_notification->media_widget,
+                            media_card_drag_event_cb, LV_EVENT_PRESSED, NULL);
+        lv_obj_add_event_cb(p_app_notification->media_widget,
+                            media_card_drag_event_cb, LV_EVENT_PRESSING, NULL);
+        lv_obj_add_event_cb(p_app_notification->media_widget,
+                            media_card_drag_event_cb, LV_EVENT_RELEASED, NULL);
+        lv_obj_add_event_cb(p_app_notification->media_widget,
+                            media_card_drag_event_cb, LV_EVENT_PRESS_LOST,
+                            NULL);
     }
 
     if (p_app_notification->media_widget != NULL)
