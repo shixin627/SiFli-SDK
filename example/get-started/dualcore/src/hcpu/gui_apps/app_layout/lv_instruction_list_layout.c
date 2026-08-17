@@ -90,6 +90,9 @@ LV_IMG_DECLARE(backspace_icon); /* 46x33 — 立起輸入面板下方刪除鍵(�
 /* 框裡沒字時刪除鍵改當退出鍵(founder 2026-08-01)。沿用滑鼠 app 輸入框下方那顆「收回」的
    同一張圖 —— 同一個手勢語彙不要在兩個畫面用兩種圖示。 */
 LV_IMG_DECLARE(down_arrow);
+/* 滑鼠 app 單設備抽屜底部那排最左邊的「切輸入法」鍵(founder 2026-08-17 指名地球圖)。
+   與鍵盤輪盤 row4 的 mode_btn 同一張,語彙一致。 */
+LV_IMG_DECLARE(erth);
 
 #define DBG_TAG "instruction.list.layout"
 #define DBG_LVL DBG_INFO
@@ -990,6 +993,10 @@ static lv_obj_t *s_pill_bg_img = NULL;
 /* The mic glyph inside the bottom mic_bar — faded out as the bar morphs into
    the input box (mirrors the right device_pager skaibar). */
 static lv_obj_t *s_mic_bar_icon = NULL;
+/* 蓋在 mic_bar 上方的大片 tap 區(mic_hit)。單設備抽屜換成三鍵列時要連它一起藏 ——
+   它是 324x106 的透明大片,不藏的話按鈕之間的縫隙全被它吃掉。 */
+static lv_obj_t *s_mic_hit = NULL;
+static void drawer_row_engage(bool on); /* 單設備抽屜的底部三鍵列上/下場 */
 
 /* Bottom mic-bar → input-box MORPH geometry (mirrors device_pager's skaibar):
    on trigger the slim bottom bar grows + slides up into the 442x252 input box,
@@ -3750,6 +3757,7 @@ void instruction_list_bar_device_dismiss(void)
     if (!s_bar_single_device)
         return;
     s_bar_single_device = false;
+    drawer_row_engage(false); /* 三鍵列釋放、mic_bar 還原(離場即放,R32) */
     s_remote_target_has_focus = false; /* 離開單設備模式 → 快取旗標歸零,別讓下一台/下一次殘留 */
     s_opened_by_lift = false;   /* drawer session 結束 */
     mic_bar_voice_stop();       /* 聽音中被收掉 → 停乾淨(no-op if idle) */
@@ -3799,6 +3807,322 @@ static void mic_hit_event_cb(lv_event_t *evt)
         lv_obj_has_flag(p_instruction_list_layout->mic_bar, LV_OBJ_FLAG_HIDDEN))
         return;
     mic_bar_event_cb(evt);
+}
+
+/* ==========================================================================
+   滑鼠 app 單設備抽屜的底部三鍵列(founder 2026-08-17)
+   --------------------------------------------------------------------------
+   抽屜(上=這台電腦的 session 鏡像清單)底下不再是那條 176x31 的 skaibar,而是
+   **語音站同一排**:左=地球(切輸入法→鍵盤輪盤)、中=麥克風、右=收下鍵。
+
+   座標刻意與 hid_mouse 的 kbd_mic_section 那排逐格對齊(中心 ±110 / +170),
+   所以按下麥克風進語音站時,語音站自己那排就落在同一個位置 —— 轉場中這排看起來
+   完全不動,只有輸入框往上長、session 清單被往上推出畫面(founder 的描述)。
+   兩邊的常數若要改,兩處要一起改(hid_mouse.c 的 VOICE_ROW_DY / VOICE_KBD_DX /
+   VOICE_DEL_DX / VOICE_BTN_D)。
+
+   heap:hosted 滑鼠模式下(R32/R33 紀律)一律「抽屜開才建、離場即放」。整排掛在
+   s_global_bar_layer 底下,一個 lv_obj_del 全鏈收乾淨。
+   ========================================================================== */
+/* 這一段擺在檔案前段(緊鄰 mic_hit),用到的收尾/動畫工具都定義在後面 —— 前置宣告。 */
+static void reveal_settle_anim_cb(void *var, int32_t v);
+static void inst_list_slide_out_done_cb(lv_anim_t *a);
+static void page_dim_track(lv_coord_t tx);
+
+#define DROW_DY      170  /* = hid_mouse VOICE_ROW_DY */
+#define DROW_SIDE_DX 110  /* = hid_mouse VOICE_KBD_DX / VOICE_DEL_DX 的絕對值 */
+#define DROW_MIC_D    64  /* = hid_mouse VOICE_BTN_D */
+#define DROW_SLIDE_MS 260 /* 與 hid_mouse kbd_enter_slide 同步(進場 260ms) */
+
+static lv_obj_t *s_drawer_row = NULL;   /* 三鍵列容器(透明,只當生命週期把手) */
+static lv_obj_t *s_drawer_mic_btn = NULL;
+static bool s_drawer_row_shown = false;
+
+static void drawer_row_release(void)
+{
+    if (s_drawer_row && lv_obj_is_valid(s_drawer_row))
+        lv_obj_del(s_drawer_row);
+    s_drawer_row = NULL;
+    s_drawer_mic_btn = NULL;
+    s_drawer_row_shown = false;
+}
+
+/* 地球:進輸入模式並直接停在鍵盤輪盤(=語音站裡按同一顆的效果)。 */
+static void drawer_globe_cb(lv_event_t *e)
+{
+    (void)e;
+    extern bool mouse_drawer_open_input(bool want_keyboard);
+    mouse_drawer_open_input(true);
+}
+
+/* 收下鍵:抽屜態框裡永遠沒有字(有字時人已經在語音站),所以這顆恆為 down_arrow ——
+   往下收掉整個抽屜、回到觸控板。 */
+static void drawer_down_cb(lv_event_t *e)
+{
+    (void)e;
+    extern void instruction_list_drawer_close_down(void);
+    instruction_list_drawer_close_down();
+}
+
+/* 麥克風:**按住講話、放開停止**,與語音站那顆同手感(hid_mouse kbd_mic_btn_event_cb)。
+   按下的當下就開語音站(輸入框往上長 + 清單推出畫面),手指仍停在原地 —— 語音站的
+   麥克風就在同一個座標,整段讀起來是同一個連續手勢。
+   PRESS_LOCK:轉場途中這顆會被藏起來,press session 必須留在它身上,放開才收得到
+   RELEASED 去停錄音(否則變成錄音停不掉)。 */
+static void drawer_mic_cb(lv_event_t *e)
+{
+    extern bool mouse_drawer_open_input(bool want_keyboard);
+    extern void mouse_drawer_voice_set(bool on);
+    switch (lv_event_get_code(e))
+    {
+    case LV_EVENT_PRESSED:
+        if (mouse_drawer_open_input(false))
+            mouse_drawer_voice_set(true);
+        break;
+    case LV_EVENT_RELEASED:
+    case LV_EVENT_PRESS_LOST:
+        mouse_drawer_voice_set(false);
+        break;
+    default:
+        break;
+    }
+}
+
+static lv_obj_t *drawer_row_add_icon(const void *src, lv_coord_t dx,
+                                     lv_event_cb_t cb)
+{
+    lv_obj_t *img = lv_img_create(s_drawer_row);
+    lv_img_set_src(img, src);
+    lv_obj_align(img, LV_ALIGN_CENTER, dx, DROW_DY);
+    lv_obj_add_flag(img, LV_OBJ_FLAG_CLICKABLE);
+    lv_obj_set_ext_click_area(img, 14); /* 視覺可小,觸控補到 44pt 以上 */
+    lv_obj_add_event_cb(img, cb, LV_EVENT_CLICKED, NULL);
+    return img;
+}
+
+/* 建/顯示三鍵列。idempotent。 */
+static void drawer_row_show(void)
+{
+    if (!s_global_bar_layer || !lv_obj_is_valid(s_global_bar_layer))
+        return;
+    if (s_drawer_row && lv_obj_is_valid(s_drawer_row))
+    {
+        lv_obj_clear_flag(s_drawer_row, LV_OBJ_FLAG_HIDDEN);
+        lv_obj_move_foreground(s_drawer_row);
+        s_drawer_row_shown = true;
+        return;
+    }
+    s_drawer_row = lv_obj_create(s_global_bar_layer);
+    lv_obj_remove_style_all(s_drawer_row);
+    lv_obj_set_size(s_drawer_row, LV_HOR_RES, LV_VER_RES);
+    lv_obj_set_pos(s_drawer_row, 0, 0);
+    lv_obj_set_style_bg_opa(s_drawer_row, LV_OPA_TRANSP, 0);
+    lv_obj_clear_flag(s_drawer_row, LV_OBJ_FLAG_SCROLLABLE);
+    lv_obj_clear_flag(s_drawer_row, LV_OBJ_FLAG_CLICKABLE); /* 只有三顆鍵吃觸控 */
+
+    drawer_row_add_icon(&erth, -DROW_SIDE_DX, drawer_globe_cb);
+
+    /* 中間麥克風:語音站同款的深色圓鈕 + micro_icon。 */
+    s_drawer_mic_btn = lv_obj_create(s_drawer_row);
+    lv_obj_set_size(s_drawer_mic_btn, DROW_MIC_D, DROW_MIC_D);
+    lv_obj_align(s_drawer_mic_btn, LV_ALIGN_CENTER, 0, DROW_DY);
+    lv_obj_set_style_bg_color(s_drawer_mic_btn, lv_color_hex(0x1a1a1a), 0);
+    lv_obj_set_style_bg_opa(s_drawer_mic_btn, LV_OPA_COVER, 0);
+    lv_obj_set_style_radius(s_drawer_mic_btn, LV_RADIUS_CIRCLE, 0);
+    lv_obj_set_style_border_width(s_drawer_mic_btn, 0, 0);
+    lv_obj_set_style_pad_all(s_drawer_mic_btn, 0, 0);
+    lv_obj_clear_flag(s_drawer_mic_btn, LV_OBJ_FLAG_SCROLLABLE);
+    lv_obj_add_flag(s_drawer_mic_btn, LV_OBJ_FLAG_CLICKABLE);
+    lv_obj_add_flag(s_drawer_mic_btn, LV_OBJ_FLAG_PRESS_LOCK);
+    lv_obj_add_event_cb(s_drawer_mic_btn, drawer_mic_cb, LV_EVENT_PRESSED, NULL);
+    lv_obj_add_event_cb(s_drawer_mic_btn, drawer_mic_cb, LV_EVENT_RELEASED, NULL);
+    lv_obj_add_event_cb(s_drawer_mic_btn, drawer_mic_cb, LV_EVENT_PRESS_LOST, NULL);
+    lv_obj_t *mic_img = lv_img_create(s_drawer_mic_btn);
+    lv_img_set_src(mic_img, &micro_icon);
+    lv_obj_center(mic_img);
+    lv_obj_clear_flag(mic_img, LV_OBJ_FLAG_CLICKABLE);
+
+    drawer_row_add_icon(&down_arrow, DROW_SIDE_DX, drawer_down_cb);
+    s_drawer_row_shown = true;
+}
+
+/* 抽屜態的底部造型切換:三鍵列上場 → 原本那條 mic_bar 與它的大 tap 區(mic_hit)一起讓開。
+   離開抽屜時反向還原,錶盤路徑完全不受影響。 */
+static void drawer_row_engage(bool on)
+{
+    lv_obj_t *bar = p_instruction_list_layout ? p_instruction_list_layout->mic_bar : NULL;
+    if (bar && lv_obj_is_valid(bar))
+    {
+        if (on)
+            lv_obj_add_flag(bar, LV_OBJ_FLAG_HIDDEN);
+        else
+            lv_obj_clear_flag(bar, LV_OBJ_FLAG_HIDDEN);
+    }
+    if (s_mic_hit && lv_obj_is_valid(s_mic_hit))
+    {
+        if (on)
+            lv_obj_add_flag(s_mic_hit, LV_OBJ_FLAG_HIDDEN);
+        else
+            lv_obj_clear_flag(s_mic_hit, LV_OBJ_FLAG_HIDDEN);
+    }
+    if (on)
+        drawer_row_show();
+    else
+        drawer_row_release();
+}
+
+/* 公開:抽屜開場時由 instruction_list_open_browse 呼叫(只在單設備模式)。 */
+void instruction_list_drawer_row_engage(bool on)
+{
+    drawer_row_engage(on);
+}
+
+/* ---- 抽屜 ↔ 語音站的垂直轉場 --------------------------------------------
+   進語音站:清單往**上**推出畫面(founder:「把 session 列表往上推出畫面」);
+   下拉收合回來:清單從上方滑回。收下鍵:清單往**下**收掉(對齊 down_arrow 的方向)。
+   translate 是 draw-only —— 清單即使移到畫面外仍會全螢幕 hit-test,所以動畫結束
+   一定要補 HIDDEN,否則語音站按不動(這條在本檔多處都踩過)。 */
+static void drawer_slide_y_cb(void *var, int32_t v)
+{
+    lv_obj_t *list_bg = (lv_obj_t *)var;
+    if (lv_obj_is_valid(list_bg))
+        lv_obj_set_style_translate_y(list_bg, (lv_coord_t)v, 0);
+}
+
+/* 往上推出後:藏起來 + 釋放列 UI 換 heap(語音站/鍵盤輪盤要用)。**不**清
+   s_bar_single_device —— 電腦面板還開著、鏡像還在推,下拉收合要原地回來。 */
+static void drawer_push_up_done_cb(lv_anim_t *a)
+{
+    (void)a;
+    lv_obj_t *list_bg = p_instruction_list_layout
+                            ? p_instruction_list_layout->p_instruction_list_bg
+                            : NULL;
+    if (list_bg && lv_obj_is_valid(list_bg))
+    {
+        lv_obj_add_flag(list_bg, LV_OBJ_FLAG_HIDDEN);
+        lv_obj_set_style_translate_y(list_bg, 0, 0);
+    }
+    if (s_global_bar_layer && lv_obj_is_valid(s_global_bar_layer))
+    {
+        lv_obj_set_style_bg_opa(s_global_bar_layer, LV_OPA_0, 0);
+        lv_obj_add_flag(s_global_bar_layer, LV_OBJ_FLAG_HIDDEN);
+    }
+    /* **只藏不刪**:使用者這一刻很可能還按著三鍵列的麥克風(按住講話)。lv_obj_del 掉
+       正被按著的物件,indev 的 act_obj 就沒了 —— RELEASED/PRESS_LOST 不保證還會送到,
+       錄音就停不掉。PRESS_LOCK 已設在麥克風上,物件只是 HIDDEN 的話 press session
+       仍留在它身上,放開照樣收得到。真正的釋放交給 drawer_row_engage(false)(離開整個
+       抽屜流程時),留著這一小塊(~1-2K)換掉一整類 UAF/卡錄音的風險。 */
+    if (s_drawer_row && lv_obj_is_valid(s_drawer_row))
+        lv_obj_add_flag(s_drawer_row, LV_OBJ_FLAG_HIDDEN);
+    s_drawer_row_shown = false;
+    {
+        extern void instruction_list_release_ui(void);
+        instruction_list_release_ui();
+    }
+    is_open_instruction_list_ai = false;
+}
+
+void instruction_list_drawer_push_up(void)
+{
+    if (!p_instruction_list_layout)
+        return;
+    lv_obj_t *list_bg = p_instruction_list_layout->p_instruction_list_bg;
+    if (!list_bg || !lv_obj_is_valid(list_bg) ||
+        lv_obj_has_flag(list_bg, LV_OBJ_FLAG_HIDDEN))
+    {
+        /* 清單本來就不在畫面上(長按直開語音那條):只要把三鍵列藏掉即可(同上,不刪)。 */
+        if (s_drawer_row && lv_obj_is_valid(s_drawer_row))
+            lv_obj_add_flag(s_drawer_row, LV_OBJ_FLAG_HIDDEN);
+        s_drawer_row_shown = false;
+        return;
+    }
+    lv_anim_del(list_bg, inst_list_slide_anim_cb);
+    lv_anim_del(list_bg, reveal_settle_anim_cb);
+    lv_anim_del(list_bg, drawer_slide_y_cb);
+    lv_anim_t a;
+    lv_anim_init(&a);
+    lv_anim_set_var(&a, list_bg);
+    lv_anim_set_exec_cb(&a, drawer_slide_y_cb);
+    lv_anim_set_values(&a, 0, -LV_VER_RES);
+    lv_anim_set_time(&a, DROW_SLIDE_MS);
+    lv_anim_set_path_cb(&a, lv_anim_path_ease_out);
+    lv_anim_set_ready_cb(&a, drawer_push_up_done_cb);
+    lv_anim_start(&a);
+}
+
+/* 從語音站下拉收合回抽屜:重建列 UI、用**最新**的鏡像資料重餵(founder:「拉回已經
+   有對應輸入變更過的選項」),清單再從上方滑回原位。 */
+void instruction_list_drawer_slide_in(void)
+{
+    if (!p_instruction_list_layout || !s_bar_single_device)
+        return;
+    lv_obj_t *list_bg = p_instruction_list_layout->p_instruction_list_bg;
+    if (!list_bg || !lv_obj_is_valid(list_bg))
+        return;
+    {
+        extern void instruction_list_ensure_ui_for_feed(void);
+        instruction_list_ensure_ui_for_feed();
+    }
+    feed_single_device_options(s_single_device_id); /* 語音搜尋後的最新選項 */
+    if (s_global_bar_layer && lv_obj_is_valid(s_global_bar_layer))
+        lv_obj_clear_flag(s_global_bar_layer, LV_OBJ_FLAG_HIDDEN);
+    drawer_row_engage(true);
+    lv_obj_clear_flag(list_bg, LV_OBJ_FLAG_HIDDEN);
+    lv_obj_set_style_translate_x(list_bg, 0, 0);
+    lv_obj_set_style_translate_y(list_bg, -LV_VER_RES, 0);
+    page_dim_track(0); /* 單設備模式=整頁壓暗到底 */
+    is_open_instruction_list_ai = false;
+    lv_anim_del(list_bg, drawer_slide_y_cb);
+    lv_anim_t a;
+    lv_anim_init(&a);
+    lv_anim_set_var(&a, list_bg);
+    lv_anim_set_exec_cb(&a, drawer_slide_y_cb);
+    lv_anim_set_values(&a, -LV_VER_RES, 0);
+    lv_anim_set_time(&a, DROW_SLIDE_MS);
+    lv_anim_set_path_cb(&a, lv_anim_path_ease_out);
+    lv_anim_start(&a);
+    {
+        extern void check_main_page(void);
+        check_main_page();
+    }
+}
+
+/* 收下鍵:清單往下收掉,落地走 inst_list_slide_out_done_cb 那條既有的完整收尾
+   (release_ui → restore_base → 收 overlay → 還原滑鼠自有 bar → 通知電腦)。 */
+static void drawer_close_down_done_cb(lv_anim_t *a)
+{
+    lv_obj_t *list_bg = p_instruction_list_layout
+                            ? p_instruction_list_layout->p_instruction_list_bg
+                            : NULL;
+    if (list_bg && lv_obj_is_valid(list_bg))
+        lv_obj_set_style_translate_y(list_bg, 0, 0);
+    drawer_row_engage(false);
+    {
+        extern bool commu_send_skaibar_dismiss(void);
+        commu_send_skaibar_dismiss(); /* 抽屜是使用者主動收的 → 電腦面板也收掉 */
+    }
+    inst_list_slide_out_done_cb(a); /* 共用收尾:hide + release + restore_base */
+}
+
+void instruction_list_drawer_close_down(void)
+{
+    if (!p_instruction_list_layout)
+        return;
+    lv_obj_t *list_bg = p_instruction_list_layout->p_instruction_list_bg;
+    if (!list_bg || !lv_obj_is_valid(list_bg))
+        return;
+    lv_anim_del(list_bg, inst_list_slide_anim_cb);
+    lv_anim_del(list_bg, reveal_settle_anim_cb);
+    lv_anim_del(list_bg, drawer_slide_y_cb);
+    lv_anim_t a;
+    lv_anim_init(&a);
+    lv_anim_set_var(&a, list_bg);
+    lv_anim_set_exec_cb(&a, drawer_slide_y_cb);
+    lv_anim_set_values(&a, 0, LV_VER_RES);
+    lv_anim_set_time(&a, DROW_SLIDE_MS);
+    lv_anim_set_path_cb(&a, lv_anim_path_ease_out);
+    lv_anim_set_ready_cb(&a, drawer_close_down_done_cb);
+    lv_anim_start(&a);
 }
 
 /* The box is scrollable only to ABSORB swipes (so a left-swipe doesn't bubble to
@@ -4025,6 +4349,7 @@ static void inst_list_slide_out_done_cb(lv_anim_t *a)
     if (s_bar_single_device)
     {
         s_bar_single_device = false;
+        drawer_row_engage(false); /* 三鍵列釋放、mic_bar 還原(離場即放,R32) */
         /* R32 heap 紀律(2026-08-15):先釋放列 UI、再還原資料 —— restore_base 的 refresh
            會撞 R33 deferral 只還原 list_items[](不重建 9 列 UI),聊天室/觸控板才有 heap;
            順序反過來=restore 先建 9 列、下面 release 再拆=白付一次 heap 尖峰(這尖峰在
@@ -4431,6 +4756,10 @@ void instruction_list_open_browse(void)
     {
         motor_pattern_scrolling_app();
     }
+    /* 滑鼠 app 單設備抽屜:底部換成語音站同款三鍵列(地球/麥克風/收下),原本那條
+       mic_bar 與它的大 tap 區讓開(founder 2026-08-17)。錶盤路徑不進這裡。 */
+    if (s_bar_single_device)
+        drawer_row_engage(true);
     s_pending_reveal_filter = 0; /* bar / IMU browse → all (@ + /) view */
     s_reveal_from_left = true;   /* IMU release brings the LEFT list in (the right-edge
                                     drawer is legacy); park on the left, slide to 0 */
@@ -7535,6 +7864,7 @@ lv_obj_t *lv_instruction_list_layout_create(lv_obj_t *parent)
        transfers down. Created BEFORE ai_box so the open box covers it (z-order).
        Child of s_global_bar_layer -> chain-deleted with the bar. */
     lv_obj_t *mic_hit = lv_obj_create(s_global_bar_layer);
+    s_mic_hit = mic_hit; /* 抽屜三鍵列要把這片大 tap 區一起讓開(見 drawer_row_*) */
     lv_obj_remove_style_all(mic_hit);
     /* founder 2026-07-06 定案:可觸發範圍=原本(216x71 兩件式)的 1.5 倍 → 324x106。 */
     lv_obj_set_size(mic_hit, 324, LMIC_H + 75);

@@ -579,6 +579,10 @@ static lv_obj_t *space_red_dot = NULL;
 static lv_obj_t *space_red_dot_x = NULL;
 // trackpad mode 的 mic btn 內元件（功能跟 keyboard 長按 space 完全等效）
 static lv_obj_t *trackpad_mic_btn = NULL;
+/* 觸控板右緣的鍵盤鈕:電腦有聚焦輸入框時才浮現(founder 2026-08-17)。 */
+static lv_obj_t *kbd_side_btn = NULL;
+static void kbd_side_btn_event_cb(lv_event_t *e);
+static void mouse_open_input_station(void);
 static lv_obj_t *trackpad_mic_icon = NULL;
 static lv_obj_t *trackpad_mic_red_dot = NULL;
 static void bar_ai_on_tap(void); /* fwd：tap 當下立刻收自有底部 bar（定義在 lv_create 前） */
@@ -594,6 +598,11 @@ static lv_obj_t *kbd_mic_section_right_arrow = NULL;
 /* 語音站的控制項(founder 2026-08-03:立起面板那一整套搬進鍵盤區)。幾何沿用立起面板的
    相對關係:麥克風與刪除鍵並排在輸入列下方,logo/send 在輸入列上方。輸入列在 y=195
    (EXPAND_END_Y)、高約 90,mic_section 是整片置中,所以列的 dy 從畫面中心 233 起算。 */
+/* 這次語音站是從 session 抽屜進來的 → 輸入框往下拖收合時滑回抽屜,不是回觸控板
+   (founder 2026-08-17;細節見 mouse_drawer_open_input)。 */
+static bool s_kbd_from_drawer = false;
+/* 抽屜地球鍵按下 → 進場動畫落地後才切鍵盤輪盤(見 kbd_enter_slide_done)。 */
+static bool s_kbd_pending_wheel = false;
 static lv_obj_t *kbd_voice_del_btn = NULL;
 static lv_obj_t *kbd_voice_logo_btn = NULL;
 static lv_obj_t *kbd_voice_send_btn = NULL;
@@ -5391,6 +5400,7 @@ static void hw_btn_mode_cb(lv_event_t *e)
 
 static bool mouse_open_voice_station(void)
 {
+    s_kbd_from_drawer = false; /* 預設「不是從抽屜來的」;抽屜路徑會在呼叫後補設 true */
     kbd_pinyin_clear();
     current_keyboard_mode = KEYBOARD_MODE_LETTERS;
     if (keyboard_container != NULL)
@@ -7076,6 +7086,32 @@ static void create_trackpad_mode_ui(lv_obj_t *parent)
     /* 底部的入口圖在 s_top_logo(hosted 模式顯示 skaibar_img,見其建立處);這個
        容器只承載底部 bar 的多工提示/手勢狀態機,不再放第二張圖。 */
 
+    /* 右緣鍵盤鈕(founder 2026-08-17):**電腦上點了任何輸入框**時才浮現 —— 按它直接
+       進輸入頁,打的字送去電腦那個聚焦中的欄位。底部 bar 從此專責「找東西(抽屜)」,
+       打字有自己的入口,兩件事不再共用一顆按鈕。
+       顯藏由既有的 40ms poll(bar_ai_sync_timer_cb)依 0x17 快取旗標驅動 —— 旗標本身
+       是通訊執行緒寫的,不能在那邊碰 LVGL(本檔最典型的當機來源)。
+       造型沿用語音站底部那顆鍵盤鈕(50 圓 + keyboard_icon zoom 150),同一件事同一個樣子。 */
+    kbd_side_btn = lv_obj_create(parent);
+    lv_obj_remove_style_all(kbd_side_btn);
+    lv_obj_set_size(kbd_side_btn, 50, 50);
+    lv_obj_align(kbd_side_btn, LV_ALIGN_RIGHT_MID, -6, 0);
+    lv_obj_set_style_bg_color(kbd_side_btn, lv_color_hex(0x333333), 0);
+    lv_obj_set_style_bg_opa(kbd_side_btn, LV_OPA_60, 0);
+    lv_obj_set_style_radius(kbd_side_btn, LV_RADIUS_CIRCLE, 0);
+    lv_obj_clear_flag(kbd_side_btn, LV_OBJ_FLAG_SCROLLABLE);
+    lv_obj_add_flag(kbd_side_btn, LV_OBJ_FLAG_CLICKABLE);
+    lv_obj_set_ext_click_area(kbd_side_btn, 8); /* 視覺 50,觸控補到 66 > 44pt 基線 */
+    lv_obj_add_event_cb(kbd_side_btn, kbd_side_btn_event_cb, LV_EVENT_CLICKED, NULL);
+    lv_obj_add_flag(kbd_side_btn, LV_OBJ_FLAG_HIDDEN); /* 預設收起,有聚焦才浮現 */
+    {
+        lv_obj_t *side_img = lv_img_create(kbd_side_btn);
+        lv_img_set_src(side_img, &keyboard_icon);
+        lv_img_set_zoom(side_img, 150);
+        lv_obj_center(side_img);
+        lv_obj_clear_flag(side_img, LV_OBJ_FLAG_CLICKABLE);
+    }
+
     #if SHOW_SCROLL_ZONE_DEBUG
     {
         const float cxf = LV_HOR_RES_MAX / 2.0f;
@@ -7535,7 +7571,9 @@ static void create_kbd_mic_section(lv_obj_t *parent)
                         kbd_lower_arrow_event_cb, LV_EVENT_CLICKED,
                         (void *)(intptr_t)1); // 1 = 切到 keyboard
     lv_obj_t *right_arrow_img = lv_img_create(kbd_mic_section_right_arrow);
-    lv_img_set_src(right_arrow_img, &keyboard_icon);
+    /* founder 2026-08-17:這顆的語意是「切輸入法」,圖統一成地球(erth)——與鍵盤輪盤
+       row4 的 mode_btn、以及抽屜三鍵列最左那顆同一張,三處一致。 */
+    lv_img_set_src(right_arrow_img, &erth);
     lv_img_set_zoom(right_arrow_img, 150); // 放大一點點
     lv_obj_center(right_arrow_img);
 
@@ -8725,6 +8763,10 @@ static bool tib_drag_tracking = false;
 static bool tib_drag_engaged = false;
 static bool tib_drag_rejected = false; // 偵測到水平拖曳 → 放棄這次 session
 static bool collapse_anim_commit = false;
+/* 這次收合的落點是「滑回 session 抽屜」而不是光禿禿的觸控板 —— 只有**輸入框往下拖**
+   這條手勢會設(founder 2026-08-17:「按著上面往下滑才會把輸入框或鍵盤往下收掉、拉回
+   已經有對應輸入變更過的選項」);點外面/右上退出鈕是離開整個流程,抽屜一併收掉。 */
+static bool s_collapse_to_drawer = false;
 
 /* 鍵盤→觸碰板的 commit 收尾(bar 下拉 collapse 與頂部退出鈕右滑共用)。 */
 static void kbd_commit_to_trackpad(void)
@@ -8771,6 +8813,23 @@ static void kbd_commit_to_trackpad(void)
         skaibar_options_count = 0;
         skaibar_selected_idx = -1;
     }
+    /* 從 session 抽屜進來的:下拉收合 → 抽屜帶著這輪語音搜尋後的最新選項滑回來;
+       其他離場方式(點外面、右上退出鈕)→ 整條流程結束,抽屜也收掉並通知電腦。 */
+    if (s_kbd_from_drawer)
+    {
+        s_kbd_from_drawer = false;
+        if (s_collapse_to_drawer)
+        {
+            extern void instruction_list_drawer_slide_in(void);
+            instruction_list_drawer_slide_in();
+        }
+        else
+        {
+            extern void instruction_list_bar_device_dismiss(void);
+            instruction_list_bar_device_dismiss();
+        }
+    }
+    s_collapse_to_drawer = false;
 }
 
 static void collapse_anim_done_cb(lv_anim_t *a)
@@ -8890,6 +8949,8 @@ static void text_input_bar_drag_event_cb(lv_event_t *e)
         if (progress < 0) progress = 0;
         if (progress > 100) progress = 100;
         bool commit = dy >= TIB_DRAG_COMMIT_PX;
+        /* 下拉是唯一「收掉輸入框但留在抽屜流程裡」的手勢。 */
+        s_collapse_to_drawer = commit && s_kbd_from_drawer;
         start_kbd_to_trackpad_collapse_anim(progress, commit);
     }
 }
@@ -9733,6 +9794,16 @@ static void kbd_enter_slide_done(lv_anim_t *a)
     (void)a;
     /* 滑上來的途中底下要看得到觸控板(同退出動畫的做法),到位才收掉。 */
     mode_set_visible(HID_MODE_TRACKPAD, false);
+    /* 抽屜的地球鍵:進場動畫落地**之後**才切去鍵盤輪盤。不在進場當下切的原因有二:
+       ① mouse_open_voice_station() 末端本來就跑著 kbd_lower_switch(false) 的換站動畫,
+          同一輪再切一次等於兩條動畫互打;
+       ② 圓形鍵盤是延遲建的(s_kbd_build_defer_wheel),補建走的正是 kbd_lower_switch(true)
+          的 lazy 分支 —— 用 set_keyboard 只翻可見性會得到一片空的鍵盤。 */
+    if (s_kbd_pending_wheel)
+    {
+        s_kbd_pending_wheel = false;
+        kbd_lower_switch(true);
+    }
 }
 
 /* 進場的上滑動畫改用 async 起跑:mouse_open_voice_station() 會整個重建鍵盤版面
@@ -9784,6 +9855,62 @@ static bool mouse_open_device_search(bool direct_voice)
     return true;
 }
 
+/* ==========================================================================
+   抽屜 → 語音站(founder 2026-08-17)
+   --------------------------------------------------------------------------
+   抽屜底部那排(地球/麥克風/收下)由 lv_instruction_list_layout 畫,座標與語音站的
+   kbd_mic_section 逐格對齊。使用者按下抽屜的麥克風時:
+     ① 進語音站(mouse_open_voice_station,落地版面一個像素都不改)
+     ② 整個 keyboard mode container 由下往上滑進來(既有 kbd_enter_slide)
+     ③ 同時把 session 清單往**上**推出畫面(instruction_list_drawer_push_up)
+   抽屜那排在轉場期間留在原位(它在 layer_top、蓋在最上面),等語音站自己那排滑到
+   同一格才被 push_up 的 ready_cb 收掉 —— 視覺上「那排完全不動,只有輸入框往上長、
+   清單被推出去」。
+
+   s_kbd_from_drawer 記住「這次語音站是從抽屜進來的」:輸入框往下拖收合時不是回到
+   光禿禿的觸控板,而是**滑回抽屜**(帶著這輪語音搜尋後的最新選項)。要真的回觸控板
+   走抽屜那排的收下鍵,或語音站自己的右上退出鈕。
+   ========================================================================== */
+bool mouse_drawer_open_input(bool want_keyboard)
+{
+    if (current_hid_mode == HID_MODE_KEYBOARD)
+        return false; /* 已經在輸入畫面(重複事件) */
+    if (!mouse_open_voice_station())
+        return false;
+    s_kbd_from_drawer = true;
+    lv_obj_t *kc = mode_container[HID_MODE_KEYBOARD];
+    if (kc == NULL || !lv_obj_is_valid(kc))
+        return false;
+    mode_set_visible(HID_MODE_TRACKPAD, true); /* 滑上來時底下露觸控板 */
+    lv_anim_del(kc, kbd_enter_slide_exec);
+    lv_obj_set_y(kc, LV_VER_RES); /* 起點立刻就位,動畫下一輪才建(見 kbd_enter_slide_async) */
+    lv_async_call(kbd_enter_slide_async, NULL);
+    {
+        extern void instruction_list_drawer_push_up(void);
+        instruction_list_drawer_push_up();
+    }
+    s_kbd_pending_wheel = want_keyboard; /* 地球 = 落地後接著切到鍵盤輪盤 */
+    LOG_I("[drawer] -> voice station (kbd=%d)", (int)want_keyboard);
+    return true;
+}
+
+/* 抽屜麥克風的按住/放開直接驅動語音站同一套後端。intent 用 SKAIBAR:手機在單設備
+   模式下把轉錄 setSkaibarText 打進電腦面板 → 電腦即時搜 sessions+actions+檔案 →
+   0x03 鏡像回手錶(下拉收合時就看得到新選項)。轉錄本身照樣回灌語音站的輸入框
+   (ai widget 沒開,錶端路由落到 append_text_to_mouse_input)。 */
+void mouse_drawer_voice_set(bool on)
+{
+    if (on)
+    {
+        if (!mouse_v2t_active)
+            mouse_v2t_open_with_intent(V2T_INTENT_SKAIBAR);
+    }
+    else if (mouse_v2t_active)
+    {
+        mouse_v2t_close_and_paste();
+    }
+}
+
 /* 長按放開後 LVGL 還會補一顆 CLICKED —— 這面旗標讓 bottom_logo_cb 把它吃掉
    (同 mic_bar 的 s_mic_lp_consumed pattern)。 */
 static bool s_logo_lp_consumed = false;
@@ -9795,9 +9922,6 @@ static void bottom_logo_long_press_cb(lv_event_t *e)
         return;
     if (current_hid_mode == HID_MODE_KEYBOARD)
         return;
-    extern bool instruction_list_remote_target_has_focus(void);
-    if (instruction_list_remote_target_has_focus())
-        return; /* 有聚焦輸入框:長按不特別處理,放開的 CLICKED 照走語音站 */
     if (mouse_open_device_search(true)) /* 長按=直接進語音輸入 */
         s_logo_lp_consumed = true;
 }
@@ -9814,14 +9938,13 @@ static void bottom_logo_cb(lv_event_t *e)
         s_logo_lp_consumed = false; /* 長按同一次按壓的放開,不再疊一次 tap 行為 */
         return;
     }
-    /* 電腦沒聚焦輸入框 → session/搜尋抽屜;有聚焦 → 原語音站(founder 2026-08-15)。
+    /* founder 2026-08-17:**一律**開 session/搜尋抽屜 —— 不再看 0x17 聚焦旗標分流。
+       「打字給電腦聚焦中的那個輸入框」整條移到觸控板右緣新的鍵盤鈕(kbd_side_btn),
+       語意才乾淨:bar = 找東西、右緣鍵盤鈕 = 打字。抽屜自己的底部三鍵列裡就有麥克風
+       與地球,語音/鍵盤兩站從抽屜都進得去。
        沒有控制目標時 fallback 語音站,維持 tap 必有反應。 */
-    {
-        extern bool instruction_list_remote_target_has_focus(void);
-        if (!instruction_list_remote_target_has_focus() &&
-            mouse_open_device_search(false))
-            return;
-    }
+    if (mouse_open_device_search(false))
+        return;
     /* founder 2026-08-11 R8:底部這張圖(hosted 顯示 skaibar_img)tap = 開**原本
        按鍵盤那個輸入模式** —— 只換圖,行為不變(R7 一度改成開 session,改回)。 */
     /* 2026-08-07 founder:「叫出輸入模式時可以看到他從下面出來嗎」——可以,
@@ -9833,8 +9956,15 @@ static void bottom_logo_cb(lv_event_t *e)
        keyboard_container 藏起來先進語音站,所以重建不會被看到。 */
     /* 這裡**不要**再重建一次鍵盤版面 —— mouse_open_voice_station() 內部已經做了。
        重複一次等於白付一次數百 ms 的停頓,正是動畫被吃掉的主因。 */
-    if (!mouse_open_voice_station()) /* 落地狀態=現行語音站版面,一個像素都不動 */
-        return; /* heap 不足被拒:留在觸控板,別跑進場動畫(容器沒切) */
+    mouse_open_input_station();
+}
+
+/* 進「輸入模式」的共同入口:底部 bar 沒有控制目標時的 fallback、以及觸控板右緣
+   鍵盤鈕(電腦有聚焦輸入框時)。落地狀態=現行語音站版面,一個像素都不動。 */
+static void mouse_open_input_station(void)
+{
+    if (!mouse_open_voice_station())
+        return; /* 被拒:留在觸控板,別跑進場動畫(容器沒切) */
     lv_obj_t *kc = mode_container[HID_MODE_KEYBOARD];
     if (kc == NULL || !lv_obj_is_valid(kc))
         return;
@@ -9843,6 +9973,18 @@ static void bottom_logo_cb(lv_event_t *e)
     lv_anim_del(kc, kbd_enter_slide_exec);
     lv_obj_set_y(kc, LV_VER_RES);
     lv_async_call(kbd_enter_slide_async, NULL);
+}
+
+/* 右緣鍵盤鈕:電腦上正聚焦著某個輸入框 → 直接開輸入頁打進去(icon_send 由語音站
+   自己依同一個 0x17 旗標決定要不要出現,這裡不必再判一次)。 */
+static void kbd_side_btn_event_cb(lv_event_t *e)
+{
+    (void)e;
+    if (dev_active_offline())
+        return;
+    if (current_hid_mode == HID_MODE_KEYBOARD)
+        return;
+    mouse_open_input_station();
 }
 
 /**
@@ -10486,6 +10628,20 @@ static void bar_ai_sync_timer_cb(lv_timer_t *t)
     bool lift = instruction_list_lift_input_view_open();
     bar_ai_sync_set_hidden(engaged || tap_grace || lift);
     lift_chrome_set_hidden(lift);
+    /* 右緣鍵盤鈕:只在**觸控板露著、電腦有聚焦輸入框、沒有別的東西蓋在上面**時浮現。
+       0x17 旗標由通訊執行緒寫、這裡(LVGL 執行緒)讀 —— 單一 bool,不需鎖。 */
+    if (kbd_side_btn && lv_obj_is_valid(kbd_side_btn))
+    {
+        extern bool instruction_list_remote_target_has_focus(void);
+        bool want = (current_hid_mode == HID_MODE_TRACKPAD) && !engaged &&
+                    !tap_grace && !lift && !dev_active_offline() &&
+                    instruction_list_remote_target_has_focus();
+        bool hidden = lv_obj_has_flag(kbd_side_btn, LV_OBJ_FLAG_HIDDEN);
+        if (want && hidden)
+            lv_obj_clear_flag(kbd_side_btn, LV_OBJ_FLAG_HIDDEN);
+        else if (!want && !hidden)
+            lv_obj_add_flag(kbd_side_btn, LV_OBJ_FLAG_HIDDEN);
+    }
     dev_offline_overlay_sync(); /* active 設備斷線=灰版+「斷線」(順路 poll) */
 }
 
@@ -11003,6 +11159,7 @@ void hid_mouse_destroy(void)
         keyboard_container = NULL;
     }
     kbd_exit_btn = NULL; /* 物件隨 bg 子樹拆除,清 stale 引用 */
+    kbd_side_btn = NULL;
     s_kbd_cand_row = NULL;
     s_kbd_py_lbl = NULL;
     for (int ci = 0; ci < KBD_CAND_MAX; ci++)
