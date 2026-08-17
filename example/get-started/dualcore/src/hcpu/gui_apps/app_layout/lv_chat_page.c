@@ -345,6 +345,11 @@ static void chat_stop_recording_and_send(void)
     voice_provider.auto_stop_listening(); /* finalize (mirror app_skai's send_to_ai) */
     chat_play_close_morph();
     const char *text = get_combined_voice2text();
+    /* 「文字出現一瞬間就消失、也沒送出去」(founder 2026-08-17):轉錄確實到了手錶
+       (`[v2t] rx len=15` 等),chat 分支也認領了,但送出這一刻拿到空的。V2T 緩衝是**單一
+       全域**、有六個 app 都會 clearVoice2Text(),沒有任何所有權概念 —— 所以要先知道
+       這裡到底拿到什麼,才能判斷是被別人清掉還是根本沒累積。 */
+    LOG_D("[chat] mic stop -> combined len=%d", text ? (int)strlen(text) : -1);
     if (text != NULL && text[0] != '\0')
     {
         commu_send_conv_send(text);
@@ -687,12 +692,19 @@ void chat_page_close(void)
    resolve_skailink_command links against a STRONG symbol regardless. */
 void skai_chat_on_conv_state(const uint8_t *json, uint16_t length)
 {
-    LOG_W("[chat] conv_state rx len=%u open=%d", (unsigned)length, (int)chat_page_is_open());
+    LOG_D("[chat] conv_state rx len=%u open=%d", (unsigned)length, (int)chat_page_is_open());
     if (json == NULL || length == 0)
         return;
     cJSON *root = cJSON_ParseWithLength((const char *)json, length);
     if (!cJSON_IsObject(root))
     {
+        /* 解析失敗就整包靜默丟棄 —— 而丟棄等於「畫面停在上一版」,正是「我的輸入閃一下
+           就消失」會有的表現。payload 隨對話成長(實測 93→388→680→970 bytes),被截斷的
+           那一刻就會落到這裡,所以要印出長度與尾端幾個 byte 才分得出「截斷」與「內容
+           真的壞了」(founder 2026-08-17)。 */
+        LOG_W("[chat] conv_state PARSE FAILED len=%u tail=\"%.16s\" — whole update dropped",
+              (unsigned)length,
+              length >= 16 ? (const char *)(json + length - 16) : (const char *)json);
         cJSON_Delete(root);
         return;
     }
@@ -745,6 +757,10 @@ void skai_chat_on_conv_state(const uint8_t *json, uint16_t length)
             count++;
         }
     }
+    /* 解析出幾則、丟了幾則。手機端的 msgs 是單調成長的(實測 3→4→5→6,從不縮),所以只要
+       這裡的 count 比它小,差額就是在這一層掉的 —— 分辨「手機沒送」與「手錶沒收下」。 */
+    LOG_D("[chat] parsed=%d sending=%d", count, (int)s_pending_sending);
+
     /* Pending clarify/approval — parse BEFORE publishing msg_count so one REFRESH_CHAT renders
        both. Absent object ⇒ nothing pending (an answered/expired prompt clears this way too). */
     s_appr_pending = false;
@@ -906,7 +922,14 @@ static void chat_render_pending_approval(void)
 void chat_page_apply_pending_state(void)
 {
     if (!chat_page_is_open() || s_msg_list == NULL || !lv_obj_is_valid(s_msg_list))
+    {
+        /* 早退等於「解析好的內容從來沒被畫出來」,而畫面就停在上一版 —— 這是「我的輸入閃
+           一下就消失」的候選之一,原本靜默。 */
+        LOG_W("[chat] render SKIPPED open=%d list=%d",
+              (int)chat_page_is_open(), (int)(s_msg_list != NULL && lv_obj_is_valid(s_msg_list)));
         return;
+    }
+    LOG_D("[chat] render count=%d appr=%d", (int)s_pending_msg_count, (int)s_appr_pending);
 
     if (s_title_label != NULL && lv_obj_is_valid(s_title_label) && s_pending_title[0] != '\0')
         lv_label_set_text(s_title_label, s_pending_title);

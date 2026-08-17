@@ -1063,6 +1063,11 @@ static void update_input_display(void)
 
     // 更新游標位置
     update_cursor_position();
+    /* 鍵盤站也要推 —— 這行原本只在上面 s_voice_box_on 那個分支裡,而那個分支結尾就
+       return,所以「語音輸入的字有同步到電腦、切到鍵盤打的字沒有」(founder
+       2026-08-17)。文字真相是同一個 input_buffer,在哪一站顯示不改變電腦那條輸入框
+       該鏡射什麼;防抖 250ms 本來就擋著連續按鍵。 */
+    voice_preview_schedule();
 }
 
 /**
@@ -11146,6 +11151,16 @@ void hid_mouse_destroy(void)
     {
         extern void instruction_list_bar_device_dismiss(void);
         instruction_list_bar_device_dismiss();
+    }
+
+    /* 待發的 preview timer 也要清。它只在「離站」那條路被刪(kbd_lower_switch),離開整個
+       app 這條路從來沒清過 —— 一個活過 app 拆除、callback 還會發 BLE 的 pending
+       lv_timer,正是這個 app 已知那類卡死/UAF 的形狀(比較 2026-07-17 dial timer 殘留)。
+       LVGL timer 不隨 obj 樹一起釋放,所以要自己收。 */
+    if (s_voice_preview_timer != NULL)
+    {
+        lv_timer_del(s_voice_preview_timer);
+        s_voice_preview_timer = NULL;
     }
 
     // 停掉底部 bar 多工鍵 timer（如果還在走）

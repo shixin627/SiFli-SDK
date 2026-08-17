@@ -672,6 +672,14 @@ void start_voice_recognition(uint8_t intent)
         LOG_W("Voice recognition is already active.");
         return;
     }
+    /* 開始辨識的短震回饋(founder 2026-08-17)。**這裡**才是真正的共同咽喉點:啟動有兩條
+       家族 —— voice_provider.start_v2t()(聊天室/session 列表/skai widget…)與直接呼叫
+       start_voice_recognition()(滑鼠語音站 hid_mouse.c:1547、message、speech、錶盤長按),
+       而前者最後也會走到這裡。先前放在 send_start_listen_event 只涵蓋前者,所以語音站的
+       長按麥克風沒有震(founder:「長按麥克風或輸入框開啟語音辨識也沒有震動」)。
+       放在 voice2TextStatus 的早退之後:重複啟動不會連震。 */
+    extern void motor_pattern_unlocked(void);
+    motor_pattern_unlocked();
     speech_coding = 0;
     notify_user_speaking_intent(intent);
     skaiwatch_ble_set_performance(BLE_PERF_FAST);
@@ -1284,6 +1292,8 @@ static void send_voice_recognition_event(uint8_t event)
 
 static void send_start_listen_event(void)
 {
+    /* 震動不放這裡 —— 見 start_voice_recognition():那是兩條啟動家族的共同匯流點,放這裡
+       只涵蓋 start_v2t 這一條。 */
     if (!voice_provider.audio_subscribed)
     {
         send_voice_recognition_event(VOICE_RECOGNITION_START);
