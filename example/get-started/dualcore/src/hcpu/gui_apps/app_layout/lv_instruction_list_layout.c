@@ -1316,7 +1316,14 @@ void instruction_list_refresh_home_bar(void)
             lv_obj_set_style_img_opa(s_mic_bar_icon, LV_OPA_COVER, 0);
     }
     else
+    {
+        /* 抽屜 session 期間走到這裡 = 上面兩道閘門沒攔住,pill 又要冒出來。這是
+           「不該發生」分支,印出來下次一秒定位(founder 連三輪回報這顆小麥克風)。 */
+        if (s_bar_single_device || s_drawer_row_shown)
+            LOG_W("[drawer] !! pill un-hidden by refresh_home_bar (single=%d row=%d)",
+                  (int)s_bar_single_device, (int)s_drawer_row_shown);
         lv_obj_clear_flag(bar, LV_OBJ_FLAG_HIDDEN);
+    }
     /* 這支是 mic_bar 顯藏的第三個寫入點(另兩個是立起面板與抽屜三鍵列)—— 大 tap 區
        一定要跟著,否則會出現「bar 藏了但 mic_hit 還在吃 tap」的隱形擋點(R19)。 */
     mic_hit_follow_bar();
@@ -4833,14 +4840,18 @@ void instruction_list_open_browse(void)
     {
         motor_pattern_scrolling_app();
     }
-    /* 滑鼠 app 單設備抽屜:底部換成語音站同款三鍵列(地球/麥克風/收下),原本那條
-       mic_bar 與它的大 tap 區讓開(founder 2026-08-17)。錶盤路徑不進這裡。 */
-    if (s_bar_single_device)
-        drawer_row_engage(true);
     s_pending_reveal_filter = 0; /* bar / IMU browse → all (@ + /) view */
     s_reveal_from_left = true;   /* IMU release brings the LEFT list in (the right-edge
                                     drawer is legacy); park on the left, slide to 0 */
     instruction_list_reveal_drag_begin(); /* un-hide + park + backdrop */
+    /* 滑鼠 app 單設備抽屜:底部換成語音站同款三鍵列(地球/麥克風/收下),原本那條
+       mic_bar 與它的大 tap 區讓開(founder 2026-08-17)。錶盤路徑不進這裡。
+       **一定要排在 reveal_drag_begin() 之後** —— 它的最後一行就是
+       instruction_list_refresh_home_bar()「list is now shown → surface the bottom mic
+       pill」,專門負責把那條 pill 叫出來。排在前面的話就是「我先藏、它後開」,
+       結果三鍵列旁邊永遠多一顆舊的小麥克風(founder 連三輪回報)。 */
+    if (s_bar_single_device)
+        drawer_row_engage(true);
     s_reveal_drag_active = false;         /* gesture-triggered, not a finger drag */
     lv_coord_t tx = lv_obj_get_style_translate_x(list_bg, 0);
     lv_anim_del(list_bg, inst_list_slide_anim_cb);
