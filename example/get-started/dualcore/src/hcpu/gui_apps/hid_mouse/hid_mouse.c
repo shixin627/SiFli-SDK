@@ -9909,6 +9909,11 @@ static bool mouse_open_device_search(bool direct_voice)
     extern bool commu_send_skaibar_open_device(bool force_open);
     if (!instruction_list_prepare_single_device(s_dev_active_id))
         return false;
+    /* 抽屜是**新鮮進場**:輸入列要是空的。不清的話,上一輪
+       skaibar_apply_selection_to_input_bar() 寫進 input_buffer 的那個「被點到的選項」
+       會一路留著 —— 症狀就是「點過選項進 session、離開再打開,輸入框還是上次的東西」
+       (founder 2026-08-17)。放在 prepare 成功之後:開不起來就不該動使用者的文字。 */
+    clear_input_display();
     commu_send_skaibar_open_device(true);
     instruction_list_bar_set_visible(true);
     if (direct_voice)
@@ -10054,6 +10059,10 @@ static void mouse_open_input_station(void)
     s_kbd_from_drawer = false; /* 這兩個入口都不是抽屜流程:電腦只出輸入框 */
     if (!mouse_open_voice_station())
         return; /* 被拒:留在觸控板,別跑進場動畫(容器沒切) */
+    /* 同抽屜:從觸控板/底部 bar 新鮮進來的輸入站也要是空的。刻意**不**放進
+       mouse_open_voice_station() —— 抽屜的麥克風那條(9949)也走它,而那是站內轉場,
+       清掉會把使用者正在編輯的字吃掉。 */
+    clear_input_display();
     lv_obj_t *kc = mode_container[HID_MODE_KEYBOARD];
     if (kc == NULL || !lv_obj_is_valid(kc))
         return;
