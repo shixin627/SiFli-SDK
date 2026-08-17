@@ -10656,6 +10656,13 @@ static void bar_ai_sync_timer_cb(lv_timer_t *t)
     bool lift = instruction_list_lift_input_view_open();
     bar_ai_sync_set_hidden(engaged || tap_grace || lift);
     lift_chrome_set_hidden(lift);
+    /* 抽屜/語音站期間強制壓住共用清單那條舊 mic pill —— 它的顯藏有六個寫入點,而開抽屜
+       進場鏈的最後一棒(reveal_drag_begin → refresh_home_bar)本身就是專門叫它出來的。
+       在這支每拍都跑的 poll 上收尾,任何路徑最多只能讓它閃一幀(founder 連三輪回報)。 */
+    {
+        extern void instruction_list_drawer_enforce_bar_hidden(void);
+        instruction_list_drawer_enforce_bar_hidden();
+    }
     /* 右緣鍵盤鈕:只在**觸控板露著、電腦有聚焦輸入框、沒有別的東西蓋在上面**時浮現。
        0x17 旗標由通訊執行緒寫、這裡(LVGL 執行緒)讀 —— 單一 bool,不需鎖。 */
     if (kbd_side_btn && lv_obj_is_valid(kbd_side_btn))

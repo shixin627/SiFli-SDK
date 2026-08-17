@@ -4040,6 +4040,35 @@ void instruction_list_drawer_row_engage(bool on)
     drawer_row_engage(on);
 }
 
+/* 公開:由 hid_mouse 的 40ms poll(bar_ai_sync_timer_cb)每拍呼叫 —— 抽屜/語音站期間
+   **強制**那條舊 pill 保持隱藏。
+   為什麼要用強制執行而不是繼續找兇手:mic_bar 的顯藏至少有六個寫入點(立起面板進/出、
+   refresh_home_bar、抽屜三鍵列、animate_open_ai_widget、close_ai_widget),而且進場鏈
+   的最後一棒就是專門「把 pill 叫出來」的 refresh_home_bar。逐一堵了三輪、founder 三輪
+   都還看得到它 —— 與其再賭第七個寫入點,不如讓一個每拍都跑的裁決者收尾:任何路徑都只能
+   讓它閃一幀。順便印出來指名(前幾次),下次要根治時直接有兇手名單。
+   例外:ai box 開著=長按直開語音的 morph,那條正拿 mic_bar 當放大起點,不能動它。 */
+void instruction_list_drawer_enforce_bar_hidden(void)
+{
+    if (!s_bar_single_device || !p_instruction_list_layout)
+        return; /* 錶盤/一般清單照舊,完全不受影響 */
+    lv_obj_t *bar = p_instruction_list_layout->mic_bar;
+    if (!bar || !lv_obj_is_valid(bar) || lv_obj_has_flag(bar, LV_OBJ_FLAG_HIDDEN))
+        return;
+    lv_obj_t *box = p_instruction_list_layout->p_instruction_list_ai_bg;
+    if (box && lv_obj_is_valid(box) && !lv_obj_has_flag(box, LV_OBJ_FLAG_HIDDEN))
+        return; /* morph 進行中,pill 是它的起點 */
+    static uint8_t s_enforce_log_n = 0;
+    if (s_enforce_log_n < 5)
+    {
+        s_enforce_log_n++;
+        LOG_W("[drawer] !! pill visible during drawer (row=%d) -> force hide",
+              (int)s_drawer_row_shown);
+    }
+    lv_obj_add_flag(bar, LV_OBJ_FLAG_HIDDEN);
+    mic_hit_follow_bar();
+}
+
 /* ---- 抽屜 ↔ 語音站的垂直轉場 --------------------------------------------
    進語音站:清單往**上**推出畫面(founder:「把 session 列表往上推出畫面」);
    下拉收合回來:清單從上方滑回。收下鍵:清單往**下**收掉(對齊 down_arrow 的方向)。
