@@ -142,6 +142,7 @@ bool commu_send_handwrite(const char *json); /* -> KEY_HANDWRITE (0x1b) */
    cmd ∈ playPause|next|previous|volumeUp|volumeDown — air-mouse mediaControl verbs.
    Distinct from commu_send_media_control() above, which drives the phone's own media. */
 bool commu_send_media_relay(const char *cmd);          /* -> KEY_MEDIA_CONTROL (0x18) */
+bool commu_send_media_volume(int percent);            /* -> KEY_MEDIA_CONTROL (0x18) {"cmd":"setVolume","value":0-100} 音量條:絕對值 */
 bool commu_send_skaibar_dismiss(void);                 /* -> KEY_SKAIBAR_DISMISS (0x0C) cancel-close, no commit */
 bool commu_send_skaibar_view(char cat);                /* -> KEY_SKAIBAR_VIEW_CHANGE (0x0D) view opened: '@'/'/'/0=bar */
 bool commu_send_skaibar_open_device(bool force_open);  /* -> KEY_SKAIBAR_OPEN_DEVICE (0x0E) {"forceOpen":bool} mouse app: open single controlled device's skaibar; force_open=false is the legacy lift-gesture direct voice-input flow (desktop may defer to a focused external text input) */

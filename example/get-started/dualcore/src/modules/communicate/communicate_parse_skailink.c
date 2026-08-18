@@ -435,16 +435,22 @@ void media_state_apply_pending(void)
     cJSON *j_title  = cJSON_GetObjectItem(root, "title");
     cJSON *j_artist = cJSON_GetObjectItem(root, "artist");
     cJSON *j_play   = cJSON_GetObjectItem(root, "playing");
+    /* 該設備目前的系統音量 0..100,-1 = 對方沒回報(舊桌面 / 沒有音訊裝置)。
+       音量條靠它擺把手的位置;-1 時**維持現狀**不要把把手歸零。 */
+    cJSON *j_vol    = cJSON_GetObjectItem(root, "volume");
     const char *id     = cJSON_IsString(j_id)     ? j_id->valuestring     : "";
     const char *title  = cJSON_IsString(j_title)  ? j_title->valuestring  : "";
     const char *artist = cJSON_IsString(j_artist) ? j_artist->valuestring : "";
     bool playing = cJSON_IsTrue(j_play);
+    int volume = cJSON_IsNumber(j_vol) ? j_vol->valueint : -1;
 
     extern void mouse_mode_handle_remote_media_state(const char *device_id,
                                                      const char *title,
                                                      const char *artist,
                                                      bool playing);
+    extern void mouse_mode_handle_remote_volume(const char *device_id, int percent);
     mouse_mode_handle_remote_media_state(id, title, artist, playing);
+    mouse_mode_handle_remote_volume(id, volume);
     cJSON_Delete(root);
     rt_free(buf);
 }

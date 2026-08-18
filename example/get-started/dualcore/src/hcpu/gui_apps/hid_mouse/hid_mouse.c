@@ -9880,6 +9880,69 @@ static lv_obj_t *media_center_make_icon_btn(lv_obj_t *parent,
     return btn;
 }
 
+/* 音量滑桿:目前顯示中的那一格(同 media_center_title_label 的 live 指標作法)。 */
+static lv_obj_t *s_media_vol_slider = NULL;
+/* 使用者正在拖 → 遠端回報先不要動把手,否則手指還按著就被拉回舊值。 */
+static bool s_media_vol_dragging = false;
+/* 上一次真的送出去的值 + 時間,用來節流(拖曳每一格都送會塞滿 BLE)。 */
+static int s_media_vol_last_sent = -1;
+static uint32_t s_media_vol_last_tick = 0;
+#define MEDIA_VOL_SEND_MIN_MS 80
+
+/* 送出目前的滑桿值。force=放開手指那一下:無論節流與否都要送,否則最終落點可能沒送到。 */
+static void media_vol_send(int value, bool force)
+{
+    if (value < 0) value = 0;
+    if (value > 100) value = 100;
+    uint32_t now = lv_tick_get();
+    if (!force)
+    {
+        if (value == s_media_vol_last_sent) return;
+        if ((now - s_media_vol_last_tick) < MEDIA_VOL_SEND_MIN_MS) return;
+    }
+    s_media_vol_last_sent = value;
+    s_media_vol_last_tick = now;
+    /* 沒有遠端目標時不送:這條線的目的地是 active 設備,沒有目標就沒有人收
+       (手機自己的音量走的是別條路,不在這個滑桿的語意裡)。 */
+    if (!ble_hid_mouse_app_route()) return;
+    extern bool commu_send_media_volume(int percent);
+    commu_send_media_volume(value);
+}
+
+static void media_center_vol_slider_cb(lv_event_t *e)
+{
+    lv_obj_t *sl = lv_event_get_target(e);
+    switch (lv_event_get_code(e))
+    {
+    case LV_EVENT_PRESSED:
+        s_media_vol_dragging = true;
+        break;
+    case LV_EVENT_VALUE_CHANGED:
+        media_vol_send((int)lv_slider_get_value(sl), false);
+        break;
+    case LV_EVENT_RELEASED:
+    case LV_EVENT_PRESS_LOST:
+        s_media_vol_dragging = false;
+        media_vol_send((int)lv_slider_get_value(sl), true); /* 落點一定要送 */
+        break;
+    default:
+        break;
+    }
+}
+
+/* 0x19 帶回來的該設備音量 → 校準把手。-1 = 對方沒回報,維持現狀。 */
+void mouse_mode_handle_remote_volume(const char *device_id, int percent)
+{
+    if (percent < 0 || percent > 100) return;
+    if (!s_media_vol_slider || !lv_obj_is_valid(s_media_vol_slider)) return;
+    if (s_media_vol_dragging) return; /* 手指還在上面,別跟使用者搶 */
+    if (device_id == NULL || s_dev_active_id[0] == '\0' ||
+        strncmp(device_id, s_dev_active_id, SYNCED_DEVICE_ID_LEN) != 0)
+        return;
+    lv_slider_set_value(s_media_vol_slider, percent, LV_ANIM_OFF);
+    s_media_vol_last_sent = percent; /* 這是電腦端的現況,不要再回送 */
+}
+
 /* === 媒體內容 builder（曲名 + 上/播/下 + 音量）====================================
    2026-08-06 重構:同一份控制列現在有兩個使用者 —
      1) 本檔 create_media_center_panel 的下拉媒體頁(獨立開 APP_ID_MOUSE 時仍在)
@@ -9887,7 +9950,8 @@ static lv_obj_t *media_center_make_icon_btn(lv_obj_t *parent,
    所以把控制列抽出來，兩邊共用同一份 callback，避免兩套實作各自漂移。
    設備名/箭頭**不**在這裡：面板版的設備列是固定在面板頂部、不隨頁捲動的。 */
 static void media_content_build(lv_obj_t *parent, lv_obj_t **out_title,
-                                lv_obj_t **out_play_img)
+                                lv_obj_t **out_play_img,
+                                lv_obj_t **out_vol_slider)
 {
     lv_obj_t *title = lv_label_create(parent);
     lv_label_set_text(title, "Media Title");
@@ -9909,22 +9973,37 @@ static void media_content_build(lv_obj_t *parent, lv_obj_t **out_title,
         parent, &img_media_next, media_center_next_btn_cb, 90);
     lv_obj_align(btn_next, LV_ALIGN_CENTER, 120, 0);
 
-    /* 音量鍵不走 CLICKED（傳 NULL），改綁 hold cb：長按 >0.5s 連續調整。
-       user_data = 方向（-1 減 / +1 加）。 */
-    lv_obj_t *btn_vol_down =
-        media_center_make_icon_btn(parent, &volume_down, NULL, 75);
-    lv_obj_align(btn_vol_down, LV_ALIGN_BOTTOM_MID, -90, -80);
-    lv_obj_add_event_cb(btn_vol_down, media_center_vol_hold_cb, LV_EVENT_ALL,
-                        (void *)(intptr_t)-1);
+    /* 音量:滑桿(founder 2026-08-18「我拉多少就調多少音量」)。兩端的圖示留著當刻度提示,
+       但**不再可點** —— 原本的 +/- 是按鍵、送 volumeUp/Down 讓接收端按系統音量鍵(相對、
+       被 OS 級距量化),拉到哪就是多少做不到;滑桿送的是絕對值。
+       圓螢幕:滑桿寬 240 置中,兩側各留一顆 32px 圖示還在圓內。 */
+    lv_obj_t *ico_down = lv_img_create(parent);
+    lv_img_set_src(ico_down, &volume_down);
+    lv_img_set_zoom(ico_down, 170);
+    lv_obj_align(ico_down, LV_ALIGN_BOTTOM_MID, -150, -74);
+    lv_obj_clear_flag(ico_down, LV_OBJ_FLAG_CLICKABLE);
 
-    lv_obj_t *btn_vol_up =
-        media_center_make_icon_btn(parent, &volume_up, NULL, 75);
-    lv_obj_align(btn_vol_up, LV_ALIGN_BOTTOM_MID, 90, -80);
-    lv_obj_add_event_cb(btn_vol_up, media_center_vol_hold_cb, LV_EVENT_ALL,
-                        (void *)(intptr_t)1);
+    lv_obj_t *ico_up = lv_img_create(parent);
+    lv_img_set_src(ico_up, &volume_up);
+    lv_img_set_zoom(ico_up, 170);
+    lv_obj_align(ico_up, LV_ALIGN_BOTTOM_MID, 150, -74);
+    lv_obj_clear_flag(ico_up, LV_OBJ_FLAG_CLICKABLE);
+
+    lv_obj_t *slider = lv_slider_create(parent);
+    lv_obj_set_size(slider, 240, 12);
+    lv_obj_align(slider, LV_ALIGN_BOTTOM_MID, 0, -80);
+    lv_slider_set_range(slider, 0, 100);
+    lv_slider_set_value(slider, 50, LV_ANIM_OFF); /* 佔位:0x19 回報一到就校準 */
+    lv_obj_set_style_bg_color(slider, lv_color_hex(0x3A3A3A), LV_PART_MAIN);
+    lv_obj_set_style_bg_color(slider, lv_color_hex(0xFFFFFF), LV_PART_INDICATOR);
+    lv_obj_set_style_bg_color(slider, lv_color_hex(0xFFFFFF), LV_PART_KNOB);
+    /* 把手加大到 ≥44pt 的觸控標的:視覺仍是小圓,靠 pad 撐開熱區。 */
+    lv_obj_set_style_pad_all(slider, 12, LV_PART_KNOB);
+    lv_obj_add_event_cb(slider, media_center_vol_slider_cb, LV_EVENT_ALL, NULL);
 
     if (out_title) *out_title = title;
     if (out_play_img) *out_play_img = lv_obj_get_child(btn_play, 0);
+    if (out_vol_slider) *out_vol_slider = slider;
 }
 
 /* 面板媒體格:每格記住自己的曲名 label / 播放圖示，bind 時才把 file-static 的
@@ -9934,6 +10013,7 @@ typedef struct
 {
     lv_obj_t *title;
     lv_obj_t *play_img;
+    lv_obj_t *vol_slider;
 } media_page_widgets_t;
 
 static void media_page_del_cb(lv_event_t *e)
@@ -9945,6 +10025,7 @@ static void media_page_del_cb(lv_event_t *e)
         media_center_title_label = NULL;
         media_center_play_img = NULL;
     }
+    if (s_media_vol_slider == w->vol_slider) s_media_vol_slider = NULL;
     lv_mem_free(w);
 }
 
@@ -9962,7 +10043,7 @@ lv_obj_t *hid_mouse_media_page_create(lv_obj_t *parent)
     lv_obj_set_user_data(page, w);
     lv_obj_add_event_cb(page, media_page_del_cb, LV_EVENT_DELETE, w);
 
-    media_content_build(page, &w->title, &w->play_img);
+    media_content_build(page, &w->title, &w->play_img, &w->vol_slider);
     return page;
 }
 
@@ -9973,6 +10054,9 @@ void hid_mouse_media_page_bind(lv_obj_t *page)
     if (w == NULL) return;
     media_center_title_label = w->title;
     media_center_play_img = w->play_img;
+    s_media_vol_slider = w->vol_slider;
+    /* 換設備 = 換一台機器的音量,舊的節流基準作廢(否則新設備第一筆相同數值會被吃掉)。 */
+    s_media_vol_last_sent = -1;
 }
 
 void hid_mouse_media_page_reset_title(lv_obj_t *page)
@@ -10077,7 +10161,7 @@ static void create_media_center_panel(lv_obj_t *parent)
 
     // 曲名 + 控制列 + 音量（與錶盤頂部面板的媒體格共用同一份 builder）
     media_content_build(media_tile, &media_center_title_label,
-                        &media_center_play_img);
+                        &media_center_play_img, &s_media_vol_slider);
 
     // 離開 App：紅色 Exit 鈕（從舊右側抽屜移來），放媒體頁最底
     lv_obj_t *media_exit_btn = lv_btn_create(media_tile);

@@ -186,6 +186,21 @@ bool commu_send_media_relay(const char *cmd)
     return commu_send_string(SKAI_LINK_COMMAND_ID, KEY_MEDIA_CONTROL, json);
 }
 
+/* 音量條(founder 2026-08-18「我拉多少就調多少」):送**絕對**音量,不是 volumeUp/Down。
+   那兩個在接收端是按下系統的音量鍵 —— 相對、而且被 OS 的級距量化,永遠落不到「拉到 42」。
+   接收端改走各自的音訊 API(Windows: Core Audio SetMasterVolumeLevelScalar)。
+   夾在 0..100:手錶端已經夾過一次,這裡是最後一道 —— 越界值送出去會讓桌面直接靜音。 */
+bool commu_send_media_volume(int percent)
+{
+    if (percent < 0) percent = 0;
+    if (percent > 100) percent = 100;
+    char json[48]; /* {"cmd":"setVolume","value":100} = 31 chars + NUL */
+    int n = rt_snprintf(json, sizeof(json),
+                        "{\"cmd\":\"setVolume\",\"value\":%d}", percent);
+    if (n <= 0 || n >= (int)sizeof(json)) return false;
+    return commu_send_string(SKAI_LINK_COMMAND_ID, KEY_MEDIA_CONTROL, json);
+}
+
 /* watch→phone (SKAI_LINK 0x22): one TV remote key. Verb strings are brand-neutral
    (see KEY_TV_CONTROL); the phone maps them onto the bound TV's driver. Logged at
    INFO because these are user-initiated, low-rate presses — unlike mouse move /
