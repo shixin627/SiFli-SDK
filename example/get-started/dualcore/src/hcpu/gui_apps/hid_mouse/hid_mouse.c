@@ -8914,8 +8914,17 @@ static void kbd_lower_switch(bool to_kbd)
         //   1. keyboard 往下滑出 (translate_y 0 → 300) 後 hide
         //   2. input bar y 從 75 → 195 (回到螢幕中央)
         //   3. 顯示 mic section
+        /* 這一輪到底是不是「真的從鍵盤切過來」:鍵盤有在畫面上才算(從觸控板直接進語音站時
+           它是藏著的)。原本只有下面的橫向動畫看它,現在框的變形也要看 —— 進場那條路有它
+           自己的展開動畫在驅動框的幾何(0→100 收在 mic view 的 380x90@195),我這段變形
+           跑在它前面,於是使用者會看到「框先長到語音框的正常大小,又縮成中間一個小框」
+           (founder 2026-08-18)。進場不歸這裡管。 */
+        bool from_keyboard = keyboard_container &&
+                             lv_obj_is_valid(keyboard_container) &&
+                             !lv_obj_has_flag(keyboard_container,
+                                              LV_OBJ_FLAG_HIDDEN);
         /* 輸入框從鍵盤藥丸**長大**成語音大框(位置與尺寸一起補間)。 */
-        if (morph_bar)
+        if (morph_bar && from_keyboard)
         {
             lv_anim_del(text_input_bar_bg, (lv_anim_exec_xcb_t)lv_obj_set_y);
             lv_anim_del(text_input_bar_bg, kbd_bar_morph_cb);
@@ -8948,14 +8957,6 @@ static void kbd_lower_switch(bool to_kbd)
             lv_anim_set_ready_cb(&a, kbd_bar_morph_to_voice_done_cb);
             lv_anim_start(&a);
         }
-        /* 這一輪到底是不是「真的從鍵盤切過來」:鍵盤有在畫面上才算。從觸控板直接
-           進語音站時它是藏著的,那就整組不演橫向動畫 —— 否則外層的「由下往上進場」
-           會跟這裡的橫move 疊在一起,看起來是輸入框從下面出來、三顆按鈕跟 logo 卻
-           另外從左邊滑進來(founder 2026-08-07)。 */
-        bool from_keyboard = keyboard_container &&
-                             lv_obj_is_valid(keyboard_container) &&
-                             !lv_obj_has_flag(keyboard_container,
-                                              LV_OBJ_FLAG_HIDDEN);
         if (keyboard_container && lv_obj_is_valid(keyboard_container))
         {
             lv_anim_del(keyboard_container, anim_set_translate_x);
