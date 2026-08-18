@@ -8923,6 +8923,18 @@ static void kbd_lower_switch(bool to_kbd)
                              lv_obj_is_valid(keyboard_container) &&
                              !lv_obj_has_flag(keyboard_container,
                                               LV_OBJ_FLAG_HIDDEN);
+        /* 進場那條路不演變形,但**位置還是要放對**:kbd_bar_set_voice_box() 只設了尺寸與 x,
+           y 一向是靠這裡的動畫帶到 VOICE_BOX_Y 的。上一輪把動畫 gate 掉之後就沒有人設 y,
+           框於是停在鍵盤站的高度(founder 2026-08-18:「輸入框位置整個往上跑」)。這裡直接
+           就位,不動畫 —— 進場的視覺歸進場動畫管。 */
+        if (morph_bar && !from_keyboard)
+        {
+            lv_obj_set_size(text_input_bar_bg, VOICE_BOX_W, VOICE_BOX_H);
+            lv_obj_set_pos(text_input_bar_bg,
+                           (LV_HOR_RES_MAX - VOICE_BOX_W) / 2, VOICE_BOX_Y);
+            lv_obj_set_style_radius(text_input_bar_bg, VOICE_BOX_RADIUS,
+                                    LV_PART_MAIN);
+        }
         /* 輸入框從鍵盤藥丸**長大**成語音大框(位置與尺寸一起補間)。 */
         if (morph_bar && from_keyboard)
         {
