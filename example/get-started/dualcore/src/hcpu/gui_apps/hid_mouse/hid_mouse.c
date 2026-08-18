@@ -632,6 +632,11 @@ static lv_timer_t *kbd_voice_del_repeat = NULL;
 #define VOICE_ICON_DY  (-178)
 /* 送出鍵貼在輸入框內緣右側的內縮量(負值=往左)。沿用它取代的 enter_icon 原本的 -10。 */
 #define SEND_BTN_INSET_X (-10)
+/* icon_send 原生 34x34,塞進 45 高的鍵盤輸入列幾乎頂滿(founder 2026-08-18:「圖片有點太大」)。
+   縮的是**繪製**:lv_img_set_zoom 只影響畫出來的大小,物件 bbox 仍是 34x34,加上
+   ext_click_area 15 → 觸控標的維持 64px(≥44pt 基線),founder 要的「觸碰範圍不變」。 */
+#define SEND_BTN_ZOOM  180   /* 34 * 180/256 ≈ 24px 視覺 */
+#define SEND_BTN_IMG_W 34
 #define VOICE_KBD_DX  (-110)  /* 回鍵盤鈕:同一排最左 */
 #define VOICE_LOGO_DX  (-29)
 #define VOICE_SEND_DX    52
@@ -7614,6 +7619,10 @@ static void create_kbd_mic_section(lv_obj_t *parent)
        這裡的 enter_icon 的位置 —— 那顆已經移除(同一顆按鍵、同一件事)。 */
     kbd_voice_send_btn = lv_img_create(text_input_bar_bg);
     lv_img_set_src(kbd_voice_send_btn, &icon_send);
+    /* 縮圖但不縮 bbox。pivot 設在圖正中央,縮放才是往中心收(預設 pivot 也是中心,寫明
+       是因為這顆之後若換圖或改 zoom,漏設 pivot 會變成往左上角縮)。 */
+    lv_img_set_pivot(kbd_voice_send_btn, SEND_BTN_IMG_W / 2, SEND_BTN_IMG_W / 2);
+    lv_img_set_zoom(kbd_voice_send_btn, SEND_BTN_ZOOM);
     lv_obj_add_flag(kbd_voice_send_btn, LV_OBJ_FLAG_CLICKABLE);
     lv_obj_set_ext_click_area(kbd_voice_send_btn, 15);
     lv_obj_add_event_cb(kbd_voice_send_btn, kbd_voice_send_event_cb, LV_EVENT_CLICKED,
@@ -8435,6 +8444,9 @@ static void kbd_lower_switch(bool to_kbd)
     {
         mouse_v2t_close_and_paste();
     }
+    /* 送出鍵的 y 是從 bar 高度算出來的,而兩站的 bar 高度不同(442x252 / 310x45) ——
+       換站後重算,否則它會停在上一站的高度上。 */
+    kbd_voice_layout_send_icons();
 
     if (to_kbd)
     {
@@ -9175,6 +9187,10 @@ static void kbd_voice_send_event_cb(lv_event_t *e)
 {
     if (lv_event_get_code(e) != LV_EVENT_CLICKED)
         return;
+    /* 跟鍵盤每一顆鍵同一個觸覺回饋(founder 2026-08-18)。用 motor_pattern_key_tick 而不是
+       另挑一個 pattern:這顆在使用者眼裡就是鍵盤上的一顆鍵,手感不該自成一格。 */
+    extern void motor_pattern_key_tick(void);
+    motor_pattern_key_tick();
     voice_do_send((int)(intptr_t)lv_event_get_user_data(e));
 }
 
@@ -9192,9 +9208,20 @@ static void kbd_voice_layout_send_icons(void)
     {
         if (show_send)
         {
-            /* 貼輸入框右緣、垂直置中 —— 兩站都是同一條規則,因為它就掛在 bar 裡面,
-               bar 換幾何它自己跟著走(語音站 442×252 的大框、鍵盤站 310×45 的藥丸)。 */
-            lv_obj_align(kbd_voice_send_btn, LV_ALIGN_RIGHT_MID, SEND_BTN_INSET_X, 0);
+            /* 貼輸入框右緣、垂直置中在**框本身**上。
+               LV_ALIGN_RIGHT_MID 對齊的是 parent 的**內容區**(扣掉 border 與 padding),
+               而 LVGL 預設 theme 給 lv_obj 的 pad_all 是 16~24px —— 語音站 252 高的大框
+               看不出差別,但鍵盤站只有 45 高:內容區被 padding 吃到剩幾 px,對齊基準跟著
+               縮到框中央以外,圖示就沒坐在上下正中間(founder 2026-08-18)。改成自己從框高
+               算絕對位置,並把 border+padding 的位移補回去,兩站都與 padding 無關。 */
+            lv_obj_update_layout(text_input_bar_bg);
+            lv_coord_t bar_h = lv_obj_get_height(text_input_bar_bg);
+            lv_coord_t pad_t = lv_obj_get_style_pad_top(text_input_bar_bg, LV_PART_MAIN);
+            lv_coord_t pad_r = lv_obj_get_style_pad_right(text_input_bar_bg, LV_PART_MAIN);
+            lv_coord_t bord = lv_obj_get_style_border_width(text_input_bar_bg, LV_PART_MAIN);
+            lv_obj_align(kbd_voice_send_btn, LV_ALIGN_TOP_RIGHT,
+                         SEND_BTN_INSET_X + pad_r + bord,
+                         (bar_h - SEND_BTN_IMG_W) / 2 - pad_t - bord);
             lv_obj_clear_flag(kbd_voice_send_btn, LV_OBJ_FLAG_HIDDEN);
             lv_obj_move_foreground(kbd_voice_send_btn); /* 鍵盤/候選列都可能後建 */
         }
@@ -9226,11 +9253,15 @@ static void voice_do_send(int which)
            →手機 runSkaibar{text, submit:true}→桌面 TryRunText:文字相同時 diff 是空的(不會重打
            成雙份),然後敲一下 Enter。仍然把文字一起帶上去 —— 萬一兩邊因為丟包而不同步,這一
            筆會把差額補完再送出,比只送一個 Enter 穩。
-           送完**留在輸入站**:Enter 是一顆鍵,不是離場動作(聊天框按完還要打下一句)。要離開走
-           下拉收合 / 空框時的退出鍵,那些路徑本來就會解除電腦的 latch。 */
+           送完**離開輸入模式**(founder 2026-08-18 二改:「同時要退出鍵盤模式」)—— 所以這裡
+           順手解除電腦的 direct-typing latch,不然人已經走了,電腦還把後續任何文字往那個欄位
+           打。順序是先 enter 後 dismiss,同一條連線依序抵達,Enter 不會被 dismiss 搶先。 */
         extern bool commu_send_voice_station_commit(const char *dest, const char *text);
         commu_send_voice_station_commit("enter", input_buffer);
         LOG_I("[voice] direct-field enter len=%d", input_length);
+        extern bool commu_send_skaibar_dismiss(void);
+        commu_send_skaibar_dismiss();
+        s_kbd_direct_field = false;
     }
     else
     {
@@ -9252,13 +9283,7 @@ static void voice_do_send(int which)
     mouse_v2t_locked = false;
     update_input_display();
 
-    if (s_kbd_direct_field)
-    {
-        /* Enter 送完留在站內(見上面),只把送出鍵的圖示/位置照當下這一站重排。 */
-        kbd_voice_layout_send_icons();
-        kbd_voice_del_update_icon(); /* 框空了 → 退格鍵變回退出鍵 */
-    }
-    else if (which == 1)
+    if (which == 1)
     {
         /* icon_send:文字已經打進電腦那個欄位,手錶離開輸入模式(founder 2026-08-03:
            「我按下輸入後手表要退出輸入模式」)。回觸控板,與立起面板送完就收掉同義。 */
