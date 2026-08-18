@@ -789,6 +789,7 @@ void set_air_mouse_moving_state(bool state)
 // Key popup functions
 static void show_key_popup(lv_obj_t *btn, const char *key_text);
 static void hide_key_popup(void);
+static void kbd_del_update_icon(void); /* 鍵盤站刪除鍵:空框時顯示成「收下」 */
 
 // Long press detection functions
 static void long_press_timer_callback(void *parameter);
@@ -1028,6 +1029,7 @@ static void clear_input_display(void)
     }
     // 更新游標位置
     update_cursor_position();
+    kbd_del_update_icon(); /* 清空之後那顆變「收下」 */
 }
 
 /**
@@ -1042,6 +1044,7 @@ static void update_input_display(void)
 
     /* 語音站的大框是固定寬折行,不走單行那套「太長就靠右露出最新文字」—— 那會把整塊
        360 寬的 label 推到右邊。對齊在進站時已經設成 TOP_LEFT,這裡不要再動它。 */
+    kbd_del_update_icon(); /* 鍵盤站那顆:有字=退格 / 沒字=收下 */
     if (s_voice_box_on)
     {
         update_cursor_position();
@@ -2036,6 +2039,22 @@ static void kbd_hide_bottom_chrome(void)
     }
 }
 
+/* 鍵盤站的刪除鍵:框裡沒字就是「收下」鍵(founder 2026-08-18),與語音站那顆同一條規則
+   (kbd_voice_del_update_icon)。注音組字中(s_py_len>0)仍算有內容可刪 —— 那時刪的是還沒
+   上屏的符號,把它變成收下會讓使用者退不掉組字。 */
+static bool kbd_del_acts_as_exit(void)
+{
+    return (input_length == 0 && s_py_len == 0);
+}
+
+static void kbd_del_update_icon(void)
+{
+    if (del_img == NULL || !lv_obj_is_valid(del_img))
+        return;
+    lv_img_set_src(del_img, kbd_del_acts_as_exit() ? (const void *)&down_arrow
+                                                   : (const void *)&backspace_icon);
+}
+
 /**
  * @brief Handle proximity-based input
  */
@@ -2162,8 +2181,8 @@ static void handle_proximity_input(lv_event_t *e)
                         get_button_text(currently_pressed_btn);
                     if (strcmp(prev_key_text, "Del") == 0 && del_img != NULL)
                     {
-                        // 恢復Del按鈕的原始圖片
-                        lv_img_set_src(del_img, &backspace_icon);
+                        // 恢復Del按鈕的原始圖片(空框時那是「收下」不是退格)
+                        kbd_del_update_icon();
                     }
                     else
                     {
@@ -2207,8 +2226,8 @@ static void handle_proximity_input(lv_event_t *e)
                     get_button_text(currently_pressed_btn);
                 if (strcmp(prev_key_text, "Del") == 0 && del_img != NULL)
                 {
-                    // 恢復Del按鈕的原始圖片
-                    lv_img_set_src(del_img, &backspace_icon);
+                    // 恢復Del按鈕的原始圖片(空框時那是「收下」不是退格)
+                    kbd_del_update_icon();
                 }
                 else
                 {
@@ -2246,8 +2265,8 @@ static void handle_proximity_input(lv_event_t *e)
             const char *prev_key_text = get_button_text(currently_pressed_btn);
             if (strcmp(prev_key_text, "Del") == 0 && del_img != NULL)
             {
-                // 恢復Del按鈕的原始圖片
-                lv_img_set_src(del_img, &backspace_icon);
+                // 恢復Del按鈕的原始圖片(空框時那是「收下」不是退格)
+                kbd_del_update_icon();
             }
             else
             {
@@ -2425,6 +2444,14 @@ static void handle_proximity_input(lv_event_t *e)
                 else if (strcmp(closest_key_text, "Del") == 0)
                 {
                     LOG_D("Delete key pressed");
+                    /* 空框 = 這顆是「收下」鍵 → 離開輸入模式回觸控板,與語音站那顆
+                       (kbd_voice_del_event_cb)以及送出後的去處一致。 */
+                    if (kbd_del_acts_as_exit())
+                    {
+                        LOG_I("[kbd] delete key acted as EXIT (box empty)");
+                        apply_hid_mode(HID_MODE_TRACKPAD);
+                        return;
+                    }
                     if (current_keyboard_mode == KEYBOARD_MODE_CHINESE &&
                         s_py_len > 0)
                     {
@@ -2436,6 +2463,7 @@ static void handle_proximity_input(lv_event_t *e)
                             s_py_len--;
                         s_py_buf[s_py_len] = '\0';
                         kbd_cand_refresh();
+                        kbd_del_update_icon(); /* 組字刪光 → 這顆變「收下」 */
                     }
                     else
                     {
@@ -3272,9 +3300,12 @@ static void create_circular_keyboard_layout(lv_obj_t *parent)
     register_key_button(del_btn);
     del_img = lv_img_create(del_btn);
     lv_img_set_src(del_img, &backspace_icon);
+    /* 版面重建(切輸入法)後圖要照當下的框內容重挑,否則空框時會退回退格圖。
+       擺在 align/opa 之前無妨,src 換掉不影響那些樣式。 */
     lv_obj_align(del_img, LV_ALIGN_CENTER, 0, 0);
     lv_obj_set_style_img_opa(del_img, LV_OPA_50, LV_PART_MAIN);
     lv_obj_clear_flag(del_img, LV_OBJ_FLAG_CLICKABLE);
+    kbd_del_update_icon();
 
     // close_btn 已移除（鍵盤關閉由 mode 切換取代）
 
