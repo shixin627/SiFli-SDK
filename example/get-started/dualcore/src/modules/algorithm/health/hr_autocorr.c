@@ -36,6 +36,12 @@ static uint32_t s_ring[HR_AUTOCORR_WIN];
 static int16_t  s_acc[NLMS_AXES][HR_AUTOCORR_WIN];
 static uint16_t s_head;             /* next write index                        */
 static uint16_t s_count;            /* saturates at HR_AUTOCORR_WIN            */
+/* Monotonic sample count since reset. s_count saturates and s_head wraps, so
+   neither can answer "has a WHOLE fresh window arrived since the last dump?" --
+   and the full-burst capture needs that exactly, not approximately. Deriving it
+   from the 1 Hz tick instead would assume the feed really runs at 25 Hz, which
+   is the kind of assumption that silently misaligns a diagnostic. */
+static uint32_t s_total;
 
 /* Detrended, scaled working copy. Separate from the ring so feeding can carry
    on (from the FIFO hook) while an estimate is being computed. */
@@ -58,6 +64,7 @@ void hr_autocorr_reset(void)
 {
     s_head = 0;
     s_count = 0;
+    s_total = 0;
     s_work_valid = false;
     /* The accelerometer staging goes too. A reset means the sensor restarted,
        so comparing the next batch against one from before the restart would
@@ -83,6 +90,7 @@ void hr_autocorr_reset(void)
 
 static void push_sample(uint32_t ppg, int16_t ax, int16_t ay, int16_t az)
 {
+    s_total++;
     s_ring[s_head] = ppg;
     s_acc[0][s_head] = ax;
     s_acc[1][s_head] = ay;
@@ -240,6 +248,11 @@ uint32_t hr_autocorr_accel_act(void)
 uint16_t hr_autocorr_fill(void)
 {
     return s_count;
+}
+
+uint32_t hr_autocorr_total(void)
+{
+    return s_total;
 }
 
 uint16_t hr_autocorr_last_window(int8_t *out, uint16_t max)
