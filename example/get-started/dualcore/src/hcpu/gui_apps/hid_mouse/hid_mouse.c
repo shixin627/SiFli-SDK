@@ -7964,6 +7964,16 @@ static void kbd_exit_morph_cb(void *var, int32_t v)
                                 barmorph_lerp(s_barmorph_r0, s_barmorph_r1, v),
                                 LV_PART_MAIN);
     }
+    /* 邊收邊淡出(founder 2026-08-18)。用 LV_STYLE_OPA 而不是 bg_opa —— 那是整個物件
+       (含裡面的文字、游標、送出鍵)一起淡,只調背景的話字會撐到最後才不見。
+       前 30% 維持全不透明:一開始就掉透明度會看起來像「還沒動就先消失」,讓它先明確地
+       往下走一段再淡。 */
+    lv_opa_t opa = LV_OPA_COVER;
+    if (v > 30)
+        opa = (lv_opa_t)barmorph_lerp(LV_OPA_COVER, LV_OPA_TRANSP,
+                                      (v - 30) * 100 / 70);
+    if (bar && lv_obj_is_valid(bar))
+        lv_obj_set_style_opa(bar, opa, LV_PART_MAIN);
     lv_coord_t ty = barmorph_lerp(0, s_exit_ty_end, v);
     if (kbd_mic_section && lv_obj_is_valid(kbd_mic_section))
         lv_obj_set_style_translate_y(kbd_mic_section, ty, 0);
@@ -7973,8 +7983,14 @@ static void kbd_exit_morph_cb(void *var, int32_t v)
 
 static void kbd_exit_morph_done_cb(lv_anim_t *a)
 {
-    (void)a;
     collapse_anim_running = false;
+    /* **透明度一定要還原**:這是 style 上的值,不還原的話下次開輸入框整條 bar 是隱形的
+       (物件在、事件也照收,只是看不見 —— 最難查的那種)。 */
+    {
+        lv_obj_t *bar = (lv_obj_t *)a->var;
+        if (bar && lv_obj_is_valid(bar))
+            lv_obj_set_style_opa(bar, LV_OPA_COVER, LV_PART_MAIN);
+    }
     /* 與往下拖那條收合共用同一支收尾:容器切換、狀態復位都在裡面。 */
     kbd_commit_to_trackpad();
 }
