@@ -632,6 +632,11 @@ static lv_timer_t *kbd_voice_del_repeat = NULL;
 #define VOICE_ICON_DY  (-178)
 /* 送出鍵貼在輸入框內緣右側的內縮量(負值=往左)。沿用它取代的 enter_icon 原本的 -10。 */
 #define SEND_BTN_INSET_X (-10)
+/* 視覺置中的微調(founder 2026-08-18 眼驗:「還是稍微偏上,直接把他往下移動 2pix」)。
+   **幾何上本來就是置中的** —— 真機探針量到對齊穩定後,鍵盤站 gap_top=5 / gap_bot=6、
+   語音站 109/109,對稱到 1px 以內。偏上是視覺重心(圖案墨水滿版 34x34 但重量偏上),
+   量不出來、只能照眼睛調 —— 這是刻意的光學補償,不是在修正算錯的座標。 */
+#define SEND_BTN_NUDGE_Y 2
 /* icon_send 原生 34x34,塞進 45 高的鍵盤輸入列幾乎頂滿(founder 2026-08-18:「圖片有點太大」)。
    縮的是**繪製**:lv_img_set_zoom 只影響畫出來的大小,物件 bbox 仍是 34x34,加上
    ext_click_area 15 → 觸控標的維持 64px(≥44pt 基線),founder 要的「觸碰範圍不變」。 */
@@ -9208,20 +9213,16 @@ static void kbd_voice_layout_send_icons(void)
     {
         if (show_send)
         {
-            /* 貼輸入框右緣、垂直置中在**框本身**上。
-               LV_ALIGN_RIGHT_MID 對齊的是 parent 的**內容區**(扣掉 border 與 padding),
-               而 LVGL 預設 theme 給 lv_obj 的 pad_all 是 16~24px —— 語音站 252 高的大框
-               看不出差別,但鍵盤站只有 45 高:內容區被 padding 吃到剩幾 px,對齊基準跟著
-               縮到框中央以外,圖示就沒坐在上下正中間(founder 2026-08-18)。改成自己從框高
-               算絕對位置,並把 border+padding 的位移補回去,兩站都與 padding 無關。 */
-            lv_obj_update_layout(text_input_bar_bg);
-            lv_coord_t bar_h = lv_obj_get_height(text_input_bar_bg);
-            lv_coord_t pad_t = lv_obj_get_style_pad_top(text_input_bar_bg, LV_PART_MAIN);
-            lv_coord_t pad_r = lv_obj_get_style_pad_right(text_input_bar_bg, LV_PART_MAIN);
-            lv_coord_t bord = lv_obj_get_style_border_width(text_input_bar_bg, LV_PART_MAIN);
-            lv_obj_align(kbd_voice_send_btn, LV_ALIGN_TOP_RIGHT,
-                         SEND_BTN_INSET_X + pad_r + bord,
-                         (bar_h - SEND_BTN_IMG_W) / 2 - pad_t - bord);
+            /* 貼輸入框右緣、垂直置中,再加 SEND_BTN_NUDGE_Y 的光學補償。
+               對齊基準用 RIGHT_MID:它對的是 parent 的**內容區**,而這個框的 pad 四邊相等
+               (真機探針:pad_t=5、border 語音站 0 / 鍵盤站 2),內容區中線=框中線,不必補償。
+               **不要**改成「用框高自己算 y 偏移」(2026-08-18 試過,founder:「還是稍微偏上」):
+               lv_obj_align 存的是偏移量,LVGL 之後每次 layout 都拿同一個偏移去套**當下**的
+               框高;而框高一直在變(語音站 252 / 鍵盤站 45、展開收合動畫每幀都變),算的時候
+               與套用時的框高一旦不同就整個歪掉 —— 探針拍到過 gap_top=111 / gap_bot=-100
+               (按鈕掉到框外)。RIGHT_MID 每次 layout 對當下幾何重算,沒有這個時間差。 */
+            lv_obj_align(kbd_voice_send_btn, LV_ALIGN_RIGHT_MID, SEND_BTN_INSET_X,
+                         SEND_BTN_NUDGE_Y);
             lv_obj_clear_flag(kbd_voice_send_btn, LV_OBJ_FLAG_HIDDEN);
             lv_obj_move_foreground(kbd_voice_send_btn); /* 鍵盤/候選列都可能後建 */
         }
