@@ -553,8 +553,6 @@ static lv_obj_t *currently_pressed_btn = NULL;
 static lv_obj_t *input_content_container = NULL;
 static lv_obj_t *input_display_label = NULL;
 static lv_obj_t *input_cursor = NULL;
-static lv_obj_t *input_enter_btn = NULL;
-static lv_obj_t *input_enter_img = NULL; // 裡面的 enter icon img，用 lv_img_set_zoom 縮放
 static lv_timer_t *cursor_blink_timer = NULL;
 static char input_buffer[128] = {0};
 static int input_length = 0;
@@ -632,9 +630,8 @@ static lv_timer_t *kbd_voice_del_repeat = NULL;
 /* logo/send 與立起面板同位(y=55)。模式圖示與框上緣之間只有 53px,塞不下 80px 的 logo,
    所以語音站比照立起面板**把頂部模式圖示收起來**(它整片蓋掉狀態列,這裡改成手動藏)。 */
 #define VOICE_ICON_DY  (-178)
-/* 鍵盤站的送出鍵高度:輸入框在 y=75(EXPAND_END_Y_KBD)、高 45,所以圖示落在它上方那條
-   空帶(中心 y≈35 → 480/2 - 35 = 205)。語音站用 VOICE_ICON_DY,兩站各有各的「最上面」。 */
-#define KBD_SEND_ICON_DY (-205)
+/* 送出鍵貼在輸入框內緣右側的內縮量(負值=往左)。沿用它取代的 enter_icon 原本的 -10。 */
+#define SEND_BTN_INSET_X (-10)
 #define VOICE_KBD_DX  (-110)  /* 回鍵盤鈕:同一排最左 */
 #define VOICE_LOGO_DX  (-29)
 #define VOICE_SEND_DX    52
@@ -786,7 +783,6 @@ static void stop_long_press_timer(void);
 static void register_key_button(lv_obj_t *btn);
 static lv_obj_t *find_closest_key(lv_point_t touch_point);
 static void handle_proximity_input(lv_event_t *e);
-static void input_enter_btn_event_cb(lv_event_t *e);
 
     #if USING_EDGE_BOTTOM_DETECTION
 static void start_multiple_pages_timer(void);
@@ -1279,10 +1275,6 @@ void toggle_keyboard_visibility(void)
         clear_input_display();
         stop_cursor_blink();
 
-        // Hide enter button immediately
-        if (input_enter_btn != NULL)
-            lv_obj_add_flag(input_enter_btn, LV_OBJ_FLAG_HIDDEN);
-
         // Animate bar x: open -> closed
         lv_anim_init(&a);
         lv_anim_set_var(&a, text_input_bar_bg);
@@ -1350,10 +1342,6 @@ void toggle_keyboard_visibility(void)
         lv_obj_add_flag(text_input_bar, LV_OBJ_FLAG_HIDDEN);
         if (input_content_container != NULL)
             lv_obj_clear_flag(input_content_container, LV_OBJ_FLAG_HIDDEN);
-
-        // Show enter button
-        if (input_enter_btn != NULL)
-            lv_obj_clear_flag(input_enter_btn, LV_OBJ_FLAG_HIDDEN);
 
         // Show keyboard off-screen (translate_y pushes it below visible area)
         lv_obj_clear_flag(keyboard_container, LV_OBJ_FLAG_HIDDEN);
@@ -1676,21 +1664,6 @@ static const char *get_button_text(lv_obj_t *btn)
         }
     }
     return "";
-}
-
-/**
- * @brief Event callback for input_enter_btn
- */
-static void input_enter_btn_event_cb(lv_event_t *e)
-{
-    lv_event_code_t code = lv_event_get_code(e);
-
-    if (code == LV_EVENT_CLICKED)
-    {
-        LOG_D("Enter button clicked");
-        control_provider.ble_hid_keyboard_input("\n");
-        clear_input_display();
-    }
 }
 
 /**
@@ -5415,13 +5388,6 @@ static void hw_btn_mode_cb(lv_event_t *e)
        mic-view expand 的另一套 bar 幾何(380×90@y195),會把 mode_set_visible
        剛放好的 310×45@y64 拉去畫面中央(founder:「下層多一個輸入框」)。 */
     kbd_lower_set_keyboard(true);
-    /* enter 圖示可能殘留上次 collapse 的 zoom/透明,手動復位(driver 100 的
-       好副作用只留這個)。 */
-    if (input_enter_img && lv_obj_is_valid(input_enter_img))
-    {
-        lv_img_set_zoom(input_enter_img, 256);
-        lv_obj_set_style_img_opa(input_enter_img, LV_OPA_COVER, LV_PART_MAIN);
-    }
     kbd_cand_refresh(); /* 進鍵盤立即出列(數字快捷列) */
 }
 
@@ -5898,7 +5864,7 @@ static void hw_open_from_mode_switch(void)
 }
 
 // 關 mic（不清空 input bar、不貼上）
-// 清空只在使用者按 Enter 時做（input_enter_btn_event_cb / 鍵盤 Enter 鍵）
+// 清空只在使用者按 Enter 時做（鍵盤 Enter 鍵 / 送出鍵）
 static void mouse_v2t_close_and_paste(void)
 {
 #ifndef BSP_USING_PC_SIMULATOR
@@ -6855,7 +6821,7 @@ static void mode_set_visible(hid_mode_t mode, bool visible)
         else
             lv_obj_clear_flag(bottom_swipe_area, LV_OBJ_FLAG_HIDDEN);
     }
-    // status_bar_area_up 同理：480×80 的頂部下拉感應區跟 input_enter_btn
+    // status_bar_area_up 同理：480×80 的頂部下拉感應區跟輸入列
     // (y=10 h=45) 完全重疊，且 status_bar_area_up 是 bg 直接子物件 → z-order
     // 在 mode_container 之上，Enter 的 press 永遠先被它吃掉
     if (mode == HID_MODE_KEYBOARD && status_bar_area_up &&
@@ -6904,8 +6870,6 @@ static void mode_set_visible(hid_mode_t mode, bool visible)
             if (input_content_container &&
                 lv_obj_is_valid(input_content_container))
                 lv_obj_clear_flag(input_content_container, LV_OBJ_FLAG_HIDDEN);
-            if (input_enter_btn && lv_obj_is_valid(input_enter_btn))
-                lv_obj_clear_flag(input_enter_btn, LV_OBJ_FLAG_HIDDEN);
             start_cursor_blink();
         }
         else
@@ -6926,8 +6890,6 @@ static void mode_set_visible(hid_mode_t mode, bool visible)
             if (input_content_container &&
                 lv_obj_is_valid(input_content_container))
                 lv_obj_add_flag(input_content_container, LV_OBJ_FLAG_HIDDEN);
-            if (input_enter_btn && lv_obj_is_valid(input_enter_btn))
-                lv_obj_add_flag(input_enter_btn, LV_OBJ_FLAG_HIDDEN);
             stop_cursor_blink();
         }
     }
@@ -7368,7 +7330,7 @@ static void create_keyboard_mode_ui(lv_obj_t *parent)
     }
 
     text_input_bar_bg = lv_obj_create(parent);
-    // 高度跟 input_enter_btn (45) 一致；頂部對齊 y=110（466 圓內 Enter btn 最高位置）
+    // 高度 45；頂部對齊 y=110（466 圓內輸入列最高位置）
     lv_obj_set_size(text_input_bar_bg, 280, 45);
     lv_obj_set_pos(text_input_bar_bg, (LV_HOR_RES_MAX - 280) / 2, 110);
     // 視覺樣式跟 trackpad_mic_btn 一致（白色半透明 pill），讓
@@ -7467,26 +7429,6 @@ static void create_keyboard_mode_ui(lv_obj_t *parent)
     lv_obj_align_to(input_cursor, input_display_label, LV_ALIGN_OUT_RIGHT_MID,
                     2, 0);
     lv_obj_add_flag(input_cursor, LV_OBJ_FLAG_HIDDEN);
-
-    // Enter button - 內嵌於 text_input_bar_bg 右側（看起來像 input bar 的一部分）
-    // parent=text_input_bar_bg → 自動跟 bar 一起被 expand_anim_driver_cb 移動
-    // 沒有背景圓圈，只有 enter icon 跟一個透明的點擊熱區
-    input_enter_btn = lv_obj_create(text_input_bar_bg);
-    lv_obj_set_size(input_enter_btn, 70, 70);
-    lv_obj_align(input_enter_btn, LV_ALIGN_RIGHT_MID, -10, 0);
-    lv_obj_set_style_bg_opa(input_enter_btn, LV_OPA_TRANSP, LV_PART_MAIN);
-    lv_obj_set_style_border_width(input_enter_btn, 0, LV_PART_MAIN);
-    lv_obj_set_style_pad_all(input_enter_btn, 0, LV_PART_MAIN);
-    lv_obj_clear_flag(input_enter_btn, LV_OBJ_FLAG_SCROLLABLE);
-    lv_obj_add_flag(input_enter_btn, LV_OBJ_FLAG_HIDDEN);
-    lv_obj_add_flag(input_enter_btn, LV_OBJ_FLAG_CLICKABLE);
-    lv_obj_add_event_cb(input_enter_btn, input_enter_btn_event_cb,
-                        LV_EVENT_CLICKED, NULL);
-    input_enter_img = lv_img_create(input_enter_btn);
-    lv_img_set_src(input_enter_img, &enter_icon);
-    lv_obj_center(input_enter_img);
-    // 預設 zoom = 256 (100%)，由 expand_anim_driver_cb 在動畫期間調整
-    lv_img_set_zoom(input_enter_img, 256);
 
     // 鍵盤 layout（內部創建 keyboard_container, custom_keyboard, 所有按鍵）
     // 語音站進場(s_kbd_build_defer_wheel)不建 —— kbd_lower_switch(true) 的 lazy
@@ -7666,11 +7608,11 @@ static void create_kbd_mic_section(lv_obj_t *parent)
        kbd_voice_logo_btn 保留為 NULL,相關 layout / 顯藏都有 NULL 防護。 */
     kbd_voice_logo_btn = NULL;
 
-    /* 送出鍵掛在 mic 區的**父層**,不是 mic 區自己(founder 2026-08-18:「輸入頁面(語音鍵盤
-       都是)的最上面要有發送按鍵」)。切到鍵盤輪盤時 kbd_mic_section 會整個往左滑出再 hide,
-       掛在它底下的東西會跟著消失 —— 這正是鍵盤站看不到送出鍵的原因。掛父層就兩站都在,
-       位置由 kbd_voice_layout_send_icons() 依當下是哪一站決定。 */
-    kbd_voice_send_btn = lv_img_create(lv_obj_get_parent(kbd_mic_section));
+    /* 送出鍵掛在**輸入框自己**裡面、貼右緣(founder 2026-08-18:「幫我移到輸入框裡面的
+       右邊」)。掛 text_input_bar_bg 有三個好處:兩站共用同一個 bar,所以語音站/鍵盤站都在;
+       bar 的所有位移(展開/收合動畫、換站的 y 位移)它自動跟著;而它接手的正是原本內嵌在
+       這裡的 enter_icon 的位置 —— 那顆已經移除(同一顆按鍵、同一件事)。 */
+    kbd_voice_send_btn = lv_img_create(text_input_bar_bg);
     lv_img_set_src(kbd_voice_send_btn, &icon_send);
     lv_obj_add_flag(kbd_voice_send_btn, LV_OBJ_FLAG_CLICKABLE);
     lv_obj_set_ext_click_area(kbd_voice_send_btn, 15);
@@ -8397,7 +8339,11 @@ static void kbd_bar_set_voice_box(bool voice)
         lv_obj_move_background(s_bar_voice_frame);
         if (input_content_container && lv_obj_is_valid(input_content_container))
         {
-            lv_obj_set_size(input_content_container, 360, VOICE_BOX_H - 40);
+            /* 送出鍵現在坐在框內右緣,文字欄要讓出那一塊,否則長行會從圖示底下穿過去
+               (框 442 寬、內容欄置中 360 → 右邊只剩 41px 邊距,不夠讓一顆圖示)。 */
+            extern bool instruction_list_remote_target_has_focus(void);
+            lv_coord_t cw = instruction_list_remote_target_has_focus() ? 312 : 360;
+            lv_obj_set_size(input_content_container, cw, VOICE_BOX_H - 40);
             lv_obj_align(input_content_container, LV_ALIGN_TOP_MID, 0, 10);
         }
         if (input_display_label && lv_obj_is_valid(input_display_label))
@@ -8407,8 +8353,6 @@ static void kbd_bar_set_voice_box(bool voice)
             lv_obj_align(input_display_label, LV_ALIGN_TOP_LEFT, 0, 0);
         }
         /* 大框裡不放 Enter —— 送出走上方 logo / icon_send。 */
-        if (input_enter_btn && lv_obj_is_valid(input_enter_btn))
-            lv_obj_add_flag(input_enter_btn, LV_OBJ_FLAG_HIDDEN);
         /* 進站要重畫一次:游標從單行的 OUT_RIGHT_MID 換成折行座標,圓球也要現形
            (sim 2026-08-03:帶著字進站時球不出現,因為沒有任何東西觸發重繪)。 */
         lv_obj_update_layout(text_input_bar_bg);
@@ -8469,8 +8413,6 @@ static void kbd_bar_set_voice_box(bool voice)
             lv_label_set_long_mode(input_display_label, LV_LABEL_LONG_CLIP);
             lv_obj_align(input_display_label, LV_ALIGN_LEFT_MID, 10, 0);
         }
-        if (input_enter_btn && lv_obj_is_valid(input_enter_btn))
-            lv_obj_clear_flag(input_enter_btn, LV_OBJ_FLAG_HIDDEN);
     }
 }
 
@@ -8492,16 +8434,6 @@ static void kbd_lower_switch(bool to_kbd)
     if (to_kbd && mouse_v2t_active)
     {
         mouse_v2t_close_and_paste();
-    }
-    /* 送出鍵跨兩站常駐,但兩站的「最上面」高度不同 —— 換站當下就重排(kbd_lower_is_keyboard
-       在本函式尾端才更新,所以這裡直接用 to_kbd 算)。 */
-    if (kbd_voice_send_btn && lv_obj_is_valid(kbd_voice_send_btn) &&
-        !lv_obj_has_flag(kbd_voice_send_btn, LV_OBJ_FLAG_HIDDEN))
-    {
-        lv_obj_align(kbd_voice_send_btn, LV_ALIGN_CENTER,
-                     kbd_voice_logo_btn ? VOICE_SEND_DX : 0,
-                     to_kbd ? KBD_SEND_ICON_DY : VOICE_ICON_DY);
-        lv_obj_move_foreground(kbd_voice_send_btn);
     }
 
     if (to_kbd)
@@ -8724,7 +8656,7 @@ static lv_coord_t expand_start_y = EXPAND_FALLBACK_Y;
 static lv_coord_t expand_start_w = EXPAND_FALLBACK_W;
 static lv_coord_t expand_start_h = EXPAND_FALLBACK_H;
 // 終點 = text_input_bar_bg 的 set_pos / set_size 預設值
-// （y=110, h=45 跟右邊的 input_enter_btn 對齊頂底；466 圓內 Enter 最高位置）
+// （y=110, h=45；466 圓內輸入列最高位置）
     #define EXPAND_TRANSLATE_START 320 // 下方元件起始 translate_y（mic 中心 240 + 半徑 65 ≈ 305 → 320 確保完全 off-screen）
 
 static inline lv_coord_t expand_lerp(int32_t a, int32_t b, int32_t v_x100)
@@ -8754,23 +8686,6 @@ static void expand_anim_driver_cb(void *var, int32_t v)
         lv_obj_set_style_translate_y(kbd_mic_section, ty, 0);
     if (keyboard_container && lv_obj_is_valid(keyboard_container))
         lv_obj_set_style_translate_y(keyboard_container, ty, 0);
-    // input_enter_btn 是 text_input_bar_bg 的 child（內嵌右側）：
-    //   - btn 自己 bbox = 70×70（align RIGHT_MID 跟著 parent size 自動定位）
-    //   - 視覺縮放：用 lv_img_set_zoom 直接縮 enter icon img（transform_zoom 套在
-    //     parent obj 在這個 LVGL build 不會 cascade 到 child img）
-    //   - 透明度：lv_obj_set_style_img_opa 設 img 本身的繪製透明度
-    // overshoot path 會讓 v 暫時超過 100，opa 必須 clamp，否則 uint8_t cast wrap
-    // 成接近 0 → enter icon 在彈跳峰值瞬間閃成透明
-    if (input_enter_img && lv_obj_is_valid(input_enter_img))
-    {
-        int32_t v_opa = v > 100 ? 100 : (v < 0 ? 0 : v);
-        uint16_t zoom = (uint16_t)(256 * v / 100);
-        if (zoom < 1) zoom = 1;
-        lv_img_set_zoom(input_enter_img, zoom);
-        lv_obj_set_style_img_opa(input_enter_img,
-                                 (lv_opa_t)(LV_OPA_COVER * v_opa / 100),
-                                 LV_PART_MAIN);
-    }
     // 箭頭現在是 section 的子物件，自動跟 translate_y，不用單獨處理
 }
 
@@ -8900,10 +8815,6 @@ static void kbd_commit_to_trackpad(void)
             lv_obj_set_style_translate_y(keyboard_container, 0, 0);
             lv_obj_add_flag(keyboard_container, LV_OBJ_FLAG_HIDDEN);
         }
-        // Enter btn 在 mode_set_visible(KEYBOARD, false) 已被 hide；
-        // 把 translate_y 重設為 0，下次 expand 才能從 -80 → 0 進場
-        if (input_enter_btn && lv_obj_is_valid(input_enter_btn))
-            lv_obj_set_style_translate_y(input_enter_btn, 0, 0);
         kbd_lower_is_keyboard = false;
         /* 語音站的大框狀態要跟著收 —— 這裡漏清是「回觸控板後 skaibar_img 從此點不動」
            的根源(見 kbd_input_active_area 的說明),而且它同時決定退格/游標的語意
@@ -9281,12 +9192,9 @@ static void kbd_voice_layout_send_icons(void)
     {
         if (show_send)
         {
-            /* 鍵盤站的輸入框停在 y=EXPAND_END_Y_KBD(75),語音站的大框置中 —— 兩站的「最上面」
-               不是同一個 y,所以送出鍵跟著換位:語音站沿用原本的 VOICE_ICON_DY,鍵盤站往上挪到
-               輸入框上方那條空帶(圓螢幕在該高度的可用寬度約 ±124px,單顆圖示綽綽有餘)。 */
-            lv_obj_align(kbd_voice_send_btn, LV_ALIGN_CENTER,
-                         kbd_voice_logo_btn ? VOICE_SEND_DX : 0,
-                         kbd_lower_is_keyboard ? KBD_SEND_ICON_DY : VOICE_ICON_DY);
+            /* 貼輸入框右緣、垂直置中 —— 兩站都是同一條規則,因為它就掛在 bar 裡面,
+               bar 換幾何它自己跟著走(語音站 442×252 的大框、鍵盤站 310×45 的藥丸)。 */
+            lv_obj_align(kbd_voice_send_btn, LV_ALIGN_RIGHT_MID, SEND_BTN_INSET_X, 0);
             lv_obj_clear_flag(kbd_voice_send_btn, LV_OBJ_FLAG_HIDDEN);
             lv_obj_move_foreground(kbd_voice_send_btn); /* 鍵盤/候選列都可能後建 */
         }
@@ -11387,8 +11295,6 @@ void hid_mouse_destroy(void)
     input_content_container = NULL;
     input_display_label = NULL;
     input_cursor = NULL;
-    input_enter_btn = NULL;
-    input_enter_img = NULL;
     if (cursor_blink_timer != NULL)
     {
         lv_timer_del(cursor_blink_timer);
