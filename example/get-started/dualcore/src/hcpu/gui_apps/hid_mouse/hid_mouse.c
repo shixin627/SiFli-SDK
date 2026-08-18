@@ -1259,6 +1259,51 @@ static void anim_set_translate_y(void *obj, int32_t v)
     lv_obj_set_style_translate_y((lv_obj_t *)obj, v, 0);
 }
 
+/* 垂直版的兩支收尾(對應 kbd_slide_in_done_cb / hide_after_slide_x_cb)。
+   語音⇄鍵盤的換站改成「鍵盤上下進出」之後要用這兩支,理由同橫向版:動畫若被取消,
+   容器會停在螢幕外,而 find_closest_key() 沒有距離上限,按哪裡都會判給同一顆鍵。 */
+static void kbd_slide_in_y_done_cb(lv_anim_t *a)
+{
+    lv_obj_t *obj = (lv_obj_t *)a->var;
+    if (obj && lv_obj_is_valid(obj))
+        lv_obj_set_style_translate_y(obj, 0, 0);
+}
+
+static void hide_after_slide_y_cb(lv_anim_t *a)
+{
+    lv_obj_t *obj = (lv_obj_t *)a->var;
+    if (obj && lv_obj_is_valid(obj))
+    {
+        lv_obj_add_flag(obj, LV_OBJ_FLAG_HIDDEN);
+        lv_obj_set_style_translate_y(obj, 0, 0);
+    }
+}
+
+/* 輸入框在兩站之間**長大 / 縮小**(founder 2026-08-18:「鍵盤往下收掉,同時上面的輸入框
+   變大成語音輸入的輸入框;切成鍵盤就反著來」)。原本兩站是左右換頁、框的尺寸瞬間替換,
+   看起來像兩個不同的東西輪播;改成同一個框在兩種幾何之間補間,才讀得出是同一條輸入框。
+   四個維度一起補間(x/y/w/h):寬度不同 → x 也要跟著,否則長大的過程會偏一邊。
+   起訖值放 static:LVGL 的 anim exec 只帶得進一個 int32 進度值。 */
+static lv_coord_t s_barmorph_x0, s_barmorph_y0, s_barmorph_w0, s_barmorph_h0;
+static lv_coord_t s_barmorph_x1, s_barmorph_y1, s_barmorph_w1, s_barmorph_h1;
+
+static lv_coord_t barmorph_lerp(lv_coord_t a, lv_coord_t b, int32_t v)
+{
+    return (lv_coord_t)(a + ((int32_t)(b - a) * v) / 100);
+}
+
+static void kbd_bar_morph_cb(void *var, int32_t v)
+{
+    lv_obj_t *bar = (lv_obj_t *)var;
+    if (!bar || !lv_obj_is_valid(bar)) return;
+    lv_obj_set_size(bar,
+                    barmorph_lerp(s_barmorph_w0, s_barmorph_w1, v),
+                    barmorph_lerp(s_barmorph_h0, s_barmorph_h1, v));
+    lv_obj_set_pos(bar,
+                   barmorph_lerp(s_barmorph_x0, s_barmorph_x1, v),
+                   barmorph_lerp(s_barmorph_y0, s_barmorph_y1, v));
+}
+
 
 /**
  * @brief Animation ready callback when keyboard close animation finishes
@@ -8516,6 +8561,18 @@ static void kbd_lower_switch(bool to_kbd)
     /* 2026-08-16 heap 根治輪之後 gate 移除:hosted 進場 free 常態 ~80K,輪盤建置
        (~21K)不再有 OOM 風險;輸入法切換的低 heap 防護改在 Mode 鍵的
        「free<60K 免並存動畫」那裡(降級而非拒絕)。 */
+    /* 換站前先記住輸入框的幾何 —— kbd_bar_set_voice_box() 會把新站的尺寸/位置**瞬間**
+       設好,記下舊的才有辦法在下面補間回去(見 kbd_bar_morph_cb)。 */
+    bool morph_bar = (text_input_bar_bg && lv_obj_is_valid(text_input_bar_bg) &&
+                      !lv_obj_has_flag(text_input_bar_bg, LV_OBJ_FLAG_HIDDEN));
+    if (morph_bar)
+    {
+        lv_obj_update_layout(text_input_bar_bg);
+        s_barmorph_x0 = lv_obj_get_x(text_input_bar_bg);
+        s_barmorph_y0 = lv_obj_get_y(text_input_bar_bg);
+        s_barmorph_w0 = lv_obj_get_width(text_input_bar_bg);
+        s_barmorph_h0 = lv_obj_get_height(text_input_bar_bg);
+    }
     kbd_bar_set_voice_box(!to_kbd);
     if (to_kbd && mouse_v2t_active)
     {
@@ -8575,51 +8632,60 @@ static void kbd_lower_switch(bool to_kbd)
         //   1. mic section 直接 hide
         //   2. input bar y 從 195 → 75 (上移到鍵盤上方)
         //   3. keyboard 從下方升起 translate_y 300 → 0
-        /* 語音區往左滑出(滑完才 hide),與從右邊進來的鍵盤形成同一個左右換頁 */
+        /* 語音區的三顆(麥克風/地球/收下)跟著往**下**退出畫面,把位置讓給升起來的鍵盤。 */
         if (kbd_mic_section && lv_obj_is_valid(kbd_mic_section))
         {
             lv_anim_del(kbd_mic_section, anim_set_translate_x);
+            lv_anim_del(kbd_mic_section, anim_set_translate_y);
             lv_obj_clear_flag(kbd_mic_section, LV_OBJ_FLAG_HIDDEN);
             lv_obj_set_style_translate_x(kbd_mic_section, 0, 0);
+            lv_obj_set_style_translate_y(kbd_mic_section, 0, 0);
             lv_anim_t am;
             lv_anim_init(&am);
             lv_anim_set_var(&am, kbd_mic_section);
-            lv_anim_set_exec_cb(&am, anim_set_translate_x);
-            lv_anim_set_values(&am, 0, -LV_HOR_RES);
+            lv_anim_set_exec_cb(&am, anim_set_translate_y);
+            lv_anim_set_values(&am, 0, LV_VER_RES);
             lv_anim_set_time(&am, 260);
             lv_anim_set_path_cb(&am, lv_anim_path_ease_out);
-            lv_anim_set_ready_cb(&am, hide_after_slide_x_cb);
+            lv_anim_set_ready_cb(&am, hide_after_slide_y_cb);
             lv_anim_start(&am);
         }
-        // 進場：input bar 上移 + keyboard 升起都用 overshoot 帶彈性
-        // 退場（else 分支）維持 ease_out 比較乾脆
-        if (text_input_bar_bg && lv_obj_is_valid(text_input_bar_bg))
+        /* 輸入框從語音大框**縮**回鍵盤藥丸(位置與尺寸一起補間)。 */
+        if (morph_bar)
         {
             lv_anim_del(text_input_bar_bg, (lv_anim_exec_xcb_t)lv_obj_set_y);
+            lv_anim_del(text_input_bar_bg, kbd_bar_morph_cb);
+            s_barmorph_x1 = (LV_HOR_RES_MAX - KBD_BAR_W) / 2;
+            s_barmorph_y1 = EXPAND_END_Y_KBD;
+            s_barmorph_w1 = KBD_BAR_W;
+            s_barmorph_h1 = KBD_BAR_H;
+            kbd_bar_morph_cb(text_input_bar_bg, 0); /* 起點立刻就位,別閃一格終點 */
             lv_anim_t a;
             lv_anim_init(&a);
             lv_anim_set_var(&a, text_input_bar_bg);
-            lv_anim_set_exec_cb(&a, (lv_anim_exec_xcb_t)lv_obj_set_y);
-            /* 從語音站回鍵盤:起點是大框置中的 Y,不是 mic-view 藥丸的 195。 */
-            lv_anim_set_values(&a, VOICE_BOX_Y, EXPAND_END_Y_KBD);
-            lv_anim_set_time(&a, 350);
-            lv_anim_set_path_cb(&a, lv_anim_path_overshoot);
+            lv_anim_set_exec_cb(&a, kbd_bar_morph_cb);
+            lv_anim_set_values(&a, 0, 100);
+            lv_anim_set_time(&a, 260);
+            lv_anim_set_path_cb(&a, lv_anim_path_ease_out);
             lv_anim_start(&a);
         }
         if (keyboard_container && lv_obj_is_valid(keyboard_container))
         {
+            /* 鍵盤從**下方升起**(founder 2026-08-18)。原本是從右邊滑進來,與輸入框
+               長大/縮小的方向對不上,看起來像兩頁在左右輪播而不是同一個輸入面在變形。 */
             lv_anim_del(keyboard_container, anim_set_translate_x);
+            lv_anim_del(keyboard_container, anim_set_translate_y);
             lv_obj_clear_flag(keyboard_container, LV_OBJ_FLAG_HIDDEN);
-            lv_obj_set_style_translate_y(keyboard_container, 0, 0);
-            lv_obj_set_style_translate_x(keyboard_container, LV_HOR_RES, 0);
+            lv_obj_set_style_translate_x(keyboard_container, 0, 0);
+            lv_obj_set_style_translate_y(keyboard_container, LV_VER_RES, 0);
             lv_anim_t a;
             lv_anim_init(&a);
             lv_anim_set_var(&a, keyboard_container);
-            lv_anim_set_exec_cb(&a, anim_set_translate_x);
-            lv_anim_set_values(&a, LV_HOR_RES, 0);
+            lv_anim_set_exec_cb(&a, anim_set_translate_y);
+            lv_anim_set_values(&a, LV_VER_RES, 0);
             lv_anim_set_time(&a, 260);
             lv_anim_set_path_cb(&a, lv_anim_path_ease_out);
-            lv_anim_set_ready_cb(&a, kbd_slide_in_done_cb);
+            lv_anim_set_ready_cb(&a, kbd_slide_in_y_done_cb);
             lv_anim_start(&a);
         }
         kbd_lower_is_keyboard = true;
@@ -8639,14 +8705,21 @@ static void kbd_lower_switch(bool to_kbd)
         //   1. keyboard 往下滑出 (translate_y 0 → 300) 後 hide
         //   2. input bar y 從 75 → 195 (回到螢幕中央)
         //   3. 顯示 mic section
-        if (text_input_bar_bg && lv_obj_is_valid(text_input_bar_bg))
+        /* 輸入框從鍵盤藥丸**長大**成語音大框(位置與尺寸一起補間)。 */
+        if (morph_bar)
         {
             lv_anim_del(text_input_bar_bg, (lv_anim_exec_xcb_t)lv_obj_set_y);
+            lv_anim_del(text_input_bar_bg, kbd_bar_morph_cb);
+            s_barmorph_x1 = (LV_HOR_RES_MAX - VOICE_BOX_W) / 2;
+            s_barmorph_y1 = VOICE_BOX_Y;
+            s_barmorph_w1 = VOICE_BOX_W;
+            s_barmorph_h1 = VOICE_BOX_H;
+            kbd_bar_morph_cb(text_input_bar_bg, 0);
             lv_anim_t a;
             lv_anim_init(&a);
             lv_anim_set_var(&a, text_input_bar_bg);
-            lv_anim_set_exec_cb(&a, (lv_anim_exec_xcb_t)lv_obj_set_y);
-            lv_anim_set_values(&a, EXPAND_END_Y_KBD, VOICE_BOX_Y);
+            lv_anim_set_exec_cb(&a, kbd_bar_morph_cb);
+            lv_anim_set_values(&a, 0, 100);
             lv_anim_set_time(&a, 250);
             lv_anim_set_path_cb(&a, lv_anim_path_ease_out);
             lv_anim_start(&a);
@@ -8678,17 +8751,18 @@ static void kbd_lower_switch(bool to_kbd)
             }
             else
             {
+                /* 鍵盤**往下收掉**(founder 2026-08-18),與輸入框同時長大成語音框 ——
+                   兩個動作方向一致才讀得出「鍵盤讓位給輸入框」而不是兩頁在輪播。 */
+                lv_anim_del(keyboard_container, anim_set_translate_y);
+                lv_obj_set_style_translate_x(keyboard_container, 0, 0);
                 lv_anim_t a;
                 lv_anim_init(&a);
                 lv_anim_set_var(&a, keyboard_container);
-                lv_anim_set_exec_cb(&a, anim_set_translate_x);
-                /* 往左出:輸入法循環(英→中→數→語音→英)每一步都是「新的從右邊進、
-                   舊的往左邊出」,這樣整圈走起來方向一致(founder 2026-08-07)。
-                   原本這一步是反的(鍵盤往右出、語音從左進),走到這裡會突然倒退。 */
-                lv_anim_set_values(&a, 0, -LV_HOR_RES);
+                lv_anim_set_exec_cb(&a, anim_set_translate_y);
+                lv_anim_set_values(&a, 0, LV_VER_RES);
                 lv_anim_set_time(&a, 260);
                 lv_anim_set_path_cb(&a, lv_anim_path_ease_out);
-                lv_anim_set_ready_cb(&a, hide_after_slide_x_cb);
+                lv_anim_set_ready_cb(&a, hide_after_slide_y_cb);
                 lv_anim_start(&a);
             }
         }
@@ -8703,13 +8777,15 @@ static void kbd_lower_switch(bool to_kbd)
             }
             else
             {
-                /* 從右邊進(同上:循環一律往前) */
-                lv_obj_set_style_translate_x(kbd_mic_section, LV_HOR_RES, 0);
+                /* 三顆按鈕跟著鍵盤讓出的空間**由下往上**回到定位。 */
+                lv_anim_del(kbd_mic_section, anim_set_translate_y);
+                lv_obj_set_style_translate_x(kbd_mic_section, 0, 0);
+                lv_obj_set_style_translate_y(kbd_mic_section, LV_VER_RES, 0);
                 lv_anim_t am;
                 lv_anim_init(&am);
                 lv_anim_set_var(&am, kbd_mic_section);
-                lv_anim_set_exec_cb(&am, anim_set_translate_x);
-                lv_anim_set_values(&am, LV_HOR_RES, 0);
+                lv_anim_set_exec_cb(&am, anim_set_translate_y);
+                lv_anim_set_values(&am, LV_VER_RES, 0);
                 lv_anim_set_time(&am, 260);
                 lv_anim_set_path_cb(&am, lv_anim_path_ease_out);
                 lv_anim_start(&am);
