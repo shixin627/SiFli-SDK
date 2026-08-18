@@ -106,6 +106,20 @@ typedef enum
        to come back and go into the suite. Temporary; remove once the estimator
        is settled. */
     KEY_HR_WINDOW_DUMP = 0x16,
+
+    /* The SAME window as 0x16, at full int16 precision plus the transform that
+       inverts it back to RAW sensor counts. 0x16 ships the estimator's input
+       after DC, drift and absolute amplitude have been thrown away, which is
+       fine for "why did the period estimate go wrong" and useless for replaying
+       any change to the FRONT of the pipeline. Founder call 2026-08-18: "我要的
+       就是拿原始數據,這樣之後全部都可以基於那個去做變更".
+       {ts u32, fit_a i32, fit_b i32, first_index u16, count u16, shift u8,
+        win int16[count]} — all LE. 128 samples per chunk, 2 chunks per window,
+       273 B each, inside MAX_PACKET_PAYLOAD_SIZE. Every chunk repeats the fit so
+       neither side depends on chunk order or on both chunks arriving.
+           raw[i] = ((fit_a + fit_b * i) >> 16) + (win[i] << shift)
+       with i = first_index + position in win[]. */
+    KEY_HR_WINDOW_RAW = 0x17,
 } HEALTH_KEY;
 
 void resolve_HealthData_command(uint8_t key, const uint8_t *pValue, uint16_t length);

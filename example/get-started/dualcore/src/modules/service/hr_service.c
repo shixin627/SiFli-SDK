@@ -1539,6 +1539,9 @@ static uint8_t  bg_hr_last_published = 0;
    ring left over from the previous burst 10 minutes ago. */
 static uint32_t bg_hr_win_next_total = 0;
 static watch_sys_hr_window_t bg_hr_win_dump;
+/* Static, not stack: 272 bytes is more than this callback's frame should carry,
+   and it is reused for both chunks of the same window. */
+static watch_sys_hr_raw_t bg_hr_raw_dump;
 
 /* Integer std-dev from running Σx / Σx². Dividing before squaring keeps this in
    uint32 for any realistic n (Σx² ≤ n·255², so n up to ~66k is safe; a 3-min
@@ -2080,6 +2083,32 @@ static void bg_hr_sample_cb(void *param)
                 hr_autocorr_last_accel(bg_hr_win_dump.acc, WATCH_SYS_HR_ACC_MAX,
                                        &bg_hr_win_dump.acc_shift);
             watch_sys_sync.notify_hr_window(&bg_hr_win_dump);
+
+            /* The same window again, at full int16 precision plus the fit that
+               inverts it back to RAW sensor counts. The int8 record above has
+               DC, drift and absolute amplitude removed, so it can only replay
+               changes BEHIND the detrend; anything touching the front of the
+               pipeline -- filtering, perfusion, amplitude gating, wear from DC
+               -- needs the real counts (founder, 2026-08-18).
+
+               Read from the same s_work snapshot, so it cannot drift out of
+               step with the int8 window or the accel trace. Two chunks because
+               256 int16 does not fit one BLE frame; each repeats the fit. */
+            if (watch_sys_sync.notify_hr_raw)
+            {
+                for (uint16_t off = 0; off < n; off += WATCH_SYS_HR_RAW_CHUNK)
+                {
+                    uint16_t got = hr_autocorr_last_work(
+                        bg_hr_raw_dump.win, off, WATCH_SYS_HR_RAW_CHUNK,
+                        &bg_hr_raw_dump.fit_a_q16, &bg_hr_raw_dump.fit_b_q16,
+                        &bg_hr_raw_dump.shift);
+                    if (got == 0) break;
+                    bg_hr_raw_dump.ts = bg_hr_win_dump.ts;
+                    bg_hr_raw_dump.first_index = off;
+                    bg_hr_raw_dump.count = got;
+                    watch_sys_sync.notify_hr_raw(&bg_hr_raw_dump);
+                }
+            }
         }
         /* Advance from the CURRENT count, not by adding one window to the old
            target: if a dump is missed (link down, s_work not yet valid) the next

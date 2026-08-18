@@ -164,6 +164,28 @@ uint16_t hr_autocorr_fill(void);
 uint32_t hr_autocorr_total(void);
 
 /**
+ * Copy [offset, offset+n) of the LAST estimated window at full int16 precision,
+ * together with the transform that produced it. The caller can then recover the
+ * RAW sensor counts:
+ *
+ *     raw[i] = ((a_q16 + b_q16 * i) >> 16) + ((int32_t)out[i] << shift)
+ *
+ * where i is the index within the WHOLE window (offset + position in out).
+ * Exact while shift == 0; otherwise the residual was right-shifted, so the
+ * reconstruction is off by less than 2^shift counts.
+ *
+ * This exists because the int8 dump (@ref hr_autocorr_last_window) throws away
+ * DC, drift and absolute amplitude, which makes it useless for replaying any
+ * change to the FRONT of the pipeline -- detrending, filtering, perfusion,
+ * amplitude gating. Same array, so it cannot drift out of step with the int8
+ * dump or the accel dump.
+ *
+ * @return entries written, 0 if no estimate has run yet or offset is past the
+ *         end of the window. */
+uint16_t hr_autocorr_last_work(int16_t *out, uint16_t offset, uint16_t n,
+                               int32_t *a_q16, int32_t *b_q16, uint8_t *shift);
+
+/**
  * Copy the detrended window the LAST hr_autocorr_estimate() ran on, rescaled to
  * int8, oldest sample first. Returns the count written (0 if no estimate has run).
  *
