@@ -252,9 +252,15 @@ static void notify_hr_cont(const watch_sys_hr_cont_t *rec)
 
 static void notify_hr_window(const watch_sys_hr_window_t *rec)
 {
-    /* One captured hr_autocorr window -> HCPU -> KEY_HR_WINDOW_DUMP. At most one
-       per burst, so this cannot flood the mailbox the way an unthrottled
-       per-sample uplink would. */
+    /* One captured hr_autocorr window -> HCPU -> KEY_HR_WINDOW_DUMP.
+       Rate (2026-08-18): one per WHOLE window while a burst runs, i.e. one
+       331-byte message every 10.24 s, ~17 per 3-min burst and ~47 if the burst
+       extends to 8 min. It used to be one per burst; the comment here claimed
+       that was what kept the mailbox safe, so state the real number instead of
+       leaving a stale guarantee behind. Still an order of magnitude under the
+       1 Hz per-sample uplink that would actually be a problem, and
+       datas_push_msg_to_client dispatches synchronously (one rt_malloc of the
+       body per message) rather than queueing without bound. */
     if (rec == NULL) return;
     push_msg_to_hcpu(MSG_SERVICE_HR_WINDOW_IND, rec, sizeof(*rec));
 }

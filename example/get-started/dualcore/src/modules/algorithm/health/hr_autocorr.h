@@ -158,6 +158,11 @@ uint8_t hr_autocorr_estimate(uint8_t *conf_out);
 /** Samples currently buffered (0..HR_AUTOCORR_WIN). Diagnostics. */
 uint16_t hr_autocorr_fill(void);
 
+/** Samples fed since the last hr_autocorr_reset(), monotonic (wraps at 2^32 =
+ *  5.4 years at 25 Hz). Lets a caller ask for exactly one dump per WHOLE fresh
+ *  window instead of inferring it from elapsed time. */
+uint32_t hr_autocorr_total(void);
+
 /**
  * Copy the detrended window the LAST hr_autocorr_estimate() ran on, rescaled to
  * int8, oldest sample first. Returns the count written (0 if no estimate has run).

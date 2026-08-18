@@ -1533,14 +1533,11 @@ static uint8_t  bg_hr_vendor_bpm = 0;          /* last vendor read, diagnostic o
    outliers (171/144/101/38), each a single burst between correct neighbours.
    Bounds chosen wide: this is evidence collection, and a capture that never
    fires is worse than one that occasionally grabs a real rate change. */
-#define BGHR_SUSPECT_HI_NUM   15   /* >= 1.5x the last published value */
-#define BGHR_SUSPECT_LO_NUM    7   /* <= 0.7x                          */
-#define BGHR_SUSPECT_DEN      10
 static uint8_t  bg_hr_last_published = 0;
-static bool     bg_hr_win_captured = false;   /* one capture per burst */
-/* Set when the held capture is a SUSPECT window; such a capture is never
-   overwritten by the routine end-of-burst one. See the capture block. */
-static bool     bg_hr_win_suspect = false;
+/* Next value of hr_autocorr_total() at which a window dump is due. Set at burst
+   start to "one WHOLE window from now" so the first dump cannot be the stale
+   ring left over from the previous burst 10 minutes ago. */
+static uint32_t bg_hr_win_next_total = 0;
 static watch_sys_hr_window_t bg_hr_win_dump;
 
 /* Integer std-dev from running Σx / Σx². Dividing before squaring keeps this in
@@ -1896,13 +1893,9 @@ static void bg_hr_finish_burst(void)
     bool bghr_over_ceiling = (bg_hr_sleep_active &&
                               bg_hr_burst_best > SLEEP_HR_ARTEFACT_CEIL);
 
-    /* Forward the best BPM seen this burst, then power the LED back off. */
-    /* Ship the captured window before the HR point, so a capture is never lost to
-       a disconnect that happens between the two. */
-    if (bg_hr_win_captured && watch_sys_sync.notify_hr_window)
-    {
-        watch_sys_sync.notify_hr_window(&bg_hr_win_dump);
-    }
+    /* Forward the best BPM seen this burst, then power the LED back off.
+       The window dumps already went out live, one per whole window, while the
+       burst ran (@ref bg_hr_win_next_total). */
 
     bool bghr_curve_refused = false;
     bool bghr_published = false;
@@ -2042,69 +2035,57 @@ static void bg_hr_sample_cb(void *param)
           (unsigned)own_bpm, (unsigned)own_conf,
           (unsigned)hr_autocorr_accel_act(), (unsigned)bg_hr_vendor_bpm);
 
-    /* Capture BEFORE the median swallows it: the median is what makes the
-       published curve robust, but it also hides the individual bad window that
-       the offline suite needs. Snapshot must happen right after estimate() while
-       s_work still holds that window. */
-    /* Two reasons to keep a window, in priority order:
+    /* Stream EVERY whole window of the burst, live, as it completes.
+       This used to keep exactly ONE window per burst -- the suspect one if there
+       was one, else the last accepted one -- which turned out to be the wrong
+       2% to keep. A burst is 180-480 s and the published number is
+       bghr_median_push()'s median over ~180-480 per-second estimates, so one
+       10.24 s window is 2-6% of the evidence, and the selection rule kept the
+       window that LOST the median vote. Three bursts on 2026-08-17 published
+       134/134/133 while the only windows that came back read 88/53/38: the
+       majority that actually formed the median was never observable, so "why
+       was it wrong" was unanswerable from the data (founder, 2026-08-18:
+       "不拿原始資料根本不知道他為什麼會錯這麼離譜").
 
-        1. SUSPECT — its estimate deviates >=1.5x / <=0.7x from the last
-           published value. What this capture was built for; never overwritten.
-        2. Otherwise the most RECENT ACCEPTED window, so that EVERY periodic HR
-           record ships the PPG its published value came out of, not just the
-           anomalous ones (founder request 2026-08-05: be able to go back and
-           look at the data whenever an HR reading is doubted).
+       Cadence is driven by hr_autocorr_total(), not by counting ticks: one dump
+       per HR_AUTOCORR_WIN fresh samples means consecutive dumps are contiguous
+       and non-overlapping BY CONSTRUCTION, so the offline side can concatenate
+       them into the burst's continuous trace. Inferring it from the 1 Hz tick
+       would assume the feed really runs at 25 Hz -- and the accel-alignment bug
+       (@ref reference_hr_motion_artefact_gsensor_step) was exactly that kind of
+       assumption going wrong silently.
 
-       Caveat worth knowing when reading the dumps: the published number is
-       bghr_median_push()'s running median over the burst's windows, so no
-       single window IS it. The last accepted window is the closest honest
-       answer — it is the window at which the published median was fixed.
+       NOT gated on own_bpm: a window the estimator refused is the single most
+       interesting kind, and the old gate excluded every one of them.
 
-       Still exactly one dump per burst either way: ~256 B every BG_HR_PERIOD_MS
-       (10 min) = ~37 KB/day. hr_autocorr_last_window() is a pure read of s_work
-       (copy + shift + clamp, no side effects), so calling it once per 1 Hz tick
-       instead of once per burst costs nothing worth counting. */
-    if (own_bpm > 0 && !bg_hr_win_suspect)
+       Cost: ~17 dumps per 3-min burst (~47 if it extends to 8 min), 331 B each,
+       one every 10.24 s -- far below the notify path's rate. On the phone it is
+       ~1-2 MB/day of CSV against today's ~100 KB. Temporary, like the rest of
+       this capture: it goes when the estimator investigation closes. */
+    if (hr_autocorr_total() >= bg_hr_win_next_total &&
+        watch_sys_sync.notify_hr_window)
     {
-        bool suspect = false;
-        if (bg_hr_last_published > 0)
+        uint16_t n = hr_autocorr_last_window(bg_hr_win_dump.win,
+                                             WATCH_SYS_HR_WIN_MAX);
+        if (n > 0)
         {
-            uint32_t hi = (uint32_t)bg_hr_last_published * BGHR_SUSPECT_HI_NUM;
-            uint32_t lo = (uint32_t)bg_hr_last_published * BGHR_SUSPECT_LO_NUM;
-            uint32_t cur = (uint32_t)own_bpm * BGHR_SUSPECT_DEN;
-            suspect = (cur >= hi || cur <= lo);
+            bg_hr_win_dump.ts = (uint32_t)time(NULL);
+            bg_hr_win_dump.bpm = own_bpm;      /* 0 = the estimator refused */
+            bg_hr_win_dump.conf = own_conf;
+            bg_hr_win_dump.count = n;
+            /* Paired movement for the same window -- @ref hr_autocorr_last_accel.
+               Must be read HERE, while the ring still holds the samples the PPG
+               dump above came from. */
+            bg_hr_win_dump.acc_count =
+                hr_autocorr_last_accel(bg_hr_win_dump.acc, WATCH_SYS_HR_ACC_MAX,
+                                       &bg_hr_win_dump.acc_shift);
+            watch_sys_sync.notify_hr_window(&bg_hr_win_dump);
         }
-        /* The routine capture tracks the windows the burst actually counts —
-           the same BG_HR_OWN_MIN_CONF gate the median push below applies — so
-           the dump matches a window that fed the published value. A suspect
-           window is kept regardless of confidence: a confidently-wrong reading
-           and a low-confidence one are both what the offline suite wants. */
-        if (suspect || own_conf >= BG_HR_OWN_MIN_CONF)
-        {
-            uint16_t n = hr_autocorr_last_window(bg_hr_win_dump.win,
-                                                 WATCH_SYS_HR_WIN_MAX);
-            if (n > 0)
-            {
-                bg_hr_win_dump.ts = (uint32_t)time(NULL);
-                bg_hr_win_dump.bpm = own_bpm;
-                bg_hr_win_dump.conf = own_conf;
-                bg_hr_win_dump.count = n;
-                /* Paired movement for the same window — @ref hr_autocorr_last_accel.
-                   Must be read HERE, while the ring still holds the samples the
-                   PPG dump above came from. */
-                bg_hr_win_dump.acc_count =
-                    hr_autocorr_last_accel(bg_hr_win_dump.acc, WATCH_SYS_HR_ACC_MAX,
-                                           &bg_hr_win_dump.acc_shift);
-                bg_hr_win_captured = true;
-                bg_hr_win_suspect = suspect;
-                if (suspect)
-                {
-                    LOG_I("bg_hr: captured suspect window bpm=%u conf=%u (last published %u)",
-                          (unsigned)own_bpm, (unsigned)own_conf,
-                          (unsigned)bg_hr_last_published);
-                }
-            }
-        }
+        /* Advance from the CURRENT count, not by adding one window to the old
+           target: if a dump is missed (link down, s_work not yet valid) the next
+           one still lands on a whole fresh window instead of firing repeatedly
+           to catch up on windows whose samples are long gone. */
+        bg_hr_win_next_total = hr_autocorr_total() + HR_AUTOCORR_WIN;
     }
 
     if (own_bpm > 0 && own_conf >= BG_HR_OWN_MIN_CONF)
@@ -2389,8 +2370,7 @@ static void bg_hr_period_cb(void *param)
     bg_hr_burst_qscore_max = 0;
     bg_hr_burst_own_conf_max = 0;
     bg_hr_vendor_bpm = 0;
-    bg_hr_win_captured = false;   /* one capture per burst */
-    bg_hr_win_suspect = false;
+    bg_hr_win_next_total = hr_autocorr_total() + HR_AUTOCORR_WIN;
     bg_hr_burst_confi_max = 0;
     bg_hr_burst_snr_max = 0;
     bg_hr_burst_qlevel = 0;
