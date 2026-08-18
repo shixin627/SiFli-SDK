@@ -326,8 +326,8 @@ extern "C"
     typedef struct
     {
         uint32_t ts;                       /* matches the paired window record  */
-        int32_t  fit_a_q16;                /* intercept of the removed line     */
-        int32_t  fit_b_q16;                /* slope, per sample                 */
+        int64_t  fit_a_q16;                /* intercept of the removed line     */
+        int64_t  fit_b_q16;                /* slope, per sample                 */
         uint16_t first_index;              /* win[0] is this index of the window*/
         uint16_t count;                    /* entries in win[]                  */
         uint8_t  shift;                    /* win[] << this = counts about fit  */

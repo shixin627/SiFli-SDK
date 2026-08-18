@@ -57,7 +57,13 @@ static bool s_work_valid = false;
    Shipping these three numbers alongside the int16 residual is what makes the
    dump genuinely raw, at zero extra RAM and with no second snapshot to keep in
    step -- s_work IS the window the estimator ran on. */
-static int32_t s_fit_a_q16, s_fit_b_q16;
+/* int64, NOT int32. a_q16 is the DC level shifted left 16, and this sensor's
+   raw counts are 24-bit, so the intercept lands around 1e11 -- an int32 copy
+   wrapped it, and half the shipped values came back negative for a signal that
+   is positive by construction. Caught on the first day of real raw dumps
+   (2026-08-18); the on-watch detrend was never affected, it computes in int64
+   and only the exported copy was narrowed. */
+static int64_t s_fit_a_q16, s_fit_b_q16;
 static uint8_t s_shift;
 
 /* Decimation for the diagnostic accel dump. 25 Hz / 4 = 6.25 Hz, Nyquist 3.1 Hz
@@ -265,7 +271,7 @@ uint32_t hr_autocorr_total(void)
 }
 
 uint16_t hr_autocorr_last_work(int16_t *out, uint16_t offset, uint16_t n,
-                               int32_t *a_q16, int32_t *b_q16, uint8_t *shift)
+                               int64_t *a_q16, int64_t *b_q16, uint8_t *shift)
 {
     if (out == NULL || !s_work_valid) return 0;
     if (offset >= HR_AUTOCORR_WIN) return 0;
@@ -423,8 +429,8 @@ static int detrend_into_work(void)
         int32_t d = (int32_t)((int64_t)s_ring[(base + i) % HR_AUTOCORR_WIN] - fit);
         s_work[i] = (int16_t)(d >> shift);
     }
-    s_fit_a_q16 = (int32_t)a_q16;
-    s_fit_b_q16 = (int32_t)b_q16;
+    s_fit_a_q16 = a_q16;
+    s_fit_b_q16 = b_q16;
     s_shift = (uint8_t)shift;
     s_work_valid = true;
     return 1;
