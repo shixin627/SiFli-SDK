@@ -466,31 +466,26 @@ bool commu_send_hr_window(uint32_t ts, uint8_t bpm, uint8_t conf,
     return ok;
 }
 
-bool commu_send_hr_window_raw(uint32_t ts, int32_t fit_a_q16, int32_t fit_b_q16,
+bool commu_send_hr_window_raw(uint32_t ts, int64_t fit_a_q16, int64_t fit_b_q16,
                               uint8_t shift, uint16_t first_index,
                               uint16_t count, const int16_t *win)
 {
-    /* @ref KEY_HR_WINDOW_RAW. 15-byte header + count int16, little-endian.
-       128 samples = 271 B, well inside MAX_PACKET_PAYLOAD_SIZE (507); the
-       chunking lives in the caller so this stays a pure serialiser. */
+    /* @ref KEY_HR_WINDOW_RAW. 23-byte header + count int16, little-endian.
+       128 samples = 279 B, well inside MAX_PACKET_PAYLOAD_SIZE (507); the
+       chunking lives in the caller so this stays a pure serialiser.
+       The fit is 64-bit: 24-bit raw counts shifted left 16 do not fit int32. */
     if (win == NULL || count == 0) return false;
     if (count > 128) count = 128;
 
-    uint8_t buf[15 + 128 * 2];
+    uint8_t buf[23 + 128 * 2];
     uint16_t n = 0;
     buf[n++] = (uint8_t)(ts & 0xFF);
     buf[n++] = (uint8_t)((ts >> 8) & 0xFF);
     buf[n++] = (uint8_t)((ts >> 16) & 0xFF);
     buf[n++] = (uint8_t)((ts >> 24) & 0xFF);
-    uint32_t a = (uint32_t)fit_a_q16, b = (uint32_t)fit_b_q16;
-    buf[n++] = (uint8_t)(a & 0xFF);
-    buf[n++] = (uint8_t)((a >> 8) & 0xFF);
-    buf[n++] = (uint8_t)((a >> 16) & 0xFF);
-    buf[n++] = (uint8_t)((a >> 24) & 0xFF);
-    buf[n++] = (uint8_t)(b & 0xFF);
-    buf[n++] = (uint8_t)((b >> 8) & 0xFF);
-    buf[n++] = (uint8_t)((b >> 16) & 0xFF);
-    buf[n++] = (uint8_t)((b >> 24) & 0xFF);
+    uint64_t a = (uint64_t)fit_a_q16, b = (uint64_t)fit_b_q16;
+    for (int k = 0; k < 8; k++) buf[n++] = (uint8_t)((a >> (8 * k)) & 0xFF);
+    for (int k = 0; k < 8; k++) buf[n++] = (uint8_t)((b >> (8 * k)) & 0xFF);
     buf[n++] = (uint8_t)(first_index & 0xFF);
     buf[n++] = (uint8_t)((first_index >> 8) & 0xFF);
     buf[n++] = shift;

@@ -113,9 +113,9 @@ typedef enum
        fine for "why did the period estimate go wrong" and useless for replaying
        any change to the FRONT of the pipeline. Founder call 2026-08-18: "我要的
        就是拿原始數據,這樣之後全部都可以基於那個去做變更".
-       {ts u32, fit_a i32, fit_b i32, first_index u16, count u16, shift u8,
+       {ts u32, fit_a i64, fit_b i64, first_index u16, shift u8,
         win int16[count]} — all LE. 128 samples per chunk, 2 chunks per window,
-       273 B each, inside MAX_PACKET_PAYLOAD_SIZE. Every chunk repeats the fit so
+       279 B each, inside MAX_PACKET_PAYLOAD_SIZE. Every chunk repeats the fit so
        neither side depends on chunk order or on both chunks arriving.
            raw[i] = ((fit_a + fit_b * i) >> 16) + (win[i] << shift)
        with i = first_index + position in win[]. */

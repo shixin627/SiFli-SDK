@@ -183,7 +183,7 @@ uint32_t hr_autocorr_total(void);
  * @return entries written, 0 if no estimate has run yet or offset is past the
  *         end of the window. */
 uint16_t hr_autocorr_last_work(int16_t *out, uint16_t offset, uint16_t n,
-                               int32_t *a_q16, int32_t *b_q16, uint8_t *shift);
+                               int64_t *a_q16, int64_t *b_q16, uint8_t *shift);
 
 /**
  * Copy the detrended window the LAST hr_autocorr_estimate() ran on, rescaled to
