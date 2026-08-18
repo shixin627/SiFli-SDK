@@ -7975,23 +7975,47 @@ static void kbd_exit_morph_cb(void *var, int32_t v)
    進度在時間的前段就衝掉大半,於是「畫面上還在走」的那段時間裡進度早已接近 100,
    透明度跟著提前歸零 —— 看起來就是還沒收到三分之一就不見了(founder 2026-08-18)。
    線性 + 延遲起跑,透明度才跟著**時間**均勻掉,與眼睛看到的行程一致。 */
+/* 淡出要**逐項調各自的 opa**,不能用物件級的 lv_obj_set_style_opa()。
+   這版 LVGL 的 lv_obj_init_draw_rect_dsc() 開頭就是
+       lv_opa_t opa = LV_OPA_COVER;
+       if (part != LV_PART_MAIN) opa = lv_obj_get_style_opa(obj, part);
+   —— MAIN 直接跳過,永遠 COVER。LV_STYLE_OPA 在屬性表標的是 LAYER_REFR,要靠「先畫到
+   中介圖層再整層混合」才成立,而這塊硬體的繪圖管線對 layer/transform 支援有限(同一類
+   坑:FT label 不吃 transform_zoom)。所以先前那行是**靜默無效**,founder 看到的就是
+   「收下去但完全沒變透明」。
+   text_opa 是可繼承屬性,設在框上就會傳到裡面的 label;圖示類要各自設 img_opa。
+   f = 0..255 的淡出係數,各項用自己的基準值去乘,才不會把原本半透明的邊框調成全不透明。 */
+static void kbd_exit_fade_apply(lv_obj_t *bar, int32_t f)
+{
+    if (f < 0) f = 0;
+    if (f > LV_OPA_COVER) f = LV_OPA_COVER;
+    if (bar && lv_obj_is_valid(bar))
+    {
+        lv_obj_set_style_bg_opa(bar, (lv_opa_t)(LV_OPA_90 * f / LV_OPA_COVER),
+                                LV_PART_MAIN);
+        lv_obj_set_style_border_opa(bar, (lv_opa_t)(LV_OPA_50 * f / LV_OPA_COVER),
+                                    LV_PART_MAIN);
+        lv_obj_set_style_text_opa(bar, (lv_opa_t)f, LV_PART_MAIN); /* 繼承給 label */
+    }
+    if (input_cursor && lv_obj_is_valid(input_cursor))
+        lv_obj_set_style_bg_opa(input_cursor, (lv_opa_t)f, LV_PART_MAIN);
+    if (kbd_voice_send_btn && lv_obj_is_valid(kbd_voice_send_btn))
+        lv_obj_set_style_img_opa(kbd_voice_send_btn, (lv_opa_t)f, LV_PART_MAIN);
+    if (s_bar_voice_frame && lv_obj_is_valid(s_bar_voice_frame))
+        lv_obj_set_style_img_opa(s_bar_voice_frame, (lv_opa_t)f, LV_PART_MAIN);
+}
+
 static void kbd_exit_opa_cb(void *var, int32_t v)
 {
-    lv_obj_t *bar = (lv_obj_t *)var;
-    if (bar && lv_obj_is_valid(bar))
-        lv_obj_set_style_opa(bar, (lv_opa_t)v, LV_PART_MAIN);
+    kbd_exit_fade_apply((lv_obj_t *)var, v);
 }
 
 static void kbd_exit_morph_done_cb(lv_anim_t *a)
 {
     collapse_anim_running = false;
-    /* **透明度一定要還原**:這是 style 上的值,不還原的話下次開輸入框整條 bar 是隱形的
+    /* **透明度一定要還原**:這些是 style 上的值,不還原的話下次開輸入框整條 bar 是隱形的
        (物件在、事件也照收,只是看不見 —— 最難查的那種)。 */
-    {
-        lv_obj_t *bar = (lv_obj_t *)a->var;
-        if (bar && lv_obj_is_valid(bar))
-            lv_obj_set_style_opa(bar, LV_OPA_COVER, LV_PART_MAIN);
-    }
+    kbd_exit_fade_apply((lv_obj_t *)a->var, LV_OPA_COVER);
     /* 與往下拖那條收合共用同一支收尾:容器切換、狀態復位都在裡面。 */
     kbd_commit_to_trackpad();
 }
