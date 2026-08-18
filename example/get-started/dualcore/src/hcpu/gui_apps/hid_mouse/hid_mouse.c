@@ -632,6 +632,9 @@ static lv_timer_t *kbd_voice_del_repeat = NULL;
 /* logo/send 與立起面板同位(y=55)。模式圖示與框上緣之間只有 53px,塞不下 80px 的 logo,
    所以語音站比照立起面板**把頂部模式圖示收起來**(它整片蓋掉狀態列,這裡改成手動藏)。 */
 #define VOICE_ICON_DY  (-178)
+/* 鍵盤站的送出鍵高度:輸入框在 y=75(EXPAND_END_Y_KBD)、高 45,所以圖示落在它上方那條
+   空帶(中心 y≈35 → 480/2 - 35 = 205)。語音站用 VOICE_ICON_DY,兩站各有各的「最上面」。 */
+#define KBD_SEND_ICON_DY (-205)
 #define VOICE_KBD_DX  (-110)  /* 回鍵盤鈕:同一排最左 */
 #define VOICE_LOGO_DX  (-29)
 #define VOICE_SEND_DX    52
@@ -7663,7 +7666,11 @@ static void create_kbd_mic_section(lv_obj_t *parent)
        kbd_voice_logo_btn 保留為 NULL,相關 layout / 顯藏都有 NULL 防護。 */
     kbd_voice_logo_btn = NULL;
 
-    kbd_voice_send_btn = lv_img_create(kbd_mic_section);
+    /* 送出鍵掛在 mic 區的**父層**,不是 mic 區自己(founder 2026-08-18:「輸入頁面(語音鍵盤
+       都是)的最上面要有發送按鍵」)。切到鍵盤輪盤時 kbd_mic_section 會整個往左滑出再 hide,
+       掛在它底下的東西會跟著消失 —— 這正是鍵盤站看不到送出鍵的原因。掛父層就兩站都在,
+       位置由 kbd_voice_layout_send_icons() 依當下是哪一站決定。 */
+    kbd_voice_send_btn = lv_img_create(lv_obj_get_parent(kbd_mic_section));
     lv_img_set_src(kbd_voice_send_btn, &icon_send);
     lv_obj_add_flag(kbd_voice_send_btn, LV_OBJ_FLAG_CLICKABLE);
     lv_obj_set_ext_click_area(kbd_voice_send_btn, 15);
@@ -8486,6 +8493,16 @@ static void kbd_lower_switch(bool to_kbd)
     {
         mouse_v2t_close_and_paste();
     }
+    /* 送出鍵跨兩站常駐,但兩站的「最上面」高度不同 —— 換站當下就重排(kbd_lower_is_keyboard
+       在本函式尾端才更新,所以這裡直接用 to_kbd 算)。 */
+    if (kbd_voice_send_btn && lv_obj_is_valid(kbd_voice_send_btn) &&
+        !lv_obj_has_flag(kbd_voice_send_btn, LV_OBJ_FLAG_HIDDEN))
+    {
+        lv_obj_align(kbd_voice_send_btn, LV_ALIGN_CENTER,
+                     kbd_voice_logo_btn ? VOICE_SEND_DX : 0,
+                     to_kbd ? KBD_SEND_ICON_DY : VOICE_ICON_DY);
+        lv_obj_move_foreground(kbd_voice_send_btn);
+    }
 
     if (to_kbd)
     {
@@ -9264,9 +9281,14 @@ static void kbd_voice_layout_send_icons(void)
     {
         if (show_send)
         {
+            /* 鍵盤站的輸入框停在 y=EXPAND_END_Y_KBD(75),語音站的大框置中 —— 兩站的「最上面」
+               不是同一個 y,所以送出鍵跟著換位:語音站沿用原本的 VOICE_ICON_DY,鍵盤站往上挪到
+               輸入框上方那條空帶(圓螢幕在該高度的可用寬度約 ±124px,單顆圖示綽綽有餘)。 */
             lv_obj_align(kbd_voice_send_btn, LV_ALIGN_CENTER,
-                         kbd_voice_logo_btn ? VOICE_SEND_DX : 0, VOICE_ICON_DY);
+                         kbd_voice_logo_btn ? VOICE_SEND_DX : 0,
+                         kbd_lower_is_keyboard ? KBD_SEND_ICON_DY : VOICE_ICON_DY);
             lv_obj_clear_flag(kbd_voice_send_btn, LV_OBJ_FLAG_HIDDEN);
+            lv_obj_move_foreground(kbd_voice_send_btn); /* 鍵盤/候選列都可能後建 */
         }
         else
         {
@@ -9291,14 +9313,16 @@ static void voice_do_send(int which)
     }
     if (s_kbd_direct_field)
     {
-        /* 直打模式:每一次 preview 已經把字打進電腦那個欄位了,這裡**不能**再送 commit ——
-           桌面的 TryFillReturnTarget 會把整段重打一次,使用者看到的是雙份。送出的意思在這
-           個模式裡只剩「我打完了」:收掉電腦的 direct-typing latch(dismiss 在 latch 開著時
-           不會關任何面板,只是解除 latch + 丟掉記住的目標視窗),手錶照舊退回觸控板。 */
-        extern bool commu_send_skaibar_dismiss(void);
-        commu_send_skaibar_dismiss();
-        s_kbd_direct_field = false;
-        LOG_I("[voice] direct-field done len=%d (already typed live)", input_length);
+        /* 直打模式(founder 2026-08-18:「按它就是按 enter 的意思」):字每一拍都已經打進電腦
+           那個欄位了,所以這顆**不是**「送出文字」而是「在那個欄位按 Enter」。走 dest="enter"
+           →手機 runSkaibar{text, submit:true}→桌面 TryRunText:文字相同時 diff 是空的(不會重打
+           成雙份),然後敲一下 Enter。仍然把文字一起帶上去 —— 萬一兩邊因為丟包而不同步,這一
+           筆會把差額補完再送出,比只送一個 Enter 穩。
+           送完**留在輸入站**:Enter 是一顆鍵,不是離場動作(聊天框按完還要打下一句)。要離開走
+           下拉收合 / 空框時的退出鍵,那些路徑本來就會解除電腦的 latch。 */
+        extern bool commu_send_voice_station_commit(const char *dest, const char *text);
+        commu_send_voice_station_commit("enter", input_buffer);
+        LOG_I("[voice] direct-field enter len=%d", input_length);
     }
     else
     {
@@ -9320,7 +9344,13 @@ static void voice_do_send(int which)
     mouse_v2t_locked = false;
     update_input_display();
 
-    if (which == 1 || s_kbd_direct_field)
+    if (s_kbd_direct_field)
+    {
+        /* Enter 送完留在站內(見上面),只把送出鍵的圖示/位置照當下這一站重排。 */
+        kbd_voice_layout_send_icons();
+        kbd_voice_del_update_icon(); /* 框空了 → 退格鍵變回退出鍵 */
+    }
+    else if (which == 1)
     {
         /* icon_send:文字已經打進電腦那個欄位,手錶離開輸入模式(founder 2026-08-03:
            「我按下輸入後手表要退出輸入模式」)。回觸控板,與立起面板送完就收掉同義。 */
