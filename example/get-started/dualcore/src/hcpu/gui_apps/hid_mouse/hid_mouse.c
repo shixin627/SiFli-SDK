@@ -7964,21 +7964,22 @@ static void kbd_exit_morph_cb(void *var, int32_t v)
                                 barmorph_lerp(s_barmorph_r0, s_barmorph_r1, v),
                                 LV_PART_MAIN);
     }
-    /* 邊收邊淡出(founder 2026-08-18)。用 LV_STYLE_OPA 而不是 bg_opa —— 那是整個物件
-       (含裡面的文字、游標、送出鍵)一起淡,只調背景的話字會撐到最後才不見。
-       前 30% 維持全不透明:一開始就掉透明度會看起來像「還沒動就先消失」,讓它先明確地
-       往下走一段再淡。 */
-    lv_opa_t opa = LV_OPA_COVER;
-    if (v > 30)
-        opa = (lv_opa_t)barmorph_lerp(LV_OPA_COVER, LV_OPA_TRANSP,
-                                      (v - 30) * 100 / 70);
-    if (bar && lv_obj_is_valid(bar))
-        lv_obj_set_style_opa(bar, opa, LV_PART_MAIN);
     lv_coord_t ty = barmorph_lerp(0, s_exit_ty_end, v);
     if (kbd_mic_section && lv_obj_is_valid(kbd_mic_section))
         lv_obj_set_style_translate_y(kbd_mic_section, ty, 0);
     if (keyboard_container && lv_obj_is_valid(keyboard_container))
         lv_obj_set_style_translate_y(keyboard_container, ty, 0);
+}
+
+/* 淡出**單獨一條動畫**,而且是線性的。掛在收合的進度值上行不通:收合走 ease_out,
+   進度在時間的前段就衝掉大半,於是「畫面上還在走」的那段時間裡進度早已接近 100,
+   透明度跟著提前歸零 —— 看起來就是還沒收到三分之一就不見了(founder 2026-08-18)。
+   線性 + 延遲起跑,透明度才跟著**時間**均勻掉,與眼睛看到的行程一致。 */
+static void kbd_exit_opa_cb(void *var, int32_t v)
+{
+    lv_obj_t *bar = (lv_obj_t *)var;
+    if (bar && lv_obj_is_valid(bar))
+        lv_obj_set_style_opa(bar, (lv_opa_t)v, LV_PART_MAIN);
 }
 
 static void kbd_exit_morph_done_cb(lv_anim_t *a)
@@ -8060,6 +8061,16 @@ static void mouse_exit_input_station(void)
     lv_anim_set_path_cb(&a, lv_anim_path_ease_out);
     lv_anim_set_ready_cb(&a, kbd_exit_morph_done_cb);
     lv_anim_start(&a);
+    /* 淡出:前 40% 的時間維持不透明(先看清楚它在往下走),之後線性淡到 0,與收合同時落地。 */
+    lv_anim_t fa;
+    lv_anim_init(&fa);
+    lv_anim_set_var(&fa, text_input_bar_bg);
+    lv_anim_set_exec_cb(&fa, kbd_exit_opa_cb);
+    lv_anim_set_values(&fa, LV_OPA_COVER, LV_OPA_TRANSP);
+    lv_anim_set_delay(&fa, EXIT_ANIM_TIME_MS * 2 / 5);
+    lv_anim_set_time(&fa, EXIT_ANIM_TIME_MS * 3 / 5);
+    lv_anim_set_path_cb(&fa, lv_anim_path_linear);
+    lv_anim_start(&fa);
 }
 
 /* 鍵盤 ⇄ 語音(mic)兩站的切換本體。**輸入列的高度是靠這裡的動畫換的**,只呼
