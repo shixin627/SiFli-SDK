@@ -635,8 +635,9 @@ static lv_timer_t *kbd_voice_del_repeat = NULL;
 /* 視覺置中的微調(founder 2026-08-18 眼驗:「還是稍微偏上,直接把他往下移動 2pix」)。
    **幾何上本來就是置中的** —— 真機探針量到對齊穩定後,鍵盤站 gap_top=5 / gap_bot=6、
    語音站 109/109,對稱到 1px 以內。偏上是視覺重心(圖案墨水滿版 34x34 但重量偏上),
-   量不出來、只能照眼睛調 —— 這是刻意的光學補償,不是在修正算錯的座標。 */
-#define SEND_BTN_NUDGE_Y 2
+   量不出來、只能照眼睛調 —— 這是刻意的光學補償,不是在修正算錯的座標。
+   2 → 3(founder 二次眼驗「再往下 1pix」)。 */
+#define SEND_BTN_NUDGE_Y 3
 /* icon_send 原生 34x34,塞進 45 高的鍵盤輸入列幾乎頂滿(founder 2026-08-18:「圖片有點太大」)。
    縮的是**繪製**:lv_img_set_zoom 只影響畫出來的大小,物件 bbox 仍是 34x34,加上
    ext_click_area 15 → 觸控標的維持 64px(≥44pt 基線),founder 要的「觸碰範圍不變」。 */
@@ -878,6 +879,14 @@ static void voice_sel_apply(int a_cp, int b_cp)
     }
 }
 
+/* 版面穩定後重畫一次游標 —— 見進語音站那條的說明(第一次進站時 label 的位置會慢一拍)。 */
+static void voice_caret_resettle_async(void *unused)
+{
+    (void)unused;
+    if (!s_voice_box_on) return; /* 已經離站就別再動 */
+    update_cursor_position();
+}
+
 static void update_cursor_position(void)
 {
     if (input_cursor == NULL || input_display_label == NULL)
@@ -904,7 +913,14 @@ static void update_cursor_position(void)
         const lv_font_t *f =
             lv_obj_get_style_text_font(input_display_label, LV_PART_MAIN);
         lv_coord_t lh = lv_font_get_line_height(f);
-        lv_obj_update_layout(input_display_label); /* 座標要是對齊後的 */
+        /* 從**整棵子樹**refresh 後再讀座標。只 update 這個 label 不夠:label 的 x/y 是
+           parent(input_content_container)那一層算出來的,而進語音站的同一輪裡 container
+           的尺寸與 label 的對齊(鍵盤站 LEFT_MID → 語音站 TOP_LEFT)才剛被改掉 —— 只
+           refresh label 自己,讀到的仍是上一輪的位置。 */
+        if (text_input_bar_bg && lv_obj_is_valid(text_input_bar_bg))
+            lv_obj_update_layout(text_input_bar_bg);
+        else
+            lv_obj_update_layout(input_display_label);
         lv_coord_t cx = lv_obj_get_x(input_display_label) + p.x;
         lv_coord_t cy = lv_obj_get_y(input_display_label) + p.y;
         lv_obj_set_size(input_cursor, 2, lh);
@@ -8371,6 +8387,13 @@ static void kbd_bar_set_voice_box(bool voice)
            (sim 2026-08-03:帶著字進站時球不出現,因為沒有任何東西觸發重繪)。 */
         lv_obj_update_layout(text_input_bar_bg);
         update_cursor_position();
+        /* 再排一次:**第一次**進語音站時,大框的底圖是這一輪才延遲建立的、內容欄與 label
+           的對齊也是這一輪才從鍵盤站那組換過來,同一輪內算出的 label 位置會慢一拍 ——
+           游標於是落在「上一個版面」的位置:鍵盤站是單行垂直置中,所以看起來就是**中間
+           靠左**而不是上面靠左(founder 2026-08-18:「第一次進輸入模式時游標在中間靠左」)。
+           第二次之後版面已經是對的,所以只有第一次會看到。async 在這一輪處理完之後才跑,
+           那時的座標才是最終版面。之後每次進站都跑,idempotent,不需要記「是不是第一次」。 */
+        lv_async_call(voice_caret_resettle_async, NULL);
         /* **通知手機/電腦**:進語音站 = summonSkaibar{inputOnly:true}。電腦收到才會跳出
            純輸入框(不出選項),並把召喚前聚焦的那個欄位記成 icon_send 的目的地。
            founder 2026-08-03:「電腦這怎麼沒有出現輸入框」—— 我先前只做了手錶端的 UI,
