@@ -1290,9 +1290,12 @@ static lv_coord_t s_barmorph_r0 = 100, s_barmorph_r1 = 100;
 /* 語音框的底圖(定義在下方的語音站段落),收尾 cb 要用 —— 前向宣告,別為了一支
    callback 把整段搬家。 */
 static lv_obj_t *s_bar_voice_frame;
-/* 語音框的圓角:卡片圖(message_widget_bg)的轉角觀感,長大過程用框自己的圓角逼近它,
-   落定才換成真正的圖。 */
-#define VOICE_BOX_RADIUS 30
+/* 語音框的圓角 = 卡片圖(message_widget_bg)實際的轉角半徑,長大過程用框自己的圓角逼近它,
+   落定才換成真正的圖。**80 是量出來的**:取那張 442x252 PNG 左上角 alpha 邊緣的取樣點做
+   圓弧擬合(x=4→y=55、x=8→y=45、x=16→y=32、x=36→y=13),r=80 幾乎完全吻合。
+   先前憑印象寫 30,交棒瞬間轉角明顯對不上(founder 2026-08-18:「角落的弧形跟圖片不太
+   一樣」)。要改先重量,別再猜。 */
+#define VOICE_BOX_RADIUS 80
 
 static lv_coord_t barmorph_lerp(lv_coord_t a, lv_coord_t b, int32_t v)
 {
