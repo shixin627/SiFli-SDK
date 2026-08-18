@@ -1743,7 +1743,13 @@ static const char *get_button_text(lv_obj_t *btn)
                 return "Caps";
             }
             // 檢查是否是 Del/Backspace 按鍵
-            else if (src == &backspace_icon)
+            /* down_arrow 也算 Del:空框時這顆鍵**顯示成「收下」但身分不變**
+               (kbd_del_update_icon)。這支函式是靠子圖的 src 反查鍵名的,漏了這條的話
+               換圖等於把鍵名一起換掉,RELEASED 時比不中任何分支 → 按下去毫無反應
+               (founder 2026-08-18:「我按他怎麼沒有退出輸入模式」)。
+               擺在下面那條 strcmp(src, DOWN_ARROW) **之前**還有一個好處:那條是拿
+               lv_img_dsc_t 的指標當字串比,先在這裡攔下來就不會走到那個未定義行為。 */
+            else if (src == &backspace_icon || src == &down_arrow)
             {
                 return "Del";
             }
