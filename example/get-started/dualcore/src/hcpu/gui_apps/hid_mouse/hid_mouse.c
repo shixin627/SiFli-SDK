@@ -790,6 +790,8 @@ void set_air_mouse_moving_state(bool state)
 static void show_key_popup(lv_obj_t *btn, const char *key_text);
 static void hide_key_popup(void);
 static void kbd_del_update_icon(void); /* 鍵盤站刪除鍵:空框時顯示成「收下」 */
+static void mouse_exit_input_station(void); /* 離開輸入模式(帶收合動畫)的單一出口 */
+static void kbd_bar_set_voice_box(bool voice); /* 語音大框 ⇄ 鍵盤藥丸(定義在換站段) */
 
 // Long press detection functions
 static void long_press_timer_callback(void *parameter);
@@ -2455,7 +2457,7 @@ static void handle_proximity_input(lv_event_t *e)
                     if (kbd_del_acts_as_exit())
                     {
                         LOG_I("[kbd] delete key acted as EXIT (box empty)");
-                        apply_hid_mode(HID_MODE_TRACKPAD);
+                        mouse_exit_input_station();
                         return;
                     }
                     if (current_keyboard_mode == KEYBOARD_MODE_CHINESE &&
@@ -7934,6 +7936,93 @@ static void keyboard_mode_outside_click_cb(lv_event_t *e)
     start_kbd_to_trackpad_collapse_anim(100, true);
 }
 
+/* 收合動畫的起點是 mic view 的 380x90@195(EXPAND_END_*),而兩站的輸入框都不在那個
+   幾何上(語音站 442x252@114、鍵盤站 310x45@75)—— 直接開收合會讓框先瞬移過去。先用
+   換站那支 morph 補間過去(120ms),ready 再接既有的收合動畫,整段就是連續的。 */
+static void exit_collapse_after_morph_cb(lv_anim_t *a)
+{
+    (void)a;
+    start_kbd_to_trackpad_collapse_anim(100, true);
+}
+
+/* 「離開輸入模式」的單一出口(founder 2026-08-18:「鍵盤跟語音模式退出的畫面怎麼是瞬間
+   消失沒有動畫」)。先前空框退出鍵/送出都是直接 apply_hid_mode(HID_MODE_TRACKPAD) ——
+   那只是換容器,沒有任何動畫,畫面當場消失;而往下拖收回那條(outside-click / bar drag)
+   早就有完整的收合動畫。這支把兩者統一:誰按的都走同一段收合。 */
+static void mouse_exit_input_station(void)
+{
+    if (current_hid_mode != HID_MODE_KEYBOARD)
+        return;
+    if (collapse_anim_running)
+        return; /* 已經在收了,別疊第二段 */
+    if (mouse_v2t_active)
+        mouse_v2t_close_and_paste();
+
+    bool bar_ok = (text_input_bar_bg && lv_obj_is_valid(text_input_bar_bg));
+    lv_coord_t x0 = 0, y0 = 0, w0 = 0, h0 = 0;
+    if (bar_ok)
+    {
+        lv_obj_update_layout(text_input_bar_bg);
+        x0 = lv_obj_get_x(text_input_bar_bg);
+        y0 = lv_obj_get_y(text_input_bar_bg);
+        w0 = lv_obj_get_width(text_input_bar_bg);
+        h0 = lv_obj_get_height(text_input_bar_bg);
+    }
+    bool from_voice = s_voice_box_on;
+    if (from_voice)
+    {
+        /* 語音站的外觀是卡片圖,跟不了縮放(見 kbd_bar_morph_to_voice_done_cb 的說明);
+           這支順便把語音站的狀態(框選/放大鏡/連刪 timer/preview)一併收乾淨。 */
+        kbd_bar_set_voice_box(false);
+    }
+    if (kbd_lower_is_keyboard)
+    {
+        /* 鍵盤在畫面上就先收掉:收合動畫只帶輸入框與 mic 區。與 outside-click 那條同款。 */
+        if (keyboard_container && lv_obj_is_valid(keyboard_container))
+        {
+            lv_anim_del(keyboard_container, NULL);
+            lv_obj_add_flag(keyboard_container, LV_OBJ_FLAG_HIDDEN);
+            lv_obj_set_style_translate_y(keyboard_container, 0, 0);
+            lv_obj_set_style_translate_x(keyboard_container, 0, 0);
+        }
+        if (kbd_mic_section && lv_obj_is_valid(kbd_mic_section))
+        {
+            lv_obj_clear_flag(kbd_mic_section, LV_OBJ_FLAG_HIDDEN);
+            lv_obj_set_style_translate_x(kbd_mic_section, 0, 0);
+            lv_obj_set_style_translate_y(kbd_mic_section, 0, 0);
+        }
+        kbd_lower_is_keyboard = false;
+        /* 弧線要在收合開始前就回來,否則會看到「框縮回去之後弧線才冒出來」。 */
+        kbd_lower_update_arcs_visibility();
+    }
+    if (!bar_ok)
+    {
+        start_kbd_to_trackpad_collapse_anim(100, true);
+        return;
+    }
+    s_barmorph_x0 = x0;
+    s_barmorph_y0 = y0;
+    s_barmorph_w0 = w0;
+    s_barmorph_h0 = h0;
+    s_barmorph_x1 = EXPAND_END_X;
+    s_barmorph_y1 = EXPAND_END_Y;
+    s_barmorph_w1 = EXPAND_END_W;
+    s_barmorph_h1 = EXPAND_END_H;
+    s_barmorph_r0 = from_voice ? VOICE_BOX_RADIUS : 100;
+    s_barmorph_r1 = 100;
+    lv_anim_del(text_input_bar_bg, NULL); /* 換站的 morph / y 動畫都要讓開 */
+    kbd_bar_morph_cb(text_input_bar_bg, 0);
+    lv_anim_t a;
+    lv_anim_init(&a);
+    lv_anim_set_var(&a, text_input_bar_bg);
+    lv_anim_set_exec_cb(&a, kbd_bar_morph_cb);
+    lv_anim_set_values(&a, 0, 100);
+    lv_anim_set_time(&a, 120);
+    lv_anim_set_path_cb(&a, lv_anim_path_ease_out);
+    lv_anim_set_ready_cb(&a, exit_collapse_after_morph_cb);
+    lv_anim_start(&a);
+}
+
 /* 鍵盤 ⇄ 語音(mic)兩站的切換本體。**輸入列的高度是靠這裡的動畫換的**,只呼
    kbd_lower_set_keyboard() 切可見性會讓輸入列停在另一站的高度 —— 所以 Mode 鍵切到
    語音那站也要走這條,不能走捷徑。原本只有箭頭 cb 用,2026-08-03 抽出來共用。 */
@@ -9407,7 +9496,7 @@ static void kbd_voice_del_event_cb(lv_event_t *e)
                先前寫成退回鍵盤站,按下去會跳出英文鍵盤,不是使用者要的「退出」
                (founder 2026-08-04)。 */
             LOG_I("[voice] delete key acted as EXIT (box empty)");
-            apply_hid_mode(HID_MODE_TRACKPAD);
+            mouse_exit_input_station();
         }
         return;
     }
@@ -9533,7 +9622,7 @@ static void voice_do_send(int which)
     {
         /* icon_send:文字已經打進電腦那個欄位,手錶離開輸入模式(founder 2026-08-03:
            「我按下輸入後手表要退出輸入模式」)。回觸控板,與立起面板送完就收掉同義。 */
-        apply_hid_mode(HID_MODE_TRACKPAD);
+        mouse_exit_input_station();
     }
     else
     {
