@@ -587,7 +587,7 @@ static lv_obj_t *trackpad_mic_btn = NULL;
 /* 觸控板右緣的鍵盤鈕:電腦有聚焦輸入框時才浮現(founder 2026-08-17)。 */
 static lv_obj_t *kbd_side_btn = NULL;
 static void kbd_side_btn_event_cb(lv_event_t *e);
-static void mouse_open_input_station(void);
+static void mouse_open_input_station(bool direct_field);
 static lv_obj_t *trackpad_mic_icon = NULL;
 static lv_obj_t *trackpad_mic_red_dot = NULL;
 static void bar_ai_on_tap(void); /* fwd：tap 當下立刻收自有底部 bar（定義在 lv_create 前） */
@@ -606,6 +606,15 @@ static lv_obj_t *kbd_mic_section_right_arrow = NULL;
 /* 這次語音站是從 session 抽屜進來的 → 輸入框往下拖收合時滑回抽屜,不是回觸控板
    (founder 2026-08-17;細節見 mouse_drawer_open_input)。 */
 static bool s_kbd_from_drawer = false;
+/* 直打模式（founder 2026-08-18：「點手錶上右邊出現的鍵盤後進入的輸入模式就不用再叫出
+   skaibar 了，只要直接輸入到我點的輸入框就好」）。由觸控板右緣那顆鍵盤鈕進站時立起 ——
+   那顆鈕本來就只在「電腦有聚焦輸入框」時才浮現，所以這條路等於使用者已經指定了目的地。
+   立起後：① 送給電腦的召喚變成 forceOpen=false / inputOnly=false，電腦於是**不開面板**，
+   改把每一次 preview 直接打進那個欄位（桌面 RemoteFocusedTextInputRouter 的 direct-typing
+   latch，增量 diff＋backspace）；② icon_send 不再送 commit —— 字早就在欄位裡了，再送一次
+   會整段重打成雙份；③ 拖到 AI logo 那條手勢整個關掉（見 ai_drag_logo_show）：這個模式的
+   定義就是「不叫 skaibar」，要問 AI 走 bar 開抽屜那條，不受影響。 */
+static bool s_kbd_direct_field = false;
 /* 抽屜地球鍵按下 → 進場動畫落地後才切鍵盤輪盤(見 kbd_enter_slide_done)。 */
 static bool s_kbd_pending_wheel = false;
 static lv_obj_t *kbd_voice_del_btn = NULL;
@@ -8095,6 +8104,11 @@ static void ai_drag_logo_show(lv_point_t at, lv_obj_t *src)
 {
     if (kbd_mic_section == NULL || !lv_obj_is_valid(kbd_mic_section))
         return;
+    /* 直打模式沒有「送去 skaibar」這個去處：電腦端此刻是 direct-typing latch，送出去的
+       runSkaibar 會把同一段字再打進使用者的文件一次。連浮動 logo 都不出現 = 手勢不會被
+       arm（s_ai_drag_armed 恆 false），放開時不會誤送。 */
+    if (s_kbd_direct_field)
+        return;
     /* 鎖住 press:手指要能離開來源物件往上走,中途不能被判成 PRESS_LOST */
     s_ai_drag_src = src;
     if (src && lv_obj_is_valid(src))
@@ -8403,7 +8417,14 @@ static void kbd_bar_set_voice_box(bool voice)
                是拿去搜這台電腦的 sessions/actions/檔案,電腦必須把選項算出來並鏡像回
                手錶(0x03),所以 inputOnly=false(founder 2026-08-17:「為什麼上面沒有
                選項?兩邊都沒有」)。 */
-            commu_send_skaibar_open_device_ex(true, !s_kbd_from_drawer);
+            /* 直打模式：forceOpen=false 讓電腦「有聚焦輸入框就讓給它」（桌面
+               SkaibarRelayController.Summon 的 TryBegin 分支）—— 面板整個不開，之後每一次
+               preview 都直接落在使用者剛剛點的那個欄位。萬一召喚抵達時焦點已經沒了，
+               TryBegin 失敗、桌面自動退回開一般面板，不會變成「打了字卻不知道去哪」。 */
+            if (s_kbd_direct_field)
+                commu_send_skaibar_open_device_ex(false, false);
+            else
+                commu_send_skaibar_open_device_ex(true, !s_kbd_from_drawer);
             /* 同時把 instruction_list 的單設備 session 建起來(只建 layout + 記 device_id,
                不開任何面板)。按 logo 送出後要用它叫清單 —— 沒有這一步 open_browse() 會因為
                layout 不存在直接 return,清單靜默不出現。 */
@@ -8881,6 +8902,15 @@ static void kbd_commit_to_trackpad(void)
         skaibar_options_count = 0;
         skaibar_selected_idx = -1;
     }
+    /* 直打模式從**任何**出口離站(下拉收合、右上退出鈕、退格鍵當退出鍵)都要解除電腦的
+       direct-typing latch。漏掉的話電腦會一直把後續任何 setSkaibarText 打進使用者的文件。
+       送出那條已經自己解除並清旗標,所以這裡是 idempotent 的補網。 */
+    if (s_kbd_direct_field)
+    {
+        s_kbd_direct_field = false;
+        extern bool commu_send_skaibar_dismiss(void);
+        commu_send_skaibar_dismiss();
+    }
     /* 從 session 抽屜進來的:下拉收合 → 抽屜帶著這輪語音搜尋後的最新選項滑回來;
        其他離場方式(點外面、右上退出鈕)→ 整條流程結束,抽屜也收掉並通知電腦。 */
     if (s_kbd_from_drawer)
@@ -9259,10 +9289,24 @@ static void voice_do_send(int which)
         LOG_I("[voice] send tapped with no text — ignored");
         return;
     }
-    extern bool commu_send_voice_station_commit(const char *dest, const char *text);
-    commu_send_voice_station_commit(which == 1 ? "field" : "skaibar", input_buffer);
-    LOG_I("[voice] commit dest=%s len=%d", which == 1 ? "field" : "skaibar",
-          input_length);
+    if (s_kbd_direct_field)
+    {
+        /* 直打模式:每一次 preview 已經把字打進電腦那個欄位了,這裡**不能**再送 commit ——
+           桌面的 TryFillReturnTarget 會把整段重打一次,使用者看到的是雙份。送出的意思在這
+           個模式裡只剩「我打完了」:收掉電腦的 direct-typing latch(dismiss 在 latch 開著時
+           不會關任何面板,只是解除 latch + 丟掉記住的目標視窗),手錶照舊退回觸控板。 */
+        extern bool commu_send_skaibar_dismiss(void);
+        commu_send_skaibar_dismiss();
+        s_kbd_direct_field = false;
+        LOG_I("[voice] direct-field done len=%d (already typed live)", input_length);
+    }
+    else
+    {
+        extern bool commu_send_voice_station_commit(const char *dest, const char *text);
+        commu_send_voice_station_commit(which == 1 ? "field" : "skaibar", input_buffer);
+        LOG_I("[voice] commit dest=%s len=%d", which == 1 ? "field" : "skaibar",
+              input_length);
+    }
 
     if (mouse_v2t_active)
     {
@@ -9276,7 +9320,7 @@ static void voice_do_send(int which)
     mouse_v2t_locked = false;
     update_input_display();
 
-    if (which == 1)
+    if (which == 1 || s_kbd_direct_field)
     {
         /* icon_send:文字已經打進電腦那個欄位,手錶離開輸入模式(founder 2026-08-03:
            「我按下輸入後手表要退出輸入模式」)。回觸控板,與立起面板送完就收掉同義。 */
@@ -9956,6 +10000,7 @@ bool mouse_drawer_open_input(bool want_keyboard)
     /* 先立旗再進場:mouse_open_voice_station() 內部就會送 0x0E 給電腦,而 inputOnly
        要靠這面旗決定(抽屜流程=要選項)。 */
     s_kbd_from_drawer = true;
+    s_kbd_direct_field = false; /* 抽屜流程要的是選項,不是打進欄位 */
     if (!mouse_open_voice_station())
     {
         s_kbd_from_drawer = false;
@@ -10054,14 +10099,16 @@ static void bottom_logo_cb(lv_event_t *e)
        keyboard_container 藏起來先進語音站,所以重建不會被看到。 */
     /* 這裡**不要**再重建一次鍵盤版面 —— mouse_open_voice_station() 內部已經做了。
        重複一次等於白付一次數百 ms 的停頓,正是動畫被吃掉的主因。 */
-    mouse_open_input_station();
+    mouse_open_input_station(false);
 }
 
 /* 進「輸入模式」的共同入口:底部 bar 沒有控制目標時的 fallback、以及觸控板右緣
-   鍵盤鈕(電腦有聚焦輸入框時)。落地狀態=現行語音站版面,一個像素都不動。 */
-static void mouse_open_input_station(void)
+   鍵盤鈕(電腦有聚焦輸入框時)。落地狀態=現行語音站版面,一個像素都不動。
+   direct_field=true(右緣鍵盤鈕)→ 電腦不開 skaibar,字直接進使用者點的那個輸入框。 */
+static void mouse_open_input_station(bool direct_field)
 {
     s_kbd_from_drawer = false; /* 這兩個入口都不是抽屜流程:電腦只出輸入框 */
+    s_kbd_direct_field = direct_field;
     if (!mouse_open_voice_station())
         return; /* 被拒:留在觸控板,別跑進場動畫(容器沒切) */
     /* 同抽屜:從觸控板/底部 bar 新鮮進來的輸入站也要是空的。刻意**不**放進
@@ -10087,7 +10134,8 @@ static void kbd_side_btn_event_cb(lv_event_t *e)
         return;
     if (current_hid_mode == HID_MODE_KEYBOARD)
         return;
-    mouse_open_input_station();
+    /* 這顆鈕只在電腦有聚焦輸入框時才浮現 → 目的地已經指定,走直打。 */
+    mouse_open_input_station(true);
 }
 
 /**
