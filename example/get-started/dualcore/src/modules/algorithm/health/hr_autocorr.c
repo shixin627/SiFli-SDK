@@ -50,6 +50,15 @@ static int16_t s_work[HR_AUTOCORR_WIN];
    would ship a window of stale zeros, which reads as a real flat capture in the
    offline suite rather than as "no data". */
 static bool s_work_valid = false;
+/* The exact transform that produced s_work from the raw ring, kept so the
+   offline side can INVERT it: raw[i] == ((s_fit_a + s_fit_b*i) >> 16) +
+   (s_work[i] << s_shift). Lossless while s_shift == 0 (the common case: the
+   residual peak fits SCALE_MAX), otherwise off by less than 2^s_shift.
+   Shipping these three numbers alongside the int16 residual is what makes the
+   dump genuinely raw, at zero extra RAM and with no second snapshot to keep in
+   step -- s_work IS the window the estimator ran on. */
+static int32_t s_fit_a_q16, s_fit_b_q16;
+static uint8_t s_shift;
 
 /* Decimation for the diagnostic accel dump. 25 Hz / 4 = 6.25 Hz, Nyquist 3.1 Hz
    -- ample for the 0.5-0.75 Hz band the failing windows' optical drift sits in,
@@ -255,6 +264,22 @@ uint32_t hr_autocorr_total(void)
     return s_total;
 }
 
+uint16_t hr_autocorr_last_work(int16_t *out, uint16_t offset, uint16_t n,
+                               int32_t *a_q16, int32_t *b_q16, uint8_t *shift)
+{
+    if (out == NULL || !s_work_valid) return 0;
+    if (offset >= HR_AUTOCORR_WIN) return 0;
+    if (offset + n > HR_AUTOCORR_WIN) n = (uint16_t)(HR_AUTOCORR_WIN - offset);
+    for (uint16_t i = 0; i < n; i++) out[i] = s_work[offset + i];
+    /* The fit belongs to the WHOLE window, so every chunk carries it and index i
+       in the reconstruction is the offset-adjusted one. Repeating it costs 9
+       bytes per chunk and removes any ordering dependency between chunks. */
+    if (a_q16) *a_q16 = s_fit_a_q16;
+    if (b_q16) *b_q16 = s_fit_b_q16;
+    if (shift) *shift = s_shift;
+    return n;
+}
+
 uint16_t hr_autocorr_last_window(int8_t *out, uint16_t max)
 {
     if (out == NULL || !s_work_valid) return 0;
@@ -398,6 +423,9 @@ static int detrend_into_work(void)
         int32_t d = (int32_t)((int64_t)s_ring[(base + i) % HR_AUTOCORR_WIN] - fit);
         s_work[i] = (int16_t)(d >> shift);
     }
+    s_fit_a_q16 = (int32_t)a_q16;
+    s_fit_b_q16 = (int32_t)b_q16;
+    s_shift = (uint8_t)shift;
     s_work_valid = true;
     return 1;
 }

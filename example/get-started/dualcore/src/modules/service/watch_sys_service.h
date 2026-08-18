@@ -55,6 +55,8 @@ extern "C"
             ((MSG_SERVICE_SYS_DATA_REQ + 19) | RSP_MSG_TYPE),
         MSG_SERVICE_HR_WINDOW_IND =
             ((MSG_SERVICE_SYS_DATA_REQ + 20) | RSP_MSG_TYPE),
+        MSG_SERVICE_HR_RAW_IND =
+            ((MSG_SERVICE_SYS_DATA_REQ + 21) | RSP_MSG_TYPE),
     };
 
     typedef enum
@@ -307,6 +309,31 @@ extern "C"
         int8_t   acc[WATCH_SYS_HR_ACC_MAX];/* |x|+|y|+|z| about its own mean    */
     } watch_sys_hr_window_t;
 
+/* The SAME window at full precision, plus the transform needed to invert it
+   back to raw sensor counts (@ref hr_autocorr_last_work):
+
+       raw[i] = ((fit_a_q16 + fit_b_q16 * i) >> 16) + (win[i] << shift)
+
+   with i the index in the whole window, i.e. first_index + position in win[].
+
+   Sent in chunks because 256 int16 does not fit one BLE frame. Two chunks of
+   128 make each message 272 bytes -- SMALLER than the int8 record above, which
+   is already in the field, so this adds no new size risk on either the
+   cross-core queue or the BLE link. Every chunk repeats the fit so the offline
+   side never depends on chunk order or on both chunks arriving. */
+#define WATCH_SYS_HR_RAW_CHUNK 128
+
+    typedef struct
+    {
+        uint32_t ts;                       /* matches the paired window record  */
+        int32_t  fit_a_q16;                /* intercept of the removed line     */
+        int32_t  fit_b_q16;                /* slope, per sample                 */
+        uint16_t first_index;              /* win[0] is this index of the window*/
+        uint16_t count;                    /* entries in win[]                  */
+        uint8_t  shift;                    /* win[] << this = counts about fit  */
+        int16_t  win[WATCH_SYS_HR_RAW_CHUNK];
+    } watch_sys_hr_raw_t;
+
     typedef struct
     {
         uint32_t base_ts;                  /* UTC second of sample[0]           */
@@ -381,6 +408,7 @@ extern "C"
        nothing" — which is exactly how the 2026-08-02 night lost 65 minutes. */
     void (*notify_hr_cont)(const watch_sys_hr_cont_t *rec);
     void (*notify_hr_window)(const watch_sys_hr_window_t *rec);
+    void (*notify_hr_raw)(const watch_sys_hr_raw_t *rec);
 #endif
     } watch_sys_sync_t;
 

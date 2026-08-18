@@ -265,6 +265,15 @@ static void notify_hr_window(const watch_sys_hr_window_t *rec)
     push_msg_to_hcpu(MSG_SERVICE_HR_WINDOW_IND, rec, sizeof(*rec));
 }
 
+static void notify_hr_raw(const watch_sys_hr_raw_t *rec)
+{
+    /* Same window as notify_hr_window, at full precision and invertible back to
+       raw counts. Two of these per window, so ~3 messages per 10.24 s while a
+       burst runs; each is 272 bytes, smaller than the int8 record beside it. */
+    if (rec == NULL) return;
+    push_msg_to_hcpu(MSG_SERVICE_HR_RAW_IND, rec, sizeof(*rec));
+}
+
 static void notify_sleep_state(uint8_t mode, uint32_t timestamp_utc)
 {
     watch_sys_sleep_state_t data_ind;
@@ -588,6 +597,7 @@ static void register_watch_sys_service_funs(void)
     watch_sys_sync.notify_sleep_diag = notify_sleep_diag;
     watch_sys_sync.notify_hr_cont = notify_hr_cont;
     watch_sys_sync.notify_hr_window = notify_hr_window;
+    watch_sys_sync.notify_hr_raw = notify_hr_raw;
 }
 
 static int watch_sys_service_register(void)

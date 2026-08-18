@@ -76,6 +76,13 @@ bool commu_send_sleep_diag(uint32_t ts, uint16_t score, uint8_t hr,
    scaled down by acc_shift powers of two (@ref hr_autocorr_last_accel); pass
    acc_count 0 to omit it. Appended after the samples, so version skew in either
    direction degrades to "no accel" rather than to a misparse. */
+/* One chunk of the SAME window at full precision, invertible back to raw
+   sensor counts (@ref KEY_HR_WINDOW_RAW). count <= 128; the caller sends two
+   chunks per window and repeats the fit in both. */
+bool commu_send_hr_window_raw(uint32_t ts, int32_t fit_a_q16, int32_t fit_b_q16,
+                              uint8_t shift, uint16_t first_index,
+                              uint16_t count, const int16_t *win);
+
 bool commu_send_hr_window(uint32_t ts, uint8_t bpm, uint8_t conf,
                           uint16_t count, const int8_t *win,
                           uint16_t acc_count, uint8_t acc_shift, const int8_t *acc);
