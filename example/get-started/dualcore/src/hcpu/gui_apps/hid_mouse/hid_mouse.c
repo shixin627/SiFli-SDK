@@ -1966,6 +1966,25 @@ static void kbd_hide_bottom_chrome(void)
 static void create_circular_keyboard_layout(lv_obj_t *parent);
 static void handle_proximity_input(lv_event_t *e)
 {
+    /* 已經不在鍵盤那一站了 → 不再追鍵、不再彈提示框。
+       長按空白鍵進語音站時,手指**還按著**,而鍵盤正往左滑出:PRESSING 每一幀都重跑
+       find_closest_key(),鍵在手指底下移動,於是一路判給不同的字母並彈出它的提示框
+       —— 切換過程中會看到鍵盤的文字提示框閃過(founder 2026-08-18)。
+       RELEASED / PRESS_LOST **不擋**:空白鍵長按那條流程要靠它們結束錄音(放開就停),
+       擋掉會變成放開後麥克風還開著。 */
+    lv_event_code_t code0 = lv_event_get_code(e);
+    if ((code0 == LV_EVENT_PRESSED || code0 == LV_EVENT_PRESSING) &&
+        !kbd_lower_is_keyboard)
+    {
+        hide_key_popup();
+        if (currently_pressed_btn != NULL)
+        {
+            lv_obj_clear_state(currently_pressed_btn, LV_STATE_PRESSED);
+            currently_pressed_btn = NULL;
+        }
+        closest_btn = NULL;
+        return;
+    }
     if (lv_event_get_code(e) == LV_EVENT_PRESSED)
     {
         lv_indev_t *di = lv_indev_get_act();
@@ -8501,6 +8520,18 @@ static void kbd_lower_switch(bool to_kbd)
     if (to_kbd && mouse_v2t_active)
     {
         mouse_v2t_close_and_paste();
+    }
+    if (!to_kbd)
+    {
+        /* 離開鍵盤站:把還掛在畫面上的按鍵提示框與按下狀態收乾淨。上面那道 gate 擋的是
+           轉場期間**新的**提示框,這裡收的是進轉場前那一顆(長按空白鍵時它可能正亮著)。 */
+        hide_key_popup();
+        if (currently_pressed_btn != NULL)
+        {
+            lv_obj_clear_state(currently_pressed_btn, LV_STATE_PRESSED);
+            currently_pressed_btn = NULL;
+        }
+        closest_btn = NULL;
     }
     /* 送出鍵的 y 是從 bar 高度算出來的,而兩站的 bar 高度不同(442x252 / 310x45) ——
        換站後重算,否則它會停在上一站的高度上。 */
