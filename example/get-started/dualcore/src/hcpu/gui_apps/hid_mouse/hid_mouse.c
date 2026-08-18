@@ -879,14 +879,6 @@ static void voice_sel_apply(int a_cp, int b_cp)
     }
 }
 
-/* 版面穩定後重畫一次游標 —— 見進語音站那條的說明(第一次進站時 label 的位置會慢一拍)。 */
-static void voice_caret_resettle_async(void *unused)
-{
-    (void)unused;
-    if (!s_voice_box_on) return; /* 已經離站就別再動 */
-    update_cursor_position();
-}
-
 static void update_cursor_position(void)
 {
     if (input_cursor == NULL || input_display_label == NULL)
@@ -1017,8 +1009,17 @@ static void clear_input_display(void)
     if (input_display_label != NULL)
     {
         lv_label_set_text(input_display_label, "");
-        // 重新對齊 label 到左側
-        lv_obj_align(input_display_label, LV_ALIGN_LEFT_MID, 10, 0);
+        /* 對齊要跟**當下這一站**一致。語音站是四行折行的大框(TOP_LEFT),鍵盤站是單行
+           藥丸(LEFT_MID)。原本這裡不分站別一律 LEFT_MID,而進站流程是「先進語音站、
+           **再**清空」(mouse_open_input_station 的新鮮進場),於是 kbd_bar_set_voice_box
+           剛設好的 TOP_LEFT 被這行蓋回垂直置中 —— 游標依 label 位置畫,就落在框的正中央
+           偏左而不是左上角(founder 2026-08-18:「第一次進輸入模式游標在中間靠左」)。
+           按地球切到鍵盤再切回語音走的是 kbd_lower_switch,會重設 TOP_LEFT 且後面沒有人
+           再清空,所以那條路徑一直是對的 —— 這就是「只有第一次」的來由。 */
+        if (s_voice_box_on)
+            lv_obj_align(input_display_label, LV_ALIGN_TOP_LEFT, 0, 0);
+        else
+            lv_obj_align(input_display_label, LV_ALIGN_LEFT_MID, 10, 0);
     }
     // 更新游標位置
     update_cursor_position();
@@ -8387,13 +8388,6 @@ static void kbd_bar_set_voice_box(bool voice)
            (sim 2026-08-03:帶著字進站時球不出現,因為沒有任何東西觸發重繪)。 */
         lv_obj_update_layout(text_input_bar_bg);
         update_cursor_position();
-        /* 再排一次:**第一次**進語音站時,大框的底圖是這一輪才延遲建立的、內容欄與 label
-           的對齊也是這一輪才從鍵盤站那組換過來,同一輪內算出的 label 位置會慢一拍 ——
-           游標於是落在「上一個版面」的位置:鍵盤站是單行垂直置中,所以看起來就是**中間
-           靠左**而不是上面靠左(founder 2026-08-18:「第一次進輸入模式時游標在中間靠左」)。
-           第二次之後版面已經是對的,所以只有第一次會看到。async 在這一輪處理完之後才跑,
-           那時的座標才是最終版面。之後每次進站都跑,idempotent,不需要記「是不是第一次」。 */
-        lv_async_call(voice_caret_resettle_async, NULL);
         /* **通知手機/電腦**:進語音站 = summonSkaibar{inputOnly:true}。電腦收到才會跳出
            純輸入框(不出選項),並把召喚前聚焦的那個欄位記成 icon_send 的目的地。
            founder 2026-08-03:「電腦這怎麼沒有出現輸入框」—— 我先前只做了手錶端的 UI,
