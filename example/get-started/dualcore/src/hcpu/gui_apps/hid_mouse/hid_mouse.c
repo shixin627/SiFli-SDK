@@ -1286,6 +1286,13 @@ static void hide_after_slide_y_cb(lv_anim_t *a)
    起訖值放 static:LVGL 的 anim exec 只帶得進一個 int32 進度值。 */
 static lv_coord_t s_barmorph_x0, s_barmorph_y0, s_barmorph_w0, s_barmorph_h0;
 static lv_coord_t s_barmorph_x1, s_barmorph_y1, s_barmorph_w1, s_barmorph_h1;
+static lv_coord_t s_barmorph_r0 = 100, s_barmorph_r1 = 100;
+/* 語音框的底圖(定義在下方的語音站段落),收尾 cb 要用 —— 前向宣告,別為了一支
+   callback 把整段搬家。 */
+static lv_obj_t *s_bar_voice_frame;
+/* 語音框的圓角:卡片圖(message_widget_bg)的轉角觀感,長大過程用框自己的圓角逼近它,
+   落定才換成真正的圖。 */
+#define VOICE_BOX_RADIUS 30
 
 static lv_coord_t barmorph_lerp(lv_coord_t a, lv_coord_t b, int32_t v)
 {
@@ -1302,6 +1309,27 @@ static void kbd_bar_morph_cb(void *var, int32_t v)
     lv_obj_set_pos(bar,
                    barmorph_lerp(s_barmorph_x0, s_barmorph_x1, v),
                    barmorph_lerp(s_barmorph_y0, s_barmorph_y1, v));
+    lv_obj_set_style_radius(bar, barmorph_lerp(s_barmorph_r0, s_barmorph_r1, v),
+                            LV_PART_MAIN);
+}
+
+/* 長大成語音框的收尾:這時才換上語音站真正的外觀(框自己不畫、改由卡片圖呈現)。
+   **為什麼不能在動畫開始就換**:語音框的 bg_opa 是透明的,外觀全靠那張固定尺寸的卡片圖,
+   而子物件會被裁切到父容器 —— 框還小的時候只露得出卡片中央那一小塊(幾乎沒有內容),
+   看起來就是「框在變大的過程中整個消失」(founder 2026-08-18)。縮回鍵盤那個方向沒這問題,
+   因為鍵盤那套外觀是框**自己**畫的,一路都在。 */
+static void kbd_bar_morph_to_voice_done_cb(lv_anim_t *a)
+{
+    lv_obj_t *bar = (lv_obj_t *)a->var;
+    if (!bar || !lv_obj_is_valid(bar)) return;
+    if (!s_voice_box_on) return; /* 動畫還沒跑完就又切走了 → 別把語音外觀套到鍵盤站 */
+    lv_obj_set_style_bg_opa(bar, LV_OPA_TRANSP, LV_PART_MAIN);
+    lv_obj_set_style_border_width(bar, 0, LV_PART_MAIN);
+    if (s_bar_voice_frame && lv_obj_is_valid(s_bar_voice_frame))
+    {
+        lv_obj_clear_flag(s_bar_voice_frame, LV_OBJ_FLAG_HIDDEN);
+        lv_obj_move_background(s_bar_voice_frame);
+    }
 }
 
 
@@ -8659,6 +8687,8 @@ static void kbd_lower_switch(bool to_kbd)
             s_barmorph_y1 = EXPAND_END_Y_KBD;
             s_barmorph_w1 = KBD_BAR_W;
             s_barmorph_h1 = KBD_BAR_H;
+            s_barmorph_r0 = VOICE_BOX_RADIUS;
+            s_barmorph_r1 = 100;
             kbd_bar_morph_cb(text_input_bar_bg, 0); /* 起點立刻就位,別閃一格終點 */
             lv_anim_t a;
             lv_anim_init(&a);
@@ -8714,6 +8744,20 @@ static void kbd_lower_switch(bool to_kbd)
             s_barmorph_y1 = VOICE_BOX_Y;
             s_barmorph_w1 = VOICE_BOX_W;
             s_barmorph_h1 = VOICE_BOX_H;
+            s_barmorph_r0 = 100;               /* 鍵盤藥丸 */
+            s_barmorph_r1 = VOICE_BOX_RADIUS;  /* 逼近卡片圖的轉角 */
+            /* 變形期間**框自己畫**(沿用鍵盤那套底色+邊框),卡片圖先收起來 ——
+               否則長大的過程中框會整個看不見(見 kbd_bar_morph_to_voice_done_cb)。
+               kbd_bar_set_voice_box() 已經把語音外觀套上去了,這裡先還原回去。 */
+            if (s_bar_voice_frame && lv_obj_is_valid(s_bar_voice_frame))
+                lv_obj_add_flag(s_bar_voice_frame, LV_OBJ_FLAG_HIDDEN);
+            lv_obj_set_style_bg_color(text_input_bar_bg, lv_color_hex(0x1a1a1a),
+                                      LV_PART_MAIN);
+            lv_obj_set_style_bg_opa(text_input_bar_bg, LV_OPA_90, LV_PART_MAIN);
+            lv_obj_set_style_border_color(text_input_bar_bg, lv_color_hex(0xFFFFFF),
+                                          LV_PART_MAIN);
+            lv_obj_set_style_border_width(text_input_bar_bg, 2, LV_PART_MAIN);
+            lv_obj_set_style_border_opa(text_input_bar_bg, LV_OPA_50, LV_PART_MAIN);
             kbd_bar_morph_cb(text_input_bar_bg, 0);
             lv_anim_t a;
             lv_anim_init(&a);
@@ -8722,6 +8766,7 @@ static void kbd_lower_switch(bool to_kbd)
             lv_anim_set_values(&a, 0, 100);
             lv_anim_set_time(&a, 250);
             lv_anim_set_path_cb(&a, lv_anim_path_ease_out);
+            lv_anim_set_ready_cb(&a, kbd_bar_morph_to_voice_done_cb);
             lv_anim_start(&a);
         }
         /* 這一輪到底是不是「真的從鍵盤切過來」:鍵盤有在畫面上才算。從觸控板直接
