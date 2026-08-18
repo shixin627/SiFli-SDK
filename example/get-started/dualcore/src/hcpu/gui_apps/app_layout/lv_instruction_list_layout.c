@@ -1876,6 +1876,13 @@ static bool s_list_horiz_swipe = false;
 static bool s_hdrag_active = false;
 static lv_coord_t s_hdrag_start_x = 0;
 static lv_coord_t s_hdrag_start_y = 0;
+/* Axis lock for the press: latched the moment the gesture is judged VERTICAL, so
+   the drawer drag can never take over half-way through a scroll (founder: holding
+   a row's text and scrolling up/down also dragged the whole list sideways). dx/dy
+   are measured from the press origin, and the finger's y wanders back toward that
+   origin as the list scrolls under it, so |dx|>|dy| becomes true mid-scroll on any
+   slightly diagonal drag. Once vertical, stay vertical until the next PRESSED. */
+static bool s_vdrag_locked = false;
 
 static void list_window_scroll_event_cb(lv_event_t *evt)
 {
@@ -1993,6 +2000,7 @@ static void list_window_scroll_event_cb(lv_event_t *evt)
            for the horizontal drawer drag below. */
         s_list_horiz_swipe = false;
         s_hdrag_active = false;
+        s_vdrag_locked = false;
         lv_indev_t *indev = lv_indev_get_act();
         if (indev)
         {
@@ -2016,8 +2024,16 @@ static void list_window_scroll_event_cb(lv_event_t *evt)
         lv_indev_get_point(indev, &pt);
         lv_coord_t dx = pt.x - s_hdrag_start_x;
         lv_coord_t dy = pt.y - s_hdrag_start_y;
-        if (!s_hdrag_active && LV_ABS(dx) > 10 && LV_ABS(dx) > LV_ABS(dy))
-            s_hdrag_active = true;
+        /* Axis decision happens ONCE per press: whichever axis crosses the 10px
+           threshold first owns the gesture. Vertical → the list's own scroll keeps
+           it for the whole press (s_vdrag_locked); horizontal → the drawer drag. */
+        if (!s_hdrag_active && !s_vdrag_locked)
+        {
+            if (LV_ABS(dy) > 10 && LV_ABS(dy) >= LV_ABS(dx))
+                s_vdrag_locked = true;
+            else if (LV_ABS(dx) > 10 && LV_ABS(dx) > LV_ABS(dy))
+                s_hdrag_active = true;
+        }
         if (s_hdrag_active)
         {
             s_list_horiz_swipe = true;
@@ -2094,7 +2110,9 @@ static void list_window_scroll_event_cb(lv_event_t *evt)
            above (PRESSING / RELEASED). */
         {
             lv_dir_t gdir = lv_indev_get_gesture_dir(lv_indev_get_act());
-            if (gdir == LV_DIR_LEFT || gdir == LV_DIR_RIGHT)
+            /* Not while the press is locked vertical — a scroll must not be
+               re-read as a close-flick. */
+            if (!s_vdrag_locked && (gdir == LV_DIR_LEFT || gdir == LV_DIR_RIGHT))
                 s_list_horiz_swipe = true;
         }
         break;
