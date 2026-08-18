@@ -613,6 +613,8 @@ static bool s_kbd_from_drawer = false;
    會整段重打成雙份；③ 拖到 AI logo 那條手勢整個關掉（見 ai_drag_logo_show）：這個模式的
    定義就是「不叫 skaibar」，要問 AI 走 bar 開抽屜那條，不受影響。 */
 static bool s_kbd_direct_field = false;
+/* 這一按落在送出鍵上 → 輸入框的手勢整串讓開(見 voice_box_gesture_cb)。 */
+static bool s_voice_press_on_send = false;
 /* 抽屜地球鍵按下 → 進場動畫落地後才切鍵盤輪盤(見 kbd_enter_slide_done)。 */
 static bool s_kbd_pending_wheel = false;
 static lv_obj_t *kbd_voice_del_btn = NULL;
@@ -638,6 +640,9 @@ static lv_timer_t *kbd_voice_del_repeat = NULL;
    量不出來、只能照眼睛調 —— 這是刻意的光學補償,不是在修正算錯的座標。
    2 → 3(founder 二次眼驗「再往下 1pix」)。 */
 #define SEND_BTN_NUDGE_Y 3
+/* 送出鍵的觸控外擴。圖示視覺只有 ~24px,靠這個把熱區撐到 34+2*15=64(≥44pt 基線);
+   輸入框的手勢也用同一個值讓開,兩邊一致才不會有「看得到卻按不到」的縫。 */
+#define SEND_BTN_EXT_CLICK 15
 /* icon_send 原生 34x34,塞進 45 高的鍵盤輸入列幾乎頂滿(founder 2026-08-18:「圖片有點太大」)。
    縮的是**繪製**:lv_img_set_zoom 只影響畫出來的大小,物件 bbox 仍是 34x34,加上
    ext_click_area 15 → 觸控標的維持 64px(≥44pt 基線),founder 要的「觸碰範圍不變」。 */
@@ -7599,10 +7604,12 @@ static void create_kbd_mic_section(lv_obj_t *parent)
     lv_obj_set_size(kbd_mic_section_right_arrow, 50, 50);
     lv_obj_align(kbd_mic_section_right_arrow, LV_ALIGN_CENTER, VOICE_KBD_DX,
                  VOICE_ROW_DY);
-    lv_obj_set_style_bg_color(kbd_mic_section_right_arrow,
-                              lv_color_hex(0x333333), 0);
-    lv_obj_set_style_bg_opa(kbd_mic_section_right_arrow, LV_OPA_60, 0);
-    lv_obj_set_style_radius(kbd_mic_section_right_arrow, LV_RADIUS_CIRCLE, 0);
+    /* 語音站與鍵盤站的地球鍵是**同一顆功能**(切輸入法),外觀就該一樣(founder
+       2026-08-18:「語音輸入的地球按鈕怎麼跟鍵盤那邊不一樣」)。鍵盤輪盤 row4 的
+       mode_btn 是 50x50 全透明容器 + 原尺寸(32px)地球圖,沒有底圓;這裡原本多了一圈
+       0x333333/60% 的底圓、圖又縮到 zoom 150(=19px),所以看起來是「小地球黏在灰圓上」。
+       拿掉底圓、圖回原尺寸,兩站一致。 */
+    lv_obj_set_style_bg_opa(kbd_mic_section_right_arrow, LV_OPA_TRANSP, 0);
     lv_obj_clear_flag(kbd_mic_section_right_arrow, LV_OBJ_FLAG_SCROLLABLE);
     lv_obj_add_flag(kbd_mic_section_right_arrow, LV_OBJ_FLAG_CLICKABLE);
     lv_obj_add_event_cb(kbd_mic_section_right_arrow,
@@ -7611,8 +7618,7 @@ static void create_kbd_mic_section(lv_obj_t *parent)
     lv_obj_t *right_arrow_img = lv_img_create(kbd_mic_section_right_arrow);
     /* founder 2026-08-17:這顆的語意是「切輸入法」,圖統一成地球(erth)——與鍵盤輪盤
        row4 的 mode_btn、以及抽屜三鍵列最左那顆同一張,三處一致。 */
-    lv_img_set_src(right_arrow_img, &erth);
-    lv_img_set_zoom(right_arrow_img, 150); // 放大一點點
+    lv_img_set_src(right_arrow_img, &erth); /* 原尺寸,同鍵盤站的 mode_btn */
     lv_obj_center(right_arrow_img);
 
     /* ── 語音站的其餘控制項(founder 2026-08-03:把立起面板那一整套搬進鍵盤區) ──
@@ -7646,7 +7652,7 @@ static void create_kbd_mic_section(lv_obj_t *parent)
     lv_img_set_pivot(kbd_voice_send_btn, SEND_BTN_IMG_W / 2, SEND_BTN_IMG_W / 2);
     lv_img_set_zoom(kbd_voice_send_btn, SEND_BTN_ZOOM);
     lv_obj_add_flag(kbd_voice_send_btn, LV_OBJ_FLAG_CLICKABLE);
-    lv_obj_set_ext_click_area(kbd_voice_send_btn, 15);
+    lv_obj_set_ext_click_area(kbd_voice_send_btn, SEND_BTN_EXT_CLICK);
     lv_obj_add_event_cb(kbd_voice_send_btn, kbd_voice_send_event_cb, LV_EVENT_CLICKED,
                         (void *)(intptr_t)1);
     kbd_voice_layout_send_icons();
@@ -8148,10 +8154,40 @@ static void voice_hold_arm_cb(lv_timer_t *t)
     ai_drag_logo_show(s_voice_press_pt, text_input_bar_bg); /* 按壓點上方生出淡 logo */
 }
 
+/* 這一按是不是落在送出鍵(含它的觸控外擴)上? 送出鍵是輸入框的 child,而輸入框自己
+   吃 PRESSED/SHORT_CLICKED —— 短按輸入框 = 跳去鍵盤站,所以瞄準送出鍵時稍微偏一點,
+   就會變成「跳去鍵盤」而不是送出(founder 2026-08-18:「很容易判斷成點到輸入框」)。
+   圖示縮成 24px 之後,看得到的目標比實際熱區小,更容易發生。用座標判定,不依賴 LVGL
+   的 hit-test 誰先拿到 press。 */
+static bool voice_press_on_send_btn(const lv_point_t *p)
+{
+    if (!kbd_voice_send_btn || !lv_obj_is_valid(kbd_voice_send_btn)) return false;
+    if (lv_obj_has_flag(kbd_voice_send_btn, LV_OBJ_FLAG_HIDDEN)) return false;
+    lv_area_t a;
+    lv_obj_get_coords(kbd_voice_send_btn, &a);
+    lv_coord_t ext = SEND_BTN_EXT_CLICK;
+    return (p->x >= a.x1 - ext && p->x <= a.x2 + ext &&
+            p->y >= a.y1 - ext && p->y <= a.y2 + ext);
+}
+
 static void voice_box_gesture_cb(lv_event_t *e)
 {
     if (!s_voice_box_on)
         return; /* 鍵盤站的這條 bar 是「往下拖收回」,不歸這裡管 */
+    /* 這一按屬於送出鍵 → 整串事件都不歸輸入框管(latch 到下一次 PRESSED 才重算)。 */
+    if (lv_event_get_code(e) == LV_EVENT_PRESSED)
+    {
+        lv_indev_t *id0 = lv_indev_get_act();
+        lv_point_t p0;
+        s_voice_press_on_send = false;
+        if (id0)
+        {
+            lv_indev_get_point(id0, &p0);
+            s_voice_press_on_send = voice_press_on_send_btn(&p0);
+        }
+    }
+    if (s_voice_press_on_send)
+        return;
     switch (lv_event_get_code(e))
     {
     case LV_EVENT_PRESSED:
