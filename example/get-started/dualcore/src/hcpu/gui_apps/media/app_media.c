@@ -621,6 +621,9 @@ static lv_obj_t *music_app_ui_build(lv_obj_t *parent)
 
     /* Volume bar (initially hidden, expands from icon) */
     app_vol_bar = lv_bar_create(p_window);
+    /* 音量值是離散進來的(AVRCP 通知 / 遠端回報),沒有補間時間的話 LV_ANIM_ON 等於瞬間跳。
+       250ms 與滑鼠 app 媒體頁那條一致,三處音量條手感統一(founder 2026-08-19)。 */
+    lv_obj_set_style_anim_time(app_vol_bar, 250, LV_PART_MAIN);
     lv_bar_set_range(app_vol_bar, 0, 100);
     lv_obj_set_width(app_vol_bar, APP_VOL_BAR_WIDTH);
     lv_obj_set_height(app_vol_bar, 60);
@@ -788,6 +791,9 @@ lv_obj_t *lv_media_widget_builder(lv_obj_t *parent)
 
     /* Volume bar (initially hidden, expands to cover prev/play/next buttons) */
     widget_vol_bar = lv_bar_create(widget);
+    /* 音量值是離散進來的(AVRCP 通知 / 遠端回報),沒有補間時間的話 LV_ANIM_ON 等於瞬間跳。
+       250ms 與滑鼠 app 媒體頁那條一致,三處音量條手感統一(founder 2026-08-19)。 */
+    lv_obj_set_style_anim_time(widget_vol_bar, 250, LV_PART_MAIN);
     lv_bar_set_range(widget_vol_bar, 0, 100);
     lv_obj_set_width(widget_vol_bar, WIDGET_VOL_BAR_WIDTH);
     lv_obj_set_height(widget_vol_bar, 80);
