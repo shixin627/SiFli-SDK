@@ -10075,9 +10075,15 @@ void mouse_mode_handle_remote_volume(const char *device_id, int percent)
     if (device_id == NULL || s_dev_active_id[0] == '\0' ||
         strncmp(device_id, s_dev_active_id, SYNCED_DEVICE_ID_LEN) != 0)
         return;
-    /* 只更新數值,**不**自動展開:這個回報搭在每一次 media 更新上,自動展開會讓條子
-       三不五時自己跳出來。音樂 widget 那邊會展開是因為它的來源是使用者按實體音量鍵。 */
+    /* 值真的變了才動作 —— 相同數值的重複回報不該把條子叫出來。 */
+    if ((int)lv_bar_get_value(s_media_vol_slider) == percent) return;
     lv_bar_set_value(s_media_vol_slider, percent, LV_ANIM_ON);
+    /* 並且**自動展開**(founder 2026-08-19:「調音量時手錶上那頁的音量條不會自己展開」),
+       與音樂 widget 的 set_widget_vol_bar_value 同款。
+       先前這裡刻意不展開,理由是「回報搭在每一次 media 更新上,會三不五時自己跳出來」——
+       那個理由現在不成立了:桌面端已改成**只在音量真的變動時**才廣播,所以一筆回報就代表
+       一次真實的音量變化,正是該讓使用者看到條子的時機。 */
+    media_vol_expand();
     s_media_vol_last_sent = percent; /* 這是電腦端的現況,不要再回送 */
 }
 
