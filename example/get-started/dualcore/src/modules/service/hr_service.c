@@ -1538,6 +1538,7 @@ static uint8_t  bg_hr_last_published = 0;
    start to "one WHOLE window from now" so the first dump cannot be the stale
    ring left over from the previous burst 10 minutes ago. */
 static uint32_t bg_hr_win_next_total = 0;
+static uint32_t bg_hr_burst_total0 = 0;      /* @ref watch_sys_hr_burst_t */
 static watch_sys_hr_window_t bg_hr_win_dump;
 /* Static, not stack: 272 bytes is more than this callback's frame should carry,
    and it is reused for both chunks of the same window. */
@@ -1963,6 +1964,32 @@ static void bg_hr_finish_burst(void)
                                             bg_hr_burst_cnt);
         bg_hr_win_tick_ms = rt_tick_get_millisecond();
     }
+
+    /* One summary per burst, purely observational -- nothing above reads it and
+       no decision depends on it. Placed after every branch that can set the
+       outcome so the reason it reports is the one actually taken. */
+    if (watch_sys_sync.notify_hr_burst)
+    {
+        watch_sys_hr_burst_t sum;
+        memset(&sum, 0, sizeof(sum));
+        sum.ts = (uint32_t)time(NULL);
+        sum.dur_ms = bg_hr_burst_ms;
+        sum.samples = hr_autocorr_total() - bg_hr_burst_total0;
+        sum.reads = bg_hr_burst_reads;
+        sum.readfail = bg_hr_burst_readfail;
+        sum.frame_pct = bg_hr_win_frame_pct;
+        sum.rate_info = bg_hr_win_rate_info;
+        sum.extends = bg_hr_burst_extends;
+        sum.best = bg_hr_burst_best;
+        sum.reason = bghr_published ? 0
+                   : (bghr_curve_refused ? BGHR_WIRE_CURVE_REFUSED
+                      : (bg_hr_burst_best == 0
+                         ? (wear_detect_is_wearing() ? BGHR_WIRE_NO_LOCK
+                                                     : BGHR_WIRE_NOT_WORN)
+                         : BGHR_WIRE_OTHER));
+        watch_sys_sync.notify_hr_burst(&sum);
+    }
+
     if (bg_hr_sample_timer) rt_timer_stop(bg_hr_sample_timer);
     {
         extern int bmi270_set_hr_accel_stream(int en);
@@ -2408,6 +2435,10 @@ static void bg_hr_period_cb(void *param)
     uint32_t bg_now_ms = rt_tick_get_millisecond();
     bg_hr_burst_start_seq = gh3018_get_hr_update_seq();  /* warm-up baseline: accept once the algo emits a NEW locked value past this */
     bg_hr_burst_start_frames = gh3018_get_ppg_frame_count(); /* frame-accounting baseline (see decl) */
+    /* Same idea one layer down: start_frames counts what the CHIP produced,
+       this counts what reached OUR ring. A burst where the two disagree is a
+       feed that died mid-burst, which is invisible in every other number. */
+    bg_hr_burst_total0 = hr_autocorr_total();
     bg_hr_burst_deadline_ms = bg_now_ms + bg_hr_burst_ms;
     /* Open in HR mode (GH30X_FUNCTION_HR), the same path the foreground HR
        subscribe uses; hr_set_power(1) would open NORMAL = HRV, which never

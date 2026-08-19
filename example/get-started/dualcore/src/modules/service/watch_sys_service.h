@@ -57,6 +57,8 @@ extern "C"
             ((MSG_SERVICE_SYS_DATA_REQ + 20) | RSP_MSG_TYPE),
         MSG_SERVICE_HR_RAW_IND =
             ((MSG_SERVICE_SYS_DATA_REQ + 21) | RSP_MSG_TYPE),
+        MSG_SERVICE_HR_BURST_IND =
+            ((MSG_SERVICE_SYS_DATA_REQ + 22) | RSP_MSG_TYPE),
     };
 
     typedef enum
@@ -334,6 +336,22 @@ extern "C"
         int16_t  win[WATCH_SYS_HR_RAW_CHUNK];
     } watch_sys_hr_raw_t;
 
+/* One finished burst, @ref KEY_HR_BURST_SUMMARY. 24 bytes -- an order of
+   magnitude under the window records already in the field. */
+    typedef struct
+    {
+        uint32_t ts;                       /* burst end, watch wall-clock       */
+        uint32_t dur_ms;                   /* incl. extensions                  */
+        uint32_t samples;                  /* PPG frames that reached OUR ring  */
+        uint16_t reads;                    /* 1 Hz sensor reads attempted       */
+        uint16_t readfail;                 /* of those, failed                  */
+        uint16_t frame_pct;                /* chip delivered / expected, %      */
+        uint16_t rate_info;                /* divider<<8 | algo delivered %     */
+        uint8_t  extends;                  /* @ref BGHR_EXTEND_MAX              */
+        uint8_t  best;                     /* median BPM, 0 = never locked      */
+        uint8_t  reason;                   /* wire reason, 0 = published        */
+    } watch_sys_hr_burst_t;
+
     typedef struct
     {
         uint32_t base_ts;                  /* UTC second of sample[0]           */
@@ -409,6 +427,7 @@ extern "C"
     void (*notify_hr_cont)(const watch_sys_hr_cont_t *rec);
     void (*notify_hr_window)(const watch_sys_hr_window_t *rec);
     void (*notify_hr_raw)(const watch_sys_hr_raw_t *rec);
+    void (*notify_hr_burst)(const watch_sys_hr_burst_t *rec);
 #endif
     } watch_sys_sync_t;
 

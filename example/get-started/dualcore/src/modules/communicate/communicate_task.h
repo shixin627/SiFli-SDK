@@ -76,6 +76,13 @@ bool commu_send_sleep_diag(uint32_t ts, uint16_t score, uint8_t hr,
    scaled down by acc_shift powers of two (@ref hr_autocorr_last_accel); pass
    acc_count 0 to omit it. Appended after the samples, so version skew in either
    direction degrades to "no accel" rather than to a misparse. */
+/* One finished burst: how long it ran, how much data reached our ring, and what
+   came out (@ref KEY_HR_BURST_SUMMARY). */
+bool commu_send_hr_burst(uint32_t ts, uint32_t dur_ms, uint32_t samples,
+                         uint16_t reads, uint16_t readfail, uint16_t frame_pct,
+                         uint16_t rate_info, uint8_t extends, uint8_t best,
+                         uint8_t reason);
+
 /* One chunk of the SAME window at full precision, invertible back to raw
    sensor counts (@ref KEY_HR_WINDOW_RAW). count <= 128; the caller sends two
    chunks per window and repeats the fit in both. */
