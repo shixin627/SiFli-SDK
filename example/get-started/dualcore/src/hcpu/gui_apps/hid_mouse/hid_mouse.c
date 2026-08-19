@@ -10005,11 +10005,20 @@ static void media_vol_send(int value, bool force)
     }
     s_media_vol_last_sent = value;
     s_media_vol_last_tick = now;
-    /* 沒有遠端目標時不送:這條線的目的地是 active 設備,沒有目標就沒有人收
-       (手機自己的音量走的是別條路,不在這個滑桿的語意裡)。 */
-    if (!ble_hid_mouse_app_route()) return;
-    extern bool commu_send_media_volume(int percent);
-    commu_send_media_volume(value);
+    /* 目標是遠端設備(電腦)→ 送絕對音量給它;目標是**手機自己**→ 走 BLE 的絕對音量,
+       也就是音樂 widget 那顆音量條用的同一支(app_media.c 的 bt_speaker_set_volume)。
+       原本這裡沒有遠端目標就直接 return,於是媒體頁切到「手機」那一頁時整條拉了沒反應
+       (founder 2026-08-19:「我手錶媒體頁有一個是手機的,我調那邊的音量條手機不會有
+       變化,但電腦是 OK 的」)——手機的音量一直有現成的路,只是這裡沒有接上去。 */
+    if (ble_hid_mouse_app_route())
+    {
+        extern bool commu_send_media_volume(int percent);
+        commu_send_media_volume(value);
+    }
+    else
+    {
+        control_provider.bt_speaker_set_volume((uint8_t)value, true);
+    }
 }
 
 /* 觸控 x → 0..100。lv_bar 自己不處理拖曳(它是唯讀顯示元件),所以值要自己算 ——
