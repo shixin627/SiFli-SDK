@@ -9909,21 +9909,43 @@ static void media_vol_send(int value, bool force)
     commu_send_media_volume(value);
 }
 
+/* 觸控 x → 0..100。lv_bar 自己不處理拖曳(它是唯讀顯示元件),所以值要自己算 ——
+   與音樂 widget 的 widget_bar_event_cb 同一套算法,手感才一致:點哪裡就跳到哪裡。 */
+static int media_vol_value_at(lv_obj_t *bar, const lv_point_t *p)
+{
+    lv_area_t coords;
+    lv_obj_get_coords(bar, &coords);
+    lv_coord_t w = lv_obj_get_width(bar);
+    if (w <= 0) return 0;
+    lv_coord_t rel_x = p->x - coords.x1;
+    if (rel_x < 0) rel_x = 0;
+    if (rel_x > w) rel_x = w;
+    return (int)((rel_x * 100) / w);
+}
+
 static void media_center_vol_slider_cb(lv_event_t *e)
 {
     lv_obj_t *sl = lv_event_get_target(e);
-    switch (lv_event_get_code(e))
+    lv_event_code_t code = lv_event_get_code(e);
+    lv_indev_t *indev = lv_indev_get_act();
+    lv_point_t p;
+    switch (code)
     {
     case LV_EVENT_PRESSED:
+    case LV_EVENT_PRESSING:
+        if (!indev) break;
+        lv_indev_get_point(indev, &p);
         s_media_vol_dragging = true;
-        break;
-    case LV_EVENT_VALUE_CHANGED:
-        media_vol_send((int)lv_slider_get_value(sl), false);
+        {
+            int v = media_vol_value_at(sl, &p);
+            lv_bar_set_value(sl, v, LV_ANIM_OFF);
+            media_vol_send(v, false);
+        }
         break;
     case LV_EVENT_RELEASED:
     case LV_EVENT_PRESS_LOST:
         s_media_vol_dragging = false;
-        media_vol_send((int)lv_slider_get_value(sl), true); /* 落點一定要送 */
+        media_vol_send((int)lv_bar_get_value(sl), true); /* 落點一定要送 */
         break;
     default:
         break;
@@ -9939,7 +9961,7 @@ void mouse_mode_handle_remote_volume(const char *device_id, int percent)
     if (device_id == NULL || s_dev_active_id[0] == '\0' ||
         strncmp(device_id, s_dev_active_id, SYNCED_DEVICE_ID_LEN) != 0)
         return;
-    lv_slider_set_value(s_media_vol_slider, percent, LV_ANIM_OFF);
+    lv_bar_set_value(s_media_vol_slider, percent, LV_ANIM_ON);
     s_media_vol_last_sent = percent; /* 這是電腦端的現況,不要再回送 */
 }
 
@@ -9977,28 +9999,21 @@ static void media_content_build(lv_obj_t *parent, lv_obj_t **out_title,
        但**不再可點** —— 原本的 +/- 是按鍵、送 volumeUp/Down 讓接收端按系統音量鍵(相對、
        被 OS 級距量化),拉到哪就是多少做不到;滑桿送的是絕對值。
        圓螢幕:滑桿寬 240 置中,兩側各留一顆 32px 圖示還在圓內。 */
-    lv_obj_t *ico_down = lv_img_create(parent);
-    lv_img_set_src(ico_down, &volume_down);
-    lv_img_set_zoom(ico_down, 170);
-    lv_obj_align(ico_down, LV_ALIGN_BOTTOM_MID, -150, -74);
-    lv_obj_clear_flag(ico_down, LV_OBJ_FLAG_CLICKABLE);
-
-    lv_obj_t *ico_up = lv_img_create(parent);
-    lv_img_set_src(ico_up, &volume_up);
-    lv_img_set_zoom(ico_up, 170);
-    lv_obj_align(ico_up, LV_ALIGN_BOTTOM_MID, 150, -74);
-    lv_obj_clear_flag(ico_up, LV_OBJ_FLAG_CLICKABLE);
-
-    lv_obj_t *slider = lv_slider_create(parent);
-    lv_obj_set_size(slider, 240, 12);
-    lv_obj_align(slider, LV_ALIGN_BOTTOM_MID, 0, -80);
-    lv_slider_set_range(slider, 0, 100);
-    lv_slider_set_value(slider, 50, LV_ANIM_OFF); /* 佔位:0x19 回報一到就校準 */
-    lv_obj_set_style_bg_color(slider, lv_color_hex(0x3A3A3A), LV_PART_MAIN);
-    lv_obj_set_style_bg_color(slider, lv_color_hex(0xFFFFFF), LV_PART_INDICATOR);
-    lv_obj_set_style_bg_color(slider, lv_color_hex(0xFFFFFF), LV_PART_KNOB);
-    /* 把手加大到 ≥44pt 的觸控標的:視覺仍是小圓,靠 pad 撐開熱區。 */
-    lv_obj_set_style_pad_all(slider, 12, LV_PART_KNOB);
+    /* 樣式與行為都對齊音樂 widget 的音量條(app_media.c 的 app_vol_bar,founder 2026-08-19
+       「我希望音量調可以像我音樂 widget 的音量調整那樣」):lv_bar 而不是 slider —— 沒有獨立
+       把手,點/拖到哪就是哪(值由 PRESSING 時的觸控 x 換算)。顏色、圓角、粗細沿用那邊的數字,
+       只有寬度依這一頁的版面縮到 300(那邊是 370,鋪滿整個音樂 app 的寬度)。 */
+    lv_obj_t *slider = lv_bar_create(parent);
+    lv_bar_set_range(slider, 0, 100);
+    lv_obj_set_size(slider, 300, 60);
+    lv_obj_align(slider, LV_ALIGN_BOTTOM_MID, 0, -70);
+    lv_obj_set_style_bg_color(slider, lv_color_hex(0x2F2F2F), LV_PART_MAIN);
+    lv_obj_set_style_bg_color(slider, lv_color_hex(0xCDCDCD), LV_PART_INDICATOR);
+    lv_obj_set_style_radius(slider, 16, LV_PART_MAIN);
+    lv_obj_set_style_radius(slider, 16, LV_PART_INDICATOR);
+    lv_obj_set_style_bg_opa(slider, LV_OPA_100, LV_PART_MAIN);
+    lv_bar_set_value(slider, 50, LV_ANIM_OFF); /* 佔位:0x19 回報一到就校準 */
+    lv_obj_add_flag(slider, LV_OBJ_FLAG_CLICKABLE); /* lv_bar 預設不可點,要自己開 */
     lv_obj_add_event_cb(slider, media_center_vol_slider_cb, LV_EVENT_ALL, NULL);
 
     if (out_title) *out_title = title;
