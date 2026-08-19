@@ -460,11 +460,24 @@ void interact_voice_recognition(VOICE_RECOGNITION_PAYLOAD *msgData)
 {
     if (msgData == NULL)
         return;
+    /* TEMP DIAG(2026-08-16 鍵盤語音沒文字):這隻 dev 錶 console 只印 W/E,收到轉錄與
+       路由分支全是 I/D 級看不到 —— W 級印一行「收到+各旗標」,哪個 claim 分支吃掉
+       轉錄一眼可判。定位完拿掉。 */
+    {
+        extern bool chat_page_is_open(void);
+        extern bool get_is_open_instruction_list_ai(void);
+        extern bool instruction_list_lift_input_view_open(void);
+        LOG_W("[v2t] rx hdr=%d coding=%d len=%d chat=%d spk_ai=%d lift=%d ai_open=%d",
+              (int)msgData->header, (int)get_speech_coding(), (int)msgData->length,
+              (int)chat_page_is_open(), (int)check_if_user_speaking_to_ai(),
+              (int)instruction_list_lift_input_view_open(),
+              (int)get_is_open_instruction_list_ai());
+    }
     if (get_speech_coding() != msgData->header)
     {
         /* TEMP DIAG(2026-07-31):coding 不匹配會把整筆轉錄丟掉,是「文字沒出現」的候選原因
            之一。定位完拿掉。 */
-        LOG_I("[lift_input][diag] interact_voice DROPPED: coding %d != header %d",
+        LOG_W("[lift_input][diag] interact_voice DROPPED: coding %d != header %d",
               (int)get_speech_coding(), (int)msgData->header);
         return;
     }
@@ -484,6 +497,23 @@ void interact_voice_recognition(VOICE_RECOGNITION_PAYLOAD *msgData)
             return;
         }
     }
+    /* 滑鼠語音站握著轉錄時,底下的 speaking_to_ai 分支**不得**攔截(founder 2026-08-17:
+       「按麥克風說話他沒有文字回來了」)。VAD gate 會無條件把 speaking_to_ai 立起來 ——
+       與 intent 無關,所以改 intent 是修不掉的 —— 而那條分支會把轉錄送進 instruction_list
+       的 AI widget;抽屜→語音站這條流程裡那個 widget 是關著的,字就消失了。
+       真機 log 坐實:`[v2t] rx ... spk_ai=1 ai_open=0` 連續 15 筆(len 6→57)全被吃掉,
+       而 opus 有送、轉錄有回來 —— 純粹是被錯的分支認領。
+       條件收得很窄:只在「滑鼠模式 + AI widget 沒開 + 立起面板沒開」時讓路,其餘情境
+       (錶盤 skaibar 語音框、立起面板、聊天室)一律維持原行為。 */
+    bool mouse_voice_owns_transcript;
+    {
+        extern bool app_control_get_mouse_mode(void);
+        extern bool instruction_list_lift_input_view_open(void);
+        mouse_voice_owns_transcript =
+            (gui_app_is_actived(APP_ID_MOUSE) || app_control_get_mouse_mode()) &&
+            !get_is_open_instruction_list_ai() &&
+            !instruction_list_lift_input_view_open();
+    }
     if (gui_app_is_actived(APP_ID_SPEECH) ||
         gui_app_is_actived(APP_ID_MESSAGE))
     {
@@ -491,7 +521,7 @@ void interact_voice_recognition(VOICE_RECOGNITION_PAYLOAD *msgData)
               get_speech_coding());
         handle_v2t_result(msgData);
     }
-    else if (check_if_user_speaking_to_ai())
+    else if (check_if_user_speaking_to_ai() && !mouse_voice_owns_transcript)
     {
         LOG_D("[interact_voice_recognition]:%d, coding:%d, ai_coding:%d",
               msgData->header, get_speech_coding(), get_ai_coding());
@@ -519,7 +549,7 @@ void interact_voice_recognition(VOICE_RECOGNITION_PAYLOAD *msgData)
         extern bool instruction_list_lift_input_view_open(void);
         bool lift_open = instruction_list_lift_input_view_open();
         /* TEMP DIAG(2026-07-31):確認轉錄有進到這條分支、以及走了哪一邊。定位完拿掉。 */
-        LOG_I("[lift_input][diag] interact_voice: MOUSE branch, lift_open=%d", (int)lift_open);
+        LOG_W("[lift_input][diag] interact_voice: MOUSE branch, lift_open=%d", (int)lift_open);
         if (lift_open && (msgData->p_msg_value == NULL || msgData->length == 0))
         {
             /* 使用者把字刪光了。handle_v2t_result() 對空 payload 直接 return,手錶自己那份
@@ -532,7 +562,14 @@ void interact_voice_recognition(VOICE_RECOGNITION_PAYLOAD *msgData)
             append_text_to_input_message();
             return;
         }
+        extern bool get_is_open_instruction_list_ai(void);
         if (lift_open)
+            append_text_to_input_message();
+        else if (get_is_open_instruction_list_ai())
+            /* 單設備搜尋抽屜的語音框(2026-08-15)開著:轉錄屬於它,走共用 router
+               (claim 鏈的 get_is_open_instruction_list_ai 分支)。正常情況 VAD gate 會把
+               is_user_speaking_to_ai arm 起來、上面那條 speaking_to_ai 分支先接手;這裡
+               只兜 VAD 還沒觸發的第一段,別讓它掉進滑鼠語音站的 input_buffer。 */
             append_text_to_input_message();
         else
             append_text_to_mouse_input();

@@ -192,6 +192,16 @@ lv_font_t *lvsf_get_font_by_name(char *font_name, int size)
     #define file_pos          0
 #endif
 
+#ifdef BSP_USING_PC_SIMULATOR
+/* Sim 沒有 flash-mapped 內建資源,is_builtin_res 恆 0,這條分支跑不到;
+   但 ttf_read 巨集仍會展開此呼叫,給個 stub 讓 sim 編/連得過。 */
+static uint32_t lv_img_decode_flash_read(uint32_t addr, uint8_t *buf, int size)
+{
+    memcpy(buf, (const void *)(uintptr_t)addr, (size_t)size);
+    return (uint32_t)size;
+}
+#endif
+
 #define ttf_read(x, len)                                                        \
 {                                                                               \
     if (is_file)                                                                \

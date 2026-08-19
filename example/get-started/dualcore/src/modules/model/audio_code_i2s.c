@@ -69,6 +69,12 @@
 
 #include "webrtc/common_audio/vad/include/webrtc_vad.h"
 
+/* Voice pipeline heap guard (bloc_v2t.c). Declared here unconditionally —
+   the bloc_v2t.h include above is gated on BSP_USING_BLOC but the NS/AGC and
+   frame-processing code below always uses the lock. */
+extern void voice_pipeline_lock(void);
+extern void voice_pipeline_unlock(void);
+
 /* ===== Optional WebRTC NS + AGC on the mic capture path (ASR pre-clean) =====
    Inserts noise-suppression then auto-gain-control on each 10 ms mic frame,
    right where the blunt gain_pcm_sat() shift sits. Default OFF: the existing
@@ -170,23 +176,36 @@ static int   mic_agc_limiter     = 1;        /* limiterEnable */
 static int32_t mic_agc_mic_level = 0;        /* adaptive-digital feedback level */
     #endif
 
-/* Tear down NS+AGC instances (idempotent). Called on mic-path close. */
+/* Tear down NS+AGC instances (idempotent). Called on mic-path close.
+   MUST hold the voice pipeline lock: the peripheral task (prio 8) runs this
+   while audio_station (prio 16) may be preempted MID-WRITE inside
+   WebRtcNsx_Process/WebRtcAgc_Process on these very blocks — freeing them
+   there corrupts the heap (the rt_free MEM_USED / audio_mem_malloc asserts).
+   Swap-then-free so a racing user sees NULL, never a dangling pointer. */
 static void mic_nsagc_free(void)
 {
+    voice_pipeline_lock();
     #if defined(WEBRTC_ANS_FIX)
-    if (mic_ns_inst)
     {
-        WebRtcNsx_Free(mic_ns_inst);
+        NsxHandle *ns = mic_ns_inst;
         mic_ns_inst = NULL;
+        if (ns)
+        {
+            WebRtcNsx_Free(ns);
+        }
     }
     #endif
     #ifdef WEBRTC_AGC_FIX
-    if (mic_agc_inst)
     {
-        WebRtcAgc_Free(mic_agc_inst);
+        void *agc = mic_agc_inst;
         mic_agc_inst = NULL;
+        if (agc)
+        {
+            WebRtcAgc_Free(agc);
+        }
     }
     #endif
+    voice_pipeline_unlock();
 }
 
 /* Create + init NS+AGC instances on heap (their Create() allocs the big state,
@@ -196,6 +215,7 @@ static void mic_nsagc_free(void)
 static void mic_nsagc_init(void)
 {
     uint32_t fs = audio_sample_rate[AUDIO_STATION_SAMPLE_RATE_OPT]; /* 16000 */
+    voice_pipeline_lock();
     mic_nsagc_free();
     #if defined(WEBRTC_ANS_FIX)
     mic_ns_inst = WebRtcNsx_Create();
@@ -229,6 +249,7 @@ static void mic_nsagc_init(void)
         rt_kprintf("[mic_nsagc] AGC create failed (no mem)\n");
     }
     #endif
+    voice_pipeline_unlock();
 }
 
 /* Run NS -> AGC in place on one 10 ms / 160-sample int16 frame. NS first
@@ -889,8 +910,17 @@ void audio_transfer_entry(void *parameter)
 #endif
             if (evt & AUDIO_TRS_AUDPRC_ADC_EVENT)
             {
+                /* Hold the voice pipeline lock across the whole frame: the
+                   VAD / NS / AGC / Opus states used below are freed by
+                   HIGHER-priority threads (peripheral close, lvgl stop).
+                   Priority inheritance keeps this ~1 ms critical section from
+                   starving them. */
+                voice_pipeline_lock();
                 if (g_audprc_dev == RT_NULL)
+                {
+                    voice_pipeline_unlock();
                     continue;
+                }
                 rdlen = rt_device_read(g_audprc_dev, 0, audprc_adc_temp,
                                        READ_AUDIO_BUF_SIZE);
 
@@ -947,6 +977,7 @@ void audio_transfer_entry(void *parameter)
                                                       RINGBUFFER_SIZE);
                             }
                             rt_ringbuffer_reset(&audprc_ringbuffer);
+                            voice_pipeline_unlock();
                             continue;
                         }
                         else
@@ -1022,6 +1053,7 @@ void audio_transfer_entry(void *parameter)
                     // clear ringbuffer
                     rt_ringbuffer_reset(&audprc_ringbuffer);
                 }
+                voice_pipeline_unlock();
             }
 #if PERIPHERAL_AUD_SPEAKER
     #if 1 // i2s rx to audio prc tx
@@ -1093,16 +1125,17 @@ static void mic_nsagc_print(void)
 /* Re-push AGC config to a live instance after an MSH param change. */
 static void mic_agc_apply_config(void)
 {
-    if (!mic_agc_inst)
+    voice_pipeline_lock();
+    if (mic_agc_inst)
     {
-        return;
+        WebRtcAgcConfig cfg;
+        cfg.targetLevelDbfs   = (int16_t)mic_agc_target_dbfs;
+        cfg.compressionGaindB = (int16_t)mic_agc_gain_db;
+        cfg.limiterEnable     = (uint8_t)mic_agc_limiter;
+        cfg.thrhold           = 0;
+        WebRtcAgc_set_config(mic_agc_inst, cfg);
     }
-    WebRtcAgcConfig cfg;
-    cfg.targetLevelDbfs   = (int16_t)mic_agc_target_dbfs;
-    cfg.compressionGaindB = (int16_t)mic_agc_gain_db;
-    cfg.limiterEnable     = (uint8_t)mic_agc_limiter;
-    cfg.thrhold           = 0;
-    WebRtcAgc_set_config(mic_agc_inst, cfg);
+    voice_pipeline_unlock();
 }
     #endif
 
@@ -1135,10 +1168,12 @@ static void mic_nsagc(int argc, char **argv)
         if (v < 0) v = 0;
         if (v > 2) v = 2;
         mic_ns_mode = v;
+        voice_pipeline_lock();
         if (mic_ns_inst)
         {
             WebRtcNsx_set_policy(mic_ns_inst, mic_ns_mode);
         }
+        voice_pipeline_unlock();
     }
     #endif
     #ifdef WEBRTC_AGC_FIX

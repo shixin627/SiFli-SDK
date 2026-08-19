@@ -90,6 +90,9 @@ LV_IMG_DECLARE(backspace_icon); /* 46x33 — 立起輸入面板下方刪除鍵(�
 /* 框裡沒字時刪除鍵改當退出鍵(founder 2026-08-01)。沿用滑鼠 app 輸入框下方那顆「收回」的
    同一張圖 —— 同一個手勢語彙不要在兩個畫面用兩種圖示。 */
 LV_IMG_DECLARE(down_arrow);
+/* 滑鼠 app 單設備抽屜底部那排最左邊的「切輸入法」鍵(founder 2026-08-17 指名地球圖)。
+   與鍵盤輪盤 row4 的 mode_btn 同一張,語彙一致。 */
+LV_IMG_DECLARE(erth);
 
 #define DBG_TAG "instruction.list.layout"
 #define DBG_LVL DBG_INFO
@@ -990,6 +993,61 @@ static lv_obj_t *s_pill_bg_img = NULL;
 /* The mic glyph inside the bottom mic_bar — faded out as the bar morphs into
    the input box (mirrors the right device_pager skaibar). */
 static lv_obj_t *s_mic_bar_icon = NULL;
+/* 蓋在 mic_bar 上方的大片 tap 區(mic_hit)。單設備抽屜換成三鍵列時要連它一起藏 ——
+   它是 324x106 的透明大片,不藏的話按鈕之間的縫隙全被它吃掉。 */
+static lv_obj_t *s_mic_hit = NULL;
+/* 單設備抽屜的底部三鍵列正在台上。宣告放這麼前面是因為 instruction_list_refresh_home_bar()
+   (每次 check_is_at_home poll 都跑)要拿它當閘門 —— 那支會依「清單有沒有顯示」重算
+   mic_bar 的顯藏,三鍵列上場時如果不擋住它,舊的小麥克風下一拍就被掀回來、疊在三鍵列
+   後面(founder 2026-08-17:「那三個按鈕後面怎麼還有舊的小麥克風」)。 */
+static bool s_drawer_row_shown = false;
+static void drawer_row_engage(bool on); /* 單設備抽屜的底部三鍵列上/下場 */
+
+/* mic_bar 身上那顆看得見的麥克風圖示。抽出成函式是為了能「刪掉再建回來」——
+   founder 2026-08-17:「那個的功能應該已經完全不需要了吧,不能直接把他整個移除嗎?」
+   在滑鼠抽屜裡確實完全不需要(三鍵列取代了它),但這顆是**共用**的:錶盤 session 清單
+   底部按住講話搜清單的也是它。所以做法是範圍內的真移除 —— 三鍵列上場時 lv_obj_del,
+   下台時原樣建回來。刪掉之後任何寫入點都動不了它(它們一律 lv_obj_is_valid 防護),
+   這比連續四輪「藏了又被誰掀回來」可靠。 */
+/* 與後面的 LMIC_ICON_Y_OFS 同值 —— 這支抽到檔案前段(refresh_home_bar 之前)才能被
+   drawer 那段呼叫,而那個 #define 在 2200 多行才出現。兩者要改一起改。 */
+#define MIC_BAR_ICON_Y_OFS 0
+static void mic_bar_build_icon(lv_obj_t *bar)
+{
+    if (!bar || !lv_obj_is_valid(bar))
+        return;
+    s_mic_bar_icon = lv_img_create(bar);
+    lv_img_set_src(s_mic_bar_icon, &micro_icon);
+    lv_img_set_pivot(s_mic_bar_icon, micro_icon.header.w / 2, micro_icon.header.h / 2);
+    lv_obj_add_flag(s_mic_bar_icon, LV_OBJ_FLAG_OVERFLOW_VISIBLE);
+    lv_img_set_zoom(s_mic_bar_icon, 128); /* 64px 原生縮 50% → 視覺 32px(founder 2026-08-06);觸控走 mic_hit,尺寸不變 */
+    lv_obj_align(s_mic_bar_icon, LV_ALIGN_CENTER, 0, MIC_BAR_ICON_Y_OFS); /* 上移避免被底緣切到 */
+    lv_obj_clear_flag(s_mic_bar_icon, LV_OBJ_FLAG_CLICKABLE);
+    lv_obj_move_background(s_mic_bar_icon); /* 重建時回到 mic_bar 子物件的最底,不擋 ripple */
+}
+
+/* mic_hit 的顯藏**永遠跟著 mic_bar 走**(founder 2026-08-17:「不管我怎麼點 skaibar_img
+   都不會叫出 session 列表,是不是有透明的東西擋到」——是)。
+   mic_hit 是 324x106 的**看不見但 CLICKABLE** 的大片,掛在 lv_layer_top() 的
+   s_global_bar_layer 上、BOTTOM_MID −20 —— 正好蓋在滑鼠 app 自己那張 skaibar_img 上面。
+   它的 handler(mic_hit_event_cb)在 mic_bar 是 HIDDEN 時直接 return,**但 return 得太晚**:
+   hit-test 已經把這一下判給它了,事件不會再往下傳 → 滑鼠 app 的 bottom_logo_cb 根本沒被
+   呼叫,畫面上什麼都不會發生、log 也一片安靜。
+   會落進這個狀態的路徑:立起輸入面板(open_lift_input_view 藏 mic_bar 卻讓整層留著可見,
+   且 floating_bar_visible() 對這個情境刻意回報 false,所以滑鼠自有 bar 照樣顯示)。
+   修法=藏 mic_bar 的同時一定連它一起藏,單一真相走這支。 */
+static void mic_hit_follow_bar(void)
+{
+    if (!s_mic_hit || !lv_obj_is_valid(s_mic_hit))
+        return;
+    lv_obj_t *bar = p_instruction_list_layout ? p_instruction_list_layout->mic_bar : NULL;
+    bool bar_hidden = !bar || !lv_obj_is_valid(bar) ||
+                      lv_obj_has_flag(bar, LV_OBJ_FLAG_HIDDEN);
+    if (bar_hidden)
+        lv_obj_add_flag(s_mic_hit, LV_OBJ_FLAG_HIDDEN);
+    else
+        lv_obj_clear_flag(s_mic_hit, LV_OBJ_FLAG_HIDDEN);
+}
 
 /* Bottom mic-bar → input-box MORPH geometry (mirrors device_pager's skaibar):
    on trigger the slim bottom bar grows + slides up into the 442x252 input box,
@@ -1242,6 +1300,28 @@ void instruction_list_refresh_home_bar(void)
     bool list_shown = bg && lv_obj_is_valid(bg) &&
                       !lv_obj_has_flag(bg, LV_OBJ_FLAG_HIDDEN);
     bool hide_pill = clock_main_page_is_home() && !list_shown;
+    /* 單設備抽屜換上三鍵列時,那條 pill(以及它身上那顆小麥克風)是被三鍵列取代掉的 ——
+       這支 poll 不知情就會依「清單有顯示」把它掀回來,疊在三鍵列後面。三鍵列在台上=
+       一律藏。長按直開語音那條(animate_open_ai_widget 要拿 mic_bar 做 morph)不受影響:
+       它走的是 push_up,三鍵列那時已經下台。 */
+    if (s_drawer_row_shown)
+        hide_pill = true;
+    /* 再往外一層:**整個單設備抽屜 session 期間**這條 pill 都沒有工作了 —— 底部依序由
+       三鍵列(抽屜)、語音站自己那排(輸入模式)接管。唯一還需要它的是長按直開語音那條,
+       animate_open_ai_widget 拿它當 morph 的起點,那時 ai box 是顯示著的。
+       為什麼把判斷放在這支 poll 而不是各進場路徑:mic_bar 的顯藏有六個寫入點
+       (立起面板進/出、refresh_home_bar、抽屜三鍵列、animate_open_ai_widget、
+       close_ai_widget),任何一次性的 add_flag 都可能被其中某條在下一拍推翻。poll 是
+       唯一持續在跑的,讓它當裁決者才不會再漏第七個(founder 2026-08-17 連兩輪回報
+       「三個按鈕後面還有舊的小麥克風」)。 */
+    if (s_bar_single_device)
+    {
+        lv_obj_t *box = p_instruction_list_layout->p_instruction_list_ai_bg;
+        bool box_shown = box && lv_obj_is_valid(box) &&
+                         !lv_obj_has_flag(box, LV_OBJ_FLAG_HIDDEN);
+        if (!box_shown)
+            hide_pill = true;
+    }
     /* Idempotent: lv_obj_add_flag/clear_flag invalidate unconditionally (LVGL v8
        does not short-circuit when the flag is unchanged), and this runs every
        check_is_at_home poll while the watch face is up — only touch the flag when
@@ -1259,7 +1339,17 @@ void instruction_list_refresh_home_bar(void)
             lv_obj_set_style_img_opa(s_mic_bar_icon, LV_OPA_COVER, 0);
     }
     else
+    {
+        /* 抽屜 session 期間走到這裡 = 上面兩道閘門沒攔住,pill 又要冒出來。這是
+           「不該發生」分支,印出來下次一秒定位(founder 連三輪回報這顆小麥克風)。 */
+        if (s_bar_single_device || s_drawer_row_shown)
+            LOG_W("[drawer] !! pill un-hidden by refresh_home_bar (single=%d row=%d)",
+                  (int)s_bar_single_device, (int)s_drawer_row_shown);
         lv_obj_clear_flag(bar, LV_OBJ_FLAG_HIDDEN);
+    }
+    /* 這支是 mic_bar 顯藏的第三個寫入點(另兩個是立起面板與抽屜三鍵列)—— 大 tap 區
+       一定要跟著,否則會出現「bar 藏了但 mic_hit 還在吃 tap」的隱形擋點(R19)。 */
+    mic_hit_follow_bar();
 }
 static bool is_at_ai_widget = false;
 static bool scroll_initialized = false;
@@ -1768,6 +1858,12 @@ static bool s_in_refresh_scroll = false;
    action 上。這個旗標把「這次是進場」記到重建之後:只要使用者還沒自己捲動過,每次重建
    都重新套用 R49 落點(最新的 session)。使用者一動手就熄掉,不再搶他的位置。 */
 static bool s_entry_landing_pending = false;
+/* R80:進場落點寬限窗 —— 兩台桌面的清單分包晚到(相隔可達數秒),第一包落完就熄掉
+   pending 會讓第二包(往往才是全域最新)不再補正(founder:「選中的還是在 desktop
+   session 第一個」)。進場後 8 秒內的每次重建都重新落到最新 session;使用者一捲動
+   (真手勢)或超時就凍結,不會在人停留頁面很久之後還亂跳(R53 的原意保留)。 */
+#define ENTRY_LANDING_GRACE_MS 8000
+static rt_tick_t s_entry_landing_tick = 0;
 /* Latched true when a horizontal drag (the left-to-close drawer) is detected on
    the list, so the item CLICKED LVGL also raises on the release — the VER-scroll
    list never loses the press on a horizontal drag — is ignored: a swipe must not
@@ -1780,6 +1876,13 @@ static bool s_list_horiz_swipe = false;
 static bool s_hdrag_active = false;
 static lv_coord_t s_hdrag_start_x = 0;
 static lv_coord_t s_hdrag_start_y = 0;
+/* Axis lock for the press: latched the moment the gesture is judged VERTICAL, so
+   the drawer drag can never take over half-way through a scroll (founder: holding
+   a row's text and scrolling up/down also dragged the whole list sideways). dx/dy
+   are measured from the press origin, and the finger's y wanders back toward that
+   origin as the list scrolls under it, so |dx|>|dy| becomes true mid-scroll on any
+   slightly diagonal drag. Once vertical, stay vertical until the next PRESSED. */
+static bool s_vdrag_locked = false;
 
 static void list_window_scroll_event_cb(lv_event_t *evt)
 {
@@ -1806,9 +1909,19 @@ static void list_window_scroll_event_cb(lv_event_t *evt)
            refresh_custom_instructions makes don't collapse the box. */
         if (!s_in_refresh_scroll)
         {
+            /* R76 diagnostics: founder reports scrolling does NOT collapse the
+               open voice box on the session page — log what this path sees. */
+            LOG_W("[scr] begin is_open=%d refresh=%d touch=%d",
+                  (int)is_open_instruction_list_ai, (int)s_in_refresh_scroll,
+                  (int)is_user_touching_screen());
             ai_widget_fade_on_scroll();
-            /* R50:使用者自己捲了 → 進場落點的任務結束,之後的重建保留他的位置。 */
-            s_entry_landing_pending = false;
+            /* R50:使用者自己捲了 → 進場落點的任務結束,之後的重建保留他的位置。
+               R78(founder:「開機後第一次進 session 列表停在 actions 最下面,再進
+               一次才對」):reset_list_internal 進場的**程式化** scroll_to_view 也
+               會發 SCROLL_BEGIN,走到這裡把 pending 熄掉 → sessions 晚一步注入的
+               那次重建就不再補正。只有手真的在螢幕上才算使用者捲動。 */
+            if (is_user_touching_screen())
+                s_entry_landing_pending = false;
         }
         // LOG_D("APP LIST Scroll begin");
         break;
@@ -1887,6 +2000,7 @@ static void list_window_scroll_event_cb(lv_event_t *evt)
            for the horizontal drawer drag below. */
         s_list_horiz_swipe = false;
         s_hdrag_active = false;
+        s_vdrag_locked = false;
         lv_indev_t *indev = lv_indev_get_act();
         if (indev)
         {
@@ -1910,8 +2024,16 @@ static void list_window_scroll_event_cb(lv_event_t *evt)
         lv_indev_get_point(indev, &pt);
         lv_coord_t dx = pt.x - s_hdrag_start_x;
         lv_coord_t dy = pt.y - s_hdrag_start_y;
-        if (!s_hdrag_active && LV_ABS(dx) > 10 && LV_ABS(dx) > LV_ABS(dy))
-            s_hdrag_active = true;
+        /* Axis decision happens ONCE per press: whichever axis crosses the 10px
+           threshold first owns the gesture. Vertical → the list's own scroll keeps
+           it for the whole press (s_vdrag_locked); horizontal → the drawer drag. */
+        if (!s_hdrag_active && !s_vdrag_locked)
+        {
+            if (LV_ABS(dy) > 10 && LV_ABS(dy) >= LV_ABS(dx))
+                s_vdrag_locked = true;
+            else if (LV_ABS(dx) > 10 && LV_ABS(dx) > LV_ABS(dy))
+                s_hdrag_active = true;
+        }
         if (s_hdrag_active)
         {
             s_list_horiz_swipe = true;
@@ -1988,7 +2110,9 @@ static void list_window_scroll_event_cb(lv_event_t *evt)
            above (PRESSING / RELEASED). */
         {
             lv_dir_t gdir = lv_indev_get_gesture_dir(lv_indev_get_act());
-            if (gdir == LV_DIR_LEFT || gdir == LV_DIR_RIGHT)
+            /* Not while the press is locked vertical — a scroll must not be
+               re-read as a close-flick. */
+            if (!s_vdrag_locked && (gdir == LV_DIR_LEFT || gdir == LV_DIR_RIGHT))
                 s_list_horiz_swipe = true;
         }
         break;
@@ -3359,6 +3483,7 @@ static void lift_input_hide_view(void)
     if (p_instruction_list_layout && p_instruction_list_layout->mic_bar &&
         lv_obj_is_valid(p_instruction_list_layout->mic_bar))
         lv_obj_clear_flag(p_instruction_list_layout->mic_bar, LV_OBJ_FLAG_HIDDEN);
+    mic_hit_follow_bar(); /* bar 回來了 → 它的大 tap 區也要回來 */
 }
 
 /* 公開：舉起手勢(motion thread→hid_mouse→這裡)呼叫。2026-07-31 起不再看電腦有沒有聚焦
@@ -3394,6 +3519,9 @@ bool instruction_list_open_lift_input_view(const char *device_id)
        「只有立起面板開著」回報成 false,滑鼠 app 自有的 bar 才不會被 overlap-sync 收掉)。 */
     if (p_instruction_list_layout->mic_bar && lv_obj_is_valid(p_instruction_list_layout->mic_bar))
         lv_obj_add_flag(p_instruction_list_layout->mic_bar, LV_OBJ_FLAG_HIDDEN);
+    /* 關鍵:mic_hit 一定要跟著藏 —— 否則它會在滑鼠自有 bar 上面「看不見地」吃掉每一次
+       tap,症狀就是「怎麼點 skaibar_img 都沒反應」(founder 2026-08-17)。 */
+    mic_hit_follow_bar();
     ensure_lift_input_view();
     if (s_lift_input_view && lv_obj_is_valid(s_lift_input_view))
     {
@@ -3452,6 +3580,12 @@ void instruction_list_close_lift_input_view(void)
     s_remote_target_has_focus = focus_before_dismiss;
 }
 
+/* Set by ai_widget_fade_on_scroll (and the session-page bar tap): THIS close
+   should collapse the voice box back to the slim bar but KEEP the floating list
+   up (browse / switch options). Consumed at the top of close_ai_widget; every
+   other close path slides the whole list out. */
+static bool s_scroll_keep_list = false;
+
 static void mic_bar_event_cb(lv_event_t *evt)
 {
     if (evt->code != LV_EVENT_CLICKED) return;
@@ -3506,7 +3640,27 @@ static void mic_bar_event_cb(lv_event_t *evt)
        close_ai_widget 收掉清單 → R24 守門看到「清單沒了但人停在左格」snap home ——
        麥克風一點就回主畫面。session 頁沒有觸控板要讓路,dismiss 規則不適用:
        這裡 tap = 開語音輸入框(R55),跟錶盤同待遇。 */
-    if (box_visible || (list_shown && !clock_main_page_is_home() && !s_session_page_mode))
+    if (box_visible && (s_session_page_mode || s_bar_single_device))
+    {
+        /* R76(founder 2026-08-15「點輸入框他會跑回主畫面」):session 檢視裡輸入框
+           開著時,落在 bar/框下緣的 tap 走了整個 dismiss → 清單沒了 → R24 snap
+           home。這裡的正確語意=收框留清單(跟捲動收框同一條路):語音停止、篩選
+           結果留在畫面上讓使用者挑。滑鼠 app 的單設備搜尋抽屜(s_bar_single_device,
+           2026-08-15)同語意:mic 再點=收框留選項,清單內容由電腦即時鏡像。 */
+        LOG_W("[mic] tap w/ box open on session page -> collapse, keep list");
+        s_scroll_keep_list = true;
+        close_ai_widget();
+    }
+    else if (list_shown && !box_visible && s_bar_single_device)
+    {
+        /* 滑鼠單設備搜尋抽屜的 browse 態(清單開著、框收著):mic tap = 重開語音輸入框
+           (與左頁 session 檢視同待遇)。不能走下面的 dismiss 分支 —— 那條「清單蓋住觸控板
+           要讓路」規則是給非搜尋流程的;這裡使用者就是來搜的,dismiss 靠左滑退出。 */
+        LOG_W("[mic] tap in single-device browse -> reopen voice box");
+        extern void animate_open_ai_widget(void);
+        animate_open_ai_widget();
+    }
+    else if (box_visible || (list_shown && !clock_main_page_is_home() && !s_session_page_mode))
     {
         LOG_I("Mic bar tapped — dismissing AI widget (box=%d list=%d)",
               (int)box_visible, (int)list_shown);
@@ -3670,6 +3824,15 @@ bool instruction_list_prepare_single_device(const char *device_id)
         if (!p_instruction_list_layout)
             return false;
     }
+    /* R32/R33(2026-08-15 真機抓到「點 bar 沒有選項」):hosted 滑鼠進場會 release 列 UI
+       換 heap,此後 refresh 一律 defer —— 底下 feed 的 refresh 會靜默無效=空清單;
+       長按直開語音框(animate_open_ai_widget)那條更完全不經 open_browse 的 ensure。
+       用 for_feed 輕量版:只解除 deferral,讓 feed 的 refresh 一次建出單設備清單
+       (完整 ensure_ui 會先建舊清單再拆,heap 尖峰壓垮過聊天室,見該函式註解)。 */
+    {
+        extern void instruction_list_ensure_ui_for_feed(void);
+        instruction_list_ensure_ui_for_feed();
+    }
     s_bar_single_device = true;
     feed_single_device_options(device_id); /* 同時把 device_id 記進 s_single_device_id */
     return true;
@@ -3682,6 +3845,15 @@ bool instruction_list_remote_target_has_focus(void)
     return s_remote_target_has_focus;
 }
 
+/* 公開：滑鼠 app 單設備模式(搜尋抽屜/立起面板)是否正佔用共享清單。session_pager 的
+   sp_inject_sessions_into_actions 用它擋注入 —— 單設備清單=「那一台電腦面板」的鏡像,
+   各台桌面 0x20 定時重推的 session 不該混進來(2026-08-15 founder:「為什麼別台設備的
+   session也會進來」)。單一 bool 讀取,任何執行緒皆可。 */
+bool instruction_list_single_device_active(void)
+{
+    return s_bar_single_device;
+}
+
 
 /* 公開：滑鼠 app 離開(destroy / Exit)時呼叫 —— 若還在單設備模式,把共享清單還原成錶盤清單、
    通知電腦收掉它的 skaibar、清旗標,避免設備選項殘留在下次錶盤底部 bar。idempotent。 */
@@ -3690,6 +3862,7 @@ void instruction_list_bar_device_dismiss(void)
     if (!s_bar_single_device)
         return;
     s_bar_single_device = false;
+    drawer_row_engage(false); /* 三鍵列釋放、mic_bar 還原(離場即放,R32) */
     s_remote_target_has_focus = false; /* 離開單設備模式 → 快取旗標歸零,別讓下一台/下一次殘留 */
     s_opened_by_lift = false;   /* drawer session 結束 */
     mic_bar_voice_stop();       /* 聽音中被收掉 → 停乾淨(no-op if idle) */
@@ -3741,6 +3914,358 @@ static void mic_hit_event_cb(lv_event_t *evt)
     mic_bar_event_cb(evt);
 }
 
+/* ==========================================================================
+   滑鼠 app 單設備抽屜的底部三鍵列(founder 2026-08-17)
+   --------------------------------------------------------------------------
+   抽屜(上=這台電腦的 session 鏡像清單)底下不再是那條 176x31 的 skaibar,而是
+   **語音站同一排**:左=地球(切輸入法→鍵盤輪盤)、中=麥克風、右=收下鍵。
+
+   座標刻意與 hid_mouse 的 kbd_mic_section 那排逐格對齊(中心 ±110 / +170),
+   所以按下麥克風進語音站時,語音站自己那排就落在同一個位置 —— 轉場中這排看起來
+   完全不動,只有輸入框往上長、session 清單被往上推出畫面(founder 的描述)。
+   兩邊的常數若要改,兩處要一起改(hid_mouse.c 的 VOICE_ROW_DY / VOICE_KBD_DX /
+   VOICE_DEL_DX / VOICE_BTN_D)。
+
+   heap:hosted 滑鼠模式下(R32/R33 紀律)一律「抽屜開才建、離場即放」。整排掛在
+   s_global_bar_layer 底下,一個 lv_obj_del 全鏈收乾淨。
+   ========================================================================== */
+/* 這一段擺在檔案前段(緊鄰 mic_hit),用到的收尾/動畫工具都定義在後面 —— 前置宣告。 */
+static void reveal_settle_anim_cb(void *var, int32_t v);
+static void inst_list_slide_out_done_cb(lv_anim_t *a);
+static void page_dim_track(lv_coord_t tx);
+static void finalize_close_ai_widget(void);
+
+#define DROW_DY      170  /* = hid_mouse VOICE_ROW_DY */
+#define DROW_SIDE_DX 110  /* = hid_mouse VOICE_KBD_DX / VOICE_DEL_DX 的絕對值 */
+#define DROW_MIC_D    64  /* = hid_mouse VOICE_BTN_D */
+#define DROW_SLIDE_MS 260 /* 與 hid_mouse kbd_enter_slide 同步(進場 260ms) */
+
+static lv_obj_t *s_drawer_row = NULL;   /* 三鍵列容器(透明,只當生命週期把手) */
+static lv_obj_t *s_drawer_mic_btn = NULL;
+/* s_drawer_row_shown 宣告在檔案前段(refresh_home_bar 要用),見該處說明。 */
+
+static void drawer_row_release(void)
+{
+    if (s_drawer_row)
+        LOG_W("[drawer] row release");
+    if (s_drawer_row && lv_obj_is_valid(s_drawer_row))
+        lv_obj_del(s_drawer_row);
+    s_drawer_row = NULL;
+    s_drawer_mic_btn = NULL;
+    s_drawer_row_shown = false;
+}
+
+/* 地球:進輸入模式並直接停在鍵盤輪盤(=語音站裡按同一顆的效果)。 */
+static void drawer_globe_cb(lv_event_t *e)
+{
+    (void)e;
+    extern bool mouse_drawer_open_input(bool want_keyboard);
+    mouse_drawer_open_input(true);
+}
+
+/* 收下鍵:抽屜態框裡永遠沒有字(有字時人已經在語音站),所以這顆恆為 down_arrow ——
+   往下收掉整個抽屜、回到觸控板。 */
+static void drawer_down_cb(lv_event_t *e)
+{
+    (void)e;
+    extern void instruction_list_drawer_close_down(void);
+    instruction_list_drawer_close_down();
+}
+
+/* 麥克風:**按住講話、放開停止**,與語音站那顆同手感(hid_mouse kbd_mic_btn_event_cb)。
+   按下的當下就開語音站(輸入框往上長 + 清單推出畫面),手指仍停在原地 —— 語音站的
+   麥克風就在同一個座標,整段讀起來是同一個連續手勢。
+   PRESS_LOCK:轉場途中這顆會被藏起來,press session 必須留在它身上,放開才收得到
+   RELEASED 去停錄音(否則變成錄音停不掉)。 */
+static void drawer_mic_cb(lv_event_t *e)
+{
+    extern bool mouse_drawer_open_input(bool want_keyboard);
+    extern void mouse_drawer_voice_set(bool on);
+    switch (lv_event_get_code(e))
+    {
+    case LV_EVENT_PRESSED:
+    {
+        bool ok = mouse_drawer_open_input(false);
+        LOG_W("[drawer] mic press -> open_input=%d", (int)ok);
+        if (ok)
+            mouse_drawer_voice_set(true);
+        break;
+    }
+    case LV_EVENT_RELEASED:
+    case LV_EVENT_PRESS_LOST:
+        mouse_drawer_voice_set(false);
+        break;
+    default:
+        break;
+    }
+}
+
+static lv_obj_t *drawer_row_add_icon(const void *src, lv_coord_t dx,
+                                     lv_event_cb_t cb)
+{
+    lv_obj_t *img = lv_img_create(s_drawer_row);
+    lv_img_set_src(img, src);
+    lv_obj_align(img, LV_ALIGN_CENTER, dx, DROW_DY);
+    lv_obj_add_flag(img, LV_OBJ_FLAG_CLICKABLE);
+    lv_obj_set_ext_click_area(img, 14); /* 視覺可小,觸控補到 44pt 以上 */
+    lv_obj_add_event_cb(img, cb, LV_EVENT_CLICKED, NULL);
+    return img;
+}
+
+/* 建/顯示三鍵列。idempotent。 */
+static void drawer_row_show(void)
+{
+    if (!s_global_bar_layer || !lv_obj_is_valid(s_global_bar_layer))
+        return;
+    LOG_W("[drawer] row show single=%d built=%d", (int)s_bar_single_device,
+          (int)(s_drawer_row != NULL));
+    if (s_drawer_row && lv_obj_is_valid(s_drawer_row))
+    {
+        lv_obj_clear_flag(s_drawer_row, LV_OBJ_FLAG_HIDDEN);
+        lv_obj_move_foreground(s_drawer_row);
+        s_drawer_row_shown = true;
+        return;
+    }
+    s_drawer_row = lv_obj_create(s_global_bar_layer);
+    lv_obj_remove_style_all(s_drawer_row);
+    lv_obj_set_size(s_drawer_row, LV_HOR_RES, LV_VER_RES);
+    lv_obj_set_pos(s_drawer_row, 0, 0);
+    lv_obj_set_style_bg_opa(s_drawer_row, LV_OPA_TRANSP, 0);
+    lv_obj_clear_flag(s_drawer_row, LV_OBJ_FLAG_SCROLLABLE);
+    lv_obj_clear_flag(s_drawer_row, LV_OBJ_FLAG_CLICKABLE); /* 只有三顆鍵吃觸控 */
+
+    drawer_row_add_icon(&erth, -DROW_SIDE_DX, drawer_globe_cb);
+
+    /* 中間麥克風:語音站同款的深色圓鈕 + micro_icon。 */
+    s_drawer_mic_btn = lv_obj_create(s_drawer_row);
+    lv_obj_set_size(s_drawer_mic_btn, DROW_MIC_D, DROW_MIC_D);
+    lv_obj_align(s_drawer_mic_btn, LV_ALIGN_CENTER, 0, DROW_DY);
+    lv_obj_set_style_bg_color(s_drawer_mic_btn, lv_color_hex(0x1a1a1a), 0);
+    lv_obj_set_style_bg_opa(s_drawer_mic_btn, LV_OPA_COVER, 0);
+    lv_obj_set_style_radius(s_drawer_mic_btn, LV_RADIUS_CIRCLE, 0);
+    lv_obj_set_style_border_width(s_drawer_mic_btn, 0, 0);
+    lv_obj_set_style_pad_all(s_drawer_mic_btn, 0, 0);
+    lv_obj_clear_flag(s_drawer_mic_btn, LV_OBJ_FLAG_SCROLLABLE);
+    lv_obj_add_flag(s_drawer_mic_btn, LV_OBJ_FLAG_CLICKABLE);
+    lv_obj_add_flag(s_drawer_mic_btn, LV_OBJ_FLAG_PRESS_LOCK);
+    lv_obj_add_event_cb(s_drawer_mic_btn, drawer_mic_cb, LV_EVENT_PRESSED, NULL);
+    lv_obj_add_event_cb(s_drawer_mic_btn, drawer_mic_cb, LV_EVENT_RELEASED, NULL);
+    lv_obj_add_event_cb(s_drawer_mic_btn, drawer_mic_cb, LV_EVENT_PRESS_LOST, NULL);
+    lv_obj_t *mic_img = lv_img_create(s_drawer_mic_btn);
+    lv_img_set_src(mic_img, &micro_icon);
+    lv_obj_center(mic_img);
+    lv_obj_clear_flag(mic_img, LV_OBJ_FLAG_CLICKABLE);
+
+    drawer_row_add_icon(&down_arrow, DROW_SIDE_DX, drawer_down_cb);
+    s_drawer_row_shown = true;
+}
+
+/* 抽屜態的底部造型切換:三鍵列上場 → 原本那條 mic_bar 與它的大 tap 區(mic_hit)一起讓開。
+   離開抽屜時反向還原,錶盤路徑完全不受影響。 */
+static void drawer_row_engage(bool on)
+{
+    lv_obj_t *bar = p_instruction_list_layout ? p_instruction_list_layout->mic_bar : NULL;
+    if (bar && lv_obj_is_valid(bar))
+    {
+        if (on)
+            lv_obj_add_flag(bar, LV_OBJ_FLAG_HIDDEN);
+        else
+            lv_obj_clear_flag(bar, LV_OBJ_FLAG_HIDDEN);
+    }
+    mic_hit_follow_bar(); /* 單一真相:大 tap 區永遠跟著 mic_bar 的顯藏 */
+    if (on)
+        drawer_row_show();
+    else
+        drawer_row_release();
+}
+
+/* 公開:抽屜開場時由 instruction_list_open_browse 呼叫(只在單設備模式)。 */
+void instruction_list_drawer_row_engage(bool on)
+{
+    drawer_row_engage(on);
+}
+
+/* 公開:由 hid_mouse 的 40ms poll(bar_ai_sync_timer_cb)每拍呼叫 —— 抽屜/語音站期間
+   **強制**那條舊 pill 保持隱藏。
+   為什麼要用強制執行而不是繼續找兇手:mic_bar 的顯藏至少有六個寫入點(立起面板進/出、
+   refresh_home_bar、抽屜三鍵列、animate_open_ai_widget、close_ai_widget),而且進場鏈
+   的最後一棒就是專門「把 pill 叫出來」的 refresh_home_bar。逐一堵了三輪、founder 三輪
+   都還看得到它 —— 與其再賭第七個寫入點,不如讓一個每拍都跑的裁決者收尾:任何路徑都只能
+   讓它閃一幀。順便印出來指名(前幾次),下次要根治時直接有兇手名單。
+   例外:ai box 開著=長按直開語音的 morph,那條正拿 mic_bar 當放大起點,不能動它。 */
+void instruction_list_drawer_enforce_bar_hidden(void)
+{
+    if (!s_bar_single_device || !p_instruction_list_layout)
+        return; /* 錶盤/一般清單照舊,完全不受影響 */
+    lv_obj_t *bar = p_instruction_list_layout->mic_bar;
+    if (!bar || !lv_obj_is_valid(bar) || lv_obj_has_flag(bar, LV_OBJ_FLAG_HIDDEN))
+        return;
+    lv_obj_t *box = p_instruction_list_layout->p_instruction_list_ai_bg;
+    if (box && lv_obj_is_valid(box) && !lv_obj_has_flag(box, LV_OBJ_FLAG_HIDDEN))
+        return; /* morph 進行中,pill 是它的起點 */
+    static uint8_t s_enforce_log_n = 0;
+    if (s_enforce_log_n < 5)
+    {
+        s_enforce_log_n++;
+        LOG_W("[drawer] !! pill visible during drawer (row=%d) -> force hide",
+              (int)s_drawer_row_shown);
+    }
+    lv_obj_add_flag(bar, LV_OBJ_FLAG_HIDDEN);
+    mic_hit_follow_bar();
+}
+
+/* ---- 抽屜 ↔ 語音站的垂直轉場 --------------------------------------------
+   進語音站:清單往**上**推出畫面(founder:「把 session 列表往上推出畫面」);
+   下拉收合回來:清單從上方滑回。收下鍵:清單往**下**收掉(對齊 down_arrow 的方向)。
+   translate 是 draw-only —— 清單即使移到畫面外仍會全螢幕 hit-test,所以動畫結束
+   一定要補 HIDDEN,否則語音站按不動(這條在本檔多處都踩過)。 */
+static void drawer_slide_y_cb(void *var, int32_t v)
+{
+    lv_obj_t *list_bg = (lv_obj_t *)var;
+    if (lv_obj_is_valid(list_bg))
+        lv_obj_set_style_translate_y(list_bg, (lv_coord_t)v, 0);
+}
+
+/* 往上推出後:藏起來 + 釋放列 UI 換 heap(語音站/鍵盤輪盤要用)。**不**清
+   s_bar_single_device —— 電腦面板還開著、鏡像還在推,下拉收合要原地回來。 */
+static void drawer_push_up_done_cb(lv_anim_t *a)
+{
+    (void)a;
+    LOG_W("[drawer] push_up done -> hide list+layer, release list UI");
+    lv_obj_t *list_bg = p_instruction_list_layout
+                            ? p_instruction_list_layout->p_instruction_list_bg
+                            : NULL;
+    if (list_bg && lv_obj_is_valid(list_bg))
+    {
+        lv_obj_add_flag(list_bg, LV_OBJ_FLAG_HIDDEN);
+        lv_obj_set_style_translate_y(list_bg, 0, 0);
+    }
+    if (s_global_bar_layer && lv_obj_is_valid(s_global_bar_layer))
+    {
+        lv_obj_set_style_bg_opa(s_global_bar_layer, LV_OPA_0, 0);
+        lv_obj_add_flag(s_global_bar_layer, LV_OBJ_FLAG_HIDDEN);
+    }
+    /* **只藏不刪**:使用者這一刻很可能還按著三鍵列的麥克風(按住講話)。lv_obj_del 掉
+       正被按著的物件,indev 的 act_obj 就沒了 —— RELEASED/PRESS_LOST 不保證還會送到,
+       錄音就停不掉。PRESS_LOCK 已設在麥克風上,物件只是 HIDDEN 的話 press session
+       仍留在它身上,放開照樣收得到。真正的釋放交給 drawer_row_engage(false)(離開整個
+       抽屜流程時),留著這一小塊(~1-2K)換掉一整類 UAF/卡錄音的風險。 */
+    if (s_drawer_row && lv_obj_is_valid(s_drawer_row))
+        lv_obj_add_flag(s_drawer_row, LV_OBJ_FLAG_HIDDEN);
+    s_drawer_row_shown = false;
+    {
+        extern void instruction_list_release_ui(void);
+        instruction_list_release_ui();
+    }
+    is_open_instruction_list_ai = false;
+}
+
+void instruction_list_drawer_push_up(void)
+{
+    if (!p_instruction_list_layout)
+        return;
+    lv_obj_t *list_bg = p_instruction_list_layout->p_instruction_list_bg;
+    LOG_W("[drawer] push_up bg=%d hidden=%d", (int)(list_bg != NULL),
+          (int)(list_bg && lv_obj_is_valid(list_bg) &&
+                lv_obj_has_flag(list_bg, LV_OBJ_FLAG_HIDDEN)));
+    if (!list_bg || !lv_obj_is_valid(list_bg) ||
+        lv_obj_has_flag(list_bg, LV_OBJ_FLAG_HIDDEN))
+    {
+        /* 清單本來就不在畫面上(長按直開語音那條):只要把三鍵列藏掉即可(同上,不刪)。 */
+        if (s_drawer_row && lv_obj_is_valid(s_drawer_row))
+            lv_obj_add_flag(s_drawer_row, LV_OBJ_FLAG_HIDDEN);
+        s_drawer_row_shown = false;
+        return;
+    }
+    lv_anim_del(list_bg, inst_list_slide_anim_cb);
+    lv_anim_del(list_bg, reveal_settle_anim_cb);
+    lv_anim_del(list_bg, drawer_slide_y_cb);
+    lv_anim_t a;
+    lv_anim_init(&a);
+    lv_anim_set_var(&a, list_bg);
+    lv_anim_set_exec_cb(&a, drawer_slide_y_cb);
+    lv_anim_set_values(&a, 0, -LV_VER_RES);
+    lv_anim_set_time(&a, DROW_SLIDE_MS);
+    lv_anim_set_path_cb(&a, lv_anim_path_ease_out);
+    lv_anim_set_ready_cb(&a, drawer_push_up_done_cb);
+    lv_anim_start(&a);
+}
+
+/* 從語音站下拉收合回抽屜:重建列 UI、用**最新**的鏡像資料重餵(founder:「拉回已經
+   有對應輸入變更過的選項」),清單再從上方滑回原位。 */
+void instruction_list_drawer_slide_in(void)
+{
+    if (!p_instruction_list_layout || !s_bar_single_device)
+        return;
+    lv_obj_t *list_bg = p_instruction_list_layout->p_instruction_list_bg;
+    if (!list_bg || !lv_obj_is_valid(list_bg))
+        return;
+    {
+        extern void instruction_list_ensure_ui_for_feed(void);
+        instruction_list_ensure_ui_for_feed();
+    }
+    feed_single_device_options(s_single_device_id); /* 語音搜尋後的最新選項 */
+    if (s_global_bar_layer && lv_obj_is_valid(s_global_bar_layer))
+        lv_obj_clear_flag(s_global_bar_layer, LV_OBJ_FLAG_HIDDEN);
+    drawer_row_engage(true);
+    lv_obj_clear_flag(list_bg, LV_OBJ_FLAG_HIDDEN);
+    lv_obj_set_style_translate_x(list_bg, 0, 0);
+    lv_obj_set_style_translate_y(list_bg, -LV_VER_RES, 0);
+    page_dim_track(0); /* 單設備模式=整頁壓暗到底 */
+    is_open_instruction_list_ai = false;
+    lv_anim_del(list_bg, drawer_slide_y_cb);
+    lv_anim_t a;
+    lv_anim_init(&a);
+    lv_anim_set_var(&a, list_bg);
+    lv_anim_set_exec_cb(&a, drawer_slide_y_cb);
+    lv_anim_set_values(&a, -LV_VER_RES, 0);
+    lv_anim_set_time(&a, DROW_SLIDE_MS);
+    lv_anim_set_path_cb(&a, lv_anim_path_ease_out);
+    lv_anim_start(&a);
+    {
+        extern void check_main_page(void);
+        check_main_page();
+    }
+}
+
+/* 收下鍵:清單往下收掉,落地走 inst_list_slide_out_done_cb 那條既有的完整收尾
+   (release_ui → restore_base → 收 overlay → 還原滑鼠自有 bar → 通知電腦)。 */
+static void drawer_close_down_done_cb(lv_anim_t *a)
+{
+    lv_obj_t *list_bg = p_instruction_list_layout
+                            ? p_instruction_list_layout->p_instruction_list_bg
+                            : NULL;
+    if (list_bg && lv_obj_is_valid(list_bg))
+        lv_obj_set_style_translate_y(list_bg, 0, 0);
+    drawer_row_engage(false);
+    {
+        extern bool commu_send_skaibar_dismiss(void);
+        commu_send_skaibar_dismiss(); /* 抽屜是使用者主動收的 → 電腦面板也收掉 */
+    }
+    inst_list_slide_out_done_cb(a); /* 共用收尾:hide + release + restore_base */
+}
+
+void instruction_list_drawer_close_down(void)
+{
+    if (!p_instruction_list_layout)
+        return;
+    lv_obj_t *list_bg = p_instruction_list_layout->p_instruction_list_bg;
+    if (!list_bg || !lv_obj_is_valid(list_bg))
+        return;
+    lv_anim_del(list_bg, inst_list_slide_anim_cb);
+    lv_anim_del(list_bg, reveal_settle_anim_cb);
+    lv_anim_del(list_bg, drawer_slide_y_cb);
+    lv_anim_t a;
+    lv_anim_init(&a);
+    lv_anim_set_var(&a, list_bg);
+    lv_anim_set_exec_cb(&a, drawer_slide_y_cb);
+    lv_anim_set_values(&a, 0, LV_VER_RES);
+    lv_anim_set_time(&a, DROW_SLIDE_MS);
+    lv_anim_set_path_cb(&a, lv_anim_path_ease_out);
+    lv_anim_set_ready_cb(&a, drawer_close_down_done_cb);
+    lv_anim_start(&a);
+}
+
 /* The box is scrollable only to ABSORB swipes (so a left-swipe doesn't bubble to
    the page nav and jump to the watchface). When the user actually starts a swipe
    on the open box, dismiss it with the animated reverse morph — mirrors the
@@ -3748,8 +4273,14 @@ static void mic_hit_event_cb(lv_event_t *evt)
 static void ai_box_scroll_dismiss_cb(lv_event_t *evt)
 {
     (void)evt;
-    if (is_open_instruction_list_ai)
-        close_ai_widget();
+    if (!is_open_instruction_list_ai)
+        return;
+    /* R76: on the session page a full close empties the left tile → R24 snaps
+       home. A swipe starting on the box there = collapse the box, keep the
+       (filtered) list for browsing — same resting state as a list scroll. */
+    if (s_session_page_mode)
+        s_scroll_keep_list = true;
+    close_ai_widget();
 }
 
 /* Dismiss the AI widget when the user scrolls the instruction list while it is
@@ -3797,12 +4328,6 @@ static void skai_widget_fade_anim_cb(void *var, int32_t value)
         lv_obj_set_style_img_opa(s_voice_img, f, 0);
     }
 }
-
-/* Set by ai_widget_fade_on_scroll: THIS close should collapse the voice box back
-   to the slim bar but KEEP the floating list up (browse / switch options).
-   Consumed at the top of close_ai_widget; every other close path slides the whole
-   list out. */
-static bool s_scroll_keep_list = false;
 
 static void ai_widget_fade_on_scroll(void)
 {
@@ -3854,6 +4379,13 @@ static bool s_left_morph_busy = false;
    skaibar's `skaibar_active` gating). Blocks re-opening mid-close and re-entrant
    close calls. Cleared when the close finishes (finalize_close_ai_widget). */
 static bool s_left_closing = false;
+/* 立起旗標的時刻。s_left_closing 只在 finalize_close_ai_widget() 被清 —— 而那是一串
+   動畫(pill fade → bar shrink)的最後一棒,中間任何一段被 lv_anim_del 掉、或物件在動畫
+   途中被釋放,finalize 就永遠不會跑,旗標卡在 true → 之後**每一次**點 bar 都被
+   open_browse 開頭那個 early-out 默默擋掉,症狀=「怎麼點都不出現 session 列表」。
+   open_browse 用這個時刻做 staleness 自癒(founder 2026-08-17 回報)。 */
+static rt_tick_t s_left_closing_tick = 0;
+#define LEFT_CLOSING_STALE_TICKS 1500 /* ms;正常關閉動畫全程 < 500ms */
 /* list_bg 滑出關閉動畫進行中:擋退出途中(本地 restore 或手機重推)觸發的 UI 重繪閃變。 */
 static bool s_list_sliding_out = false;
 
@@ -3965,6 +4497,19 @@ static void inst_list_slide_out_done_cb(lv_anim_t *a)
     if (s_bar_single_device)
     {
         s_bar_single_device = false;
+        drawer_row_engage(false); /* 三鍵列釋放、mic_bar 還原(離場即放,R32) */
+        /* R32 heap 紀律(2026-08-15):先釋放列 UI、再還原資料 —— restore_base 的 refresh
+           會撞 R33 deferral 只還原 list_items[](不重建 9 列 UI),聊天室/觸控板才有 heap;
+           順序反過來=restore 先建 9 列、下面 release 再拆=白付一次 heap 尖峰(這尖峰在
+           聊天室第二輪把 lv_obj_create 壓到回 NULL,hard fault 實測)。 */
+        {
+            extern bool app_control_get_mouse_mode(void);
+            if (app_control_get_mouse_mode())
+            {
+                extern void instruction_list_release_ui(void);
+                instruction_list_release_ui();
+            }
+        }
         extern void instruction_list_restore_base(void);
         instruction_list_restore_base();
         /* 關鍵:把整個全域 bar overlay(s_global_bar_layer,layer_top 全螢幕)一起隱藏。滑鼠 app
@@ -4199,6 +4744,7 @@ void instruction_list_reveal_drag_begin(void)
                                  s_reveal_from_left ? -LV_HOR_RES : LV_HOR_RES, 0);
     /* R50:這次是進場 —— 落點規則要一路管到「sessions 稍後才注入」的那次重建為止。 */
     s_entry_landing_pending = true;
+    s_entry_landing_tick = rt_tick_get(); /* R80:寬限窗起點 */
     /* R54(founder:「點 session 列表下面的麥克風沒反應」):`s_session_page_mode` 原本只在
        **整頁 settle 到左頁**時才設(app_clock_status_bar 的 active_pos == MAIN_PAGE_TYPE_RIGHT),
        但從錶盤邊緣拖曳拉出來的是**浮層**這條路,tileview 根本沒換頁 → 旗標留 false →
@@ -4342,9 +4888,24 @@ void instruction_list_open_browse(void)
         extern void instruction_list_ensure_ui(void);
         instruction_list_ensure_ui();
     }
+    /* 自癒:關閉旗標卡住超過 LEFT_CLOSING_STALE_TICKS 就當它是死的,強制收尾後照常開。
+       沒有這一段的話,一次被中斷的關閉動畫會讓 bar 從此永遠點不開(founder 2026-08-17)。 */
+    if (s_left_closing &&
+        (rt_tick_get() - s_left_closing_tick) >
+            rt_tick_from_millisecond(LEFT_CLOSING_STALE_TICKS))
+    {
+        LOG_W("[land] stale s_left_closing (%u ticks) -> self-heal",
+              (unsigned)(rt_tick_get() - s_left_closing_tick));
+        finalize_close_ai_widget();
+    }
     /* Only when parked & hidden — already up (browse/open) or sliding shut: leave it. */
     if (s_left_closing || !lv_obj_has_flag(list_bg, LV_OBJ_FLAG_HIDDEN))
+    {
+        LOG_W("[land] open_browse early-out closing=%d hidden=%d",
+              (int)s_left_closing,
+              (int)lv_obj_has_flag(list_bg, LV_OBJ_FLAG_HIDDEN));
         return;
+    }
     /* Haptic at the trigger instant: the IMU release gesture (handle_gesture_
        unlock) or the bar tap just fired and cleared the guards, so the list is
        committed to opening — buzz now, not on settle. Mirrors the drag-release
@@ -4357,6 +4918,14 @@ void instruction_list_open_browse(void)
     s_reveal_from_left = true;   /* IMU release brings the LEFT list in (the right-edge
                                     drawer is legacy); park on the left, slide to 0 */
     instruction_list_reveal_drag_begin(); /* un-hide + park + backdrop */
+    /* 滑鼠 app 單設備抽屜:底部換成語音站同款三鍵列(地球/麥克風/收下),原本那條
+       mic_bar 與它的大 tap 區讓開(founder 2026-08-17)。錶盤路徑不進這裡。
+       **一定要排在 reveal_drag_begin() 之後** —— 它的最後一行就是
+       instruction_list_refresh_home_bar()「list is now shown → surface the bottom mic
+       pill」,專門負責把那條 pill 叫出來。排在前面的話就是「我先藏、它後開」,
+       結果三鍵列旁邊永遠多一顆舊的小麥克風(founder 連三輪回報)。 */
+    if (s_bar_single_device)
+        drawer_row_engage(true);
     s_reveal_drag_active = false;         /* gesture-triggered, not a finger drag */
     lv_coord_t tx = lv_obj_get_style_translate_x(list_bg, 0);
     lv_anim_del(list_bg, inst_list_slide_anim_cb);
@@ -4913,6 +5482,7 @@ void close_ai_widget(void)
         lv_obj_clear_flag(bar, LV_OBJ_FLAG_HIDDEN);
 
     s_left_closing = true;
+    s_left_closing_tick = rt_tick_get();
 
     /* Phase 1: fade the pill out; phase 2 (bar shrink) chains off ready_cb. */
     if (!s_skai_widget || !lv_obj_is_valid(s_skai_widget))
@@ -5266,6 +5836,8 @@ static void open_pending_chat_async_cb(void *unused)
        再藏掉。修在 app_mainmenu.c:_at_home 的條件加 !chat_page_is_open()(聊天開著就不是
        「在錶盤」),偵測器因此保持武裝。先前「重開清單保住 ATINST」的招沒效
        (instruction_list_open_browse 不會讓清單真的 visible),已移除。 */
+    extern void chat_page_set_style_hermes(bool hermes);
+    chat_page_set_style_hermes(true); /* 開新對話一律 Hermes 房 */
     if (!chat_page_is_open())
         chat_page_open(s_pending_chat_title, NULL);
     chat_page_seed_local_message(s_pending_chat_title); /* 自己那句先顯示,別讓房間空著 */
@@ -5281,6 +5853,52 @@ void instruction_list_open_pending_chat(const char *title)
     lv_async_call(open_pending_chat_async_cb, NULL);
 }
 
+/* ── 滑鼠單設備抽屜:tap 落在 session 列 → 手錶自己走進聊天室(2026-08-15 founder:
+   「點session手錶也需要開那個聊天室」)。抽屜的 0x03 鏡像列只有 title,用那台的 0x20
+   清單按 title 反查 conv id;查得到=session 列,查不到=一般選項照走 commit 給桌面。
+   聊天室 overlay 的建立走 lv_async_call —— R70 鐵律:清單自己的點擊處理中途不准建
+   layer_top 浮層(close_ai_widget 正在收清單,GUI 會當在半拆半建的樹上)。 */
+static char s_sd_chat_title[96];
+static char s_sd_chat_id[96];
+
+static void sd_open_chat_async_cb(void *unused)
+{
+    (void)unused;
+    extern void chat_page_set_style_hermes(bool hermes);
+    extern void chat_page_open(const char *title, const char *icon_src);
+    /* 聊天 overlay 不透明蓋全螢幕:先把錶盤模糊圖硬藏,別讓它的 opa 動畫在低 heap 時
+       把 EPIC render 壓爆(sys memory is full,2026-08-15 真機)。 */
+    extern void clock_main_blur_force_hide(void);
+    clock_main_blur_force_hide();
+    chat_page_set_style_hermes(strncmp(s_sd_chat_id, "conv:", 5) == 0);
+    chat_page_open(s_sd_chat_title, NULL);
+}
+
+static bool single_device_try_open_session(const list_item_t *item)
+{
+    if (!s_bar_single_device || item == NULL)
+        return false;
+    extern const char *session_list_find_conv_id(const char *device_id, const char *title);
+    const char *conv_id = session_list_find_conv_id(s_single_device_id, item->title);
+    if (conv_id == NULL)
+        return false;
+    strncpy(s_sd_chat_title, item->title, sizeof(s_sd_chat_title) - 1);
+    s_sd_chat_title[sizeof(s_sd_chat_title) - 1] = '\0';
+    strncpy(s_sd_chat_id, conv_id, sizeof(s_sd_chat_id) - 1);
+    s_sd_chat_id[sizeof(s_sd_chat_id) - 1] = '\0';
+    LOG_W("[act] single-device session \"%s\" -> chat (%s)", s_sd_chat_title, s_sd_chat_id);
+    extern bool commu_send_conv_open(const char *title, const char *id, uint8_t index);
+    commu_send_conv_open(s_sd_chat_title, s_sd_chat_id, 0);
+    /* 先收抽屜回觸控板:聊天室 overlay 疊在觸控板上,左緣右滑關聊天室後落回觸控板
+       (founder:「從左邊邊緣往右滑動回到觸碰板」)。非 cancel:滑出 ready_cb 會
+       restore_base + 清 s_bar_single_device;不送 0x0C(同 commit 路徑,避免跟下一次
+       點 bar 的 summon 打架)。 */
+    s_close_is_cancel = false;
+    close_ai_widget();
+    lv_async_call(sd_open_chat_async_cb, NULL);
+    return true;
+}
+
 static void list_item_activate(list_item_t *item)
 {
     if (s_activate_suppress_until != 0 &&
@@ -5291,6 +5909,9 @@ static void list_item_activate(list_item_t *item)
     }
     s_activate_suppress_until = 0;
     LOG_W("[act] id=\"%s\" title=\"%s\"", item->id, item->title);
+    /* 滑鼠單設備抽屜的 session 列:手錶自己進聊天室,不交給桌面執行。 */
+    if (single_device_try_open_session(item))
+        return;
     /* R55:合成的「開新 session」列 —— 篩不到任何既有項目時才存在。點它就用目前控制中
        的那台電腦開新 session(清單推回來後 session pager 自己走進聊天室),然後收掉輸入框
        與文字篩選,讓清單回到完整狀態。 */
@@ -5328,6 +5949,27 @@ static void list_item_activate(list_item_t *item)
         s_activate_suppress_until = rt_tick_get() + rt_tick_from_millisecond(1000);
         return;
     }
+    /* 滑鼠抽屜:點下電腦鏡像過來的 '@' 類選項(AskSkai / 開新對話那種)時,先武裝 walk-in。
+       執行本身照舊交給電腦(下面的 0x06 commit)—— session 是電腦建的,手錶再送一次
+       conv_new 會變成建兩個。武裝之後,那台電腦把新 session 推回清單時,session pager 既有的
+       walk-in 就會把使用者帶進聊天室(founder 2026-08-17:「電腦端有進聊天室但手錶上沒有」)。
+       為什麼非得這樣繞:KEY_CONV_OPEN(0x0F)是 uplink-only,電腦端沒有任何管道能主動叫
+       手錶開聊天室。
+       category 由 0x03 鏡像帶下來('@'=chat 類 / '/'=一般 action),既有 session 列在上面
+       single_device_try_open_session() 就已經接走了,所以這裡的 '@' 實際上就是「會開出一個
+       新對話」的那幾種。判斷錯也安全:沒有新 session 出現時這面旗自然過期。 */
+    /* 2026-08-17 真機修正:原本用 `item->category == '@'` 收窄,但 log 顯示「問 SKAI」那列
+       在手錶上的 category **不是** '@'(`[act]` 有印、`[walkin] armed` 沒印),武裝從沒發生。
+       改成「抽屜裡只要不是既有 session 的選項就武裝」—— 既有 session 在上面
+       single_device_try_open_session() 已經接走,剩下的本來就以「會開出新對話」為大宗。
+       判斷錯的代價很小:沒有新 session 出現時這面旗 30 秒後自然過期(房間還開著則 3 分鐘)。
+       順便印出實際的 category,之後要把條件收窄回去就有依據。 */
+    if (s_bar_single_device)
+    {
+        extern void session_list_arm_walkin(const char *device_id);
+        LOG_W("[walkin] drawer commit cat=%d -> arm", (int)item->category);
+        session_list_arm_walkin(s_single_device_id);
+    }
 
     /* A tapped @-contact opens the in-watch chat room (mirror the desktop @-contact
        tap). The merged mixed list has no separate @ view, so this keys off the tapped
@@ -5341,6 +5983,12 @@ static void list_item_activate(list_item_t *item)
         if (conv_idx < 0 || conv_idx >= MAX_LIST_ITEMS)
             conv_idx = 0;
         commu_send_conv_open(item->title, item->id, (uint8_t)conv_idx);
+        /* conv: 前綴 = Hermes session(桌面 IsHermes 同款分流);其他 @ 列是
+           WhatsApp/Messenger 等 messaging 房,保留氣泡畫風。 */
+        {
+            extern void chat_page_set_style_hermes(bool hermes);
+            chat_page_set_style_hermes(strncmp(item->id, "conv:", 5) == 0);
+        }
         chat_page_open(item->title, item->icon);
         return;
     }
@@ -5475,6 +6123,10 @@ static void on_tap(void)
     if (item->category == '@' && !is_open_instruction_list_ai)
     {
         commu_send_conv_open(item->title, item->id, (uint8_t)selected_item_index);
+        {
+            extern void chat_page_set_style_hermes(bool hermes);
+            chat_page_set_style_hermes(strncmp(item->id, "conv:", 5) == 0);
+        }
         chat_page_open(item->title, item->icon);
         return;
     }
@@ -5482,6 +6134,10 @@ static void on_tap(void)
     if (item->is_instruction)
     {
         LOG_I("Custom instruction tapped via gesture: id=%s", item->id);
+        /* 滑鼠單設備抽屜的 session 列(手勢路徑,與 list_item_activate 同攔截):
+           手錶自己進聊天室,不交給桌面執行。 */
+        if (single_device_try_open_session(item))
+            return;
         /* Offline "open a watch app" instruction — run locally on the watch
            with no phone relay, same as list_item_click_event_cb's open_app
            branch. This gesture/ENTER path is the one users hit most (raise-
@@ -5561,6 +6217,17 @@ static void reset_list_internal(void)
     {
         return;
     }
+    /* R32(2026-08-15):列 UI 已釋放(滑鼠模式抽屜收合後)—— list 本體還在但列物件/dot
+       句柄全 NULL,底下的 scroll_center_item/update dots/open_selected_widget 是懸空
+       操作。ensure 重建時 refresh 會重跑落點,這裡直接跳過。 */
+    {
+        extern bool instruction_list_ui_is_released(void);
+        if (instruction_list_ui_is_released())
+        {
+            LOG_W("[land] reset skipped (list UI released)");
+            return;
+        }
+    }
     open_scroll_motor = false;
     disable_scrolling_motor_vibrate();
     set_paused_control_with_arm(false);
@@ -5576,6 +6243,9 @@ static void reset_list_internal(void)
         for (uint8_t i = 0; i < list_item_count; i++)
             if (strncmp(list_items[i].id, "conv:", 5) == 0)
                 newest_conv = i; /* 不 break:要的是**最後一個** conv 項 */
+        LOG_W("[land] reset count=%u conv=%d pending=%d",
+              (unsigned)list_item_count, (int)(int8_t)newest_conv,
+              (int)s_entry_landing_pending);
         if (newest_conv != (uint8_t)-1)
         {
             app_scroll_target_item = newest_conv;
@@ -5599,8 +6269,9 @@ static void reset_list_internal(void)
                落點已經落在 session 上 → 進場定位的任務就結束,之後手機推播走的是
                R48 的「還原原本那一項」,位置不動。
                沒有 conv 項的那條 fallback 不清旗標:那代表 session 還沒到,等它到達時
-               仍要補正一次(founder 的規則是「沒有 session 才停在 actions 最下面」)。 */
-            s_entry_landing_pending = false;
+               仍要補正一次(founder 的規則是「沒有 session 才停在 actions 最下面」)。
+               R80:落在 conv 上也**不再立刻清** —— 另一台桌面的清單可能晚幾秒才到、
+               全域最新在那包裡。寬限窗(refresh 的 R50 分支)負責到期/手勢時熄掉。 */
             update_indicator_dots_position(gesture_starting_value);
             open_selected_widget(false);
             is_widget_animation_active = false;
@@ -6456,6 +7127,27 @@ void refresh_custom_instructions(void)
         LOG_W("[R33] refresh deferred: list UI released (mouse page owns the heap)");
         return;
     }
+    /* R33 加固(2026-08-15 真機:語音站開著時一條 refresh 把隱藏清單重建 8 列 →
+       EPIC render `sys memory is full!` → assert 重開):滑鼠的鍵盤/語音站模式佔著
+       heap 期間,清單又是**隱藏**狀態(抽屜沒開)就沒有任何理由重建 —— 不管 released
+       旗標此刻是誰清的,一律重新釋放+defer。抽屜真的要開時 prepare 的 ensure_for_feed
+       會解鎖。 */
+    {
+        extern bool hid_mouse_keyboard_mode_active(void);
+        bool list_hidden =
+            p_instruction_list_layout == NULL ||
+            p_instruction_list_layout->p_instruction_list_bg == NULL ||
+            !lv_obj_is_valid(p_instruction_list_layout->p_instruction_list_bg) ||
+            lv_obj_has_flag(p_instruction_list_layout->p_instruction_list_bg,
+                            LV_OBJ_FLAG_HIDDEN);
+        if (hid_mouse_keyboard_mode_active() && list_hidden)
+        {
+            extern void instruction_list_release_ui(void);
+            instruction_list_release_ui();
+            LOG_W("[R33] refresh deferred: keyboard mode owns the heap");
+            return;
+        }
+    }
     open_scroll_motor = false;
     if (p_instruction_list_layout == NULL ||
         p_instruction_list_layout->list == NULL)
@@ -6671,6 +7363,11 @@ void refresh_custom_instructions(void)
         s_entry_landing_pending = false;
         s_force_scroll_to_last = false;
     }
+    /* R80:寬限窗到期 → 進場落點任務結束,改走 R48「還原原本那一項」。 */
+    if (s_entry_landing_pending &&
+        (rt_tick_get() - s_entry_landing_tick) >
+            rt_tick_from_millisecond(ENTRY_LANDING_GRACE_MS))
+        s_entry_landing_pending = false;
     if (s_entry_landing_pending && list_item_count > 0)
     {
         /* R50:這次重建屬於「剛進場」 → 重新套用落點規則(最新的 session,沒有就最後一項),
@@ -6679,6 +7376,8 @@ void refresh_custom_instructions(void)
         for (uint8_t i = 0; i < list_item_count; i++)
             if (strncmp(list_items[i].id, "conv:", 5) == 0)
                 target = i; /* 最後一個 conv 項 = 最新的 session */
+        LOG_W("[land] refresh re-land target=%u id=%s", (unsigned)target,
+              list_items[target].id);
         app_scroll_target_item = target;
         selected_item_index = target;
         scroll_center_item(list, target);
@@ -6686,10 +7385,8 @@ void refresh_custom_instructions(void)
         scroll_list(list, 0);
         selected_item_index = target;
         app_scroll_target_item = target;
-        /* R53:補正只做這一次 —— 落到 session 上就交棒給 R48 的位置保留。清單裡還是
-           一個 session 都沒有時保持 pending,等 session 真的到達再補。 */
-        if (strncmp(list_items[target].id, "conv:", 5) == 0)
-            s_entry_landing_pending = false;
+        /* R80(取代 R53 的「落到 conv 就清」):寬限窗內保持 pending —— 另一台桌面的
+           清單晚幾秒才到時還要再補正一次;窗由本函式開頭的到期檢查與使用者手勢負責關。 */
     }
     else if (s_force_scroll_to_last && list_item_count > 0)
     {
@@ -7333,13 +8030,7 @@ lv_obj_t *lv_instruction_list_layout_create(lv_obj_t *parent)
        lmic_grow_cb's existing 255->0 img-opa fade dissolves the glyph as the bar morphs into the box.
        Non-clickable so taps fall through to mic_bar / mic_hit (which open the box). */
     lv_obj_add_flag(mic_bar, LV_OBJ_FLAG_OVERFLOW_VISIBLE);
-    s_mic_bar_icon = lv_img_create(mic_bar);
-    lv_img_set_src(s_mic_bar_icon, &micro_icon);
-    lv_img_set_pivot(s_mic_bar_icon, micro_icon.header.w / 2, micro_icon.header.h / 2);
-    lv_obj_add_flag(s_mic_bar_icon, LV_OBJ_FLAG_OVERFLOW_VISIBLE);
-    lv_img_set_zoom(s_mic_bar_icon, 128); /* 64px 原生縮 50% → 視覺 32px(founder 2026-08-06);觸控走 mic_hit,尺寸不變 */
-    lv_obj_align(s_mic_bar_icon, LV_ALIGN_CENTER, 0, LMIC_ICON_Y_OFS); /* 上移避免被底緣切到 */
-    lv_obj_clear_flag(s_mic_bar_icon, LV_OBJ_FLAG_CLICKABLE);
+    mic_bar_build_icon(mic_bar);
 
     /* ONE-PIECE tap helper covering the bar + the zone above it (founder 2026-07-06:
        可按區太小 — 長按尤其難:PRESS_LOCK 已清,手指飄出物件就把 press 交出去而中斷;
@@ -7351,6 +8042,7 @@ lv_obj_t *lv_instruction_list_layout_create(lv_obj_t *parent)
        transfers down. Created BEFORE ai_box so the open box covers it (z-order).
        Child of s_global_bar_layer -> chain-deleted with the bar. */
     lv_obj_t *mic_hit = lv_obj_create(s_global_bar_layer);
+    s_mic_hit = mic_hit; /* 抽屜三鍵列要把這片大 tap 區一起讓開(見 drawer_row_*) */
     lv_obj_remove_style_all(mic_hit);
     /* founder 2026-07-06 定案:可觸發範圍=原本(216x71 兩件式)的 1.5 倍 → 324x106。 */
     lv_obj_set_size(mic_hit, 324, LMIC_H + 75);
@@ -7716,6 +8408,21 @@ static void pack_text_filter(void)
         s_cat_backup_count = list_item_count;
         s_cat_backup_valid = true;
     }
+    /* R77(founder:「有出現篩選了,但為什麼 new session 還在?」):先數這輪真正
+       比中的項目 —— 有比中就不該出現任何「開新對話」列(先前合成的、手機推來的
+       「問 SKAI」列一律丟),沒比中才補。 */
+    uint8_t real_matches = 0;
+    for (uint8_t r = 0; r < list_item_count; r++)
+    {
+        if (strncmp(list_items[r].id, NEW_SESSION_ITEM_ID,
+                    sizeof(NEW_SESSION_ITEM_ID) - 1) == 0)
+            continue;
+        if (strstr(list_items[r].title, "SKAI") != NULL ||
+            strstr(list_items[r].title, "Skai") != NULL)
+            continue;
+        if (text_contains_ci(list_items[r].title, s_text_filter))
+            real_matches++;
+    }
     uint8_t w = 0;
     bool has_new_session_row = false;
     for (uint8_t r = 0; r < list_item_count; r++)
@@ -7728,6 +8435,9 @@ static void pack_text_filter(void)
         if (strncmp(list_items[r].id, NEW_SESSION_ITEM_ID,
                     sizeof(NEW_SESSION_ITEM_ID) - 1) == 0)
         {
+            /* R77:這輪有真比中 → 先前合成的「開新對話」列不再保留。 */
+            if (real_matches > 0)
+                continue;
             if (w != r)
                 memcpy(&list_items[w], &list_items[r], sizeof(list_item_t));
             has_new_session_row = true;
@@ -7740,7 +8450,8 @@ static void pack_text_filter(void)
         if (strstr(list_items[r].title, "SKAI") != NULL ||
             strstr(list_items[r].title, "Skai") != NULL)
         {
-            if (has_new_session_row)
+            /* R77:有真比中 → 手機推來的「問 SKAI」列直接丟,不轉成開新對話。 */
+            if (real_matches > 0 || has_new_session_row)
                 continue;
             if (w != r)
                 memcpy(&list_items[w], &list_items[r], sizeof(list_item_t));
@@ -7758,7 +8469,7 @@ static void pack_text_filter(void)
             memcpy(&list_items[w], &list_items[r], sizeof(list_item_t));
         w++;
     }
-    if (!has_new_session_row)
+    if (real_matches == 0 && !has_new_session_row)
     {
         /* R61:一個都沒中 → **每一台已知桌面各一列**「開新對話」,右緣圓框放設備名
            (create_indicator_dots 會依 id 前綴去查),使用者自己挑開在哪台。設備 id 直接
@@ -7800,6 +8511,55 @@ static void pack_text_filter(void)
         selected_item_index = list_item_count ? (list_item_count - 1) : 0;
 }
 
+/* R75(founder:說「語音辨識」只得到 new-session 列,「語音辨識測試」沒被留下;log:
+   [flt] set 了 15 bytes = 「語音辨識。」):STT 轉錄尾端帶標點(全形「。」等),拿去做
+   子字串比對永遠比不中任何標題。設定篩選字前先剝掉頭部空白與尾端標點(ASCII + 常見
+   全形)。同一份字串也是開新對話的第一句,剝掉尾標點無害。 */
+static void text_filter_sanitize(char *s)
+{
+    /* leading spaces */
+    size_t lead = 0;
+    while (s[lead] == ' ' || s[lead] == '\t')
+        lead++;
+    if (lead)
+        memmove(s, s + lead, strlen(s + lead) + 1);
+    /* trailing ASCII punctuation/space + full-width punctuation (3-byte UTF-8) */
+    static const char *fw_punct[] = {
+        "\xE3\x80\x82" /* 。 */, "\xEF\xBC\x8C" /* , */, "\xEF\xBC\x81" /* ! */,
+        "\xEF\xBC\x9F" /* ? */, "\xE3\x80\x81" /* 、 */, "\xEF\xBC\x9B" /* ; */,
+        "\xEF\xBC\x9A" /* : */,
+    };
+    size_t len = strlen(s);
+    for (;;)
+    {
+        if (len == 0)
+            break;
+        char c = s[len - 1];
+        if (c == '.' || c == ',' || c == '!' || c == '?' || c == ';' ||
+            c == ':' || c == ' ' || c == '\t')
+        {
+            len--;
+            continue;
+        }
+        bool stripped = false;
+        if (len >= 3)
+        {
+            for (size_t i = 0; i < sizeof(fw_punct) / sizeof(fw_punct[0]); i++)
+            {
+                if (memcmp(s + len - 3, fw_punct[i], 3) == 0)
+                {
+                    len -= 3;
+                    stripped = true;
+                    break;
+                }
+            }
+        }
+        if (!stripped)
+            break;
+    }
+    s[len] = '\0';
+}
+
 /* R55:文字篩選層 —— 由輸入框的轉錄驅動。空字串 = 清掉,回到原本的清單。 */
 void instruction_list_set_text_filter(const char *text)
 {
@@ -7809,6 +8569,7 @@ void instruction_list_set_text_filter(const char *text)
     {
         strncpy(next, text, sizeof(next) - 1);
         next[sizeof(next) - 1] = '\0';
+        text_filter_sanitize(next);
     }
     if (strcmp(next, s_text_filter) == 0)
         return; /* 轉錄會重複推同一串:沒變就別重繪 */
@@ -8292,6 +9053,26 @@ void instruction_list_ensure_ui(void)
 void instruction_list_mark_ui_rebuilt(void)
 {
     s_list_ui_released = false;
+}
+
+/** 同 ensure_ui,但**不**先用當前(舊)資料重建 —— 給「呼叫端接著馬上 clear+feed 新資料」
+    的路徑(滑鼠單設備抽屜)。ensure_ui 會先把錶盤那份 9 列(含 session)整包建回來,feed
+    再拆掉重建一次:白付一次工,更重要的是 heap 尖峰 —— 滑鼠 UI+聊天室都活著時多這一份
+    舊清單就會把 lv_obj_create 壓到回 NULL(R32 記錄過的 lv_obj_class_init_obj hard
+    fault,2026-08-15 真機在聊天室第二次返回時複現)。這裡只解除 R33 deferral+清去抖,
+    讓 feed 的 refresh 直接一次建出新(較小的)單設備清單。 */
+void instruction_list_ensure_ui_for_feed(void)
+{
+    if (!s_list_ui_released)
+        return;
+    s_list_ui_released = false;
+    s_last_refresh_tick = 0;
+    if (s_pending_refresh_timer != NULL)
+    {
+        lv_timer_del(s_pending_refresh_timer);
+        s_pending_refresh_timer = NULL;
+    }
+    s_restore_rebuild = true; /* 同 ensure_ui:別把已解碼的圖丟掉(R42) */
 }
 
 /** R33:目前列的 UI 是不是處於已釋放狀態(refresh 用來決定要不要重建)。 */

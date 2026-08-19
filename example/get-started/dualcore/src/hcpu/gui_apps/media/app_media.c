@@ -107,6 +107,12 @@ static void fourth_app_btn_event_cb(lv_event_t *e);
 static bool gesture_open = false;
 static uint8_t button_selection_index = 5;
 
+/* 通知列表裡的媒體 widget 支援手指上下拖曳換頁（lv_message_list_layout.c 的
+   media_card_drag_event_cb）。那一輪拖曳結束時 LVGL 照樣會送 CLICKED 給手指
+   底下的按鈕，所以動作前先問一次，免得往上滑一頁就順手切了一首歌。
+   一次性旗標：只有剛剛真的發生垂直拖曳時才回 true。 */
+extern bool message_media_click_suppressed(void);
+
 static void change_icon_image(lv_obj_t *icon, const void *new_img_src)
 {
     /* Get the image object from the button */
@@ -256,6 +262,8 @@ static void widget_vol_icon_click_cb(lv_event_t *e)
     lv_event_code_t code = lv_event_get_code(e);
     if (code == LV_EVENT_CLICKED)
     {
+        if (message_media_click_suppressed())
+            return;
         if (!widget_vol_bar_expanded)
             widget_vol_bar_expand();
         else
@@ -613,6 +621,9 @@ static lv_obj_t *music_app_ui_build(lv_obj_t *parent)
 
     /* Volume bar (initially hidden, expands from icon) */
     app_vol_bar = lv_bar_create(p_window);
+    /* 音量值是離散進來的(AVRCP 通知 / 遠端回報),沒有補間時間的話 LV_ANIM_ON 等於瞬間跳。
+       250ms 與滑鼠 app 媒體頁那條一致,三處音量條手感統一(founder 2026-08-19)。 */
+    lv_obj_set_style_anim_time(app_vol_bar, 250, LV_PART_MAIN);
     lv_bar_set_range(app_vol_bar, 0, 100);
     lv_obj_set_width(app_vol_bar, APP_VOL_BAR_WIDTH);
     lv_obj_set_height(app_vol_bar, 60);
@@ -660,6 +671,8 @@ void clear_media_widget(void)
 
 static void widget_title_event_cb(lv_event_t *e)
 {
+    if (message_media_click_suppressed())
+        return;
     LOG_D("Media widget title clicked");
     gui_app_run(APP_ID_MEDIA);
 }
@@ -778,6 +791,9 @@ lv_obj_t *lv_media_widget_builder(lv_obj_t *parent)
 
     /* Volume bar (initially hidden, expands to cover prev/play/next buttons) */
     widget_vol_bar = lv_bar_create(widget);
+    /* 音量值是離散進來的(AVRCP 通知 / 遠端回報),沒有補間時間的話 LV_ANIM_ON 等於瞬間跳。
+       250ms 與滑鼠 app 媒體頁那條一致,三處音量條手感統一(founder 2026-08-19)。 */
+    lv_obj_set_style_anim_time(widget_vol_bar, 250, LV_PART_MAIN);
     lv_bar_set_range(widget_vol_bar, 0, 100);
     lv_obj_set_width(widget_vol_bar, WIDGET_VOL_BAR_WIDTH);
     lv_obj_set_height(widget_vol_bar, 80);
@@ -1077,6 +1093,8 @@ static void next_btn_event_cb(lv_event_t *e)
 
     if (LV_EVENT_CLICKED == event)
     {
+        if (message_media_click_suppressed())
+            return;
         LOG_D("next_btn_event_cb");
         sys_media_event_set(SYS_EVENT_NEXT);
     }
@@ -1088,6 +1106,8 @@ static void prev_btn_event_cb(lv_event_t *e)
 
     if (LV_EVENT_CLICKED == event)
     {
+        if (message_media_click_suppressed())
+            return;
         LOG_D("prev_btn_event_cb");
         sys_media_event_set(SYS_EVENT_PREV);
     }
@@ -1169,6 +1189,8 @@ static void play_pause_btn_event_cb(lv_event_t *e)
 
     if (LV_EVENT_CLICKED == event)
     {
+        if (message_media_click_suppressed())
+            return;
         LOG_D("play_pause_btn_event_cb");
         sys_media_event_set(SYS_EVENT_PLAY_PAUSE);
     }

@@ -139,6 +139,24 @@ static void handle_back_event(bool is_button)
         if (chat_page_is_open())
         {
             commu_send_conv_close();
+            /* 滑鼠情境(單設備搜尋抽屜點 session 進聊天室,2026-08-15):聊天室 overlay 疊在
+               觸控板上,返回=只關聊天室、直接露出觸控板。下面錶盤那套 hide list + snap
+               home 是給左頁/@ 流程的 —— 在滑鼠模式跑 snap_to_home 會把人帶離滑鼠面
+               (founder:「從左邊緣往右拉沒有回滑鼠」),hosted 滑鼠的 tileview 又歸滑鼠
+               圖層自己管,不該從這裡碰。 */
+            {
+                extern bool app_control_get_mouse_mode(void);
+                extern void display_gesture_detect_objs(uint32_t idx, bool display);
+                if (app_control_get_mouse_mode())
+                {
+                    chat_page_close();
+                    /* 聊天室開場武裝了左緣偵測器;回到觸控板要關回去(hid_mouse_enter_mode
+                       的狀態),否則左緣拖曳被它吃掉、又觸發一次 back。 */
+                    display_gesture_detect_objs(0, false);
+                    LOG_I("ESC in chat page (mouse ctx) => close chat only");
+                    return;
+                }
+            }
             /* The @-list deliberately stays OPEN underneath the chat for the whole session: that keeps
                Main in the "instruction list" state, which is the ONLY state that keeps the left-edge
                back gesture armed (check_is_at_instruction_list in app_mainmenu.c gates the detector;

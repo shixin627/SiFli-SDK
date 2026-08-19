@@ -345,6 +345,11 @@ static void chat_stop_recording_and_send(void)
     voice_provider.auto_stop_listening(); /* finalize (mirror app_skai's send_to_ai) */
     chat_play_close_morph();
     const char *text = get_combined_voice2text();
+    /* 「文字出現一瞬間就消失、也沒送出去」(founder 2026-08-17):轉錄確實到了手錶
+       (`[v2t] rx len=15` 等),chat 分支也認領了,但送出這一刻拿到空的。V2T 緩衝是**單一
+       全域**、有六個 app 都會 clearVoice2Text(),沒有任何所有權概念 —— 所以要先知道
+       這裡到底拿到什麼,才能判斷是被別人清掉還是根本沒累積。 */
+    LOG_D("[chat] mic stop -> combined len=%d", text ? (int)strlen(text) : -1);
     if (text != NULL && text[0] != '\0')
     {
         commu_send_conv_send(text);
@@ -627,7 +632,23 @@ void chat_page_open(const char *title, const char *icon_src)
         extern void display_gesture_detect_objs(uint32_t idx, bool display);
         extern void lvsf_gesture_bring_to_front(void);
         display_gesture_detect_objs(0, true);
+        /* R76(founder:「聊天室底部的麥克風點了沒反應」):bring_to_front 抬的是**四條**
+           透明邊緣 bar,idx3 是整寬的 BOTTOM bar —— 跟底部麥克風完全重疊。若上一個 app
+           離開時手勢處於啟用狀態(gesture_enable_update(true) 四條全顯示),抬到面板上方
+           的底部 bar 會把 mic 的 tap 整顆吃掉(透明的,看起來就是沒反應);時好時壞取決
+           於進房前的 app 路徑。聊天室只需要左緣返回,其餘三條明確藏掉。 */
+        display_gesture_detect_objs(1, false);
+        display_gesture_detect_objs(2, false);
+        display_gesture_detect_objs(3, false);
         lvsf_gesture_bring_to_front();
+    }
+
+    /* heap 輪:hosted 滑鼠模式下,聊天 overlay 不透明蓋全螢幕 —— 底下的滑鼠圖層
+       藏掉,別讓看不見的整層白付 EPIC 合成(低 heap 時就是 render OOM 的差額)。
+       chat_page_close 對稱還原;非滑鼠模式 no-op。 */
+    {
+        extern void lv_top_panel_mouse_layer_set_covered(bool covered);
+        lv_top_panel_mouse_layer_set_covered(true);
     }
 
     LOG_I("chat page opened: %s", (title && title[0]) ? title : "(none)");
@@ -658,6 +679,10 @@ void chat_page_close(void)
     s_transcript_label = NULL;
     s_transcript_pill = NULL;
     s_input_scrim = NULL;
+    {
+        extern void lv_top_panel_mouse_layer_set_covered(bool covered);
+        lv_top_panel_mouse_layer_set_covered(false);
+    }
     LOG_I("chat page closed");
 }
 
@@ -667,12 +692,19 @@ void chat_page_close(void)
    resolve_skailink_command links against a STRONG symbol regardless. */
 void skai_chat_on_conv_state(const uint8_t *json, uint16_t length)
 {
-    LOG_W("[chat] conv_state rx len=%u open=%d", (unsigned)length, (int)chat_page_is_open());
+    LOG_D("[chat] conv_state rx len=%u open=%d", (unsigned)length, (int)chat_page_is_open());
     if (json == NULL || length == 0)
         return;
     cJSON *root = cJSON_ParseWithLength((const char *)json, length);
     if (!cJSON_IsObject(root))
     {
+        /* 解析失敗就整包靜默丟棄 —— 而丟棄等於「畫面停在上一版」,正是「我的輸入閃一下
+           就消失」會有的表現。payload 隨對話成長(實測 93→388→680→970 bytes),被截斷的
+           那一刻就會落到這裡,所以要印出長度與尾端幾個 byte 才分得出「截斷」與「內容
+           真的壞了」(founder 2026-08-17)。 */
+        LOG_W("[chat] conv_state PARSE FAILED len=%u tail=\"%.16s\" — whole update dropped",
+              (unsigned)length,
+              length >= 16 ? (const char *)(json + length - 16) : (const char *)json);
         cJSON_Delete(root);
         return;
     }
@@ -725,6 +757,10 @@ void skai_chat_on_conv_state(const uint8_t *json, uint16_t length)
             count++;
         }
     }
+    /* 解析出幾則、丟了幾則。手機端的 msgs 是單調成長的(實測 3→4→5→6,從不縮),所以只要
+       這裡的 count 比它小,差額就是在這一層掉的 —— 分辨「手機沒送」與「手錶沒收下」。 */
+    LOG_D("[chat] parsed=%d sending=%d", count, (int)s_pending_sending);
+
     /* Pending clarify/approval — parse BEFORE publishing msg_count so one REFRESH_CHAT renders
        both. Absent object ⇒ nothing pending (an answered/expired prompt clears this way too). */
     s_appr_pending = false;
@@ -791,6 +827,55 @@ static void chat_appr_chip_cb(lv_event_t *e)
     chat_page_apply_pending_state(); /* re-render without the chips */
 }
 
+/* ── Turn treatment(desktop ConversationPane parity, founder 2026-08-15)──
+   Hermes(AI session)房間照桌面的 Hermes desktop 畫法:**不是左右氣泡** ——
+     · 使用者的訊息 = 全寬玻璃卡片(SkGlassBgSoft 白6% 填色 + 1px SkGlassEdge 白8%
+       hairline、圓角 18、pad 12×8)
+     · AI 回覆 = 無框無底的平鋪全寬文字(長文是閱讀,不上聊天裝)
+   @聯絡人房間(WhatsApp/Messenger…)保留 iMessage 氣泡 —— 桌面的 `.messaging`
+   同款分流。以開房那一刻的 id 判別(conv: 前綴 = Hermes session)。 */
+static bool s_hermes_style = true;
+void chat_page_set_style_hermes(bool hermes)
+{
+    s_hermes_style = hermes;
+}
+
+/* Hermes 卡片/平鋪的共用塗裝。mine=true → 玻璃卡;false → 平鋪文字。 */
+static lv_obj_t *chat_add_hermes_turn(lv_obj_t *parent, const char *text, bool mine)
+{
+    lv_obj_t *card = lv_obj_create(parent);
+    lv_obj_set_width(card, lv_pct(100));
+    lv_obj_set_height(card, LV_SIZE_CONTENT);
+    lv_obj_clear_flag(card, LV_OBJ_FLAG_SCROLLABLE);
+    if (mine)
+    {
+        /* 桌面原值是 6%/8%(SkGlassBgSoft/SkGlassEdge),但手錶螢幕小、底是磨砂
+           深色,6% 的卡片跟平鋪的 AI 文字分不出來(founder 2026-08-15)——手錶
+           surface 的玻璃填色要加倍才讀得出「這是一張卡」:填 12%、hairline 18%。 */
+        lv_obj_set_style_bg_color(card, lv_color_white(), 0);
+        lv_obj_set_style_bg_opa(card, 31, 0);  /* white @12% */
+        lv_obj_set_style_border_width(card, 1, 0);
+        lv_obj_set_style_border_color(card, lv_color_white(), 0);
+        lv_obj_set_style_border_opa(card, 46, 0); /* white @18% hairline */
+        lv_obj_set_style_radius(card, 18, 0);
+        lv_obj_set_style_pad_hor(card, 12, 0);
+        lv_obj_set_style_pad_ver(card, 8, 0);
+    }
+    else
+    {
+        lv_obj_set_style_bg_opa(card, LV_OPA_TRANSP, 0);
+        lv_obj_set_style_border_width(card, 0, 0);
+        lv_obj_set_style_pad_hor(card, 2, 0);
+        lv_obj_set_style_pad_ver(card, 2, 0);
+    }
+    lv_obj_t *lbl = lv_label_create(card);
+    lv_label_set_long_mode(lbl, LV_LABEL_LONG_WRAP);
+    lv_obj_set_width(lbl, lv_pct(100));
+    lv_label_set_text(lbl, text);
+    lv_obj_set_style_text_color(lbl, lv_color_hex(0xFFFFFF), 0);
+    return card;
+}
+
 /* Render the pending clarify/approval under the transcript: the question as a THEIRS bubble, then
    one full-width tappable chip per option (bordered pill, desktop approval-buttons parity). */
 static void chat_render_pending_approval(void)
@@ -800,28 +885,9 @@ static void chat_render_pending_approval(void)
 
     if (s_appr_q[0] != '\0')
     {
-        lv_obj_t *row = lv_obj_create(s_msg_list);
-        lv_obj_set_width(row, lv_pct(100));
-        lv_obj_set_height(row, LV_SIZE_CONTENT);
-        lv_obj_set_style_bg_opa(row, LV_OPA_TRANSP, 0);
-        lv_obj_set_style_border_width(row, 0, 0);
-        lv_obj_set_style_pad_all(row, 0, 0);
-        lv_obj_clear_flag(row, LV_OBJ_FLAG_SCROLLABLE);
-        lv_obj_t *bubble = lv_obj_create(row);
-        lv_obj_set_width(bubble, LV_SIZE_CONTENT);
-        lv_obj_set_height(bubble, LV_SIZE_CONTENT);
-        lv_obj_set_style_pad_hor(bubble, 11, 0);
-        lv_obj_set_style_pad_ver(bubble, 7, 0);
-        lv_obj_set_style_radius(bubble, 21, 0);
-        lv_obj_set_style_border_width(bubble, 0, 0);
-        lv_obj_set_style_bg_color(bubble, lv_color_hex(0x2C2C2E), 0);
-        lv_obj_clear_flag(bubble, LV_OBJ_FLAG_SCROLLABLE);
-        lv_obj_align(bubble, LV_ALIGN_TOP_LEFT, 0, 0);
-        lv_obj_t *lbl = lv_label_create(bubble);
-        lv_label_set_long_mode(lbl, LV_LABEL_LONG_WRAP);
-        lv_obj_set_width(lbl, (LV_HOR_RES * 72) / 100);
-        lv_label_set_text(lbl, s_appr_q);
-        lv_obj_set_style_text_color(lbl, lv_color_hex(0xFFFFFF), 0);
+        /* Clarify 只發生在 Hermes 房:問題照桌面畫法 = 平鋪全寬文字(assistant turn),
+           不再上灰色氣泡。 */
+        chat_add_hermes_turn(s_msg_list, s_appr_q, false);
     }
 
     for (int i = 0; i < s_appr_count; i++)
@@ -856,7 +922,14 @@ static void chat_render_pending_approval(void)
 void chat_page_apply_pending_state(void)
 {
     if (!chat_page_is_open() || s_msg_list == NULL || !lv_obj_is_valid(s_msg_list))
+    {
+        /* 早退等於「解析好的內容從來沒被畫出來」,而畫面就停在上一版 —— 這是「我的輸入閃
+           一下就消失」的候選之一,原本靜默。 */
+        LOG_W("[chat] render SKIPPED open=%d list=%d",
+              (int)chat_page_is_open(), (int)(s_msg_list != NULL && lv_obj_is_valid(s_msg_list)));
         return;
+    }
+    LOG_D("[chat] render count=%d appr=%d", (int)s_pending_msg_count, (int)s_appr_pending);
 
     if (s_title_label != NULL && lv_obj_is_valid(s_title_label) && s_pending_title[0] != '\0')
         lv_label_set_text(s_title_label, s_pending_title);
@@ -885,6 +958,14 @@ void chat_page_apply_pending_state(void)
     {
         chat_msg_t *cm = &s_pending_msgs[i];
         bool mine = (strcmp(cm->role, "user") == 0 || strcmp(cm->role, "outgoing") == 0);
+
+        /* Hermes(AI)房:桌面 ConversationPane 同款 —— 使用者=全寬玻璃卡、AI=平鋪
+           全寬文字(見 chat_add_hermes_turn 的說明)。@聯絡人房走下面的氣泡。 */
+        if (s_hermes_style)
+        {
+            chat_add_hermes_turn(s_msg_list, cm->text, mine);
+            continue;
+        }
 
         /* Full-width transparent row → the bubble aligns left (them) / right (me) within it. */
         lv_obj_t *row = lv_obj_create(s_msg_list);

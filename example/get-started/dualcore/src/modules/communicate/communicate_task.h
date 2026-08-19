@@ -71,9 +71,28 @@ bool commu_send_sleep_diag(uint32_t ts, uint16_t score, uint8_t hr,
 /* One 10.24 s window of detrended raw PPG (KEY_HR_WINDOW_DUMP 0x16), captured
    when hr_autocorr produced an implausible estimate. At most one per burst.
    Exists because the offline synthetic suite cannot reproduce the field
-   failures — the failing window itself has to come back. Temporary. */
+   failures — the failing window itself has to come back. Temporary.
+   acc[] is the paired wrist movement over the same window, decimated 4:1 and
+   scaled down by acc_shift powers of two (@ref hr_autocorr_last_accel); pass
+   acc_count 0 to omit it. Appended after the samples, so version skew in either
+   direction degrades to "no accel" rather than to a misparse. */
+/* One finished burst: how long it ran, how much data reached our ring, and what
+   came out (@ref KEY_HR_BURST_SUMMARY). */
+bool commu_send_hr_burst(uint32_t ts, uint32_t dur_ms, uint32_t samples,
+                         uint16_t reads, uint16_t readfail, uint16_t frame_pct,
+                         uint16_t rate_info, uint8_t extends, uint8_t best,
+                         uint8_t reason);
+
+/* One chunk of the SAME window at full precision, invertible back to raw
+   sensor counts (@ref KEY_HR_WINDOW_RAW). count <= 128; the caller sends two
+   chunks per window and repeats the fit in both. */
+bool commu_send_hr_window_raw(uint32_t ts, int64_t fit_a_q16, int64_t fit_b_q16,
+                              uint8_t shift, uint16_t first_index,
+                              uint16_t count, const int16_t *win);
+
 bool commu_send_hr_window(uint32_t ts, uint8_t bpm, uint8_t conf,
-                          uint16_t count, const int8_t *win);
+                          uint16_t count, const int8_t *win,
+                          uint16_t acc_count, uint8_t acc_shift, const int8_t *acc);
 /* One minute of raw 1 Hz continuous-HR samples (KEY_HR_CONT_DIAG 0x15). Only
    emitted while the Settings "continuous HR" diagnostic toggle is on; it exists
    to test whether the nightly 2x survives when the HBA algorithm is never
@@ -130,6 +149,7 @@ bool commu_send_handwrite(const char *json); /* -> KEY_HANDWRITE (0x1b) */
    cmd ∈ playPause|next|previous|volumeUp|volumeDown — air-mouse mediaControl verbs.
    Distinct from commu_send_media_control() above, which drives the phone's own media. */
 bool commu_send_media_relay(const char *cmd);          /* -> KEY_MEDIA_CONTROL (0x18) */
+bool commu_send_media_volume(int percent);            /* -> KEY_MEDIA_CONTROL (0x18) {"cmd":"setVolume","value":0-100} 音量條:絕對值 */
 bool commu_send_skaibar_dismiss(void);                 /* -> KEY_SKAIBAR_DISMISS (0x0C) cancel-close, no commit */
 bool commu_send_skaibar_view(char cat);                /* -> KEY_SKAIBAR_VIEW_CHANGE (0x0D) view opened: '@'/'/'/0=bar */
 bool commu_send_skaibar_open_device(bool force_open);  /* -> KEY_SKAIBAR_OPEN_DEVICE (0x0E) {"forceOpen":bool} mouse app: open single controlled device's skaibar; force_open=false is the legacy lift-gesture direct voice-input flow (desktop may defer to a focused external text input) */

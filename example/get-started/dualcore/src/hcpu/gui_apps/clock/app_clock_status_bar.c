@@ -105,6 +105,16 @@ static lv_obj_t *s_media_dot[MAX_SYNCED_DEVICES];
 static lv_obj_t *s_media_name[MAX_SYNCED_DEVICES];
 static lv_obj_t *s_media_arr_l[MAX_SYNCED_DEVICES];
 static lv_obj_t *s_media_arr_r[MAX_SYNCED_DEVICES];
+static lv_obj_t *s_park_icon[MAX_SYNCED_DEVICES]; /* (2+c,2) 停車位預覽圖示 */
+/* heap 輪(2026-08-16):媒體欄內容不再開機常駐 —— 進媒體區才建、回錶盤/進滑鼠
+   模式就放。8 欄 × (媒體頁+設備列+停車圖示) 的常駐帳就是 hosted 滑鼠 heap 見底
+   的最大單一來源(boot heap log)。tile 格子本身仍開機建滿(tileview 不能事後
+   抽換格),lazy 的只有格子**內容**。 */
+static bool s_media_content_built = false;
+void clock_main_media_cols_content_ensure(void);
+void clock_main_media_cols_content_release(void);
+void control_center_applist_ensure(void);
+void control_center_applist_release(void);
 static lv_obj_t *app_clock_ai_status_bar;
 static lv_obj_t *app_clock_device_change_bar;
 static lv_obj_t *status_bar_area_up;
@@ -163,6 +173,9 @@ static void notification_status_bar_cb(lv_event_t *event)
         LOG_I("LV_EVENT_RELEASED_Clock from area: %d", area_id);
         lv_obj_add_flag(app_clock_main_status_bar, LV_OBJ_FLAG_HIDDEN);
         lv_obj_add_flag(gaus_dial_bg, LV_OBJ_FLAG_HIDDEN);
+        /* 邊緣點一下沒拖 = 取消:剛 ensure 的懶建內容放回去(沒建過就 no-op)。 */
+        clock_main_media_cols_content_release();
+        control_center_applist_release();
     }
     else if (LV_EVENT_PRESSED == event->code)
     {
@@ -185,7 +198,17 @@ static void notification_status_bar_cb(lv_event_t *event)
                 extern void session_list_reset_scroll(void);
                 session_list_reset_scroll();
             }
-            /* 右緣 = 媒體欄 (2,1),不需要進場準備 —— 內容常駐。 */
+            else if (area_id == STATUS_BAR_AREA_RIGHT)
+            {
+                /* 右緣 = 媒體欄 (2,1):內容懶建(heap 輪),進場前建好。 */
+                clock_main_media_cols_content_ensure();
+            }
+            else if (area_id == STATUS_BAR_AREA_DOWN)
+            {
+                /* 下緣往上拉 = 控制中心+App List:App List 網格懶建。 */
+                extern void control_center_applist_ensure(void);
+                control_center_applist_ensure();
+            }
             lv_obj_set_tile_id(app_clock_main_status_bar, 1, 1, false);
             lv_obj_clear_flag(app_clock_main_status_bar, LV_OBJ_FLAG_HIDDEN);
             lv_obj_clear_flag(gaus_dial_bg, LV_OBJ_FLAG_HIDDEN);
@@ -202,6 +225,8 @@ void clock_main_applist_follow_begin(void)
 {
     if (!app_clock_main_status_bar || !lv_obj_is_valid(app_clock_main_status_bar))
         return;
+    /* 媒體欄內容懶建:跟手把欄 2 拉進來之前先建好,拖曳中不能是空格。 */
+    clock_main_media_cols_content_ensure();
     lv_obj_set_tile_id(app_clock_main_status_bar, 1, 1, false); /* snap HOME, no anim */
     lv_obj_clear_flag(app_clock_main_status_bar, LV_OBJ_FLAG_HIDDEN);
     if (gaus_dial_bg && lv_obj_is_valid(gaus_dial_bg))
@@ -396,6 +421,92 @@ static void media_col_header_build(int c)
     lv_obj_add_flag(s_media_arr_r[c], LV_OBJ_FLAG_HIDDEN);
 }
 
+/* ── 媒體欄內容 lazy build/release(heap 輪 2026-08-16)──────────────────────
+   進媒體區(右緣拉/錶面左滑跟手/滑鼠下拉 reveal)前 ensure;settle 回錶盤、
+   進 hosted 滑鼠模式時 release。釋放安全性:media_page 掛在 LV_EVENT_DELETE 的
+   media_page_del_cb 會清 media_center_title_label/play_img 綁定(0x19/0x46 的
+   曲名寫入全都 NULL/validity guard);media_col_headers_refresh / media_col_bind
+   對 NULL 欄位本來就跳過。 */
+void clock_main_heap_log(const char *tag);
+extern lv_obj_t *hid_mouse_media_page_create(lv_obj_t *parent);
+
+static void media_col_content_release_one(int c)
+{
+    if (s_media_page[c] && lv_obj_is_valid(s_media_page[c]))
+        lv_obj_del(s_media_page[c]);
+    s_media_page[c] = NULL;
+    if (s_media_dot[c] && lv_obj_is_valid(s_media_dot[c]))
+        lv_obj_del(s_media_dot[c]);
+    s_media_dot[c] = NULL;
+    if (s_media_name[c] && lv_obj_is_valid(s_media_name[c]))
+        lv_obj_del(s_media_name[c]);
+    s_media_name[c] = NULL;
+    if (s_media_arr_l[c] && lv_obj_is_valid(s_media_arr_l[c]))
+        lv_obj_del(s_media_arr_l[c]);
+    s_media_arr_l[c] = NULL;
+    if (s_media_arr_r[c] && lv_obj_is_valid(s_media_arr_r[c]))
+        lv_obj_del(s_media_arr_r[c]);
+    s_media_arr_r[c] = NULL;
+    if (s_park_icon[c] && lv_obj_is_valid(s_park_icon[c]))
+        lv_obj_del(s_park_icon[c]);
+    s_park_icon[c] = NULL;
+}
+
+static void media_col_content_build_one(int c)
+{
+    if (s_media_tile[c] == NULL || !lv_obj_is_valid(s_media_tile[c]))
+        return;
+    s_media_page[c] = hid_mouse_media_page_create(s_media_tile[c]);
+    media_col_header_build(c);
+    if (s_mouse_park_tile[c] && lv_obj_is_valid(s_mouse_park_tile[c]))
+    {
+        lv_obj_t *icon = lv_img_create(s_mouse_park_tile[c]);
+        lv_img_set_src(icon, &mouse_mode_icon);
+        lv_obj_center(icon);
+        lv_obj_clear_flag(icon, LV_OBJ_FLAG_CLICKABLE);
+        s_park_icon[c] = icon;
+    }
+}
+
+/** 進媒體區前呼叫:可達的欄建好內容,不可達的欄順手放掉(設備數縮了)。
+    冪等,已建欄 no-op。 */
+void clock_main_media_cols_content_ensure(void)
+{
+    int count = media_col_count();
+    bool changed = false;
+    for (int c = 0; c < MAX_SYNCED_DEVICES; c++)
+    {
+        bool have = (s_media_page[c] != NULL && lv_obj_is_valid(s_media_page[c]));
+        if (c < count && !have)
+        {
+            media_col_content_build_one(c);
+            changed = true;
+        }
+        else if (c >= count && have)
+        {
+            media_col_content_release_one(c);
+            changed = true;
+        }
+    }
+    s_media_content_built = true;
+    if (changed)
+    {
+        media_col_headers_refresh();
+        clock_main_heap_log("media-cols-ensure");
+    }
+}
+
+/** 離開媒體區(settle 回錶盤 / 進 hosted 滑鼠模式)時呼叫:內容全放。 */
+void clock_main_media_cols_content_release(void)
+{
+    if (!s_media_content_built)
+        return;
+    for (int c = 0; c < MAX_SYNCED_DEVICES; c++)
+        media_col_content_release_one(c);
+    s_media_content_built = false;
+    clock_main_heap_log("media-cols-released");
+}
+
 /** 設備清單有變時呼叫:右側可滑的媒體欄數跟著設備數走。 */
 void clock_main_media_cols_refresh(void)
 {
@@ -407,6 +518,9 @@ void clock_main_media_cols_refresh(void)
         LOG_W("[media-col] reachable columns = %d (devices=%d)", col_count,
               hid_mouse_device_count());
     }
+    /* 人在媒體區時設備數變了(上下線/配對):讓內容跟上新欄數。 */
+    if (s_media_content_built)
+        clock_main_media_cols_content_ensure();
     media_cols_apply_dirs(col_count);
     media_col_headers_refresh();
     if (app_clock_main_status_bar && lv_obj_is_valid(app_clock_main_status_bar))
@@ -449,6 +563,8 @@ void clock_main_mouse_pulldown_reveal(void)
     int col = MEDIA_COL_FIRST + ((dev >= 0) ? dev + 1 : 0);
     if (col >= MEDIA_COL_FIRST + media_col_count())
         col = MEDIA_COL_FIRST;
+    /* 媒體欄內容懶建:滑鼠模式進場時已釋放,下拉 reveal 要先建回來。 */
+    clock_main_media_cols_content_ensure();
     s_mouse_pull_reveal = true; /* set_tile_id 會同步發 settle,先立旗 */
     /* R34:這一刻是全機記憶體峰值 —— 滑鼠圖層還在,又要把 tileview/媒體頁亮出來給
        手指接手,實測就是在這裡 `sys memory is full!` 然後 EPIC render list 掛掉。
@@ -512,6 +628,9 @@ void clock_main_notify_follow_begin(void)
 {
     if (!app_clock_main_status_bar || !lv_obj_is_valid(app_clock_main_status_bar))
         return;
+    /* 垂直拉可能往下開控制中心+App List:App List 網格懶建,拖曳前先建好
+       (方向這時還不知道,往上開面板的話多建也只是下一次 release 收掉)。 */
+    control_center_applist_ensure();
     lv_obj_set_tile_id(app_clock_main_status_bar, 1, 1, false); /* snap HOME, no anim */
     lv_obj_clear_flag(app_clock_main_status_bar, LV_OBJ_FLAG_HIDDEN);
     if (gaus_dial_bg && lv_obj_is_valid(gaus_dial_bg))
@@ -681,6 +800,9 @@ static void app_clock_main_status_bar_event_cb(lv_event_t *event)
         if (sx > LV_HOR_RES)
         {
             /* 右側媒體區。founder 2026-08-11:右側整區不顯示頂部時間。 */
+            /* 內容懶建兜底:原生捲動進媒體區(不經 catcher 鉤子)第一幀就建好。
+               冪等,已建時只是 8 個指標檢查。 */
+            clock_main_media_cols_content_ensure();
             set_instruction_list_time_opa(LV_OPA_TRANSP);
             set_instruction_list_battery_opa(LV_OPA_TRANSP);
             lv_coord_t pull = sx - LV_HOR_RES;
@@ -715,6 +837,9 @@ static void app_clock_main_status_bar_event_cb(lv_event_t *event)
         /* sx == HOME:垂直軸。 */
         {
             lv_coord_t up = LV_VER_RES - sy; /* >0 = 往面板;<0 = 往控制頁 */
+            /* App List 懶建兜底:原生往上拉進控制頁(不經 catcher 鉤子)。 */
+            if (up < 0)
+                control_center_applist_ensure();
             /* 滑鼠模式下拉面板的黑底跟手漸黑(錶盤路徑由 gaus_dial_bg 負責,
                那層在滑鼠圖層底下看不到)。 */
             lv_coord_t upc = up;
@@ -730,7 +855,11 @@ static void app_clock_main_status_bar_event_cb(lv_event_t *event)
                 if (gaus_dial_bg && lv_obj_is_valid(gaus_dial_bg))
                     lv_obj_clear_flag(gaus_dial_bg, LV_OBJ_FLAG_HIDDEN);
                 set_clock_main_status_opa((uint8_t)opa, true);
-                set_instruction_list_battery_opa(LV_OPA_TRANSP);
+                /* founder 2026-08-17:電量從下方控制+App List 頁搬到頂部
+                   通知列表頁 —— 往面板方向拉時跟手漸現(與模糊底圖同一條
+                   ramp);往下方控制頁維持不顯示。 */
+                set_instruction_list_battery_opa(up > 0 ? (uint8_t)opa
+                                                        : LV_OPA_TRANSP);
             }
         }
         break;
@@ -761,6 +890,10 @@ static void app_clock_main_status_bar_event_cb(lv_event_t *event)
             clock_main_face_swipe_catcher_foreground();
             if (gaus_dial_bg && lv_obj_is_valid(gaus_dial_bg))
                 lv_obj_add_flag(gaus_dial_bg, LV_OBJ_FLAG_HIDDEN);
+            /* 回到錶盤 = 離開媒體區/控制頁:懶建內容放掉(沒建過就 no-op)。
+               控制頁的 release 這裡兜底 —— 拉一半取消的話 on_pause 不會跑。 */
+            clock_main_media_cols_content_release();
+            control_center_applist_release();
         }
 
         int col_now = media_scroll_col(obj);
@@ -819,6 +952,9 @@ static void app_clock_main_status_bar_event_cb(lv_event_t *event)
                 extern void instruction_list_release_ui(void);
                 instruction_list_release_ui();
             }
+            /* heap 輪:媒體欄內容也在滑鼠圖層建起來**之前**放掉(bind 已把控制目標
+               記走,UI 綁定由 media_page_del_cb 清,下拉 reveal 會 ensure 回來)。 */
+            clock_main_media_cols_content_release();
             clock_main_heap_log("mouse-enter-list-freed");
             /* R38:量出來的事實 —— 開機建完所有頁面是 used 220K/free 103K,但實際使用
                時 free 只剩 ~49K,執行期多吃的 ~54K 最大宗就是這張**全螢幕模糊錶盤圖**
@@ -912,9 +1048,13 @@ static void app_clock_main_status_bar_event_cb(lv_event_t *event)
             lv_top_panel_set_backdrop_opa(on_panel ? 204 : 0);
         }
 
-        /* 媒體欄 settle:曲名路由 + 控制目標跟著欄走(欄 2 = 手機)。 */
+        /* 媒體欄 settle:曲名路由 + 控制目標跟著欄走(欄 2 = 手機)。
+           內容懶建的兜底 ensure:正常都在進場鉤子建好了,這裡冪等。 */
         if (on_media_col)
+        {
+            clock_main_media_cols_content_ensure();
             media_col_bind(col_now);
+        }
 
         /* 離開左頁時把它的 AI 輸入框收掉(它只在自己頁面上自我關閉)。 */
         {
@@ -944,11 +1084,15 @@ static void app_clock_main_status_bar_event_cb(lv_event_t *event)
                               LV_OBJ_FLAG_HIDDEN);
             lv_obj_clear_flag(gaus_dial_bg, LV_OBJ_FLAG_HIDDEN);
             /* settle 收尾:模糊圖滿值、黑底退場(跟 2026-08-06 之前各頁的最終
-               狀態一致);時間/電量在非錶盤頁一律不顯示(founder 2026-08-11)。 */
+               狀態一致);時間在非錶盤頁一律不顯示(founder 2026-08-11)。
+               電量:founder 2026-08-17 改為頂部通知列表頁顯示(原本在下方
+               控制+App List 頁),其餘頁維持不顯示。 */
             if (gaus_dial_bg && lv_obj_is_valid(gaus_dial_bg))
                 lv_obj_set_style_bg_opa(gaus_dial_bg, LV_OPA_TRANSP, 0);
             set_instruction_list_time_opa(LV_OPA_0);
-            set_instruction_list_battery_opa(LV_OPA_TRANSP);
+            set_instruction_list_battery_opa(active_pos == MAIN_PAGE_TYPE_UP
+                                                 ? LV_OPA_COVER
+                                                 : LV_OPA_TRANSP);
             if (active_pos == MAIN_PAGE_TYPE_UP)
                 set_clock_main_status_opa(LV_OPA_100, true);
             else
@@ -1201,6 +1345,17 @@ void instruction_list_bar_set_blur(bool on)
         set_clock_main_status_opa(LV_OPA_0, false);
         lv_obj_add_flag(gaus_dial_bg, LV_OBJ_FLAG_HIDDEN);
     }
+}
+
+/* 公開(2026-08-15 滑鼠抽屜→聊天室):聊天 overlay 全螢幕不透明,底下的錶盤模糊圖
+   還在跑 opa 動畫=每幀白付一次 EPIC 全螢幕合成 —— 低 heap(聊天回合後 ~31K)時
+   render 直接 `sys memory is full` assert 重開(真機)。開聊天室前硬藏。 */
+void clock_main_blur_force_hide(void)
+{
+    if (gaus_dial_bg && lv_obj_is_valid(gaus_dial_bg))
+        lv_obj_add_flag(gaus_dial_bg, LV_OBJ_FLAG_HIDDEN);
+    set_clock_main_status_opa(0, false);
+    s_bar_blur_active = false;
 }
 
 /* Same gaus_dial_bg blur as instruction_list_bar_set_blur, but at an arbitrary
@@ -1521,6 +1676,7 @@ static void bar_event_cb(lv_event_t *e)
 
 static lv_obj_t *control_center_window;
 static lv_obj_t *control_center_app_list = NULL;
+static lv_coord_t s_applist_y_top; /* App List 網格懶建的落點(create 時算好) */
 lv_obj_t *control_center_layout_create(lv_obj_t *parent)
 {
     control_center_window = lv_obj_create(parent);
@@ -1631,16 +1787,37 @@ lv_obj_t *control_center_layout_create(lv_obj_t *parent)
     lv_obj_align(find_phone_btn, LV_ALIGN_TOP_RIGHT, -70, 0);
 #endif
 
-    /* App List 網格接在控制列下方,同一個捲動容器(視覺融為一體)。 */
-    {
-        extern lv_obj_t *lv_app_list_layout_create_embedded(lv_obj_t *parent,
-                                                            lv_coord_t y_top);
-        lv_obj_update_layout(cc_row);
-        lv_app_list_layout_create_embedded(control_center_window,
-                                           lv_obj_get_y(cc_row) + 120 + 10);
-    }
+    /* App List 網格接在控制列下方,同一個捲動容器(視覺融為一體)。
+       heap 輪(2026-08-16):網格不再開機常駐 —— 記住落點,進控制頁前
+       (notify_follow_begin / 下緣 zone press / on_resume 兜底)懶建,
+       離場(on_pause / settle 回錶盤)release。 */
+    lv_obj_update_layout(cc_row);
+    s_applist_y_top = lv_obj_get_y(cc_row) + 120 + 10;
 
     return control_center_window;
+}
+
+/** 進控制頁前呼叫:App List 網格懶建(冪等)。 */
+void control_center_applist_ensure(void)
+{
+    if (control_center_window == NULL || !lv_obj_is_valid(control_center_window))
+        return;
+    if (control_center_app_list != NULL && lv_obj_is_valid(control_center_app_list))
+        return;
+    extern lv_obj_t *lv_app_list_layout_create_embedded(lv_obj_t *parent,
+                                                        lv_coord_t y_top);
+    control_center_app_list =
+        lv_app_list_layout_create_embedded(control_center_window, s_applist_y_top);
+}
+
+/** 離開控制頁時呼叫:App List 網格放掉。 */
+void control_center_applist_release(void)
+{
+    if (control_center_app_list == NULL)
+        return;
+    if (lv_obj_is_valid(control_center_app_list))
+        lv_obj_del(control_center_app_list);
+    control_center_app_list = NULL;
 }
 
 static void scroll_control_center_to_top(void)
@@ -1657,11 +1834,14 @@ static void scroll_control_center_to_top(void)
 
 void control_center_on_resume(void)
 {
+    /* 兜底:正常已在拖曳鉤子建好;直跳這頁的路徑(若有)也不會看到空網格。 */
+    control_center_applist_ensure();
 }
 
 void control_center_on_pause(void)
 {
     scroll_control_center_to_top();
+    control_center_applist_release();
 }
 
 extern bool get_bluetooth_broadcasting_status(void);
@@ -1702,14 +1882,6 @@ static void set_clock_main_status_opa(uint8_t opa, bool mask)
     (void)mask;
     if (lv_obj_is_valid(gaus_dial_img))
     {
-        /* 診斷用(2026-08-11):模糊圖在下拉過程中「應該是 255 卻看不到」,而這個 setter 是
-           全檔唯一改它濃度的入口。只在值真的變動時印,所以拉一次最多幾行。 */
-        static int s_last = -1;
-        if ((int)opa != s_last)
-        {
-            s_last = (int)opa;
-            LOG_W("[sp-blur] img_opa -> %d", (int)opa);
-        }
         lv_obj_set_style_img_opa(gaus_dial_img, opa,
                                  LV_PART_MAIN | LV_STATE_DEFAULT);
     }
@@ -1976,22 +2148,9 @@ void app_clock_main_status_bar_init(lv_obj_t *par)
         lv_obj_set_style_bg_opa(s_mouse_park_tile[c], LV_OPA_TRANSP, 0);
         lv_obj_set_scrollbar_mode(s_mouse_park_tile[c], LV_SCROLLBAR_MODE_OFF);
 
-        /* 媒體頁常駐建在每一欄裡(內容輕:曲名 + 控制鈕);曲名路由由 settle 的
-           media_col_bind 綁到當前欄。頂部設備列(圓點/名稱/箭頭)蓋在其上。 */
-        {
-            extern lv_obj_t *hid_mouse_media_page_create(lv_obj_t *parent);
-            s_media_page[c] = hid_mouse_media_page_create(s_media_tile[c]);
-        }
-        media_col_header_build(c);
-
-        /* 滑鼠入口停車位的預覽:黑底 + 滑鼠圖示。settle 在這格的瞬間會切換成
-           真正的滑鼠模式圖層(同為黑底,視覺上是原地亮起)。 */
-        {
-            lv_obj_t *icon = lv_img_create(s_mouse_park_tile[c]);
-            lv_img_set_src(icon, &mouse_mode_icon);
-            lv_obj_center(icon);
-            lv_obj_clear_flag(icon, LV_OBJ_FLAG_CLICKABLE);
-        }
+        /* heap 輪(2026-08-16):媒體頁/設備列/停車圖示不再開機常駐 —— 進媒體區
+           前由 clock_main_media_cols_content_ensure() 懶建(右緣拉/錶面左滑/
+           下拉 reveal/settle 兜底四個鉤子),離場 release。 */
     }
 
     clock_main_media_cols_refresh(); /* 開機先鎖住多餘的欄(設備到齊後會再刷) */

@@ -252,11 +252,33 @@ static void notify_hr_cont(const watch_sys_hr_cont_t *rec)
 
 static void notify_hr_window(const watch_sys_hr_window_t *rec)
 {
-    /* One captured hr_autocorr window -> HCPU -> KEY_HR_WINDOW_DUMP. At most one
-       per burst, so this cannot flood the mailbox the way an unthrottled
-       per-sample uplink would. */
+    /* One captured hr_autocorr window -> HCPU -> KEY_HR_WINDOW_DUMP.
+       Rate (2026-08-18): one per WHOLE window while a burst runs, i.e. one
+       331-byte message every 10.24 s, ~17 per 3-min burst and ~47 if the burst
+       extends to 8 min. It used to be one per burst; the comment here claimed
+       that was what kept the mailbox safe, so state the real number instead of
+       leaving a stale guarantee behind. Still an order of magnitude under the
+       1 Hz per-sample uplink that would actually be a problem, and
+       datas_push_msg_to_client dispatches synchronously (one rt_malloc of the
+       body per message) rather than queueing without bound. */
     if (rec == NULL) return;
     push_msg_to_hcpu(MSG_SERVICE_HR_WINDOW_IND, rec, sizeof(*rec));
+}
+
+static void notify_hr_raw(const watch_sys_hr_raw_t *rec)
+{
+    /* Same window as notify_hr_window, at full precision and invertible back to
+       raw counts. Two of these per window, so ~3 messages per 10.24 s while a
+       burst runs; each is 272 bytes, smaller than the int8 record beside it. */
+    if (rec == NULL) return;
+    push_msg_to_hcpu(MSG_SERVICE_HR_RAW_IND, rec, sizeof(*rec));
+}
+
+static void notify_hr_burst(const watch_sys_hr_burst_t *rec)
+{
+    /* Exactly one per burst, i.e. one per BG_HR_PERIOD_MS. */
+    if (rec == NULL) return;
+    push_msg_to_hcpu(MSG_SERVICE_HR_BURST_IND, rec, sizeof(*rec));
 }
 
 static void notify_sleep_state(uint8_t mode, uint32_t timestamp_utc)
@@ -582,6 +604,8 @@ static void register_watch_sys_service_funs(void)
     watch_sys_sync.notify_sleep_diag = notify_sleep_diag;
     watch_sys_sync.notify_hr_cont = notify_hr_cont;
     watch_sys_sync.notify_hr_window = notify_hr_window;
+    watch_sys_sync.notify_hr_raw = notify_hr_raw;
+    watch_sys_sync.notify_hr_burst = notify_hr_burst;
 }
 
 static int watch_sys_service_register(void)

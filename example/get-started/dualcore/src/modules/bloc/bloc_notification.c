@@ -483,9 +483,75 @@ void navigate_notification_info(notification_t *notification)
     intent_runapp(intent);
 }
 
+/**
+ * Flatten a notification string into a single line, in place.
+ *
+ * Why: the dial header's body label runs LV_LABEL_LONG_SCROLL_CIRCULAR, and
+ * LVGL's EXPAND flag only cancels *width-based* word wrap — a literal '\n' or
+ * '\r' still breaks the line (lv_txt.c, _lv_txt_get_next_line()). A two-line
+ * body then measures short in x and short in y, so neither the horizontal nor
+ * the vertical scroll animation starts and the header freezes as two static
+ * lines instead of a marquee. Android bodies carry newlines routinely (group
+ * chats, InboxStyle digests, multi-line LINE messages), so the fix belongs at
+ * the ingestion boundary rather than in one label.
+ *
+ * Tabs go too (same class of layout surprise), runs of whitespace collapse to
+ * a single space, and leading/trailing space is trimmed. Only ASCII control
+ * bytes are touched, so UTF-8 sequences (all continuation bytes >= 0x80) pass
+ * through untouched.
+ *
+ * Also force-terminates the buffer: callers fill these fields with
+ * strncpy(dst, src, sizeof(dst) - 1) into an uninitialised stack struct, which
+ * leaves no NUL when the source is over-long.
+ */
+static void notification_flatten_line(char *buf, size_t cap)
+{
+    if (buf == NULL || cap == 0)
+    {
+        return;
+    }
+    buf[cap - 1] = '\0';
+
+    size_t w = 0;
+    bool pending_space = false;
+    for (size_t r = 0; r < cap - 1 && buf[r] != '\0'; r++)
+    {
+        char c = buf[r];
+        if (c == '\n' || c == '\r' || c == '\t' || c == ' ')
+        {
+            /* Defer: collapses whitespace runs and drops leading space. */
+            pending_space = (w > 0);
+            continue;
+        }
+        if (pending_space)
+        {
+            buf[w++] = ' ';
+            pending_space = false;
+        }
+        buf[w++] = c;
+    }
+    buf[w] = '\0'; /* pending_space left unwritten == trailing trim */
+}
+
+/* Single choke point for everything that reaches the notification centre.
+   Every ingestion path (iOS ANCS, Android/SkaiLink JSON, SkaiApp, OTA hint)
+   funnels through interact_with_notification()/trigger_incoming_call_ui(), so
+   sanitising here covers paths added later for free. */
+static void notification_sanitize(notification_t *notification)
+{
+    if (notification == NULL)
+    {
+        return;
+    }
+    notification_flatten_line(notification->title, sizeof(notification->title));
+    notification_flatten_line(notification->message,
+                              sizeof(notification->message));
+}
+
 static bool need_wakeup = false;
 void interact_with_notification(notification_t *notification)
 {
+    notification_sanitize(notification);
     /* Snapshot the arrival seq so update_notification()'s internal verdict
        (previously-dismissed drop / identical reconnect re-push → seq
        untouched) is observable here — those must not light the screen. */
@@ -540,6 +606,7 @@ void trigger_incoming_call_ui(notification_t *notification)
     {
         return;
     }
+    notification_sanitize(notification);
 
     if (SkaiWatchSys.DNDMode.config.status)
     {
@@ -953,6 +1020,30 @@ static int bloc_notification_test(int argc, char *argv[])
                    "Please update your smartphone app to the latest version to "
                    "ensure compatibility.");
             interact_with_notification(&notification);
+        }
+        else if (strcmp(argv[1], "send_noti_nl") == 0)
+        {
+            /* Multi-line fixture: the dial header's body label runs
+               SCROLL_CIRCULAR, which still honours a literal '\n'. Before
+               notification_sanitize() this froze the header as two static
+               lines instead of a marquee. Keep the payload long enough that
+               the flattened single line overflows the 240 px label, so a pass
+               is visibly a marquee and not merely a short static line. */
+            notification_t notification;
+            notification.sec_time = SkaiWatchSys.SecondCountRTC;
+            notification.type = Notify_others;
+            notification.state = true;
+            notification.can_reply = false;
+            notification.calling = false;
+            strcpy(notification.id, "nl_probe");
+            strcpy(notification.title, "Line\nBreak\tProbe");
+            strcpy(notification.message,
+                   "  first line of the body\n\n"
+                   "second line follows\r\n"
+                   "third line trails  ");
+            interact_with_notification(&notification);
+            LOG_W("nl probe title=[%s]", notification.title);
+            LOG_W("nl probe message=[%s]", notification.message);
         }
     }
     return 0;

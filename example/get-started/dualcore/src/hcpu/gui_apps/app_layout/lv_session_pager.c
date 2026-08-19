@@ -266,6 +266,27 @@ static bool sp_request_new_session(const char *dev_id)
     return true;
 }
 
+/** 只武裝 walk-in,**不**送 conv_new(founder 2026-08-17:「我輸入 123456789 再點
+    問 SKAI,電腦端有進聊天室但手錶上沒有」)。
+    用在滑鼠抽屜點下電腦鏡像過來的 '@' 類選項(AskSkai…)那條路:session 是**電腦**收到
+    0x06 executeAction 後自己建的,手錶再送一次 conv_new 會變成建兩個。所以這裡只記下
+    「等一個新 session」,清單推回來時 sp_apply_list 的既有 walk-in 就會帶使用者進聊天室。
+    KEY_CONV_OPEN(0x0F)是 uplink-only —— 電腦沒有任何管道能主動叫手錶開聊天室,這是
+    目前唯一能讓手錶跟上的機制。
+    判斷錯了也安全:沒有新 session 出現的話,這面旗只是自然過期(30 秒 / 房間還開著則 3 分鐘)。 */
+void session_list_arm_walkin(const char *device_id)
+{
+    if (device_id == NULL || device_id[0] == '\0')
+        device_id = sp_new_session_target();
+    if (device_id == NULL || device_id[0] == '\0')
+        return;
+    s_await_new = true;
+    s_await_tick = rt_tick_get();
+    strncpy(s_await_dev_id, device_id, SESSION_ID_LEN - 1);
+    s_await_dev_id[SESSION_ID_LEN - 1] = '\0';
+    LOG_W("[walkin] armed (no conv_new) dev=%s", device_id);
+}
+
 /** 滑鼠頁底部 skaibar tap(founder 2026-08-11 R6):開「那台設備」的新 session,
     UI 與左頁 session 一樣 —— 呼叫端先把畫面切到左頁,清單推回來就 walk-in。 */
 void session_list_open_new_for_device(const char *device_id)
@@ -550,6 +571,16 @@ static void sp_inject_sessions_into_actions(void)
     extern const char *instruction_list_export_id(uint8_t i);
     extern const char *instruction_list_export_title(uint8_t i);
 
+    /* 滑鼠 app 單設備模式(搜尋抽屜/立起面板)佔用共享清單期間**整段跳過**:那份清單是
+       「正在控制那一台電腦」面板的鏡像(0x03),把 s_devices 全部設備的 session upsert
+       進去=別台的 session 混進單設備搜尋結果(2026-08-15 真機抓到)。抽屜收掉
+       restore_base 還原錶盤清單後,下一次 0x20/輪詢會照常補注入,不會漏。 */
+    {
+        extern bool instruction_list_single_device_active(void);
+        if (instruction_list_single_device_active())
+            return;
+    }
+
     bool changed = false;
 
     /* 移除:清單裡 conv: 開頭、但儲存裡已不存在的(桌面刪了 session)。 */
@@ -644,6 +675,7 @@ static void sp_inject_sessions_into_actions(void)
             changed = true;
     }
 
+    LOG_W("[land] inject changed=%d devs=%d", (int)changed, s_device_count);
     if (changed)
         refresh_custom_instructions();
 }
@@ -653,6 +685,36 @@ static void sp_inject_sessions_into_actions(void)
 void session_list_actions_changed(void)
 {
     sp_inject_sessions_into_actions();
+}
+
+/** 公開:滑鼠單設備搜尋抽屜用 —— 在 device_id 那台的 0x20 session 清單裡按 title
+    反查 conv id(抽屜的 0x03 鏡像列只有 title,沒有 id)。同名 session 取 ts 最新那筆。
+    回傳內部儲存的指標(呼叫端當下使用,不可保存);找不到(含 device 未知)回 NULL,
+    呼叫端就走原本的 commit 路徑交給桌面執行。LVGL 執行緒呼叫。 */
+const char *session_list_find_conv_id(const char *device_id, const char *title)
+{
+    if (device_id == NULL || device_id[0] == '\0' || title == NULL || title[0] == '\0')
+        return NULL;
+    for (int d = 0; d < s_device_count; d++)
+    {
+        if (strncmp(s_devices[d].id, device_id, SESSION_ID_LEN) != 0)
+            continue;
+        const char *best = NULL;
+        uint32_t best_ts = 0;
+        for (int k = 0; k < s_devices[d].count; k++)
+        {
+            const session_meta_t *s = &s_devices[d].items[k];
+            if (strcmp(s->title, title) != 0)
+                continue;
+            if (best == NULL || s->ts >= best_ts)
+            {
+                best = s->id;
+                best_ts = s->ts;
+            }
+        }
+        return best;
+    }
+    return NULL;
 }
 
 /** R61(founder:「開新 SESSION 選項先每個設備都出現一個,右邊圖片裡放設備名稱」):
@@ -707,10 +769,22 @@ const char *session_list_device_name_for(const char *conv_id)
 
 /* 合併重建:全設備的 sessions 收成一份,有 ts 就按 ts 由新到舊,沒 ts 的
    (舊 APK)排在有 ts 的後面、按設備順序群聚 —— 穩定插入排序,量級 4x8=32。 */
+/* heap 輪(2026-08-16):這份清單是 R8 之後的**隱藏備援**(左頁真身=浮動 actions
+   清單),平常永遠看不到,卻在每次 0x20 重推時重建整排卡片常駐吃 heap。隱藏時
+   不建列、只立 dirty 旗,真要顯示(sp_list_view_show)才補建。 */
+static bool s_list_dirty = false;
+
 static void sp_rebuild_list(void)
 {
     if (s_list_view == NULL || !lv_obj_is_valid(s_list_view))
         return;
+    if (lv_obj_has_flag(s_list_view, LV_OBJ_FLAG_HIDDEN))
+    {
+        lv_obj_clean(s_list_view); /* 舊列也不留:隱藏備援零常駐 */
+        s_list_dirty = true;
+        return;
+    }
+    s_list_dirty = false;
     lv_obj_clean(s_list_view);
 
     struct
@@ -763,6 +837,17 @@ static void sp_rebuild_list(void)
     }
 
     sp_append_actions(s_list_view);
+}
+
+/** 備援清單要亮相的兩個點(sp_leave_chat / 開著的房被桌面刪掉)走這裡:
+    先解除隱藏(rebuild 的隱藏 early-out 才不會擋路),dirty 才補建。 */
+static void sp_list_view_show(void)
+{
+    if (s_list_view == NULL || !lv_obj_is_valid(s_list_view))
+        return;
+    lv_obj_clear_flag(s_list_view, LV_OBJ_FLAG_HIDDEN);
+    if (s_list_dirty)
+        sp_rebuild_list();
 }
 
 /* ── CHAT layer ──────────────────────────────────────────────────────────── */
@@ -821,8 +906,7 @@ static void sp_leave_chat(void)
     }
     s_in_chat = false;
     lv_obj_add_flag(s_chat_view, LV_OBJ_FLAG_HIDDEN);
-    if (s_list_view != NULL && lv_obj_is_valid(s_list_view))
-        lv_obj_clear_flag(s_list_view, LV_OBJ_FLAG_HIDDEN);
+    sp_list_view_show();
 }
 
 /* ── Back gesture (CHAT → LIST) ──────────────────────────────────────────────
@@ -1239,6 +1323,8 @@ static void sp_apply_list(void)
             /* R68:房間可能在點下去的當下就先開了(免得使用者盯著錶盤等 4 秒)。已經開著就
                只綁定、不重開 —— chat_page_open 會先 close 再 build,重開會是看得見的一閃。 */
             extern void chat_page_open(const char *title, const char *icon_src);
+            extern void chat_page_set_style_hermes(bool hermes);
+            chat_page_set_style_hermes(true); /* walk-in 只發生在 Hermes session */
             if (!chat_page_is_open())
                 chat_page_open(ns->title[0] ? ns->title : "Session", NULL);
             sp_flush_await_prompt();
@@ -1251,6 +1337,8 @@ static void sp_apply_list(void)
         const session_meta_t *ns = &dev->items[fresh];
         commu_send_conv_open(ns->title, ns->id, 0);
         extern void chat_page_open(const char *title, const char *icon_src);
+        extern void chat_page_set_style_hermes(bool hermes);
+        chat_page_set_style_hermes(true); /* walk-in 只發生在 Hermes session */
         chat_page_open(ns->title[0] ? ns->title : "Session", NULL);
         sp_flush_await_prompt();
         return;
@@ -1272,8 +1360,7 @@ static void sp_apply_list(void)
         s_open_id[0] = '\0';
         s_in_chat = false;
         lv_obj_add_flag(s_chat_view, LV_OBJ_FLAG_HIDDEN);
-        if (s_list_view != NULL && lv_obj_is_valid(s_list_view))
-            lv_obj_clear_flag(s_list_view, LV_OBJ_FLAG_HIDDEN);
+        sp_list_view_show();
     }
 }
 
@@ -1339,8 +1426,12 @@ void session_pager_apply_pending(void)
 {
     int kind = s_pending_kind;
     s_pending_kind = SP_PENDING_NONE;
-    if (s_root == NULL || !lv_obj_is_valid(s_root))
-        return;
+    /* R79(founder:「是不是我在進去之前拿到的 session 都不會刷上去?」):對 —— 這裡原本
+       整支被 s_root gate 擋住,pager UI 沒建(開機停在錶盤)時,收到的清單全部堆在
+       pending;首次進左頁才一台一台灌進來,落點跟著逐包跳(手電筒→A 台→B 台)。
+       清單那半(s_devices 模型 + 注入浮動 actions 清單)完全不需要 pager UI ——
+       sp_rebuild_list / walk-in / chat 分支各自有 NULL/狀態防護 —— 所以 LIST 一律照灌,
+       只有 STATE(開著的聊天室泡泡)才需要 UI。 */
 
     /* Drain EVERY desktop that has something waiting — two desktops answer nearly
        together and this callback runs once per LVGL message. */
@@ -1359,7 +1450,7 @@ void session_pager_apply_pending(void)
         sp_apply_list();
     }
 
-    if (kind == SP_PENDING_STATE)
+    if (kind == SP_PENDING_STATE && s_root != NULL && lv_obj_is_valid(s_root))
         sp_apply_state();
 }
 

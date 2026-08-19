@@ -504,6 +504,11 @@ static void hw_open_from_mode_switch(void);
    顯藏由 mode_set_visible(KEYBOARD) 特例+swipe commit 的 extras sync 管。 */
 static lv_obj_t *kbd_exit_btn = NULL;
 static void kbd_exit_btn_event_cb(lv_event_t *e);
+/* 螢幕最上方的下拉感應區:往下拖=收掉輸入框/鍵盤,回到選項清單(founder 2026-08-17)。
+   高度取到輸入框上緣(VOICE_BOX_Y=107)之前,不蓋內容。 */
+#define KBD_TOP_PULL_H 100
+static lv_obj_t *kbd_top_pull = NULL;
+static void kbd_top_pull_event_cb(lv_event_t *e);
 
 /* ── 中文拼音狀態(founder 2026-07-22) ── */
 #define KBD_CAND_MAX 20 /* 候選上限;列可左右滑看更多(founder 2026-07-22) */
@@ -548,8 +553,6 @@ static lv_obj_t *currently_pressed_btn = NULL;
 static lv_obj_t *input_content_container = NULL;
 static lv_obj_t *input_display_label = NULL;
 static lv_obj_t *input_cursor = NULL;
-static lv_obj_t *input_enter_btn = NULL;
-static lv_obj_t *input_enter_img = NULL; // 裡面的 enter icon img，用 lv_img_set_zoom 縮放
 static lv_timer_t *cursor_blink_timer = NULL;
 static char input_buffer[128] = {0};
 static int input_length = 0;
@@ -579,6 +582,10 @@ static lv_obj_t *space_red_dot = NULL;
 static lv_obj_t *space_red_dot_x = NULL;
 // trackpad mode 的 mic btn 內元件（功能跟 keyboard 長按 space 完全等效）
 static lv_obj_t *trackpad_mic_btn = NULL;
+/* 觸控板右緣的鍵盤鈕:電腦有聚焦輸入框時才浮現(founder 2026-08-17)。 */
+static lv_obj_t *kbd_side_btn = NULL;
+static void kbd_side_btn_event_cb(lv_event_t *e);
+static void mouse_open_input_station(bool direct_field);
 static lv_obj_t *trackpad_mic_icon = NULL;
 static lv_obj_t *trackpad_mic_red_dot = NULL;
 static void bar_ai_on_tap(void); /* fwd：tap 當下立刻收自有底部 bar（定義在 lv_create 前） */
@@ -594,6 +601,22 @@ static lv_obj_t *kbd_mic_section_right_arrow = NULL;
 /* 語音站的控制項(founder 2026-08-03:立起面板那一整套搬進鍵盤區)。幾何沿用立起面板的
    相對關係:麥克風與刪除鍵並排在輸入列下方,logo/send 在輸入列上方。輸入列在 y=195
    (EXPAND_END_Y)、高約 90,mic_section 是整片置中,所以列的 dy 從畫面中心 233 起算。 */
+/* 這次語音站是從 session 抽屜進來的 → 輸入框往下拖收合時滑回抽屜,不是回觸控板
+   (founder 2026-08-17;細節見 mouse_drawer_open_input)。 */
+static bool s_kbd_from_drawer = false;
+/* 直打模式（founder 2026-08-18：「點手錶上右邊出現的鍵盤後進入的輸入模式就不用再叫出
+   skaibar 了，只要直接輸入到我點的輸入框就好」）。由觸控板右緣那顆鍵盤鈕進站時立起 ——
+   那顆鈕本來就只在「電腦有聚焦輸入框」時才浮現，所以這條路等於使用者已經指定了目的地。
+   立起後：① 送給電腦的召喚變成 forceOpen=false / inputOnly=false，電腦於是**不開面板**，
+   改把每一次 preview 直接打進那個欄位（桌面 RemoteFocusedTextInputRouter 的 direct-typing
+   latch，增量 diff＋backspace）；② icon_send 不再送 commit —— 字早就在欄位裡了，再送一次
+   會整段重打成雙份；③ 拖到 AI logo 那條手勢整個關掉（見 ai_drag_logo_show）：這個模式的
+   定義就是「不叫 skaibar」，要問 AI 走 bar 開抽屜那條，不受影響。 */
+static bool s_kbd_direct_field = false;
+/* 這一按落在送出鍵上 → 輸入框的手勢整串讓開(見 voice_box_gesture_cb)。 */
+static bool s_voice_press_on_send = false;
+/* 抽屜地球鍵按下 → 進場動畫落地後才切鍵盤輪盤(見 kbd_enter_slide_done)。 */
+static bool s_kbd_pending_wheel = false;
 static lv_obj_t *kbd_voice_del_btn = NULL;
 static lv_obj_t *kbd_voice_logo_btn = NULL;
 static lv_obj_t *kbd_voice_send_btn = NULL;
@@ -609,6 +632,22 @@ static lv_timer_t *kbd_voice_del_repeat = NULL;
 /* logo/send 與立起面板同位(y=55)。模式圖示與框上緣之間只有 53px,塞不下 80px 的 logo,
    所以語音站比照立起面板**把頂部模式圖示收起來**(它整片蓋掉狀態列,這裡改成手動藏)。 */
 #define VOICE_ICON_DY  (-178)
+/* 送出鍵貼在輸入框內緣右側的內縮量(負值=往左)。沿用它取代的 enter_icon 原本的 -10。 */
+#define SEND_BTN_INSET_X (-10)
+/* 視覺置中的微調(founder 2026-08-18 眼驗:「還是稍微偏上,直接把他往下移動 2pix」)。
+   **幾何上本來就是置中的** —— 真機探針量到對齊穩定後,鍵盤站 gap_top=5 / gap_bot=6、
+   語音站 109/109,對稱到 1px 以內。偏上是視覺重心(圖案墨水滿版 34x34 但重量偏上),
+   量不出來、只能照眼睛調 —— 這是刻意的光學補償,不是在修正算錯的座標。
+   2 → 3(founder 二次眼驗「再往下 1pix」)。 */
+#define SEND_BTN_NUDGE_Y 3
+/* 送出鍵的觸控外擴。圖示視覺只有 ~24px,靠這個把熱區撐到 34+2*15=64(≥44pt 基線);
+   輸入框的手勢也用同一個值讓開,兩邊一致才不會有「看得到卻按不到」的縫。 */
+#define SEND_BTN_EXT_CLICK 15
+/* icon_send 原生 34x34,塞進 45 高的鍵盤輸入列幾乎頂滿(founder 2026-08-18:「圖片有點太大」)。
+   縮的是**繪製**:lv_img_set_zoom 只影響畫出來的大小,物件 bbox 仍是 34x34,加上
+   ext_click_area 15 → 觸控標的維持 64px(≥44pt 基線),founder 要的「觸碰範圍不變」。 */
+#define SEND_BTN_ZOOM  180   /* 34 * 180/256 ≈ 24px 視覺 */
+#define SEND_BTN_IMG_W 34
 #define VOICE_KBD_DX  (-110)  /* 回鍵盤鈕:同一排最左 */
 #define VOICE_LOGO_DX  (-29)
 #define VOICE_SEND_DX    52
@@ -640,6 +679,11 @@ static void update_cursor_position(void);
 #define KBD_MIC_PULSE_MAX_SIZE 100
 #define KBD_MIC_PULSE_PERIOD_MS 1200
 static bool kbd_lower_is_keyboard = false; // false = mic 區顯示，true = 鍵盤顯示
+/* 2026-08-15 hosted 滑鼠 OOM 修:語音站進場只建輸入列+mic 區,圓形鍵盤(鍵盤模式 38K 裡的
+   大頭)延到使用者真的切去鍵盤站(kbd_lower_switch(true) 的 lazy 分支)才建。hosted 滑鼠
+   free 約 42K,整包建下去只剩 4.6K,隨後任何配置 lv_obj_create 回 NULL → hard fault
+   (真機兩度複現,[heap] kbd-build:after free=4672 緊接 mem manage fault)。 */
+static bool s_kbd_build_defer_wheel = false;
 // collapse 動畫進行中：擋掉外部入口（outside-click / down-arrow / drag）重複觸發
 static bool collapse_anim_running = false;
 
@@ -745,6 +789,10 @@ void set_air_mouse_moving_state(bool state)
 // Key popup functions
 static void show_key_popup(lv_obj_t *btn, const char *key_text);
 static void hide_key_popup(void);
+static void kbd_del_update_icon(void); /* 鍵盤站刪除鍵:空框時顯示成「收下」 */
+static void mouse_exit_input_station(void); /* 離開輸入模式(帶收合動畫)的單一出口 */
+static void kbd_commit_to_trackpad(void); /* 收合收尾:切回觸控板容器 */
+static void kbd_bar_set_voice_box(bool voice); /* 語音大框 ⇄ 鍵盤藥丸(定義在換站段) */
 
 // Long press detection functions
 static void long_press_timer_callback(void *parameter);
@@ -755,7 +803,6 @@ static void stop_long_press_timer(void);
 static void register_key_button(lv_obj_t *btn);
 static lv_obj_t *find_closest_key(lv_point_t touch_point);
 static void handle_proximity_input(lv_event_t *e);
-static void input_enter_btn_event_cb(lv_event_t *e);
 
     #if USING_EDGE_BOTTOM_DETECTION
 static void start_multiple_pages_timer(void);
@@ -867,7 +914,14 @@ static void update_cursor_position(void)
         const lv_font_t *f =
             lv_obj_get_style_text_font(input_display_label, LV_PART_MAIN);
         lv_coord_t lh = lv_font_get_line_height(f);
-        lv_obj_update_layout(input_display_label); /* 座標要是對齊後的 */
+        /* 從**整棵子樹**refresh 後再讀座標。只 update 這個 label 不夠:label 的 x/y 是
+           parent(input_content_container)那一層算出來的,而進語音站的同一輪裡 container
+           的尺寸與 label 的對齊(鍵盤站 LEFT_MID → 語音站 TOP_LEFT)才剛被改掉 —— 只
+           refresh label 自己,讀到的仍是上一輪的位置。 */
+        if (text_input_bar_bg && lv_obj_is_valid(text_input_bar_bg))
+            lv_obj_update_layout(text_input_bar_bg);
+        else
+            lv_obj_update_layout(input_display_label);
         lv_coord_t cx = lv_obj_get_x(input_display_label) + p.x;
         lv_coord_t cy = lv_obj_get_y(input_display_label) + p.y;
         lv_obj_set_size(input_cursor, 2, lh);
@@ -964,11 +1018,21 @@ static void clear_input_display(void)
     if (input_display_label != NULL)
     {
         lv_label_set_text(input_display_label, "");
-        // 重新對齊 label 到左側
-        lv_obj_align(input_display_label, LV_ALIGN_LEFT_MID, 10, 0);
+        /* 對齊要跟**當下這一站**一致。語音站是四行折行的大框(TOP_LEFT),鍵盤站是單行
+           藥丸(LEFT_MID)。原本這裡不分站別一律 LEFT_MID,而進站流程是「先進語音站、
+           **再**清空」(mouse_open_input_station 的新鮮進場),於是 kbd_bar_set_voice_box
+           剛設好的 TOP_LEFT 被這行蓋回垂直置中 —— 游標依 label 位置畫,就落在框的正中央
+           偏左而不是左上角(founder 2026-08-18:「第一次進輸入模式游標在中間靠左」)。
+           按地球切到鍵盤再切回語音走的是 kbd_lower_switch,會重設 TOP_LEFT 且後面沒有人
+           再清空,所以那條路徑一直是對的 —— 這就是「只有第一次」的來由。 */
+        if (s_voice_box_on)
+            lv_obj_align(input_display_label, LV_ALIGN_TOP_LEFT, 0, 0);
+        else
+            lv_obj_align(input_display_label, LV_ALIGN_LEFT_MID, 10, 0);
     }
     // 更新游標位置
     update_cursor_position();
+    kbd_del_update_icon(); /* 清空之後那顆變「收下」 */
 }
 
 /**
@@ -983,6 +1047,7 @@ static void update_input_display(void)
 
     /* 語音站的大框是固定寬折行,不走單行那套「太長就靠右露出最新文字」—— 那會把整塊
        360 寬的 label 推到右邊。對齊在進站時已經設成 TOP_LEFT,這裡不要再動它。 */
+    kbd_del_update_icon(); /* 鍵盤站那顆:有字=退格 / 沒字=收下 */
     if (s_voice_box_on)
     {
         update_cursor_position();
@@ -1044,6 +1109,11 @@ static void update_input_display(void)
 
     // 更新游標位置
     update_cursor_position();
+    /* 鍵盤站也要推 —— 這行原本只在上面 s_voice_box_on 那個分支裡,而那個分支結尾就
+       return,所以「語音輸入的字有同步到電腦、切到鍵盤打的字沒有」(founder
+       2026-08-17)。文字真相是同一個 input_buffer,在哪一站顯示不改變電腦那條輸入框
+       該鏡射什麼;防抖 250ms 本來就擋著連續按鍵。 */
+    voice_preview_schedule();
 }
 
 /**
@@ -1195,6 +1265,82 @@ static void anim_set_translate_y(void *obj, int32_t v)
     lv_obj_set_style_translate_y((lv_obj_t *)obj, v, 0);
 }
 
+/* 垂直版的兩支收尾(對應 kbd_slide_in_done_cb / hide_after_slide_x_cb)。
+   語音⇄鍵盤的換站改成「鍵盤上下進出」之後要用這兩支,理由同橫向版:動畫若被取消,
+   容器會停在螢幕外,而 find_closest_key() 沒有距離上限,按哪裡都會判給同一顆鍵。 */
+static void kbd_slide_in_y_done_cb(lv_anim_t *a)
+{
+    lv_obj_t *obj = (lv_obj_t *)a->var;
+    if (obj && lv_obj_is_valid(obj))
+        lv_obj_set_style_translate_y(obj, 0, 0);
+}
+
+static void hide_after_slide_y_cb(lv_anim_t *a)
+{
+    lv_obj_t *obj = (lv_obj_t *)a->var;
+    if (obj && lv_obj_is_valid(obj))
+    {
+        lv_obj_add_flag(obj, LV_OBJ_FLAG_HIDDEN);
+        lv_obj_set_style_translate_y(obj, 0, 0);
+    }
+}
+
+/* 輸入框在兩站之間**長大 / 縮小**(founder 2026-08-18:「鍵盤往下收掉,同時上面的輸入框
+   變大成語音輸入的輸入框;切成鍵盤就反著來」)。原本兩站是左右換頁、框的尺寸瞬間替換,
+   看起來像兩個不同的東西輪播;改成同一個框在兩種幾何之間補間,才讀得出是同一條輸入框。
+   四個維度一起補間(x/y/w/h):寬度不同 → x 也要跟著,否則長大的過程會偏一邊。
+   起訖值放 static:LVGL 的 anim exec 只帶得進一個 int32 進度值。 */
+static lv_coord_t s_barmorph_x0, s_barmorph_y0, s_barmorph_w0, s_barmorph_h0;
+static lv_coord_t s_barmorph_x1, s_barmorph_y1, s_barmorph_w1, s_barmorph_h1;
+static lv_coord_t s_barmorph_r0 = 100, s_barmorph_r1 = 100;
+/* 語音框的底圖(定義在下方的語音站段落),收尾 cb 要用 —— 前向宣告,別為了一支
+   callback 把整段搬家。 */
+static lv_obj_t *s_bar_voice_frame;
+/* 語音框的圓角 = 卡片圖(message_widget_bg)實際的轉角半徑,長大過程用框自己的圓角逼近它,
+   落定才換成真正的圖。**80 是量出來的**:取那張 442x252 PNG 左上角 alpha 邊緣的取樣點做
+   圓弧擬合(x=4→y=55、x=8→y=45、x=16→y=32、x=36→y=13),r=80 幾乎完全吻合。
+   先前憑印象寫 30,交棒瞬間轉角明顯對不上(founder 2026-08-18:「角落的弧形跟圖片不太
+   一樣」)。要改先重量,別再猜。 */
+#define VOICE_BOX_RADIUS 80
+
+static lv_coord_t barmorph_lerp(lv_coord_t a, lv_coord_t b, int32_t v)
+{
+    return (lv_coord_t)(a + ((int32_t)(b - a) * v) / 100);
+}
+
+static void kbd_bar_morph_cb(void *var, int32_t v)
+{
+    lv_obj_t *bar = (lv_obj_t *)var;
+    if (!bar || !lv_obj_is_valid(bar)) return;
+    lv_obj_set_size(bar,
+                    barmorph_lerp(s_barmorph_w0, s_barmorph_w1, v),
+                    barmorph_lerp(s_barmorph_h0, s_barmorph_h1, v));
+    lv_obj_set_pos(bar,
+                   barmorph_lerp(s_barmorph_x0, s_barmorph_x1, v),
+                   barmorph_lerp(s_barmorph_y0, s_barmorph_y1, v));
+    lv_obj_set_style_radius(bar, barmorph_lerp(s_barmorph_r0, s_barmorph_r1, v),
+                            LV_PART_MAIN);
+}
+
+/* 長大成語音框的收尾:這時才換上語音站真正的外觀(框自己不畫、改由卡片圖呈現)。
+   **為什麼不能在動畫開始就換**:語音框的 bg_opa 是透明的,外觀全靠那張固定尺寸的卡片圖,
+   而子物件會被裁切到父容器 —— 框還小的時候只露得出卡片中央那一小塊(幾乎沒有內容),
+   看起來就是「框在變大的過程中整個消失」(founder 2026-08-18)。縮回鍵盤那個方向沒這問題,
+   因為鍵盤那套外觀是框**自己**畫的,一路都在。 */
+static void kbd_bar_morph_to_voice_done_cb(lv_anim_t *a)
+{
+    lv_obj_t *bar = (lv_obj_t *)a->var;
+    if (!bar || !lv_obj_is_valid(bar)) return;
+    if (!s_voice_box_on) return; /* 動畫還沒跑完就又切走了 → 別把語音外觀套到鍵盤站 */
+    lv_obj_set_style_bg_opa(bar, LV_OPA_TRANSP, LV_PART_MAIN);
+    lv_obj_set_style_border_width(bar, 0, LV_PART_MAIN);
+    if (s_bar_voice_frame && lv_obj_is_valid(s_bar_voice_frame))
+    {
+        lv_obj_clear_flag(s_bar_voice_frame, LV_OBJ_FLAG_HIDDEN);
+        lv_obj_move_background(s_bar_voice_frame);
+    }
+}
+
 
 /**
  * @brief Animation ready callback when keyboard close animation finishes
@@ -1242,10 +1388,6 @@ void toggle_keyboard_visibility(void)
         hide_key_popup();
         clear_input_display();
         stop_cursor_blink();
-
-        // Hide enter button immediately
-        if (input_enter_btn != NULL)
-            lv_obj_add_flag(input_enter_btn, LV_OBJ_FLAG_HIDDEN);
 
         // Animate bar x: open -> closed
         lv_anim_init(&a);
@@ -1314,10 +1456,6 @@ void toggle_keyboard_visibility(void)
         lv_obj_add_flag(text_input_bar, LV_OBJ_FLAG_HIDDEN);
         if (input_content_container != NULL)
             lv_obj_clear_flag(input_content_container, LV_OBJ_FLAG_HIDDEN);
-
-        // Show enter button
-        if (input_enter_btn != NULL)
-            lv_obj_clear_flag(input_enter_btn, LV_OBJ_FLAG_HIDDEN);
 
         // Show keyboard off-screen (translate_y pushes it below visible area)
         lv_obj_clear_flag(keyboard_container, LV_OBJ_FLAG_HIDDEN);
@@ -1608,7 +1746,13 @@ static const char *get_button_text(lv_obj_t *btn)
                 return "Caps";
             }
             // 檢查是否是 Del/Backspace 按鍵
-            else if (src == &backspace_icon)
+            /* down_arrow 也算 Del:空框時這顆鍵**顯示成「收下」但身分不變**
+               (kbd_del_update_icon)。這支函式是靠子圖的 src 反查鍵名的,漏了這條的話
+               換圖等於把鍵名一起換掉,RELEASED 時比不中任何分支 → 按下去毫無反應
+               (founder 2026-08-18:「我按他怎麼沒有退出輸入模式」)。
+               擺在下面那條 strcmp(src, DOWN_ARROW) **之前**還有一個好處:那條是拿
+               lv_img_dsc_t 的指標當字串比,先在這裡攔下來就不會走到那個未定義行為。 */
+            else if (src == &backspace_icon || src == &down_arrow)
             {
                 return "Del";
             }
@@ -1640,21 +1784,6 @@ static const char *get_button_text(lv_obj_t *btn)
         }
     }
     return "";
-}
-
-/**
- * @brief Event callback for input_enter_btn
- */
-static void input_enter_btn_event_cb(lv_event_t *e)
-{
-    lv_event_code_t code = lv_event_get_code(e);
-
-    if (code == LV_EVENT_CLICKED)
-    {
-        LOG_D("Enter button clicked");
-        control_provider.ble_hid_keyboard_input("\n");
-        clear_input_display();
-    }
 }
 
 /**
@@ -1791,11 +1920,25 @@ static bool kbd_keys_showing(void)
    又按不到 —— 語音站裡 keyboard_container 是藏的，防護整個沒生效)。 */
 static lv_obj_t *kbd_input_active_area(void)
 {
-    if (kbd_keys_showing())
-        return keyboard_container;
-    if (s_voice_box_on && kbd_mic_section && lv_obj_is_valid(kbd_mic_section) &&
-        !lv_obj_has_flag(kbd_mic_section, LV_OBJ_FLAG_HIDDEN))
-        return kbd_mic_section;
+    /* 前兩條是**輸入模式**的作用區,一定要先確認人真的在輸入模式(founder 2026-08-17:
+       「又按不到了,他好像是變成按到觸控板」)。
+       真兇:`s_voice_box_on` 只在 kbd_bar_set_voice_box() 寫,而回觸控板的
+       kbd_commit_to_trackpad() 從來沒清過它,卻**刻意**把 kbd_mic_section 的 HIDDEN
+       清掉(為了下次進場重新從語音站開始)。於是「進過一次語音站再回觸控板」之後:
+       旗標卡 true + section 可見 → 這裡回傳 kbd_mic_section(380 x 全高、置中),而
+       s_top_logo(BOTTOM_MID,x≈177..289)整顆落在那個範圍內 → chrome_hit_test_cb 把
+       **每一次**按下都判定為「讓給輸入區」→ tap 穿過去變成觸控板拖曳,skaibar_img
+       從此點不動、連 CLICKED 都不會發出(所以 [logo] 探針也印不出來)。
+       用 mode 當閘門是結構性的修法:不管哪個旗標日後又走味,人在觸控板上就絕不可能
+       armed 出一個輸入區來擋自己。 */
+    if (current_hid_mode == HID_MODE_KEYBOARD)
+    {
+        if (kbd_keys_showing())
+            return keyboard_container;
+        if (s_voice_box_on && kbd_mic_section && lv_obj_is_valid(kbd_mic_section) &&
+            !lv_obj_has_flag(kbd_mic_section, LV_OBJ_FLAG_HIDDEN))
+            return kbd_mic_section;
+    }
     /* 觸控板站:底部那顆「進輸入」圖示同病 —— 全螢幕的觸控板感應面有時排在它上面，
        按下就被吃掉，症狀是「圖示只有靠上一小塊按得到」(founder 2026-08-07,
        [press] 坐實 obj area=(0,0)-(465,465) 接走)。保護範圍只取圖示**本體**座標，
@@ -1905,12 +2048,47 @@ static void kbd_hide_bottom_chrome(void)
     }
 }
 
+/* 鍵盤站的刪除鍵:框裡沒字就是「收下」鍵(founder 2026-08-18),與語音站那顆同一條規則
+   (kbd_voice_del_update_icon)。注音組字中(s_py_len>0)仍算有內容可刪 —— 那時刪的是還沒
+   上屏的符號,把它變成收下會讓使用者退不掉組字。 */
+static bool kbd_del_acts_as_exit(void)
+{
+    return (input_length == 0 && s_py_len == 0);
+}
+
+static void kbd_del_update_icon(void)
+{
+    if (del_img == NULL || !lv_obj_is_valid(del_img))
+        return;
+    lv_img_set_src(del_img, kbd_del_acts_as_exit() ? (const void *)&down_arrow
+                                                   : (const void *)&backspace_icon);
+}
+
 /**
  * @brief Handle proximity-based input
  */
 static void create_circular_keyboard_layout(lv_obj_t *parent);
 static void handle_proximity_input(lv_event_t *e)
 {
+    /* 已經不在鍵盤那一站了 → 不再追鍵、不再彈提示框。
+       長按空白鍵進語音站時,手指**還按著**,而鍵盤正往左滑出:PRESSING 每一幀都重跑
+       find_closest_key(),鍵在手指底下移動,於是一路判給不同的字母並彈出它的提示框
+       —— 切換過程中會看到鍵盤的文字提示框閃過(founder 2026-08-18)。
+       RELEASED / PRESS_LOST **不擋**:空白鍵長按那條流程要靠它們結束錄音(放開就停),
+       擋掉會變成放開後麥克風還開著。 */
+    lv_event_code_t code0 = lv_event_get_code(e);
+    if ((code0 == LV_EVENT_PRESSED || code0 == LV_EVENT_PRESSING) &&
+        !kbd_lower_is_keyboard)
+    {
+        hide_key_popup();
+        if (currently_pressed_btn != NULL)
+        {
+            lv_obj_clear_state(currently_pressed_btn, LV_STATE_PRESSED);
+            currently_pressed_btn = NULL;
+        }
+        closest_btn = NULL;
+        return;
+    }
     if (lv_event_get_code(e) == LV_EVENT_PRESSED)
     {
         lv_indev_t *di = lv_indev_get_act();
@@ -2012,8 +2190,8 @@ static void handle_proximity_input(lv_event_t *e)
                         get_button_text(currently_pressed_btn);
                     if (strcmp(prev_key_text, "Del") == 0 && del_img != NULL)
                     {
-                        // 恢復Del按鈕的原始圖片
-                        lv_img_set_src(del_img, &backspace_icon);
+                        // 恢復Del按鈕的原始圖片(空框時那是「收下」不是退格)
+                        kbd_del_update_icon();
                     }
                     else
                     {
@@ -2057,8 +2235,8 @@ static void handle_proximity_input(lv_event_t *e)
                     get_button_text(currently_pressed_btn);
                 if (strcmp(prev_key_text, "Del") == 0 && del_img != NULL)
                 {
-                    // 恢復Del按鈕的原始圖片
-                    lv_img_set_src(del_img, &backspace_icon);
+                    // 恢復Del按鈕的原始圖片(空框時那是「收下」不是退格)
+                    kbd_del_update_icon();
                 }
                 else
                 {
@@ -2096,8 +2274,8 @@ static void handle_proximity_input(lv_event_t *e)
             const char *prev_key_text = get_button_text(currently_pressed_btn);
             if (strcmp(prev_key_text, "Del") == 0 && del_img != NULL)
             {
-                // 恢復Del按鈕的原始圖片
-                lv_img_set_src(del_img, &backspace_icon);
+                // 恢復Del按鈕的原始圖片(空框時那是「收下」不是退格)
+                kbd_del_update_icon();
             }
             else
             {
@@ -2173,6 +2351,26 @@ static void handle_proximity_input(lv_event_t *e)
                         lv_obj_t *old_kbd = keyboard_container;
                         bool was_visible =
                             !lv_obj_has_flag(old_kbd, LV_OBJ_FLAG_HIDDEN);
+
+                        /* 2026-08-16 真機當機(founder「切到下個鍵盤才當」):並存的
+                           新舊兩塊輪盤(~21K)+中文站首批 CJK glyph(FT clean_cache
+                           560K/700K 同刻觸發)+雙輪盤 EPIC 合成,把主 heap 從 ~41K
+                           一路吃到 0 → data_proxy_process `RT_NULL != body` assert
+                           重開。free 不到 60K 就放棄換頁動畫,先刪舊再建新(同
+                           Caps 鍵路徑) —— 峰值少一塊輪盤、合成面積也減半。 */
+                        bool slide_ok;
+                        {
+                            rt_uint32_t kb_total = 0, kb_used = 0, kb_mx = 0;
+                            rt_memory_info(&kb_total, &kb_used, &kb_mx);
+                            slide_ok = (kb_total - kb_used >= 60 * 1024);
+                            LOG_W("[kbd] mode-switch free=%u slide=%d",
+                                  (unsigned)(kb_total - kb_used), (int)slide_ok);
+                        }
+                        if (!slide_ok)
+                        {
+                            lv_obj_del(old_kbd);
+                            old_kbd = NULL;
+                        }
 
                         keyboard_container = NULL;
                         create_circular_keyboard_layout(parent);
@@ -2255,6 +2453,14 @@ static void handle_proximity_input(lv_event_t *e)
                 else if (strcmp(closest_key_text, "Del") == 0)
                 {
                     LOG_D("Delete key pressed");
+                    /* 空框 = 這顆是「收下」鍵 → 離開輸入模式回觸控板,與語音站那顆
+                       (kbd_voice_del_event_cb)以及送出後的去處一致。 */
+                    if (kbd_del_acts_as_exit())
+                    {
+                        LOG_I("[kbd] delete key acted as EXIT (box empty)");
+                        mouse_exit_input_station();
+                        return;
+                    }
                     if (current_keyboard_mode == KEYBOARD_MODE_CHINESE &&
                         s_py_len > 0)
                     {
@@ -2266,6 +2472,7 @@ static void handle_proximity_input(lv_event_t *e)
                             s_py_len--;
                         s_py_buf[s_py_len] = '\0';
                         kbd_cand_refresh();
+                        kbd_del_update_icon(); /* 組字刪光 → 這顆變「收下」 */
                     }
                     else
                     {
@@ -3102,9 +3309,12 @@ static void create_circular_keyboard_layout(lv_obj_t *parent)
     register_key_button(del_btn);
     del_img = lv_img_create(del_btn);
     lv_img_set_src(del_img, &backspace_icon);
+    /* 版面重建(切輸入法)後圖要照當下的框內容重挑,否則空框時會退回退格圖。
+       擺在 align/opa 之前無妨,src 換掉不影響那些樣式。 */
     lv_obj_align(del_img, LV_ALIGN_CENTER, 0, 0);
     lv_obj_set_style_img_opa(del_img, LV_OPA_50, LV_PART_MAIN);
     lv_obj_clear_flag(del_img, LV_OBJ_FLAG_CLICKABLE);
+    kbd_del_update_icon();
 
     // close_btn 已移除（鍵盤關閉由 mode 切換取代）
 
@@ -5345,13 +5555,6 @@ static void hw_btn_mode_cb(lv_event_t *e)
        mic-view expand 的另一套 bar 幾何(380×90@y195),會把 mode_set_visible
        剛放好的 310×45@y64 拉去畫面中央(founder:「下層多一個輸入框」)。 */
     kbd_lower_set_keyboard(true);
-    /* enter 圖示可能殘留上次 collapse 的 zoom/透明,手動復位(driver 100 的
-       好副作用只留這個)。 */
-    if (input_enter_img && lv_obj_is_valid(input_enter_img))
-    {
-        lv_img_set_zoom(input_enter_img, 256);
-        lv_obj_set_style_img_opa(input_enter_img, LV_OPA_COVER, LV_PART_MAIN);
-    }
     kbd_cand_refresh(); /* 進鍵盤立即出列(數字快捷列) */
 }
 
@@ -5361,7 +5564,13 @@ static void hw_btn_mode_cb(lv_event_t *e)
    實作刻意重用 hw_btn_mode_cb 那條已驗過的「切進鍵盤模式」序列,末端再走
    kbd_lower_switch(false) 切到語音站,不自己手刻輸入列幾何(鍵盤站與語音站的
    bar 尺寸/位置是兩套,手刻很容易變成 founder 2026-07-22 那個「下層多一個輸入框」)。 */
-static void mouse_open_voice_station(void)
+/* 2026-08-16 heap 根治輪之後 gate 移除:hosted 頂部面板三頁改「用時建、離場放」,
+   進場 free 常態 ~80K,原本「聊天回合後只剩 ~31K → <38K 拒絕」的處境不存在了。 */
+
+/* 注意:`s_kbd_from_drawer` 必須由**呼叫端在進來之前**設好,不能在這裡預設清掉 ——
+   本函式末端的 kbd_lower_switch(false) → kbd_bar_set_voice_box(true) 就要靠它決定
+   送給電腦的 inputOnly(抽屜流程要選項,inputOnly=false)。 */
+static bool mouse_open_voice_station(void)
 {
     kbd_pinyin_clear();
     current_keyboard_mode = KEYBOARD_MODE_LETTERS;
@@ -5371,7 +5580,12 @@ static void mouse_open_voice_station(void)
         lv_obj_del(keyboard_container);
         create_circular_keyboard_layout(kb_parent);
     }
+    /* 首次建置(kbd_ensure_built)走輕量版:語音站用不到圓形鍵盤,別為它把 heap 壓到
+       個位數 KB(hosted 滑鼠 OOM,見 s_kbd_build_defer_wheel)。已建過(上面 rebuild
+       分支)不受影響。 */
+    s_kbd_build_defer_wheel = true;
     apply_hid_mode(HID_MODE_KEYBOARD);
+    s_kbd_build_defer_wheel = false;
     if (keyboard_container != NULL)
     {
         lv_anim_del(keyboard_container, NULL);
@@ -5385,6 +5599,7 @@ static void mouse_open_voice_station(void)
     kbd_cand_refresh();
     kbd_lower_switch(false); /* 立刻退到語音站(輸入列高度由它的動畫帶下去) */
     LOG_I("[voice] open voice station (top-logo tap)");
+    return true;
 }
 
 /* 本地軌跡:清空全部筆畫。 */
@@ -5816,7 +6031,7 @@ static void hw_open_from_mode_switch(void)
 }
 
 // 關 mic（不清空 input bar、不貼上）
-// 清空只在使用者按 Enter 時做（input_enter_btn_event_cb / 鍵盤 Enter 鍵）
+// 清空只在使用者按 Enter 時做（鍵盤 Enter 鍵 / 送出鍵）
 static void mouse_v2t_close_and_paste(void)
 {
 #ifndef BSP_USING_PC_SIMULATOR
@@ -5883,6 +6098,8 @@ void append_text_to_mouse_input(void)
 {
     extern char *get_combined_voice2text(void);
     char *text = get_combined_voice2text();
+    /* TEMP DIAG(2026-08-16 鍵盤語音沒文字):W 級確認文字有走到滑鼠輸入列這一站。 */
+    LOG_W("[v2t] -> mouse input len=%d", text ? (int)strlen(text) : -1);
     if (text == NULL)
         return;
     lvgl_msg_t msg;
@@ -6771,7 +6988,7 @@ static void mode_set_visible(hid_mode_t mode, bool visible)
         else
             lv_obj_clear_flag(bottom_swipe_area, LV_OBJ_FLAG_HIDDEN);
     }
-    // status_bar_area_up 同理：480×80 的頂部下拉感應區跟 input_enter_btn
+    // status_bar_area_up 同理：480×80 的頂部下拉感應區跟輸入列
     // (y=10 h=45) 完全重疊，且 status_bar_area_up 是 bg 直接子物件 → z-order
     // 在 mode_container 之上，Enter 的 press 永遠先被它吃掉
     if (mode == HID_MODE_KEYBOARD && status_bar_area_up &&
@@ -6820,8 +7037,6 @@ static void mode_set_visible(hid_mode_t mode, bool visible)
             if (input_content_container &&
                 lv_obj_is_valid(input_content_container))
                 lv_obj_clear_flag(input_content_container, LV_OBJ_FLAG_HIDDEN);
-            if (input_enter_btn && lv_obj_is_valid(input_enter_btn))
-                lv_obj_clear_flag(input_enter_btn, LV_OBJ_FLAG_HIDDEN);
             start_cursor_blink();
         }
         else
@@ -6842,8 +7057,6 @@ static void mode_set_visible(hid_mode_t mode, bool visible)
             if (input_content_container &&
                 lv_obj_is_valid(input_content_container))
                 lv_obj_add_flag(input_content_container, LV_OBJ_FLAG_HIDDEN);
-            if (input_enter_btn && lv_obj_is_valid(input_enter_btn))
-                lv_obj_add_flag(input_enter_btn, LV_OBJ_FLAG_HIDDEN);
             stop_cursor_blink();
         }
     }
@@ -7039,6 +7252,32 @@ static void create_trackpad_mode_ui(lv_obj_t *parent)
     lv_obj_clear_flag(trackpad_mic_btn, LV_OBJ_FLAG_CLICKABLE);
     /* 底部的入口圖在 s_top_logo(hosted 模式顯示 skaibar_img,見其建立處);這個
        容器只承載底部 bar 的多工提示/手勢狀態機,不再放第二張圖。 */
+
+    /* 右緣鍵盤鈕(founder 2026-08-17):**電腦上點了任何輸入框**時才浮現 —— 按它直接
+       進輸入頁,打的字送去電腦那個聚焦中的欄位。底部 bar 從此專責「找東西(抽屜)」,
+       打字有自己的入口,兩件事不再共用一顆按鈕。
+       顯藏由既有的 40ms poll(bar_ai_sync_timer_cb)依 0x17 快取旗標驅動 —— 旗標本身
+       是通訊執行緒寫的,不能在那邊碰 LVGL(本檔最典型的當機來源)。
+       造型沿用語音站底部那顆鍵盤鈕(50 圓 + keyboard_icon zoom 150),同一件事同一個樣子。 */
+    kbd_side_btn = lv_obj_create(parent);
+    lv_obj_remove_style_all(kbd_side_btn);
+    lv_obj_set_size(kbd_side_btn, 50, 50);
+    lv_obj_align(kbd_side_btn, LV_ALIGN_RIGHT_MID, -6, 0);
+    lv_obj_set_style_bg_color(kbd_side_btn, lv_color_hex(0x333333), 0);
+    lv_obj_set_style_bg_opa(kbd_side_btn, LV_OPA_60, 0);
+    lv_obj_set_style_radius(kbd_side_btn, LV_RADIUS_CIRCLE, 0);
+    lv_obj_clear_flag(kbd_side_btn, LV_OBJ_FLAG_SCROLLABLE);
+    lv_obj_add_flag(kbd_side_btn, LV_OBJ_FLAG_CLICKABLE);
+    lv_obj_set_ext_click_area(kbd_side_btn, 8); /* 視覺 50,觸控補到 66 > 44pt 基線 */
+    lv_obj_add_event_cb(kbd_side_btn, kbd_side_btn_event_cb, LV_EVENT_CLICKED, NULL);
+    lv_obj_add_flag(kbd_side_btn, LV_OBJ_FLAG_HIDDEN); /* 預設收起,有聚焦才浮現 */
+    {
+        lv_obj_t *side_img = lv_img_create(kbd_side_btn);
+        lv_img_set_src(side_img, &keyboard_icon);
+        lv_img_set_zoom(side_img, 150);
+        lv_obj_center(side_img);
+        lv_obj_clear_flag(side_img, LV_OBJ_FLAG_CLICKABLE);
+    }
 
     #if SHOW_SCROLL_ZONE_DEBUG
     {
@@ -7258,7 +7497,7 @@ static void create_keyboard_mode_ui(lv_obj_t *parent)
     }
 
     text_input_bar_bg = lv_obj_create(parent);
-    // 高度跟 input_enter_btn (45) 一致；頂部對齊 y=110（466 圓內 Enter btn 最高位置）
+    // 高度 45；頂部對齊 y=110（466 圓內輸入列最高位置）
     lv_obj_set_size(text_input_bar_bg, 280, 45);
     lv_obj_set_pos(text_input_bar_bg, (LV_HOR_RES_MAX - 280) / 2, 110);
     // 視覺樣式跟 trackpad_mic_btn 一致（白色半透明 pill），讓
@@ -7358,28 +7597,11 @@ static void create_keyboard_mode_ui(lv_obj_t *parent)
                     2, 0);
     lv_obj_add_flag(input_cursor, LV_OBJ_FLAG_HIDDEN);
 
-    // Enter button - 內嵌於 text_input_bar_bg 右側（看起來像 input bar 的一部分）
-    // parent=text_input_bar_bg → 自動跟 bar 一起被 expand_anim_driver_cb 移動
-    // 沒有背景圓圈，只有 enter icon 跟一個透明的點擊熱區
-    input_enter_btn = lv_obj_create(text_input_bar_bg);
-    lv_obj_set_size(input_enter_btn, 70, 70);
-    lv_obj_align(input_enter_btn, LV_ALIGN_RIGHT_MID, -10, 0);
-    lv_obj_set_style_bg_opa(input_enter_btn, LV_OPA_TRANSP, LV_PART_MAIN);
-    lv_obj_set_style_border_width(input_enter_btn, 0, LV_PART_MAIN);
-    lv_obj_set_style_pad_all(input_enter_btn, 0, LV_PART_MAIN);
-    lv_obj_clear_flag(input_enter_btn, LV_OBJ_FLAG_SCROLLABLE);
-    lv_obj_add_flag(input_enter_btn, LV_OBJ_FLAG_HIDDEN);
-    lv_obj_add_flag(input_enter_btn, LV_OBJ_FLAG_CLICKABLE);
-    lv_obj_add_event_cb(input_enter_btn, input_enter_btn_event_cb,
-                        LV_EVENT_CLICKED, NULL);
-    input_enter_img = lv_img_create(input_enter_btn);
-    lv_img_set_src(input_enter_img, &enter_icon);
-    lv_obj_center(input_enter_img);
-    // 預設 zoom = 256 (100%)，由 expand_anim_driver_cb 在動畫期間調整
-    lv_img_set_zoom(input_enter_img, 256);
-
     // 鍵盤 layout（內部創建 keyboard_container, custom_keyboard, 所有按鍵）
-    create_circular_keyboard_layout(parent);
+    // 語音站進場(s_kbd_build_defer_wheel)不建 —— kbd_lower_switch(true) 的 lazy
+    // 分支會在使用者真的切去鍵盤站時補建(heap 見 s_kbd_build_defer_wheel 註解)。
+    if (!s_kbd_build_defer_wheel)
+        create_circular_keyboard_layout(parent);
     if (keyboard_container)
     {
         // 預設藏起鍵盤，由下方 mic 區的右箭頭/左滑切換顯示
@@ -7402,6 +7624,37 @@ static void create_keyboard_mode_ui(lv_obj_t *parent)
     //   foreground 後 bar 在最上層，touch 直接落到輸入框 → 可以下拖收回
     if (text_input_bar_bg && lv_obj_is_valid(text_input_bar_bg))
         lv_obj_move_foreground(text_input_bar_bg);
+
+    /* 螢幕最上方的下拉感應區(founder 2026-08-17:「點畫面最上面往下拉可以把輸入框或
+       鍵盤收下來回到顯示選項」)。輸入框上緣在 VOICE_BOX_Y=107(鍵盤站的輸入列更低),
+       所以 0..KBD_TOP_PULL_H 這一帶是空的,拿來當手勢起手區不會蓋到任何內容。
+       直接複用 text_input_bar_bg 那套已驗過的下拉狀態機(跟手 progress、40px commit
+       門檻、收合落點依 s_kbd_from_drawer 決定回抽屜還是回觸控板),不另外刻一套。
+       ADV_HITTEST:kbd_guard_overlappers() 每 40ms 會把「壓在輸入作用區上的可點物件」
+       通通掛上 chrome_hit_test_cb(按下即放行給底下的鍵),那會讓這個感應區永遠收不到
+       press。它的跳過條件正是「已經有 ADV_HITTEST」——設上去即可豁免,而 LVGL 在沒有
+       HIT_TEST cb 時 res 預設為 true,命中行為與一般物件相同。
+       移到背景:上方的 icon_send / logo(VOICE_ICON_DY,y≈55)落在這一帶,要留在前景。 */
+    kbd_top_pull = lv_obj_create(parent);
+    lv_obj_remove_style_all(kbd_top_pull);
+    lv_obj_set_size(kbd_top_pull, LV_HOR_RES, KBD_TOP_PULL_H);
+    lv_obj_align(kbd_top_pull, LV_ALIGN_TOP_MID, 0, 0);
+    lv_obj_set_style_bg_opa(kbd_top_pull, LV_OPA_TRANSP, 0);
+    lv_obj_clear_flag(kbd_top_pull, LV_OBJ_FLAG_SCROLLABLE);
+    lv_obj_add_flag(kbd_top_pull, LV_OBJ_FLAG_CLICKABLE);
+    lv_obj_add_flag(kbd_top_pull, LV_OBJ_FLAG_PRESS_LOCK); /* 手指往下拖出這一區也要續收 PRESSING */
+    lv_obj_add_flag(kbd_top_pull, LV_OBJ_FLAG_ADV_HITTEST); /* 見上:豁免 kbd_guard_overlappers */
+    lv_obj_add_event_cb(kbd_top_pull, kbd_top_pull_event_cb, LV_EVENT_ALL, NULL);
+    lv_obj_move_background(kbd_top_pull);
+}
+
+/* 頂部下拉感應區 → 沿用輸入框那條下拉收合。只擋掉 SHORT_CLICKED:那條在原 handler 裡是
+   「點字移游標」,對著頂部空白區點一下不該把游標亂跳。 */
+static void kbd_top_pull_event_cb(lv_event_t *e)
+{
+    if (lv_event_get_code(e) == LV_EVENT_SHORT_CLICKED)
+        return;
+    text_input_bar_drag_event_cb(e);
 }
 
 // =====================================================================
@@ -7486,18 +7739,21 @@ static void create_kbd_mic_section(lv_obj_t *parent)
     lv_obj_set_size(kbd_mic_section_right_arrow, 50, 50);
     lv_obj_align(kbd_mic_section_right_arrow, LV_ALIGN_CENTER, VOICE_KBD_DX,
                  VOICE_ROW_DY);
-    lv_obj_set_style_bg_color(kbd_mic_section_right_arrow,
-                              lv_color_hex(0x333333), 0);
-    lv_obj_set_style_bg_opa(kbd_mic_section_right_arrow, LV_OPA_60, 0);
-    lv_obj_set_style_radius(kbd_mic_section_right_arrow, LV_RADIUS_CIRCLE, 0);
+    /* 語音站與鍵盤站的地球鍵是**同一顆功能**(切輸入法),外觀就該一樣(founder
+       2026-08-18:「語音輸入的地球按鈕怎麼跟鍵盤那邊不一樣」)。鍵盤輪盤 row4 的
+       mode_btn 是 50x50 全透明容器 + 原尺寸(32px)地球圖,沒有底圓;這裡原本多了一圈
+       0x333333/60% 的底圓、圖又縮到 zoom 150(=19px),所以看起來是「小地球黏在灰圓上」。
+       拿掉底圓、圖回原尺寸,兩站一致。 */
+    lv_obj_set_style_bg_opa(kbd_mic_section_right_arrow, LV_OPA_TRANSP, 0);
     lv_obj_clear_flag(kbd_mic_section_right_arrow, LV_OBJ_FLAG_SCROLLABLE);
     lv_obj_add_flag(kbd_mic_section_right_arrow, LV_OBJ_FLAG_CLICKABLE);
     lv_obj_add_event_cb(kbd_mic_section_right_arrow,
                         kbd_lower_arrow_event_cb, LV_EVENT_CLICKED,
                         (void *)(intptr_t)1); // 1 = 切到 keyboard
     lv_obj_t *right_arrow_img = lv_img_create(kbd_mic_section_right_arrow);
-    lv_img_set_src(right_arrow_img, &keyboard_icon);
-    lv_img_set_zoom(right_arrow_img, 150); // 放大一點點
+    /* founder 2026-08-17:這顆的語意是「切輸入法」,圖統一成地球(erth)——與鍵盤輪盤
+       row4 的 mode_btn、以及抽屜三鍵列最左那顆同一張,三處一致。 */
+    lv_img_set_src(right_arrow_img, &erth); /* 原尺寸,同鍵盤站的 mode_btn */
     lv_obj_center(right_arrow_img);
 
     /* ── 語音站的其餘控制項(founder 2026-08-03:把立起面板那一整套搬進鍵盤區) ──
@@ -7520,10 +7776,18 @@ static void create_kbd_mic_section(lv_obj_t *parent)
        kbd_voice_logo_btn 保留為 NULL,相關 layout / 顯藏都有 NULL 防護。 */
     kbd_voice_logo_btn = NULL;
 
-    kbd_voice_send_btn = lv_img_create(kbd_mic_section);
+    /* 送出鍵掛在**輸入框自己**裡面、貼右緣(founder 2026-08-18:「幫我移到輸入框裡面的
+       右邊」)。掛 text_input_bar_bg 有三個好處:兩站共用同一個 bar,所以語音站/鍵盤站都在;
+       bar 的所有位移(展開/收合動畫、換站的 y 位移)它自動跟著;而它接手的正是原本內嵌在
+       這裡的 enter_icon 的位置 —— 那顆已經移除(同一顆按鍵、同一件事)。 */
+    kbd_voice_send_btn = lv_img_create(text_input_bar_bg);
     lv_img_set_src(kbd_voice_send_btn, &icon_send);
+    /* 縮圖但不縮 bbox。pivot 設在圖正中央,縮放才是往中心收(預設 pivot 也是中心,寫明
+       是因為這顆之後若換圖或改 zoom,漏設 pivot 會變成往左上角縮)。 */
+    lv_img_set_pivot(kbd_voice_send_btn, SEND_BTN_IMG_W / 2, SEND_BTN_IMG_W / 2);
+    lv_img_set_zoom(kbd_voice_send_btn, SEND_BTN_ZOOM);
     lv_obj_add_flag(kbd_voice_send_btn, LV_OBJ_FLAG_CLICKABLE);
-    lv_obj_set_ext_click_area(kbd_voice_send_btn, 15);
+    lv_obj_set_ext_click_area(kbd_voice_send_btn, SEND_BTN_EXT_CLICK);
     lv_obj_add_event_cb(kbd_voice_send_btn, kbd_voice_send_event_cb, LV_EVENT_CLICKED,
                         (void *)(intptr_t)1);
     kbd_voice_layout_send_icons();
@@ -7671,6 +7935,166 @@ static void keyboard_mode_outside_click_cb(lv_event_t *e)
         kbd_lower_update_arcs_visibility();
     }
     start_kbd_to_trackpad_collapse_anim(100, true);
+}
+
+/* 退出動畫:框從**當下的位置**一路收到底部那條指示帶,中途不繞路。
+   先前是先補間到收合動畫的起點(mic view 380x90@195,螢幕正中)再交棒給既有的收合 ——
+   從鍵盤站(y=75)退出時,框會先往**下走到中間**再開始收,看起來像走了兩段
+   (founder 2026-08-18:「為什麼退出動畫會先看到輸入框移動到正中間再往下收」)。
+   既有那段收合是為「往下拖」寫的,它的起點固定在 mic view;退出鍵/送出的起點是任意的,
+   所以這裡自己開一段:框的幾何+圓角,加上下方元件(mic 區 / 鍵盤)一起往下退場。 */
+#define EXIT_ANIM_TIME_MS 240
+/* 下方元件退場的位移量。與展開動畫的 EXPAND_TRANSLATE_START 同值(那個 define 在
+   檔案更下面的展開動畫段,這裡先用同一個數字,兩者要一起改)。 */
+#define EXIT_TRANSLATE_END 320
+static lv_coord_t s_exit_ty_end = 0; /* 下方元件退場的位移終點 */
+
+static void kbd_exit_morph_cb(void *var, int32_t v)
+{
+    lv_obj_t *bar = (lv_obj_t *)var;
+    if (bar && lv_obj_is_valid(bar))
+    {
+        lv_obj_set_size(bar,
+                        barmorph_lerp(s_barmorph_w0, s_barmorph_w1, v),
+                        barmorph_lerp(s_barmorph_h0, s_barmorph_h1, v));
+        lv_obj_set_pos(bar,
+                       barmorph_lerp(s_barmorph_x0, s_barmorph_x1, v),
+                       barmorph_lerp(s_barmorph_y0, s_barmorph_y1, v));
+        lv_obj_set_style_radius(bar,
+                                barmorph_lerp(s_barmorph_r0, s_barmorph_r1, v),
+                                LV_PART_MAIN);
+    }
+    lv_coord_t ty = barmorph_lerp(0, s_exit_ty_end, v);
+    if (kbd_mic_section && lv_obj_is_valid(kbd_mic_section))
+        lv_obj_set_style_translate_y(kbd_mic_section, ty, 0);
+    if (keyboard_container && lv_obj_is_valid(keyboard_container))
+        lv_obj_set_style_translate_y(keyboard_container, ty, 0);
+}
+
+/* 淡出**單獨一條動畫**,而且是線性的。掛在收合的進度值上行不通:收合走 ease_out,
+   進度在時間的前段就衝掉大半,於是「畫面上還在走」的那段時間裡進度早已接近 100,
+   透明度跟著提前歸零 —— 看起來就是還沒收到三分之一就不見了(founder 2026-08-18)。
+   線性 + 延遲起跑,透明度才跟著**時間**均勻掉,與眼睛看到的行程一致。 */
+/* 淡出要**逐項調各自的 opa**,不能用物件級的 lv_obj_set_style_opa()。
+   這版 LVGL 的 lv_obj_init_draw_rect_dsc() 開頭就是
+       lv_opa_t opa = LV_OPA_COVER;
+       if (part != LV_PART_MAIN) opa = lv_obj_get_style_opa(obj, part);
+   —— MAIN 直接跳過,永遠 COVER。LV_STYLE_OPA 在屬性表標的是 LAYER_REFR,要靠「先畫到
+   中介圖層再整層混合」才成立,而這塊硬體的繪圖管線對 layer/transform 支援有限(同一類
+   坑:FT label 不吃 transform_zoom)。所以先前那行是**靜默無效**,founder 看到的就是
+   「收下去但完全沒變透明」。
+   text_opa 是可繼承屬性,設在框上就會傳到裡面的 label;圖示類要各自設 img_opa。
+   f = 0..255 的淡出係數,各項用自己的基準值去乘,才不會把原本半透明的邊框調成全不透明。 */
+static void kbd_exit_fade_apply(lv_obj_t *bar, int32_t f)
+{
+    if (f < 0) f = 0;
+    if (f > LV_OPA_COVER) f = LV_OPA_COVER;
+    if (bar && lv_obj_is_valid(bar))
+    {
+        lv_obj_set_style_bg_opa(bar, (lv_opa_t)(LV_OPA_90 * f / LV_OPA_COVER),
+                                LV_PART_MAIN);
+        lv_obj_set_style_border_opa(bar, (lv_opa_t)(LV_OPA_50 * f / LV_OPA_COVER),
+                                    LV_PART_MAIN);
+        lv_obj_set_style_text_opa(bar, (lv_opa_t)f, LV_PART_MAIN); /* 繼承給 label */
+    }
+    if (input_cursor && lv_obj_is_valid(input_cursor))
+        lv_obj_set_style_bg_opa(input_cursor, (lv_opa_t)f, LV_PART_MAIN);
+    if (kbd_voice_send_btn && lv_obj_is_valid(kbd_voice_send_btn))
+        lv_obj_set_style_img_opa(kbd_voice_send_btn, (lv_opa_t)f, LV_PART_MAIN);
+    if (s_bar_voice_frame && lv_obj_is_valid(s_bar_voice_frame))
+        lv_obj_set_style_img_opa(s_bar_voice_frame, (lv_opa_t)f, LV_PART_MAIN);
+}
+
+static void kbd_exit_opa_cb(void *var, int32_t v)
+{
+    kbd_exit_fade_apply((lv_obj_t *)var, v);
+}
+
+static void kbd_exit_morph_done_cb(lv_anim_t *a)
+{
+    collapse_anim_running = false;
+    /* **透明度一定要還原**:這些是 style 上的值,不還原的話下次開輸入框整條 bar 是隱形的
+       (物件在、事件也照收,只是看不見 —— 最難查的那種)。 */
+    kbd_exit_fade_apply((lv_obj_t *)a->var, LV_OPA_COVER);
+    /* 與往下拖那條收合共用同一支收尾:容器切換、狀態復位都在裡面。 */
+    kbd_commit_to_trackpad();
+}
+
+/* 「離開輸入模式」的單一出口(founder 2026-08-18:「鍵盤跟語音模式退出的畫面怎麼是瞬間
+   消失沒有動畫」)。先前空框退出鍵/送出都是直接 apply_hid_mode(HID_MODE_TRACKPAD) ——
+   那只是換容器,沒有任何動畫,畫面當場消失。 */
+static void mouse_exit_input_station(void)
+{
+    if (current_hid_mode != HID_MODE_KEYBOARD)
+        return;
+    if (collapse_anim_running)
+        return; /* 已經在收了,別疊第二段 */
+    if (mouse_v2t_active)
+        mouse_v2t_close_and_paste();
+
+    bool bar_ok = (text_input_bar_bg && lv_obj_is_valid(text_input_bar_bg));
+    lv_coord_t x0 = 0, y0 = 0, w0 = 0, h0 = 0;
+    if (bar_ok)
+    {
+        lv_obj_update_layout(text_input_bar_bg);
+        x0 = lv_obj_get_x(text_input_bar_bg);
+        y0 = lv_obj_get_y(text_input_bar_bg);
+        w0 = lv_obj_get_width(text_input_bar_bg);
+        h0 = lv_obj_get_height(text_input_bar_bg);
+    }
+    bool from_voice = s_voice_box_on;
+    if (from_voice)
+    {
+        /* 語音站的外觀是卡片圖,跟不了縮放(見 kbd_bar_morph_to_voice_done_cb);這支
+           順便把語音站的狀態(框選/放大鏡/連刪 timer/preview)一併收乾淨。 */
+        kbd_bar_set_voice_box(false);
+    }
+    /* 選字/數字快捷列跟不了框的縮放,直接收掉(同往下拖那條的作法)。 */
+    if (s_kbd_cand_row && lv_obj_is_valid(s_kbd_cand_row))
+        lv_obj_add_flag(s_kbd_cand_row, LV_OBJ_FLAG_HIDDEN);
+    /* 弧線要在收合開始前就回來,否則會看到「框收完之後弧線才冒出來」。 */
+    kbd_lower_update_arcs_visibility();
+    if (!bar_ok)
+    {
+        kbd_commit_to_trackpad();
+        return;
+    }
+    /* 終點 = 觸控板上那條收合狀態的指示帶(mode_set_visible 的 closed 幾何)。 */
+    s_barmorph_x0 = x0;
+    s_barmorph_y0 = y0;
+    s_barmorph_w0 = w0;
+    s_barmorph_h0 = h0;
+    s_barmorph_x1 = (LV_HOR_RES_MAX - 200) / 2;
+    s_barmorph_y1 = LV_VER_RES_MAX - 50;
+    s_barmorph_w1 = 200;
+    s_barmorph_h1 = 50;
+    s_barmorph_r0 = from_voice ? VOICE_BOX_RADIUS : 100;
+    s_barmorph_r1 = 100;
+    /* 鍵盤還在畫面上就讓它跟著往下退場(和框同一個方向、同一段時間);已經是語音站的話
+       退場的是 mic 區那排。兩個都掛同一條位移,hidden 的那個沒有視覺影響。 */
+    s_exit_ty_end = EXIT_TRANSLATE_END;
+    collapse_anim_running = true;
+    lv_anim_del(text_input_bar_bg, NULL); /* 換站的 morph / y 動畫都要讓開 */
+    kbd_exit_morph_cb(text_input_bar_bg, 0);
+    lv_anim_t a;
+    lv_anim_init(&a);
+    lv_anim_set_var(&a, text_input_bar_bg);
+    lv_anim_set_exec_cb(&a, kbd_exit_morph_cb);
+    lv_anim_set_values(&a, 0, 100);
+    lv_anim_set_time(&a, EXIT_ANIM_TIME_MS);
+    lv_anim_set_path_cb(&a, lv_anim_path_ease_out);
+    lv_anim_set_ready_cb(&a, kbd_exit_morph_done_cb);
+    lv_anim_start(&a);
+    /* 淡出:前 40% 的時間維持不透明(先看清楚它在往下走),之後線性淡到 0,與收合同時落地。 */
+    lv_anim_t fa;
+    lv_anim_init(&fa);
+    lv_anim_set_var(&fa, text_input_bar_bg);
+    lv_anim_set_exec_cb(&fa, kbd_exit_opa_cb);
+    lv_anim_set_values(&fa, LV_OPA_COVER, LV_OPA_TRANSP);
+    lv_anim_set_delay(&fa, EXIT_ANIM_TIME_MS * 2 / 5);
+    lv_anim_set_time(&fa, EXIT_ANIM_TIME_MS * 3 / 5);
+    lv_anim_set_path_cb(&fa, lv_anim_path_linear);
+    lv_anim_start(&fa);
 }
 
 /* 鍵盤 ⇄ 語音(mic)兩站的切換本體。**輸入列的高度是靠這裡的動畫換的**,只呼
@@ -7961,6 +8385,11 @@ static void ai_drag_logo_show(lv_point_t at, lv_obj_t *src)
 {
     if (kbd_mic_section == NULL || !lv_obj_is_valid(kbd_mic_section))
         return;
+    /* 直打模式沒有「送去 skaibar」這個去處：電腦端此刻是 direct-typing latch，送出去的
+       runSkaibar 會把同一段字再打進使用者的文件一次。連浮動 logo 都不出現 = 手勢不會被
+       arm（s_ai_drag_armed 恆 false），放開時不會誤送。 */
+    if (s_kbd_direct_field)
+        return;
     /* 鎖住 press:手指要能離開來源物件往上走,中途不能被判成 PRESS_LOST */
     s_ai_drag_src = src;
     if (src && lv_obj_is_valid(src))
@@ -8020,10 +8449,40 @@ static void voice_hold_arm_cb(lv_timer_t *t)
     ai_drag_logo_show(s_voice_press_pt, text_input_bar_bg); /* 按壓點上方生出淡 logo */
 }
 
+/* 這一按是不是落在送出鍵(含它的觸控外擴)上? 送出鍵是輸入框的 child,而輸入框自己
+   吃 PRESSED/SHORT_CLICKED —— 短按輸入框 = 跳去鍵盤站,所以瞄準送出鍵時稍微偏一點,
+   就會變成「跳去鍵盤」而不是送出(founder 2026-08-18:「很容易判斷成點到輸入框」)。
+   圖示縮成 24px 之後,看得到的目標比實際熱區小,更容易發生。用座標判定,不依賴 LVGL
+   的 hit-test 誰先拿到 press。 */
+static bool voice_press_on_send_btn(const lv_point_t *p)
+{
+    if (!kbd_voice_send_btn || !lv_obj_is_valid(kbd_voice_send_btn)) return false;
+    if (lv_obj_has_flag(kbd_voice_send_btn, LV_OBJ_FLAG_HIDDEN)) return false;
+    lv_area_t a;
+    lv_obj_get_coords(kbd_voice_send_btn, &a);
+    lv_coord_t ext = SEND_BTN_EXT_CLICK;
+    return (p->x >= a.x1 - ext && p->x <= a.x2 + ext &&
+            p->y >= a.y1 - ext && p->y <= a.y2 + ext);
+}
+
 static void voice_box_gesture_cb(lv_event_t *e)
 {
     if (!s_voice_box_on)
         return; /* 鍵盤站的這條 bar 是「往下拖收回」,不歸這裡管 */
+    /* 這一按屬於送出鍵 → 整串事件都不歸輸入框管(latch 到下一次 PRESSED 才重算)。 */
+    if (lv_event_get_code(e) == LV_EVENT_PRESSED)
+    {
+        lv_indev_t *id0 = lv_indev_get_act();
+        lv_point_t p0;
+        s_voice_press_on_send = false;
+        if (id0)
+        {
+            lv_indev_get_point(id0, &p0);
+            s_voice_press_on_send = voice_press_on_send_btn(&p0);
+        }
+    }
+    if (s_voice_press_on_send)
+        return;
     switch (lv_event_get_code(e))
     {
     case LV_EVENT_PRESSED:
@@ -8242,7 +8701,11 @@ static void kbd_bar_set_voice_box(bool voice)
         lv_obj_move_background(s_bar_voice_frame);
         if (input_content_container && lv_obj_is_valid(input_content_container))
         {
-            lv_obj_set_size(input_content_container, 360, VOICE_BOX_H - 40);
+            /* 送出鍵現在坐在框內右緣,文字欄要讓出那一塊,否則長行會從圖示底下穿過去
+               (框 442 寬、內容欄置中 360 → 右邊只剩 41px 邊距,不夠讓一顆圖示)。 */
+            extern bool instruction_list_remote_target_has_focus(void);
+            lv_coord_t cw = instruction_list_remote_target_has_focus() ? 312 : 360;
+            lv_obj_set_size(input_content_container, cw, VOICE_BOX_H - 40);
             lv_obj_align(input_content_container, LV_ALIGN_TOP_MID, 0, 10);
         }
         if (input_display_label && lv_obj_is_valid(input_display_label))
@@ -8252,8 +8715,6 @@ static void kbd_bar_set_voice_box(bool voice)
             lv_obj_align(input_display_label, LV_ALIGN_TOP_LEFT, 0, 0);
         }
         /* 大框裡不放 Enter —— 送出走上方 logo / icon_send。 */
-        if (input_enter_btn && lv_obj_is_valid(input_enter_btn))
-            lv_obj_add_flag(input_enter_btn, LV_OBJ_FLAG_HIDDEN);
         /* 進站要重畫一次:游標從單行的 OUT_RIGHT_MID 換成折行座標,圓球也要現形
            (sim 2026-08-03:帶著字進站時球不出現,因為沒有任何東西觸發重繪)。 */
         lv_obj_update_layout(text_input_bar_bg);
@@ -8264,7 +8725,19 @@ static void kbd_bar_set_voice_box(bool voice)
            這條完全沒接。兩個入口(頂部圖示 / Mode 鍵)都會經過這裡。 */
         {
             extern bool commu_send_skaibar_open_device_ex(bool force_open, bool input_only);
-            commu_send_skaibar_open_device_ex(true, true);
+            /* inputOnly:一般進語音站=true(電腦只留輸入框,並把召喚前聚焦的欄位記成
+               icon_send 的目的地)。但**從 session 抽屜進來**時要的正好相反 —— 講的話
+               是拿去搜這台電腦的 sessions/actions/檔案,電腦必須把選項算出來並鏡像回
+               手錶(0x03),所以 inputOnly=false(founder 2026-08-17:「為什麼上面沒有
+               選項?兩邊都沒有」)。 */
+            /* 直打模式：forceOpen=false 讓電腦「有聚焦輸入框就讓給它」（桌面
+               SkaibarRelayController.Summon 的 TryBegin 分支）—— 面板整個不開，之後每一次
+               preview 都直接落在使用者剛剛點的那個欄位。萬一召喚抵達時焦點已經沒了，
+               TryBegin 失敗、桌面自動退回開一般面板，不會變成「打了字卻不知道去哪」。 */
+            if (s_kbd_direct_field)
+                commu_send_skaibar_open_device_ex(false, false);
+            else
+                commu_send_skaibar_open_device_ex(true, !s_kbd_from_drawer);
             /* 同時把 instruction_list 的單設備 session 建起來(只建 layout + 記 device_id,
                不開任何面板)。按 logo 送出後要用它叫清單 —— 沒有這一步 open_browse() 會因為
                layout 不存在直接 return,清單靜默不出現。 */
@@ -8302,8 +8775,6 @@ static void kbd_bar_set_voice_box(bool voice)
             lv_label_set_long_mode(input_display_label, LV_LABEL_LONG_CLIP);
             lv_obj_align(input_display_label, LV_ALIGN_LEFT_MID, 10, 0);
         }
-        if (input_enter_btn && lv_obj_is_valid(input_enter_btn))
-            lv_obj_clear_flag(input_enter_btn, LV_OBJ_FLAG_HIDDEN);
     }
 }
 
@@ -8318,14 +8789,59 @@ static void kbd_scroll_to_caret_async(void *unused)
 
 static void kbd_lower_switch(bool to_kbd)
 {
+    /* 2026-08-16 heap 根治輪之後 gate 移除:hosted 進場 free 常態 ~80K,輪盤建置
+       (~21K)不再有 OOM 風險;輸入法切換的低 heap 防護改在 Mode 鍵的
+       「free<60K 免並存動畫」那裡(降級而非拒絕)。 */
+    /* 換站前先記住輸入框的幾何 —— kbd_bar_set_voice_box() 會把新站的尺寸/位置**瞬間**
+       設好,記下舊的才有辦法在下面補間回去(見 kbd_bar_morph_cb)。 */
+    bool morph_bar = (text_input_bar_bg && lv_obj_is_valid(text_input_bar_bg) &&
+                      !lv_obj_has_flag(text_input_bar_bg, LV_OBJ_FLAG_HIDDEN));
+    if (morph_bar)
+    {
+        lv_obj_update_layout(text_input_bar_bg);
+        s_barmorph_x0 = lv_obj_get_x(text_input_bar_bg);
+        s_barmorph_y0 = lv_obj_get_y(text_input_bar_bg);
+        s_barmorph_w0 = lv_obj_get_width(text_input_bar_bg);
+        s_barmorph_h0 = lv_obj_get_height(text_input_bar_bg);
+    }
     kbd_bar_set_voice_box(!to_kbd);
     if (to_kbd && mouse_v2t_active)
     {
         mouse_v2t_close_and_paste();
     }
+    if (!to_kbd)
+    {
+        /* 離開鍵盤站:把還掛在畫面上的按鍵提示框與按下狀態收乾淨。上面那道 gate 擋的是
+           轉場期間**新的**提示框,這裡收的是進轉場前那一顆(長按空白鍵時它可能正亮著)。 */
+        hide_key_popup();
+        if (currently_pressed_btn != NULL)
+        {
+            lv_obj_clear_state(currently_pressed_btn, LV_STATE_PRESSED);
+            currently_pressed_btn = NULL;
+        }
+        closest_btn = NULL;
+    }
+    /* 送出鍵的 y 是從 bar 高度算出來的,而兩站的 bar 高度不同(442x252 / 310x45) ——
+       換站後重算,否則它會停在上一站的高度上。 */
+    kbd_voice_layout_send_icons();
 
     if (to_kbd)
     {
+        /* 語音站輕量進場(s_kbd_build_defer_wheel)沒建圓形鍵盤 —— 使用者現在真的要切
+           鍵盤站,在這裡補建(建在鍵盤 mode container 上,同 create_keyboard_mode_ui
+           的 parent);建完照走下面的升起動畫。 */
+        if (keyboard_container == NULL && mode_container[HID_MODE_KEYBOARD] != NULL)
+        {
+            kbd_pinyin_clear();
+            current_keyboard_mode = KEYBOARD_MODE_LETTERS;
+            create_circular_keyboard_layout(mode_container[HID_MODE_KEYBOARD]);
+            if (keyboard_container != NULL)
+            {
+                lv_obj_set_style_translate_y(keyboard_container, 0, 0);
+                lv_obj_align(keyboard_container, LV_ALIGN_BOTTOM_MID, 0, 0);
+                lv_obj_add_flag(keyboard_container, LV_OBJ_FLAG_HIDDEN);
+            }
+        }
         /* 語音→英文,把循環閉合(founder 2026-08-03:英文→中文→數字→語音→英文)。
            語音那一站是從數字進來的,mode 變數還停在 NUMBERS,不重建的話會回到數字鍵盤。
            要在下面的升起動畫之前重建 —— 動畫抓的是 keyboard_container,重建會換掉它。 */
@@ -8347,51 +8863,62 @@ static void kbd_lower_switch(bool to_kbd)
         //   1. mic section 直接 hide
         //   2. input bar y 從 195 → 75 (上移到鍵盤上方)
         //   3. keyboard 從下方升起 translate_y 300 → 0
-        /* 語音區往左滑出(滑完才 hide),與從右邊進來的鍵盤形成同一個左右換頁 */
+        /* 語音區的三顆(麥克風/地球/收下)跟著往**下**退出畫面,把位置讓給升起來的鍵盤。 */
         if (kbd_mic_section && lv_obj_is_valid(kbd_mic_section))
         {
             lv_anim_del(kbd_mic_section, anim_set_translate_x);
+            lv_anim_del(kbd_mic_section, anim_set_translate_y);
             lv_obj_clear_flag(kbd_mic_section, LV_OBJ_FLAG_HIDDEN);
             lv_obj_set_style_translate_x(kbd_mic_section, 0, 0);
+            lv_obj_set_style_translate_y(kbd_mic_section, 0, 0);
             lv_anim_t am;
             lv_anim_init(&am);
             lv_anim_set_var(&am, kbd_mic_section);
-            lv_anim_set_exec_cb(&am, anim_set_translate_x);
-            lv_anim_set_values(&am, 0, -LV_HOR_RES);
+            lv_anim_set_exec_cb(&am, anim_set_translate_y);
+            lv_anim_set_values(&am, 0, LV_VER_RES);
             lv_anim_set_time(&am, 260);
             lv_anim_set_path_cb(&am, lv_anim_path_ease_out);
-            lv_anim_set_ready_cb(&am, hide_after_slide_x_cb);
+            lv_anim_set_ready_cb(&am, hide_after_slide_y_cb);
             lv_anim_start(&am);
         }
-        // 進場：input bar 上移 + keyboard 升起都用 overshoot 帶彈性
-        // 退場（else 分支）維持 ease_out 比較乾脆
-        if (text_input_bar_bg && lv_obj_is_valid(text_input_bar_bg))
+        /* 輸入框從語音大框**縮**回鍵盤藥丸(位置與尺寸一起補間)。 */
+        if (morph_bar)
         {
             lv_anim_del(text_input_bar_bg, (lv_anim_exec_xcb_t)lv_obj_set_y);
+            lv_anim_del(text_input_bar_bg, kbd_bar_morph_cb);
+            s_barmorph_x1 = (LV_HOR_RES_MAX - KBD_BAR_W) / 2;
+            s_barmorph_y1 = EXPAND_END_Y_KBD;
+            s_barmorph_w1 = KBD_BAR_W;
+            s_barmorph_h1 = KBD_BAR_H;
+            s_barmorph_r0 = VOICE_BOX_RADIUS;
+            s_barmorph_r1 = 100;
+            kbd_bar_morph_cb(text_input_bar_bg, 0); /* 起點立刻就位,別閃一格終點 */
             lv_anim_t a;
             lv_anim_init(&a);
             lv_anim_set_var(&a, text_input_bar_bg);
-            lv_anim_set_exec_cb(&a, (lv_anim_exec_xcb_t)lv_obj_set_y);
-            /* 從語音站回鍵盤:起點是大框置中的 Y,不是 mic-view 藥丸的 195。 */
-            lv_anim_set_values(&a, VOICE_BOX_Y, EXPAND_END_Y_KBD);
-            lv_anim_set_time(&a, 350);
-            lv_anim_set_path_cb(&a, lv_anim_path_overshoot);
+            lv_anim_set_exec_cb(&a, kbd_bar_morph_cb);
+            lv_anim_set_values(&a, 0, 100);
+            lv_anim_set_time(&a, 260);
+            lv_anim_set_path_cb(&a, lv_anim_path_ease_out);
             lv_anim_start(&a);
         }
         if (keyboard_container && lv_obj_is_valid(keyboard_container))
         {
+            /* 鍵盤從**下方升起**(founder 2026-08-18)。原本是從右邊滑進來,與輸入框
+               長大/縮小的方向對不上,看起來像兩頁在左右輪播而不是同一個輸入面在變形。 */
             lv_anim_del(keyboard_container, anim_set_translate_x);
+            lv_anim_del(keyboard_container, anim_set_translate_y);
             lv_obj_clear_flag(keyboard_container, LV_OBJ_FLAG_HIDDEN);
-            lv_obj_set_style_translate_y(keyboard_container, 0, 0);
-            lv_obj_set_style_translate_x(keyboard_container, LV_HOR_RES, 0);
+            lv_obj_set_style_translate_x(keyboard_container, 0, 0);
+            lv_obj_set_style_translate_y(keyboard_container, LV_VER_RES, 0);
             lv_anim_t a;
             lv_anim_init(&a);
             lv_anim_set_var(&a, keyboard_container);
-            lv_anim_set_exec_cb(&a, anim_set_translate_x);
-            lv_anim_set_values(&a, LV_HOR_RES, 0);
+            lv_anim_set_exec_cb(&a, anim_set_translate_y);
+            lv_anim_set_values(&a, LV_VER_RES, 0);
             lv_anim_set_time(&a, 260);
             lv_anim_set_path_cb(&a, lv_anim_path_ease_out);
-            lv_anim_set_ready_cb(&a, kbd_slide_in_done_cb);
+            lv_anim_set_ready_cb(&a, kbd_slide_in_y_done_cb);
             lv_anim_start(&a);
         }
         kbd_lower_is_keyboard = true;
@@ -8411,26 +8938,61 @@ static void kbd_lower_switch(bool to_kbd)
         //   1. keyboard 往下滑出 (translate_y 0 → 300) 後 hide
         //   2. input bar y 從 75 → 195 (回到螢幕中央)
         //   3. 顯示 mic section
-        if (text_input_bar_bg && lv_obj_is_valid(text_input_bar_bg))
-        {
-            lv_anim_del(text_input_bar_bg, (lv_anim_exec_xcb_t)lv_obj_set_y);
-            lv_anim_t a;
-            lv_anim_init(&a);
-            lv_anim_set_var(&a, text_input_bar_bg);
-            lv_anim_set_exec_cb(&a, (lv_anim_exec_xcb_t)lv_obj_set_y);
-            lv_anim_set_values(&a, EXPAND_END_Y_KBD, VOICE_BOX_Y);
-            lv_anim_set_time(&a, 250);
-            lv_anim_set_path_cb(&a, lv_anim_path_ease_out);
-            lv_anim_start(&a);
-        }
-        /* 這一輪到底是不是「真的從鍵盤切過來」:鍵盤有在畫面上才算。從觸控板直接
-           進語音站時它是藏著的,那就整組不演橫向動畫 —— 否則外層的「由下往上進場」
-           會跟這裡的橫move 疊在一起,看起來是輸入框從下面出來、三顆按鈕跟 logo 卻
-           另外從左邊滑進來(founder 2026-08-07)。 */
+        /* 這一輪到底是不是「真的從鍵盤切過來」:鍵盤有在畫面上才算(從觸控板直接進語音站時
+           它是藏著的)。原本只有下面的橫向動畫看它,現在框的變形也要看 —— 進場那條路有它
+           自己的展開動畫在驅動框的幾何(0→100 收在 mic view 的 380x90@195),我這段變形
+           跑在它前面,於是使用者會看到「框先長到語音框的正常大小,又縮成中間一個小框」
+           (founder 2026-08-18)。進場不歸這裡管。 */
         bool from_keyboard = keyboard_container &&
                              lv_obj_is_valid(keyboard_container) &&
                              !lv_obj_has_flag(keyboard_container,
                                               LV_OBJ_FLAG_HIDDEN);
+        /* 進場那條路不演變形,但**位置還是要放對**:kbd_bar_set_voice_box() 只設了尺寸與 x,
+           y 一向是靠這裡的動畫帶到 VOICE_BOX_Y 的。上一輪把動畫 gate 掉之後就沒有人設 y,
+           框於是停在鍵盤站的高度(founder 2026-08-18:「輸入框位置整個往上跑」)。這裡直接
+           就位,不動畫 —— 進場的視覺歸進場動畫管。 */
+        if (morph_bar && !from_keyboard)
+        {
+            lv_obj_set_size(text_input_bar_bg, VOICE_BOX_W, VOICE_BOX_H);
+            lv_obj_set_pos(text_input_bar_bg,
+                           (LV_HOR_RES_MAX - VOICE_BOX_W) / 2, VOICE_BOX_Y);
+            lv_obj_set_style_radius(text_input_bar_bg, VOICE_BOX_RADIUS,
+                                    LV_PART_MAIN);
+        }
+        /* 輸入框從鍵盤藥丸**長大**成語音大框(位置與尺寸一起補間)。 */
+        if (morph_bar && from_keyboard)
+        {
+            lv_anim_del(text_input_bar_bg, (lv_anim_exec_xcb_t)lv_obj_set_y);
+            lv_anim_del(text_input_bar_bg, kbd_bar_morph_cb);
+            s_barmorph_x1 = (LV_HOR_RES_MAX - VOICE_BOX_W) / 2;
+            s_barmorph_y1 = VOICE_BOX_Y;
+            s_barmorph_w1 = VOICE_BOX_W;
+            s_barmorph_h1 = VOICE_BOX_H;
+            s_barmorph_r0 = 100;               /* 鍵盤藥丸 */
+            s_barmorph_r1 = VOICE_BOX_RADIUS;  /* 逼近卡片圖的轉角 */
+            /* 變形期間**框自己畫**(沿用鍵盤那套底色+邊框),卡片圖先收起來 ——
+               否則長大的過程中框會整個看不見(見 kbd_bar_morph_to_voice_done_cb)。
+               kbd_bar_set_voice_box() 已經把語音外觀套上去了,這裡先還原回去。 */
+            if (s_bar_voice_frame && lv_obj_is_valid(s_bar_voice_frame))
+                lv_obj_add_flag(s_bar_voice_frame, LV_OBJ_FLAG_HIDDEN);
+            lv_obj_set_style_bg_color(text_input_bar_bg, lv_color_hex(0x1a1a1a),
+                                      LV_PART_MAIN);
+            lv_obj_set_style_bg_opa(text_input_bar_bg, LV_OPA_90, LV_PART_MAIN);
+            lv_obj_set_style_border_color(text_input_bar_bg, lv_color_hex(0xFFFFFF),
+                                          LV_PART_MAIN);
+            lv_obj_set_style_border_width(text_input_bar_bg, 2, LV_PART_MAIN);
+            lv_obj_set_style_border_opa(text_input_bar_bg, LV_OPA_50, LV_PART_MAIN);
+            kbd_bar_morph_cb(text_input_bar_bg, 0);
+            lv_anim_t a;
+            lv_anim_init(&a);
+            lv_anim_set_var(&a, text_input_bar_bg);
+            lv_anim_set_exec_cb(&a, kbd_bar_morph_cb);
+            lv_anim_set_values(&a, 0, 100);
+            lv_anim_set_time(&a, 250);
+            lv_anim_set_path_cb(&a, lv_anim_path_ease_out);
+            lv_anim_set_ready_cb(&a, kbd_bar_morph_to_voice_done_cb);
+            lv_anim_start(&a);
+        }
         if (keyboard_container && lv_obj_is_valid(keyboard_container))
         {
             lv_anim_del(keyboard_container, anim_set_translate_x);
@@ -8450,17 +9012,18 @@ static void kbd_lower_switch(bool to_kbd)
             }
             else
             {
+                /* 鍵盤**往下收掉**(founder 2026-08-18),與輸入框同時長大成語音框 ——
+                   兩個動作方向一致才讀得出「鍵盤讓位給輸入框」而不是兩頁在輪播。 */
+                lv_anim_del(keyboard_container, anim_set_translate_y);
+                lv_obj_set_style_translate_x(keyboard_container, 0, 0);
                 lv_anim_t a;
                 lv_anim_init(&a);
                 lv_anim_set_var(&a, keyboard_container);
-                lv_anim_set_exec_cb(&a, anim_set_translate_x);
-                /* 往左出:輸入法循環(英→中→數→語音→英)每一步都是「新的從右邊進、
-                   舊的往左邊出」,這樣整圈走起來方向一致(founder 2026-08-07)。
-                   原本這一步是反的(鍵盤往右出、語音從左進),走到這裡會突然倒退。 */
-                lv_anim_set_values(&a, 0, -LV_HOR_RES);
+                lv_anim_set_exec_cb(&a, anim_set_translate_y);
+                lv_anim_set_values(&a, 0, LV_VER_RES);
                 lv_anim_set_time(&a, 260);
                 lv_anim_set_path_cb(&a, lv_anim_path_ease_out);
-                lv_anim_set_ready_cb(&a, hide_after_slide_x_cb);
+                lv_anim_set_ready_cb(&a, hide_after_slide_y_cb);
                 lv_anim_start(&a);
             }
         }
@@ -8475,13 +9038,15 @@ static void kbd_lower_switch(bool to_kbd)
             }
             else
             {
-                /* 從右邊進(同上:循環一律往前) */
-                lv_obj_set_style_translate_x(kbd_mic_section, LV_HOR_RES, 0);
+                /* 三顆按鈕跟著鍵盤讓出的空間**由下往上**回到定位。 */
+                lv_anim_del(kbd_mic_section, anim_set_translate_y);
+                lv_obj_set_style_translate_x(kbd_mic_section, 0, 0);
+                lv_obj_set_style_translate_y(kbd_mic_section, LV_VER_RES, 0);
                 lv_anim_t am;
                 lv_anim_init(&am);
                 lv_anim_set_var(&am, kbd_mic_section);
-                lv_anim_set_exec_cb(&am, anim_set_translate_x);
-                lv_anim_set_values(&am, LV_HOR_RES, 0);
+                lv_anim_set_exec_cb(&am, anim_set_translate_y);
+                lv_anim_set_values(&am, LV_VER_RES, 0);
                 lv_anim_set_time(&am, 260);
                 lv_anim_set_path_cb(&am, lv_anim_path_ease_out);
                 lv_anim_start(&am);
@@ -8529,7 +9094,7 @@ static lv_coord_t expand_start_y = EXPAND_FALLBACK_Y;
 static lv_coord_t expand_start_w = EXPAND_FALLBACK_W;
 static lv_coord_t expand_start_h = EXPAND_FALLBACK_H;
 // 終點 = text_input_bar_bg 的 set_pos / set_size 預設值
-// （y=110, h=45 跟右邊的 input_enter_btn 對齊頂底；466 圓內 Enter 最高位置）
+// （y=110, h=45；466 圓內輸入列最高位置）
     #define EXPAND_TRANSLATE_START 320 // 下方元件起始 translate_y（mic 中心 240 + 半徑 65 ≈ 305 → 320 確保完全 off-screen）
 
 static inline lv_coord_t expand_lerp(int32_t a, int32_t b, int32_t v_x100)
@@ -8559,23 +9124,6 @@ static void expand_anim_driver_cb(void *var, int32_t v)
         lv_obj_set_style_translate_y(kbd_mic_section, ty, 0);
     if (keyboard_container && lv_obj_is_valid(keyboard_container))
         lv_obj_set_style_translate_y(keyboard_container, ty, 0);
-    // input_enter_btn 是 text_input_bar_bg 的 child（內嵌右側）：
-    //   - btn 自己 bbox = 70×70（align RIGHT_MID 跟著 parent size 自動定位）
-    //   - 視覺縮放：用 lv_img_set_zoom 直接縮 enter icon img（transform_zoom 套在
-    //     parent obj 在這個 LVGL build 不會 cascade 到 child img）
-    //   - 透明度：lv_obj_set_style_img_opa 設 img 本身的繪製透明度
-    // overshoot path 會讓 v 暫時超過 100，opa 必須 clamp，否則 uint8_t cast wrap
-    // 成接近 0 → enter icon 在彈跳峰值瞬間閃成透明
-    if (input_enter_img && lv_obj_is_valid(input_enter_img))
-    {
-        int32_t v_opa = v > 100 ? 100 : (v < 0 ? 0 : v);
-        uint16_t zoom = (uint16_t)(256 * v / 100);
-        if (zoom < 1) zoom = 1;
-        lv_img_set_zoom(input_enter_img, zoom);
-        lv_obj_set_style_img_opa(input_enter_img,
-                                 (lv_opa_t)(LV_OPA_COVER * v_opa / 100),
-                                 LV_PART_MAIN);
-    }
     // 箭頭現在是 section 的子物件，自動跟 translate_y，不用單獨處理
 }
 
@@ -8668,6 +9216,10 @@ static bool tib_drag_tracking = false;
 static bool tib_drag_engaged = false;
 static bool tib_drag_rejected = false; // 偵測到水平拖曳 → 放棄這次 session
 static bool collapse_anim_commit = false;
+/* 這次收合的落點是「滑回 session 抽屜」而不是光禿禿的觸控板 —— 只有**輸入框往下拖**
+   這條手勢會設(founder 2026-08-17:「按著上面往下滑才會把輸入框或鍵盤往下收掉、拉回
+   已經有對應輸入變更過的選項」);點外面/右上退出鈕是離開整個流程,抽屜一併收掉。 */
+static bool s_collapse_to_drawer = false;
 
 /* 鍵盤→觸碰板的 commit 收尾(bar 下拉 collapse 與頂部退出鈕右滑共用)。 */
 static void kbd_commit_to_trackpad(void)
@@ -8701,11 +9253,13 @@ static void kbd_commit_to_trackpad(void)
             lv_obj_set_style_translate_y(keyboard_container, 0, 0);
             lv_obj_add_flag(keyboard_container, LV_OBJ_FLAG_HIDDEN);
         }
-        // Enter btn 在 mode_set_visible(KEYBOARD, false) 已被 hide；
-        // 把 translate_y 重設為 0，下次 expand 才能從 -80 → 0 進場
-        if (input_enter_btn && lv_obj_is_valid(input_enter_btn))
-            lv_obj_set_style_translate_y(input_enter_btn, 0, 0);
         kbd_lower_is_keyboard = false;
+        /* 語音站的大框狀態要跟著收 —— 這裡漏清是「回觸控板後 skaibar_img 從此點不動」
+           的根源(見 kbd_input_active_area 的說明),而且它同時決定退格/游標的語意
+           (remove_from_input_buffer),留著會讓觸控板站沿用語音站的編輯行為。
+           只清旗標不呼叫 kbd_bar_set_voice_box():收合動畫已經在處理幾何,
+           不要在收尾當下再插一次版面重排。 */
+        s_voice_box_on = false;
         kbd_lower_update_arrows_visibility();
         kbd_lower_update_arrows_visibility();
         kbd_lower_update_arcs_visibility();
@@ -8714,6 +9268,32 @@ static void kbd_commit_to_trackpad(void)
         skaibar_options_count = 0;
         skaibar_selected_idx = -1;
     }
+    /* 直打模式從**任何**出口離站(下拉收合、右上退出鈕、退格鍵當退出鍵)都要解除電腦的
+       direct-typing latch。漏掉的話電腦會一直把後續任何 setSkaibarText 打進使用者的文件。
+       送出那條已經自己解除並清旗標,所以這裡是 idempotent 的補網。 */
+    if (s_kbd_direct_field)
+    {
+        s_kbd_direct_field = false;
+        extern bool commu_send_skaibar_dismiss(void);
+        commu_send_skaibar_dismiss();
+    }
+    /* 從 session 抽屜進來的:下拉收合 → 抽屜帶著這輪語音搜尋後的最新選項滑回來;
+       其他離場方式(點外面、右上退出鈕)→ 整條流程結束,抽屜也收掉並通知電腦。 */
+    if (s_kbd_from_drawer)
+    {
+        s_kbd_from_drawer = false;
+        if (s_collapse_to_drawer)
+        {
+            extern void instruction_list_drawer_slide_in(void);
+            instruction_list_drawer_slide_in();
+        }
+        else
+        {
+            extern void instruction_list_bar_device_dismiss(void);
+            instruction_list_bar_device_dismiss();
+        }
+    }
+    s_collapse_to_drawer = false;
 }
 
 static void collapse_anim_done_cb(lv_anim_t *a)
@@ -8833,6 +9413,8 @@ static void text_input_bar_drag_event_cb(lv_event_t *e)
         if (progress < 0) progress = 0;
         if (progress > 100) progress = 100;
         bool commit = dy >= TIB_DRAG_COMMIT_PX;
+        /* 下拉是唯一「收掉輸入框但留在抽屜流程裡」的手勢。 */
+        s_collapse_to_drawer = commit && s_kbd_from_drawer;
         start_kbd_to_trackpad_collapse_anim(progress, commit);
     }
 }
@@ -9001,7 +9583,7 @@ static void kbd_voice_del_event_cb(lv_event_t *e)
                先前寫成退回鍵盤站,按下去會跳出英文鍵盤,不是使用者要的「退出」
                (founder 2026-08-04)。 */
             LOG_I("[voice] delete key acted as EXIT (box empty)");
-            apply_hid_mode(HID_MODE_TRACKPAD);
+            mouse_exit_input_station();
         }
         return;
     }
@@ -9031,6 +9613,10 @@ static void kbd_voice_send_event_cb(lv_event_t *e)
 {
     if (lv_event_get_code(e) != LV_EVENT_CLICKED)
         return;
+    /* 跟鍵盤每一顆鍵同一個觸覺回饋(founder 2026-08-18)。用 motor_pattern_key_tick 而不是
+       另挑一個 pattern:這顆在使用者眼裡就是鍵盤上的一顆鍵,手感不該自成一格。 */
+    extern void motor_pattern_key_tick(void);
+    motor_pattern_key_tick();
     voice_do_send((int)(intptr_t)lv_event_get_user_data(e));
 }
 
@@ -9048,9 +9634,18 @@ static void kbd_voice_layout_send_icons(void)
     {
         if (show_send)
         {
-            lv_obj_align(kbd_voice_send_btn, LV_ALIGN_CENTER,
-                         kbd_voice_logo_btn ? VOICE_SEND_DX : 0, VOICE_ICON_DY);
+            /* 貼輸入框右緣、垂直置中,再加 SEND_BTN_NUDGE_Y 的光學補償。
+               對齊基準用 RIGHT_MID:它對的是 parent 的**內容區**,而這個框的 pad 四邊相等
+               (真機探針:pad_t=5、border 語音站 0 / 鍵盤站 2),內容區中線=框中線,不必補償。
+               **不要**改成「用框高自己算 y 偏移」(2026-08-18 試過,founder:「還是稍微偏上」):
+               lv_obj_align 存的是偏移量,LVGL 之後每次 layout 都拿同一個偏移去套**當下**的
+               框高;而框高一直在變(語音站 252 / 鍵盤站 45、展開收合動畫每幀都變),算的時候
+               與套用時的框高一旦不同就整個歪掉 —— 探針拍到過 gap_top=111 / gap_bot=-100
+               (按鈕掉到框外)。RIGHT_MID 每次 layout 對當下幾何重算,沒有這個時間差。 */
+            lv_obj_align(kbd_voice_send_btn, LV_ALIGN_RIGHT_MID, SEND_BTN_INSET_X,
+                         SEND_BTN_NUDGE_Y);
             lv_obj_clear_flag(kbd_voice_send_btn, LV_OBJ_FLAG_HIDDEN);
+            lv_obj_move_foreground(kbd_voice_send_btn); /* 鍵盤/候選列都可能後建 */
         }
         else
         {
@@ -9073,10 +9668,30 @@ static void voice_do_send(int which)
         LOG_I("[voice] send tapped with no text — ignored");
         return;
     }
-    extern bool commu_send_voice_station_commit(const char *dest, const char *text);
-    commu_send_voice_station_commit(which == 1 ? "field" : "skaibar", input_buffer);
-    LOG_I("[voice] commit dest=%s len=%d", which == 1 ? "field" : "skaibar",
-          input_length);
+    if (s_kbd_direct_field)
+    {
+        /* 直打模式(founder 2026-08-18:「按它就是按 enter 的意思」):字每一拍都已經打進電腦
+           那個欄位了,所以這顆**不是**「送出文字」而是「在那個欄位按 Enter」。走 dest="enter"
+           →手機 runSkaibar{text, submit:true}→桌面 TryRunText:文字相同時 diff 是空的(不會重打
+           成雙份),然後敲一下 Enter。仍然把文字一起帶上去 —— 萬一兩邊因為丟包而不同步,這一
+           筆會把差額補完再送出,比只送一個 Enter 穩。
+           送完**離開輸入模式**(founder 2026-08-18 二改:「同時要退出鍵盤模式」)—— 所以這裡
+           順手解除電腦的 direct-typing latch,不然人已經走了,電腦還把後續任何文字往那個欄位
+           打。順序是先 enter 後 dismiss,同一條連線依序抵達,Enter 不會被 dismiss 搶先。 */
+        extern bool commu_send_voice_station_commit(const char *dest, const char *text);
+        commu_send_voice_station_commit("enter", input_buffer);
+        LOG_I("[voice] direct-field enter len=%d", input_length);
+        extern bool commu_send_skaibar_dismiss(void);
+        commu_send_skaibar_dismiss();
+        s_kbd_direct_field = false;
+    }
+    else
+    {
+        extern bool commu_send_voice_station_commit(const char *dest, const char *text);
+        commu_send_voice_station_commit(which == 1 ? "field" : "skaibar", input_buffer);
+        LOG_I("[voice] commit dest=%s len=%d", which == 1 ? "field" : "skaibar",
+              input_length);
+    }
 
     if (mouse_v2t_active)
     {
@@ -9094,7 +9709,7 @@ static void voice_do_send(int which)
     {
         /* icon_send:文字已經打進電腦那個欄位,手錶離開輸入模式(founder 2026-08-03:
            「我按下輸入後手表要退出輸入模式」)。回觸控板,與立起面板送完就收掉同義。 */
-        apply_hid_mode(HID_MODE_TRACKPAD);
+        mouse_exit_input_station();
     }
     else
     {
@@ -9265,6 +9880,228 @@ static lv_obj_t *media_center_make_icon_btn(lv_obj_t *parent,
     return btn;
 }
 
+/* 音量條:目前顯示中的那一格(同 media_center_title_label 的 live 指標作法)。 */
+static lv_obj_t *s_media_vol_slider = NULL;
+/* 收合狀態的音量鍵。條子平常收著,點它才展開 —— 與音樂 widget 一致
+   (founder 2026-08-19:「我想要他跟那邊一樣是先點個按鈕才展開」)。 */
+static lv_obj_t *s_media_vol_btn = NULL;
+static bool s_media_vol_expanded = false;
+static lv_timer_t *s_media_vol_collapse_timer = NULL;
+#define MEDIA_VOL_BAR_WIDTH 300
+#define MEDIA_VOL_BAR_Y (-70)
+#define MEDIA_VOL_COLLAPSE_MS 3000 /* 同 app_media.c 的 VOL_BAR_COLLAPSE_TIMEOUT */
+
+static void media_vol_bar_anim_width_cb(void *var, int32_t v)
+{
+    lv_obj_t *bar = (lv_obj_t *)var;
+    if (!bar || !lv_obj_is_valid(bar)) return;
+    lv_obj_set_width(bar, v);
+    /* 寬度變了要重新置中,否則會從左緣長出來(音樂 widget 同款做法)。 */
+    lv_obj_align(bar, LV_ALIGN_BOTTOM_MID, 0, MEDIA_VOL_BAR_Y);
+    uint8_t opa = (uint8_t)((v * 255) / MEDIA_VOL_BAR_WIDTH);
+    lv_obj_set_style_bg_opa(bar, opa, LV_PART_MAIN);
+    lv_obj_set_style_bg_opa(bar, opa, LV_PART_INDICATOR);
+}
+
+static void media_vol_collapse_timer_cancel(void)
+{
+    if (s_media_vol_collapse_timer)
+    {
+        lv_timer_del(s_media_vol_collapse_timer);
+        s_media_vol_collapse_timer = NULL;
+    }
+}
+
+static void media_vol_bar_hide_done_cb(lv_anim_t *a)
+{
+    lv_obj_t *bar = (lv_obj_t *)a->var;
+    if (bar && lv_obj_is_valid(bar)) lv_obj_add_flag(bar, LV_OBJ_FLAG_HIDDEN);
+    if (s_media_vol_btn && lv_obj_is_valid(s_media_vol_btn))
+        lv_obj_clear_flag(s_media_vol_btn, LV_OBJ_FLAG_HIDDEN);
+}
+
+static void media_vol_collapse(void)
+{
+    media_vol_collapse_timer_cancel();
+    if (!s_media_vol_expanded) return;
+    s_media_vol_expanded = false;
+    if (!s_media_vol_slider || !lv_obj_is_valid(s_media_vol_slider)) return;
+    lv_anim_del(s_media_vol_slider, media_vol_bar_anim_width_cb);
+    lv_anim_t a;
+    lv_anim_init(&a);
+    lv_anim_set_var(&a, s_media_vol_slider);
+    lv_anim_set_values(&a, lv_obj_get_width(s_media_vol_slider), 0);
+    lv_anim_set_time(&a, 300);
+    lv_anim_set_exec_cb(&a, media_vol_bar_anim_width_cb);
+    lv_anim_set_path_cb(&a, lv_anim_path_ease_in);
+    lv_anim_set_ready_cb(&a, media_vol_bar_hide_done_cb);
+    lv_anim_start(&a);
+}
+
+static void media_vol_collapse_timer_cb(lv_timer_t *t)
+{
+    (void)t;
+    s_media_vol_collapse_timer = NULL; /* one-shot:自己跑完就沒了 */
+    media_vol_collapse();
+}
+
+/* 每一次互動都把 3 秒重新計時 —— 拖到一半被收掉會很惱人。 */
+static void media_vol_arm_collapse(void)
+{
+    media_vol_collapse_timer_cancel();
+    s_media_vol_collapse_timer =
+        lv_timer_create(media_vol_collapse_timer_cb, MEDIA_VOL_COLLAPSE_MS, NULL);
+    lv_timer_set_repeat_count(s_media_vol_collapse_timer, 1);
+}
+
+static void media_vol_expand(void)
+{
+    if (!s_media_vol_slider || !lv_obj_is_valid(s_media_vol_slider)) return;
+    if (s_media_vol_expanded)
+    {
+        media_vol_arm_collapse();
+        return;
+    }
+    s_media_vol_expanded = true;
+    /* 音量鍵讓位:它與條子佔同一格,留著會被壓在條子底下。 */
+    if (s_media_vol_btn && lv_obj_is_valid(s_media_vol_btn))
+        lv_obj_add_flag(s_media_vol_btn, LV_OBJ_FLAG_HIDDEN);
+    lv_obj_clear_flag(s_media_vol_slider, LV_OBJ_FLAG_HIDDEN);
+    lv_anim_del(s_media_vol_slider, media_vol_bar_anim_width_cb);
+    lv_anim_t a;
+    lv_anim_init(&a);
+    lv_anim_set_var(&a, s_media_vol_slider);
+    lv_anim_set_values(&a, 0, MEDIA_VOL_BAR_WIDTH);
+    lv_anim_set_time(&a, 300);
+    lv_anim_set_exec_cb(&a, media_vol_bar_anim_width_cb);
+    lv_anim_set_path_cb(&a, lv_anim_path_ease_out);
+    lv_anim_start(&a);
+    media_vol_arm_collapse();
+}
+
+static void media_vol_btn_cb(lv_event_t *e)
+{
+    if (lv_event_get_code(e) != LV_EVENT_CLICKED) return;
+    if (s_media_vol_expanded) media_vol_collapse();
+    else media_vol_expand();
+}
+/* 使用者正在拖 → 遠端回報先不要動把手,否則手指還按著就被拉回舊值。 */
+static bool s_media_vol_dragging = false;
+/* 上一次真的送出去的值 + 時間,用來節流(拖曳每一格都送會塞滿 BLE)。 */
+static int s_media_vol_last_sent = -1;
+static uint32_t s_media_vol_last_tick = 0;
+#define MEDIA_VOL_SEND_MIN_MS 80
+
+/* 送出目前的滑桿值。force=放開手指那一下:無論節流與否都要送,否則最終落點可能沒送到。 */
+static void media_vol_send(int value, bool force)
+{
+    if (value < 0) value = 0;
+    if (value > 100) value = 100;
+    uint32_t now = lv_tick_get();
+    if (!force)
+    {
+        if (value == s_media_vol_last_sent) return;
+        if ((now - s_media_vol_last_tick) < MEDIA_VOL_SEND_MIN_MS) return;
+    }
+    s_media_vol_last_sent = value;
+    s_media_vol_last_tick = now;
+    /* 目標是遠端設備(電腦)→ 送絕對音量給它;目標是**手機自己**→ 走 BLE 的絕對音量,
+       也就是音樂 widget 那顆音量條用的同一支(app_media.c 的 bt_speaker_set_volume)。
+       原本這裡沒有遠端目標就直接 return,於是媒體頁切到「手機」那一頁時整條拉了沒反應
+       (founder 2026-08-19:「我手錶媒體頁有一個是手機的,我調那邊的音量條手機不會有
+       變化,但電腦是 OK 的」)——手機的音量一直有現成的路,只是這裡沒有接上去。 */
+    if (ble_hid_mouse_app_route())
+    {
+        extern bool commu_send_media_volume(int percent);
+        commu_send_media_volume(value);
+    }
+    else
+    {
+        control_provider.bt_speaker_set_volume((uint8_t)value, true);
+    }
+}
+
+/* 觸控 x → 0..100。lv_bar 自己不處理拖曳(它是唯讀顯示元件),所以值要自己算 ——
+   與音樂 widget 的 widget_bar_event_cb 同一套算法,手感才一致:點哪裡就跳到哪裡。 */
+static int media_vol_value_at(lv_obj_t *bar, const lv_point_t *p)
+{
+    lv_area_t coords;
+    lv_obj_get_coords(bar, &coords);
+    lv_coord_t w = lv_obj_get_width(bar);
+    if (w <= 0) return 0;
+    lv_coord_t rel_x = p->x - coords.x1;
+    if (rel_x < 0) rel_x = 0;
+    if (rel_x > w) rel_x = w;
+    return (int)((rel_x * 100) / w);
+}
+
+static void media_center_vol_slider_cb(lv_event_t *e)
+{
+    lv_obj_t *sl = lv_event_get_target(e);
+    lv_event_code_t code = lv_event_get_code(e);
+    lv_indev_t *indev = lv_indev_get_act();
+    lv_point_t p;
+    switch (code)
+    {
+    case LV_EVENT_PRESSED:
+    case LV_EVENT_PRESSING:
+        if (!indev) break;
+        lv_indev_get_point(indev, &p);
+        s_media_vol_dragging = true;
+        media_vol_arm_collapse(); /* 手指在上面 = 別收 */
+        {
+            int v = media_vol_value_at(sl, &p);
+            lv_bar_set_value(sl, v, LV_ANIM_OFF);
+            media_vol_send(v, false);
+        }
+        break;
+    case LV_EVENT_RELEASED:
+    case LV_EVENT_PRESS_LOST:
+        s_media_vol_dragging = false;
+        media_vol_arm_collapse(); /* 放手後再數 3 秒 */
+        media_vol_send((int)lv_bar_get_value(sl), true); /* 落點一定要送 */
+        break;
+    default:
+        break;
+    }
+}
+
+/* 手機**自己**的音量在別處變動(實體音量鍵、手機上調整、AVRCP 通知)→ 媒體頁若正指著
+   手機那一頁,條子要跟著走。來源是 bloc_control 既有的下行,它本來就在餵音樂 widget 與
+   音樂 app 的兩條 bar,這裡只是第三個消費者(founder 2026-08-19:「手機還沒接上」)。
+   指著遠端設備時不理會:那時條子顯示的是那台電腦的音量,不是手機的。 */
+void mouse_mode_handle_phone_volume(uint8_t percent)
+{
+    if (percent > 100) return;
+    if (!s_media_vol_slider || !lv_obj_is_valid(s_media_vol_slider)) return;
+    if (ble_hid_mouse_app_route()) return; /* 目標是電腦 → 這筆不是它的音量 */
+    if (s_media_vol_dragging) return;      /* 手指還在上面,別跟使用者搶 */
+    if ((int)lv_bar_get_value(s_media_vol_slider) == (int)percent) return;
+    lv_bar_set_value(s_media_vol_slider, percent, LV_ANIM_ON);
+    media_vol_expand(); /* 與電腦那條、與音樂 widget 一致:變動時自己展開 */
+}
+
+/* 0x19 帶回來的該設備音量 → 校準把手。-1 = 對方沒回報,維持現狀。 */
+void mouse_mode_handle_remote_volume(const char *device_id, int percent)
+{
+    if (percent < 0 || percent > 100) return;
+    if (!s_media_vol_slider || !lv_obj_is_valid(s_media_vol_slider)) return;
+    if (s_media_vol_dragging) return; /* 手指還在上面,別跟使用者搶 */
+    if (device_id == NULL || s_dev_active_id[0] == '\0' ||
+        strncmp(device_id, s_dev_active_id, SYNCED_DEVICE_ID_LEN) != 0)
+        return;
+    /* 值真的變了才動作 —— 相同數值的重複回報不該把條子叫出來。 */
+    if ((int)lv_bar_get_value(s_media_vol_slider) == percent) return;
+    lv_bar_set_value(s_media_vol_slider, percent, LV_ANIM_ON);
+    /* 並且**自動展開**(founder 2026-08-19:「調音量時手錶上那頁的音量條不會自己展開」),
+       與音樂 widget 的 set_widget_vol_bar_value 同款。
+       先前這裡刻意不展開,理由是「回報搭在每一次 media 更新上,會三不五時自己跳出來」——
+       那個理由現在不成立了:桌面端已改成**只在音量真的變動時**才廣播,所以一筆回報就代表
+       一次真實的音量變化,正是該讓使用者看到條子的時機。 */
+    media_vol_expand();
+    s_media_vol_last_sent = percent; /* 這是電腦端的現況,不要再回送 */
+}
+
 /* === 媒體內容 builder（曲名 + 上/播/下 + 音量）====================================
    2026-08-06 重構:同一份控制列現在有兩個使用者 —
      1) 本檔 create_media_center_panel 的下拉媒體頁(獨立開 APP_ID_MOUSE 時仍在)
@@ -9272,7 +10109,9 @@ static lv_obj_t *media_center_make_icon_btn(lv_obj_t *parent,
    所以把控制列抽出來，兩邊共用同一份 callback，避免兩套實作各自漂移。
    設備名/箭頭**不**在這裡：面板版的設備列是固定在面板頂部、不隨頁捲動的。 */
 static void media_content_build(lv_obj_t *parent, lv_obj_t **out_title,
-                                lv_obj_t **out_play_img)
+                                lv_obj_t **out_play_img,
+                                lv_obj_t **out_vol_slider,
+                                lv_obj_t **out_vol_btn)
 {
     lv_obj_t *title = lv_label_create(parent);
     lv_label_set_text(title, "Media Title");
@@ -9294,22 +10133,58 @@ static void media_content_build(lv_obj_t *parent, lv_obj_t **out_title,
         parent, &img_media_next, media_center_next_btn_cb, 90);
     lv_obj_align(btn_next, LV_ALIGN_CENTER, 120, 0);
 
-    /* 音量鍵不走 CLICKED（傳 NULL），改綁 hold cb：長按 >0.5s 連續調整。
-       user_data = 方向（-1 減 / +1 加）。 */
-    lv_obj_t *btn_vol_down =
-        media_center_make_icon_btn(parent, &volume_down, NULL, 75);
-    lv_obj_align(btn_vol_down, LV_ALIGN_BOTTOM_MID, -90, -80);
-    lv_obj_add_event_cb(btn_vol_down, media_center_vol_hold_cb, LV_EVENT_ALL,
-                        (void *)(intptr_t)-1);
+    /* 音量:滑桿(founder 2026-08-18「我拉多少就調多少音量」)。兩端的圖示留著當刻度提示,
+       但**不再可點** —— 原本的 +/- 是按鍵、送 volumeUp/Down 讓接收端按系統音量鍵(相對、
+       被 OS 級距量化),拉到哪就是多少做不到;滑桿送的是絕對值。
+       圓螢幕:滑桿寬 240 置中,兩側各留一顆 32px 圖示還在圓內。 */
+    /* 樣式與行為都對齊音樂 widget 的音量條(app_media.c 的 app_vol_bar,founder 2026-08-19
+       「我希望音量調可以像我音樂 widget 的音量調整那樣」):lv_bar 而不是 slider —— 沒有獨立
+       把手,點/拖到哪就是哪(值由 PRESSING 時的觸控 x 換算)。顏色、圓角、粗細沿用那邊的數字,
+       只有寬度依這一頁的版面縮到 300(那邊是 370,鋪滿整個音樂 app 的寬度)。 */
+    lv_obj_t *slider = lv_bar_create(parent);
+    lv_bar_set_range(slider, 0, 100);
+    lv_obj_set_size(slider, 300, 60);
+    lv_obj_align(slider, LV_ALIGN_BOTTOM_MID, 0, -70);
+    lv_obj_set_style_bg_color(slider, lv_color_hex(0x2F2F2F), LV_PART_MAIN);
+    lv_obj_set_style_bg_color(slider, lv_color_hex(0xCDCDCD), LV_PART_INDICATOR);
+    lv_obj_set_style_radius(slider, 16, LV_PART_MAIN);
+    lv_obj_set_style_radius(slider, 16, LV_PART_INDICATOR);
+    lv_obj_set_style_bg_opa(slider, LV_OPA_100, LV_PART_MAIN);
+    lv_bar_set_value(slider, 50, LV_ANIM_OFF); /* 佔位:0x19 回報一到就校準 */
+    /* 遠端回報是離散取樣(桌面每 250ms 送一次),直接套用會一格一格跳。給 bar 一個補間
+       時間,兩筆之間就用滑的接起來(founder 2026-08-19:「不要讓它是瞬間跳過去」)。
+       250ms = 取樣間隔:剛好在下一筆到達時走完,不會累積延遲也不會停頓。 */
+    lv_obj_set_style_anim_time(slider, 250, LV_PART_MAIN);
+    lv_obj_add_flag(slider, LV_OBJ_FLAG_CLICKABLE); /* lv_bar 預設不可點,要自己開 */
+    /* **捲動死路**:音量條自己不可捲動,LVGL 的 find_scroll_obj 就會往上找可捲動的祖先,
+       把橫向拖曳交給媒體頁的 pager —— 拉音量會把頁面一起拖走(founder 2026-08-19)。
+       清掉 SCROLL_CHAIN 之後,鏈在這裡就斷,拖曳完整留給音量條。兩軸都清:垂直方向上面
+       是媒體 tileview(下拉那層),同樣不該被拉音量的手指帶動。 */
+    lv_obj_clear_flag(slider, LV_OBJ_FLAG_SCROLL_CHAIN_HOR);
+    lv_obj_clear_flag(slider, LV_OBJ_FLAG_SCROLL_CHAIN_VER);
+    lv_obj_add_event_cb(slider, media_center_vol_slider_cb, LV_EVENT_ALL, NULL);
+    /* 平常收著,點音量鍵才展開(音樂 widget 同款)。寬度 0 起跳,展開動畫從那裡長出來。 */
+    lv_obj_add_flag(slider, LV_OBJ_FLAG_HIDDEN);
+    lv_obj_set_width(slider, 0);
 
-    lv_obj_t *btn_vol_up =
-        media_center_make_icon_btn(parent, &volume_up, NULL, 75);
-    lv_obj_align(btn_vol_up, LV_ALIGN_BOTTOM_MID, 90, -80);
-    lv_obj_add_event_cb(btn_vol_up, media_center_vol_hold_cb, LV_EVENT_ALL,
-                        (void *)(intptr_t)1);
+    /* 收合狀態的音量鍵 —— 樣式沿用音樂 app 的 app_vol_icon_btn(40x32、圓角 16、白底 8%)。 */
+    lv_obj_t *vol_btn = lv_btn_create(parent);
+    lv_obj_set_size(vol_btn, 40, 32);
+    lv_obj_set_style_radius(vol_btn, 16, 0);
+    lv_obj_set_style_bg_color(vol_btn, lv_color_hex(0xFFFFFF), 0);
+    lv_obj_set_style_bg_opa(vol_btn, 20, 0);
+    lv_obj_set_style_shadow_width(vol_btn, 0, 0);
+    lv_obj_align(vol_btn, LV_ALIGN_BOTTOM_MID, 0, MEDIA_VOL_BAR_Y);
+    lv_obj_add_event_cb(vol_btn, media_vol_btn_cb, LV_EVENT_ALL, NULL);
+    lv_obj_t *vol_ico = lv_img_create(vol_btn);
+    lv_img_set_src(vol_ico, &volume_up);
+    lv_img_set_zoom(vol_ico, 255 * 30 / 85);
+    lv_obj_align(vol_ico, LV_ALIGN_CENTER, 0, 0);
 
     if (out_title) *out_title = title;
     if (out_play_img) *out_play_img = lv_obj_get_child(btn_play, 0);
+    if (out_vol_slider) *out_vol_slider = slider;
+    if (out_vol_btn) *out_vol_btn = vol_btn;
 }
 
 /* 面板媒體格:每格記住自己的曲名 label / 播放圖示，bind 時才把 file-static 的
@@ -9319,6 +10194,8 @@ typedef struct
 {
     lv_obj_t *title;
     lv_obj_t *play_img;
+    lv_obj_t *vol_slider;
+    lv_obj_t *vol_btn;
 } media_page_widgets_t;
 
 static void media_page_del_cb(lv_event_t *e)
@@ -9329,6 +10206,15 @@ static void media_page_del_cb(lv_event_t *e)
     {
         media_center_title_label = NULL;
         media_center_play_img = NULL;
+    }
+    if (s_media_vol_slider == w->vol_slider)
+    {
+        /* 這一格要被刪了:收合 timer 的 callback 會碰到這些指標,一定要先收掉,
+           否則就是又一個「活過畫面拆除的 lv_timer」(這支 app 已知的 UAF 形狀)。 */
+        media_vol_collapse_timer_cancel();
+        s_media_vol_slider = NULL;
+        s_media_vol_btn = NULL;
+        s_media_vol_expanded = false;
     }
     lv_mem_free(w);
 }
@@ -9347,7 +10233,7 @@ lv_obj_t *hid_mouse_media_page_create(lv_obj_t *parent)
     lv_obj_set_user_data(page, w);
     lv_obj_add_event_cb(page, media_page_del_cb, LV_EVENT_DELETE, w);
 
-    media_content_build(page, &w->title, &w->play_img);
+    media_content_build(page, &w->title, &w->play_img, &w->vol_slider, &w->vol_btn);
     return page;
 }
 
@@ -9358,6 +10244,21 @@ void hid_mouse_media_page_bind(lv_obj_t *page)
     if (w == NULL) return;
     media_center_title_label = w->title;
     media_center_play_img = w->play_img;
+    s_media_vol_slider = w->vol_slider;
+    s_media_vol_btn = w->vol_btn;
+    /* 換頁 = 重新收合:上一頁展開過的狀態不該帶到這一頁。 */
+    media_vol_collapse_timer_cancel();
+    s_media_vol_expanded = false;
+    if (w->vol_slider && lv_obj_is_valid(w->vol_slider))
+    {
+        lv_anim_del(w->vol_slider, media_vol_bar_anim_width_cb);
+        lv_obj_add_flag(w->vol_slider, LV_OBJ_FLAG_HIDDEN);
+        lv_obj_set_width(w->vol_slider, 0);
+    }
+    if (w->vol_btn && lv_obj_is_valid(w->vol_btn))
+        lv_obj_clear_flag(w->vol_btn, LV_OBJ_FLAG_HIDDEN);
+    /* 換設備 = 換一台機器的音量,舊的節流基準作廢(否則新設備第一筆相同數值會被吃掉)。 */
+    s_media_vol_last_sent = -1;
 }
 
 void hid_mouse_media_page_reset_title(lv_obj_t *page)
@@ -9462,7 +10363,8 @@ static void create_media_center_panel(lv_obj_t *parent)
 
     // 曲名 + 控制列 + 音量（與錶盤頂部面板的媒體格共用同一份 builder）
     media_content_build(media_tile, &media_center_title_label,
-                        &media_center_play_img);
+                        &media_center_play_img, &s_media_vol_slider,
+                        &s_media_vol_btn);
 
     // 離開 App：紅色 Exit 鈕（從舊右側抽屜移來），放媒體頁最底
     lv_obj_t *media_exit_btn = lv_btn_create(media_tile);
@@ -9676,6 +10578,16 @@ static void kbd_enter_slide_done(lv_anim_t *a)
     (void)a;
     /* 滑上來的途中底下要看得到觸控板(同退出動畫的做法),到位才收掉。 */
     mode_set_visible(HID_MODE_TRACKPAD, false);
+    /* 抽屜的地球鍵:進場動畫落地**之後**才切去鍵盤輪盤。不在進場當下切的原因有二:
+       ① mouse_open_voice_station() 末端本來就跑著 kbd_lower_switch(false) 的換站動畫,
+          同一輪再切一次等於兩條動畫互打;
+       ② 圓形鍵盤是延遲建的(s_kbd_build_defer_wheel),補建走的正是 kbd_lower_switch(true)
+          的 lazy 分支 —— 用 set_keyboard 只翻可見性會得到一片空的鍵盤。 */
+    if (s_kbd_pending_wheel)
+    {
+        s_kbd_pending_wheel = false;
+        kbd_lower_switch(true);
+    }
 }
 
 /* 進場的上滑動畫改用 async 起跑:mouse_open_voice_station() 會整個重建鍵盤版面
@@ -9701,13 +10613,153 @@ static void kbd_enter_slide_async(void *unused)
     lv_anim_start(&a);
 }
 
-static void bottom_logo_cb(lv_event_t *e)
+/* 2026-08-15:電腦「沒有」聚焦輸入框時,底部 bar 改開「這台電腦」的搜尋抽屜 ——
+   0x0E 讓電腦把 skaibar 叫出來(預設 Sessions 檢視=這台電腦的 session 列表),電腦面板的
+   可見列表經 deviceActions(0x03)鏡像回手錶浮層清單,底部浮層 mic 一點就開語音輸入框
+   (V2T_INTENT_SKAIBAR;手機在單設備模式下把轉錄同步 setSkaibarText 打進電腦面板,電腦
+   即時搜 sessions+actions+檔案,結果再鏡像回來 → 兩邊同步)。捲動清單=收框留選項+停語音
+   (既有 ai_widget_fade_on_scroll);點選項=commit 給電腦執行(既有路徑)。
+   direct_voice=true(長按)略過 browse 直接開語音框。回傳 false=沒有控制目標,呼叫端
+   fallback 語音站,tap 不落空。 */
+static bool mouse_open_device_search(bool direct_voice)
+{
+    extern bool instruction_list_prepare_single_device(const char *device_id);
+    extern void instruction_list_bar_set_visible(bool visible);
+    extern void instruction_list_open_browse(void);
+    extern void animate_open_ai_widget(void);
+    extern bool commu_send_skaibar_open_device(bool force_open);
+    if (!instruction_list_prepare_single_device(s_dev_active_id))
+        return false;
+    /* 抽屜是**新鮮進場**:輸入列要是空的。不清的話,上一輪
+       skaibar_apply_selection_to_input_bar() 寫進 input_buffer 的那個「被點到的選項」
+       會一路留著 —— 症狀就是「點過選項進 session、離開再打開,輸入框還是上次的東西」
+       (founder 2026-08-17)。放在 prepare 成功之後:開不起來就不該動使用者的文字。 */
+    clear_input_display();
+    commu_send_skaibar_open_device(true);
+    instruction_list_bar_set_visible(true);
+    if (direct_voice)
+        animate_open_ai_widget();
+    else
+        instruction_list_open_browse();
+    return true;
+}
+
+/* ==========================================================================
+   抽屜 → 語音站(founder 2026-08-17)
+   --------------------------------------------------------------------------
+   抽屜底部那排(地球/麥克風/收下)由 lv_instruction_list_layout 畫,座標與語音站的
+   kbd_mic_section 逐格對齊。使用者按下抽屜的麥克風時:
+     ① 進語音站(mouse_open_voice_station,落地版面一個像素都不改)
+     ② 整個 keyboard mode container 由下往上滑進來(既有 kbd_enter_slide)
+     ③ 同時把 session 清單往**上**推出畫面(instruction_list_drawer_push_up)
+   抽屜那排在轉場期間留在原位(它在 layer_top、蓋在最上面),等語音站自己那排滑到
+   同一格才被 push_up 的 ready_cb 收掉 —— 視覺上「那排完全不動,只有輸入框往上長、
+   清單被推出去」。
+
+   s_kbd_from_drawer 記住「這次語音站是從抽屜進來的」:輸入框往下拖收合時不是回到
+   光禿禿的觸控板,而是**滑回抽屜**(帶著這輪語音搜尋後的最新選項)。要真的回觸控板
+   走抽屜那排的收下鍵,或語音站自己的右上退出鈕。
+   ========================================================================== */
+bool mouse_drawer_open_input(bool want_keyboard)
+{
+    if (current_hid_mode == HID_MODE_KEYBOARD)
+        return false; /* 已經在輸入畫面(重複事件) */
+    /* 容器先驗、再切模式 —— 反過來的話這個 early-return 會把 current_hid_mode 留在
+       KEYBOARD 卻沒有任何鍵盤畫面,之後每次點 bar 都被「已經在輸入畫面」擋掉。 */
+    lv_obj_t *kc = mode_container[HID_MODE_KEYBOARD];
+    if (kc == NULL || !lv_obj_is_valid(kc))
+        return false;
+    /* 先立旗再進場:mouse_open_voice_station() 內部就會送 0x0E 給電腦,而 inputOnly
+       要靠這面旗決定(抽屜流程=要選項)。 */
+    s_kbd_from_drawer = true;
+    s_kbd_direct_field = false; /* 抽屜流程要的是選項,不是打進欄位 */
+    if (!mouse_open_voice_station())
+    {
+        s_kbd_from_drawer = false;
+        return false;
+    }
+    mode_set_visible(HID_MODE_TRACKPAD, true); /* 滑上來時底下露觸控板 */
+    lv_anim_del(kc, kbd_enter_slide_exec);
+    lv_obj_set_y(kc, LV_VER_RES); /* 起點立刻就位,動畫下一輪才建(見 kbd_enter_slide_async) */
+    lv_async_call(kbd_enter_slide_async, NULL);
+    {
+        extern void instruction_list_drawer_push_up(void);
+        instruction_list_drawer_push_up();
+    }
+    s_kbd_pending_wheel = want_keyboard; /* 地球 = 落地後接著切到鍵盤輪盤 */
+    LOG_I("[drawer] -> voice station (kbd=%d)", (int)want_keyboard);
+    return true;
+}
+
+/* 抽屜麥克風的按住/放開直接驅動語音站同一套後端。
+   **intent 必須用語音站原生的 MIC_INPUTE,不能用 SKAIBAR**(founder 2026-08-17:
+   「按麥克風說話他沒有文字回來了」)—— interact_voice_recognition() 的路由鏈裡
+   `check_if_user_speaking_to_ai()` 排在滑鼠分支**前面**,而 SKAIBAR intent 會讓 VAD
+   把 speaking_to_ai 立起來,轉錄於是被上游分支接走、送進 append_text_to_input_message()
+   (=instruction_list 的 AI widget 輸入框)。但這條流程裡那個 widget 已經被推走關掉了,
+   文字就沒有任何地方顯示。走 MIC_INPUTE 才會落到滑鼠分支的 append_text_to_mouse_input()
+   =語音站自己的輸入框。
+   **intent 仍必須是 SKAIBAR**:手錶沒有任何「送 skaibar 查詢文字」的 wire,唯一能讓
+   電腦真的去搜的路徑就是這個 intent —— 轉錄經手機 routeSkaibarTranscript → setSkaibarText
+   → 電腦搜 sessions/actions/檔案 → 結果經 0x03 鏡像回手錶。語音站自己那條
+   commu_send_voice_station_preview() 走的是 KEY_LIFT_INPUT_CARET(0x1e){"preview":...},
+   那是**純顯示**的推播,電腦看得到字但不會搜(founder 2026-08-17:「電腦上的 SKAIBAR
+   也有文字輸入,但為什麼上面沒有選項」)。
+   而「SKAIBAR intent 會害手錶看不到字」的老問題已在 interact_voice_recognition() 那層
+   根治(mouse_voice_owns_transcript),不必再靠換 intent 迴避。 */
+void mouse_drawer_voice_set(bool on)
+{
+    if (on)
+    {
+        if (!mouse_v2t_active)
+            mouse_v2t_open_with_intent(V2T_INTENT_SKAIBAR);
+    }
+    else if (mouse_v2t_active)
+    {
+        mouse_v2t_close_and_paste();
+    }
+}
+
+/* 長按放開後 LVGL 還會補一顆 CLICKED —— 這面旗標讓 bottom_logo_cb 把它吃掉
+   (同 mic_bar 的 s_mic_lp_consumed pattern)。 */
+static bool s_logo_lp_consumed = false;
+
+static void bottom_logo_long_press_cb(lv_event_t *e)
 {
     (void)e;
     if (dev_active_offline())
         return;
     if (current_hid_mode == HID_MODE_KEYBOARD)
+        return;
+    if (mouse_open_device_search(true)) /* 長按=直接進語音輸入 */
+        s_logo_lp_consumed = true;
+}
+
+static void bottom_logo_cb(lv_event_t *e)
+{
+    (void)e;
+    /* 「點了沒反應」這類回報最花時間的就是分不出**事件沒進來**和**進來了走錯分支**
+       (同 mic_bar_event_cb 的 [mic] tap 探針)。這一行印出來 = 事件確實到了滑鼠 app;
+       完全沒有這行 = 有東西在上面把 tap 吃掉了(歷史上是 layer_top 那片看不見的
+       mic_hit,見 lv_instruction_list_layout.c 的 mic_hit_follow_bar)。 */
+    LOG_W("[logo] tap offline=%d mode=%d lp=%d", (int)dev_active_offline(),
+          (int)current_hid_mode, (int)s_logo_lp_consumed);
+    if (dev_active_offline())
+        return;
+    if (current_hid_mode == HID_MODE_KEYBOARD)
         return; /* 已經在輸入畫面 */
+    if (s_logo_lp_consumed)
+    {
+        s_logo_lp_consumed = false; /* 長按同一次按壓的放開,不再疊一次 tap 行為 */
+        return;
+    }
+    /* founder 2026-08-17:**一律**開 session/搜尋抽屜 —— 不再看 0x17 聚焦旗標分流。
+       「打字給電腦聚焦中的那個輸入框」整條移到觸控板右緣新的鍵盤鈕(kbd_side_btn),
+       語意才乾淨:bar = 找東西、右緣鍵盤鈕 = 打字。抽屜自己的底部三鍵列裡就有麥克風
+       與地球,語音/鍵盤兩站從抽屜都進得去。
+       沒有控制目標時 fallback 語音站,維持 tap 必有反應。 */
+    if (mouse_open_device_search(false))
+        return;
     /* founder 2026-08-11 R8:底部這張圖(hosted 顯示 skaibar_img)tap = 開**原本
        按鍵盤那個輸入模式** —— 只換圖,行為不變(R7 一度改成開 session,改回)。 */
     /* 2026-08-07 founder:「叫出輸入模式時可以看到他從下面出來嗎」——可以,
@@ -9719,7 +10771,22 @@ static void bottom_logo_cb(lv_event_t *e)
        keyboard_container 藏起來先進語音站,所以重建不會被看到。 */
     /* 這裡**不要**再重建一次鍵盤版面 —— mouse_open_voice_station() 內部已經做了。
        重複一次等於白付一次數百 ms 的停頓,正是動畫被吃掉的主因。 */
-    mouse_open_voice_station(); /* 落地狀態=現行語音站版面,一個像素都不動 */
+    mouse_open_input_station(false);
+}
+
+/* 進「輸入模式」的共同入口:底部 bar 沒有控制目標時的 fallback、以及觸控板右緣
+   鍵盤鈕(電腦有聚焦輸入框時)。落地狀態=現行語音站版面,一個像素都不動。
+   direct_field=true(右緣鍵盤鈕)→ 電腦不開 skaibar,字直接進使用者點的那個輸入框。 */
+static void mouse_open_input_station(bool direct_field)
+{
+    s_kbd_from_drawer = false; /* 這兩個入口都不是抽屜流程:電腦只出輸入框 */
+    s_kbd_direct_field = direct_field;
+    if (!mouse_open_voice_station())
+        return; /* 被拒:留在觸控板,別跑進場動畫(容器沒切) */
+    /* 同抽屜:從觸控板/底部 bar 新鮮進來的輸入站也要是空的。刻意**不**放進
+       mouse_open_voice_station() —— 抽屜的麥克風那條(9949)也走它,而那是站內轉場,
+       清掉會把使用者正在編輯的字吃掉。 */
+    clear_input_display();
     lv_obj_t *kc = mode_container[HID_MODE_KEYBOARD];
     if (kc == NULL || !lv_obj_is_valid(kc))
         return;
@@ -9728,6 +10795,19 @@ static void bottom_logo_cb(lv_event_t *e)
     lv_anim_del(kc, kbd_enter_slide_exec);
     lv_obj_set_y(kc, LV_VER_RES);
     lv_async_call(kbd_enter_slide_async, NULL);
+}
+
+/* 右緣鍵盤鈕:電腦上正聚焦著某個輸入框 → 直接開輸入頁打進去(icon_send 由語音站
+   自己依同一個 0x17 旗標決定要不要出現,這裡不必再判一次)。 */
+static void kbd_side_btn_event_cb(lv_event_t *e)
+{
+    (void)e;
+    if (dev_active_offline())
+        return;
+    if (current_hid_mode == HID_MODE_KEYBOARD)
+        return;
+    /* 這顆鈕只在電腦有聚焦輸入框時才浮現 → 目的地已經指定,走直打。 */
+    mouse_open_input_station(true);
 }
 
 /**
@@ -10257,11 +11337,26 @@ static void update_ctrl_dev_label(void)
     }
 }
 
-/* device_pager_refresh(跑在每次手機 E7 同步)會把 active 清成 ""；當 standalone 滑鼠
-   app 開著且已選設備時，它擁有 active relay 目標、不該被清掉。device_pager 用此 gate。 */
+/* device_pager_refresh(跑在每次手機 E7 同步)會把 active 清成 ""；滑鼠介面開著且已選
+   設備時，它擁有 active relay 目標、不該被清掉。device_pager 用此 gate。
+   2026-08-15 真機抓到:hosted 滑鼠(錶盤頂部面板 hid_mouse_build_ui,APP_ID_MOUSE 非
+   active)之前不算「擁有」→ 進滑鼠後第一次 E7 同步(~60s)就把 relay 目標洗掉 → 手機
+   singleDeviceMode 垮掉、聚合 actions 回灌單設備抽屜、0x0E summon 路由無目標被丟
+   (「再點 skaibar_img 出來的是手機 actions」)。app_control_get_mouse_mode 兩條路徑
+   (standalone/hosted)都會設,拿它補上。 */
 bool hid_mouse_owns_active_target(void)
 {
-    return gui_app_is_actived(APP_ID_MOUSE) && s_dev_active_id[0] != '\0';
+    extern bool app_control_get_mouse_mode(void);
+    return (gui_app_is_actived(APP_ID_MOUSE) || app_control_get_mouse_mode()) &&
+           s_dev_active_id[0] != '\0';
+}
+
+/* 公開:滑鼠的鍵盤/語音站模式是否開著。instruction_list 的 R33 加固用 —— 這段期間
+   鍵盤 UI 佔著 heap,隱藏中的共享清單不准重建(2026-08-15 真機 sys memory full)。 */
+bool hid_mouse_keyboard_mode_active(void)
+{
+    extern bool app_control_get_mouse_mode(void);
+    return app_control_get_mouse_mode() && current_hid_mode == HID_MODE_KEYBOARD;
 }
 
 /* 自有底部 bar(trackpad_mic_btn,只放 skaibar 圖)的隱藏邏輯：instruction_list 浮層 bar/
@@ -10341,6 +11436,10 @@ void hid_mouse_set_own_bar_hidden(bool hide)
 static void bar_ai_sync_timer_cb(lv_timer_t *t)
 {
     (void)t;
+    /* 底部物件 dump(botdump_walk/botdump_run)已完成任務並移除 —— 它是 2026-08-17 定位
+       「三鍵列下方那張多餘小圖」的工具:走物件樹把 y>=340、祖先鏈無 HIDDEN 的物件連同
+       圖檔名印出來。需要時加回來、掛在 instruction_list_is_visible() 的上升緣即可
+       (注意 MSH_CMD_EXPORT 在這個 build 會被 armlink 當未使用段移掉,不能靠 msh 觸發)。 */
     /* 鍵盤露出時，把新冒出來、壓在鍵盤上的浮層一律設成按下時放行(見
        kbd_guard_overlappers 的說明)。放在這支既有的 40ms poll 上，浮層晚一步
        出現也追得到；沒開鍵盤時第一行就 return，成本可忽略。 */
@@ -10355,7 +11454,36 @@ static void bar_ai_sync_timer_cb(lv_timer_t *t)
     extern bool instruction_list_lift_input_view_open(void);
     bool lift = instruction_list_lift_input_view_open();
     bar_ai_sync_set_hidden(engaged || tap_grace || lift);
-    lift_chrome_set_hidden(lift);
+    /* founder 2026-08-17(連五輪回報「三鍵列下方還有那張小麥克風圖」):**這才是那張圖**。
+       s_top_logo 是滑鼠頁底部唯一看得見的入口圖(hosted 顯示 skaibar_img,BOTTOM_MID −12,
+       正好落在三鍵列下方更靠底緣),而這支 poll 原本只在立起面板開著時收它 —— 抽屜/浮層
+       清單開著時 lift=false,於是**每一拍都主動把它清回可見**。
+       上面那支 bar_ai_sync_set_hidden 收的是 trackpad_mic_btn:那是個不放圖的空容器
+       (見其建立處註解),收它視覺上毫無效果 —— 這就是「浮層一出現就收自有 bar」這條規則
+       名存實亡、而我連追五輪都打在 mic_bar / trackpad_mic_btn 這些沒有圖的東西上的原因。
+       浮層 bar 一現(engaged)就跟立起面板同待遇:底部這張圖讓位。 */
+    lift_chrome_set_hidden(lift || engaged || tap_grace);
+    /* 抽屜/語音站期間強制壓住共用清單那條舊 mic pill —— 它的顯藏有六個寫入點,而開抽屜
+       進場鏈的最後一棒(reveal_drag_begin → refresh_home_bar)本身就是專門叫它出來的。
+       在這支每拍都跑的 poll 上收尾,任何路徑最多只能讓它閃一幀(founder 連三輪回報)。 */
+    {
+        extern void instruction_list_drawer_enforce_bar_hidden(void);
+        instruction_list_drawer_enforce_bar_hidden();
+    }
+    /* 右緣鍵盤鈕:只在**觸控板露著、電腦有聚焦輸入框、沒有別的東西蓋在上面**時浮現。
+       0x17 旗標由通訊執行緒寫、這裡(LVGL 執行緒)讀 —— 單一 bool,不需鎖。 */
+    if (kbd_side_btn && lv_obj_is_valid(kbd_side_btn))
+    {
+        extern bool instruction_list_remote_target_has_focus(void);
+        bool want = (current_hid_mode == HID_MODE_TRACKPAD) && !engaged &&
+                    !tap_grace && !lift && !dev_active_offline() &&
+                    instruction_list_remote_target_has_focus();
+        bool hidden = lv_obj_has_flag(kbd_side_btn, LV_OBJ_FLAG_HIDDEN);
+        if (want && hidden)
+            lv_obj_clear_flag(kbd_side_btn, LV_OBJ_FLAG_HIDDEN);
+        else if (!want && !hidden)
+            lv_obj_add_flag(kbd_side_btn, LV_OBJ_FLAG_HIDDEN);
+    }
     dev_offline_overlay_sync(); /* active 設備斷線=灰版+「斷線」(順路 poll) */
 }
 
@@ -10554,6 +11682,8 @@ void lv_create_mouse_screen(lv_obj_t *scr)
     lv_obj_add_flag(s_top_logo, LV_OBJ_FLAG_ADV_HITTEST);
     lv_obj_add_event_cb(s_top_logo, chrome_hit_test_cb, LV_EVENT_HIT_TEST, NULL);
     lv_obj_add_event_cb(s_top_logo, bottom_logo_cb, LV_EVENT_CLICKED, NULL);
+    /* 長按=無聚焦輸入框時直接進語音搜尋(2026-08-15);其 CLICKED 由 s_logo_lp_consumed 吃掉 */
+    lv_obj_add_event_cb(s_top_logo, bottom_logo_long_press_cb, LV_EVENT_LONG_PRESSED, NULL);
 
     /* === APP 內建的媒體中心下拉層:整個退役 ==========================================
        2026-08-06 已先對「面板 host 模式」停建(founder:「APP 內上方的媒體中心可以不
@@ -10743,6 +11873,16 @@ void hid_mouse_destroy(void)
         instruction_list_bar_device_dismiss();
     }
 
+    /* 待發的 preview timer 也要清。它只在「離站」那條路被刪(kbd_lower_switch),離開整個
+       app 這條路從來沒清過 —— 一個活過 app 拆除、callback 還會發 BLE 的 pending
+       lv_timer,正是這個 app 已知那類卡死/UAF 的形狀(比較 2026-07-17 dial timer 殘留)。
+       LVGL timer 不隨 obj 樹一起釋放,所以要自己收。 */
+    if (s_voice_preview_timer != NULL)
+    {
+        lv_timer_del(s_voice_preview_timer);
+        s_voice_preview_timer = NULL;
+    }
+
     // 停掉底部 bar 多工鍵 timer（如果還在走）
     if (bottom_bar_multitask_timer != NULL)
     {
@@ -10871,6 +12011,8 @@ void hid_mouse_destroy(void)
         keyboard_container = NULL;
     }
     kbd_exit_btn = NULL; /* 物件隨 bg 子樹拆除,清 stale 引用 */
+    kbd_side_btn = NULL;
+    kbd_top_pull = NULL;
     s_kbd_cand_row = NULL;
     s_kbd_py_lbl = NULL;
     for (int ci = 0; ci < KBD_CAND_MAX; ci++)
@@ -10887,8 +12029,6 @@ void hid_mouse_destroy(void)
     input_content_container = NULL;
     input_display_label = NULL;
     input_cursor = NULL;
-    input_enter_btn = NULL;
-    input_enter_img = NULL;
     if (cursor_blink_timer != NULL)
     {
         lv_timer_del(cursor_blink_timer);

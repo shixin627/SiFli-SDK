@@ -73,7 +73,7 @@ typedef struct { uint8_t addr[6]; } bd_addr_t;
 /* communicate_task.h */ bool commu_send_heart_curve_sample(uint32_t timestamp, uint8_t bpm) { return false; }
 /* communicate_task.h */ bool commu_send_heart_data(int hr) { return false; }
 /* communicate_task.h */ bool commu_send_hour_format(void) { return false; }
-/* communicate_task.h */ bool commu_send_hr_window(uint32_t ts, uint8_t bpm, uint8_t conf, uint16_t count, const int8_t *win) { (void)ts; (void)bpm; (void)conf; (void)count; (void)win; return false; }
+/* communicate_task.h */ bool commu_send_hr_window(uint32_t ts, uint8_t bpm, uint8_t conf, uint16_t count, const int8_t *win, uint16_t acc_count, uint8_t acc_shift, const int8_t *acc) { (void)ts; (void)bpm; (void)conf; (void)count; (void)win; (void)acc_count; (void)acc_shift; (void)acc; return false; }
 /* communicate_task.h */ bool commu_send_language(void) { return false; }
 /* communicate_task.h */ bool commu_send_linear_acce_buffer(const uint8_t *acce, uint16_t length) { return false; }
 /* communicate_task.h */ bool commu_send_media_control(void) { return false; }
@@ -141,12 +141,15 @@ typedef struct { uint8_t addr[6]; } bd_addr_t;
 /* lv_instruction_list_layout.c */ void set_skai_widget_opa(uint8_t opa) {  }
 /* app_skai.c */ void set_skai_widget_processing_text(const char *text) {  }
 /* app_media.c */ void set_widget_vol_bar_value(uint8_t volume) {  }
+/* hid_mouse.c */ void mouse_mode_handle_phone_volume(uint8_t percent) {  }
 /* lv_instruction_list_layout.c */ bool skai_widget_has_ai_reply(void) { return false; }
 /* communicate_protocol.h */ void skaiwatch_ble_set_performance(ble_perf_level_t level) {  }
 /* app_mainmenu.c */ rt_int32_t speech_on_pause(void) { return 0; }
 /* app_mainmenu.c */ rt_int32_t speech_on_resume(void) { return 0; }
 /* bloc_v2t.h */ void start_voice_recognition(uint8_t intent) {  }
 /* bloc_v2t.h */ void stop_voice_recognition(uint8_t intent) {  }
+/* bloc_v2t.h */ void voice_pipeline_lock(void) {  }
+/* bloc_v2t.h */ void voice_pipeline_unlock(void) {  }
 /* bloc_v2t.h */ void voice_set_pending_v2t_intent(uint8_t intent) {  }
 /* bloc_v2t.h */ void set_voice_recognition_started(bool started) {  }
 /* communicate_task.h */ bool commu_send_skaibar_selected(uint8_t idx) { return false; }

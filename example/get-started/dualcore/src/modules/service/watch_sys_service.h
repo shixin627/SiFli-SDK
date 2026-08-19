@@ -55,6 +55,10 @@ extern "C"
             ((MSG_SERVICE_SYS_DATA_REQ + 19) | RSP_MSG_TYPE),
         MSG_SERVICE_HR_WINDOW_IND =
             ((MSG_SERVICE_SYS_DATA_REQ + 20) | RSP_MSG_TYPE),
+        MSG_SERVICE_HR_RAW_IND =
+            ((MSG_SERVICE_SYS_DATA_REQ + 21) | RSP_MSG_TYPE),
+        MSG_SERVICE_HR_BURST_IND =
+            ((MSG_SERVICE_SYS_DATA_REQ + 22) | RSP_MSG_TYPE),
     };
 
     typedef enum
@@ -291,6 +295,9 @@ extern "C"
 
 /* One captured hr_autocorr window (LCPU -> HCPU -> KEY_HR_WINDOW_DUMP). */
 #define WATCH_SYS_HR_WIN_MAX 256
+/* Paired wrist movement over the SAME window, decimated 4:1 (see
+   hr_autocorr_last_accel). 256+64+11 = 331 bytes, inside MAX_PACKET_PAYLOAD_SIZE. */
+#define WATCH_SYS_HR_ACC_MAX 64
 
     typedef struct
     {
@@ -298,8 +305,52 @@ extern "C"
         uint8_t  bpm;                      /* the implausible value             */
         uint8_t  conf;                     /* its confidence 0..100             */
         uint16_t count;                    /* samples in win[]                  */
+        uint16_t acc_count;                /* entries in acc[], 0 = none        */
+        uint8_t  acc_shift;                /* acc[] << this = raw LSB units     */
         int8_t   win[WATCH_SYS_HR_WIN_MAX];/* detrended PPG, oldest first       */
+        int8_t   acc[WATCH_SYS_HR_ACC_MAX];/* |x|+|y|+|z| about its own mean    */
     } watch_sys_hr_window_t;
+
+/* The SAME window at full precision, plus the transform needed to invert it
+   back to raw sensor counts (@ref hr_autocorr_last_work):
+
+       raw[i] = ((fit_a_q16 + fit_b_q16 * i) >> 16) + (win[i] << shift)
+
+   with i the index in the whole window, i.e. first_index + position in win[].
+
+   Sent in chunks because 256 int16 does not fit one BLE frame. Two chunks of
+   128 make each message 272 bytes -- SMALLER than the int8 record above, which
+   is already in the field, so this adds no new size risk on either the
+   cross-core queue or the BLE link. Every chunk repeats the fit so the offline
+   side never depends on chunk order or on both chunks arriving. */
+#define WATCH_SYS_HR_RAW_CHUNK 128
+
+    typedef struct
+    {
+        uint32_t ts;                       /* matches the paired window record  */
+        int64_t  fit_a_q16;                /* intercept of the removed line     */
+        int64_t  fit_b_q16;                /* slope, per sample                 */
+        uint16_t first_index;              /* win[0] is this index of the window*/
+        uint16_t count;                    /* entries in win[]                  */
+        uint8_t  shift;                    /* win[] << this = counts about fit  */
+        int16_t  win[WATCH_SYS_HR_RAW_CHUNK];
+    } watch_sys_hr_raw_t;
+
+/* One finished burst, @ref KEY_HR_BURST_SUMMARY. 24 bytes -- an order of
+   magnitude under the window records already in the field. */
+    typedef struct
+    {
+        uint32_t ts;                       /* burst end, watch wall-clock       */
+        uint32_t dur_ms;                   /* incl. extensions                  */
+        uint32_t samples;                  /* PPG frames that reached OUR ring  */
+        uint16_t reads;                    /* 1 Hz sensor reads attempted       */
+        uint16_t readfail;                 /* of those, failed                  */
+        uint16_t frame_pct;                /* chip delivered / expected, %      */
+        uint16_t rate_info;                /* divider<<8 | algo delivered %     */
+        uint8_t  extends;                  /* @ref BGHR_EXTEND_MAX              */
+        uint8_t  best;                     /* median BPM, 0 = never locked      */
+        uint8_t  reason;                   /* wire reason, 0 = published        */
+    } watch_sys_hr_burst_t;
 
     typedef struct
     {
@@ -375,6 +426,8 @@ extern "C"
        nothing" — which is exactly how the 2026-08-02 night lost 65 minutes. */
     void (*notify_hr_cont)(const watch_sys_hr_cont_t *rec);
     void (*notify_hr_window)(const watch_sys_hr_window_t *rec);
+    void (*notify_hr_raw)(const watch_sys_hr_raw_t *rec);
+    void (*notify_hr_burst)(const watch_sys_hr_burst_t *rec);
 #endif
     } watch_sys_sync_t;
 

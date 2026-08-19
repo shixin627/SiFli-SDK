@@ -186,6 +186,21 @@ bool commu_send_media_relay(const char *cmd)
     return commu_send_string(SKAI_LINK_COMMAND_ID, KEY_MEDIA_CONTROL, json);
 }
 
+/* 音量條(founder 2026-08-18「我拉多少就調多少」):送**絕對**音量,不是 volumeUp/Down。
+   那兩個在接收端是按下系統的音量鍵 —— 相對、而且被 OS 的級距量化,永遠落不到「拉到 42」。
+   接收端改走各自的音訊 API(Windows: Core Audio SetMasterVolumeLevelScalar)。
+   夾在 0..100:手錶端已經夾過一次,這裡是最後一道 —— 越界值送出去會讓桌面直接靜音。 */
+bool commu_send_media_volume(int percent)
+{
+    if (percent < 0) percent = 0;
+    if (percent > 100) percent = 100;
+    char json[48]; /* {"cmd":"setVolume","value":100} = 31 chars + NUL */
+    int n = rt_snprintf(json, sizeof(json),
+                        "{\"cmd\":\"setVolume\",\"value\":%d}", percent);
+    if (n <= 0 || n >= (int)sizeof(json)) return false;
+    return commu_send_string(SKAI_LINK_COMMAND_ID, KEY_MEDIA_CONTROL, json);
+}
+
 /* watch→phone (SKAI_LINK 0x22): one TV remote key. Verb strings are brand-neutral
    (see KEY_TV_CONTROL); the phone maps them onto the bound TV's driver. Logged at
    INFO because these are user-initiated, low-rate presses — unlike mouse move /
@@ -415,15 +430,23 @@ bool commu_send_hr_cont(uint32_t base_ts, uint8_t interval_s, uint8_t count,
 }
 
 bool commu_send_hr_window(uint32_t ts, uint8_t bpm, uint8_t conf,
-                          uint16_t count, const int8_t *win)
+                          uint16_t count, const int8_t *win,
+                          uint16_t acc_count, uint8_t acc_shift, const int8_t *acc)
 {
-    /* 8-byte header + count int8 samples. The 256-sample window lands at 264 B,
-       inside MAX_PACKET_PAYLOAD_SIZE (507) — that single-frame fit is why the
-       samples are int8 rather than the int16 the estimator works in. */
+    /* 8-byte header + count int8 samples, then an OPTIONAL accel block appended
+       after them: {acc_count u8, acc_shift u8, acc int8[acc_count]}. 256+64
+       lands at 330 B, inside MAX_PACKET_PAYLOAD_SIZE (507) — that single-frame
+       fit is why the samples are int8 rather than the int16 the estimator works
+       in, and why the accel is decimated 4:1.
+       Appended rather than inserted so both directions of version skew are safe:
+       an old phone stops after 8+count and ignores the tail; a new phone sees no
+       tail from old firmware and reports acc_count 0. */
     if (win == NULL || count == 0) return false;
     if (count > 256) count = 256;
+    if (acc == NULL) acc_count = 0;
+    if (acc_count > 64) acc_count = 64;
 
-    uint8_t buf[8 + 256];
+    uint8_t buf[8 + 256 + 2 + 64];
     buf[0] = (uint8_t)(ts & 0xFF);
     buf[1] = (uint8_t)((ts >> 8) & 0xFF);
     buf[2] = (uint8_t)((ts >> 16) & 0xFF);
@@ -438,15 +461,76 @@ bool commu_send_hr_window(uint32_t ts, uint8_t bpm, uint8_t conf,
     buf[6] = (uint8_t)(count & 0xFF);
     buf[7] = (uint8_t)((count >> 8) & 0xFF);
     memcpy(buf + 8, win, count);
+    uint16_t len = (uint16_t)(8 + count);
+    if (acc_count > 0)
+    {
+        buf[len++] = (uint8_t)acc_count;
+        buf[len++] = acc_shift;
+        memcpy(buf + len, acc, acc_count);
+        len = (uint16_t)(len + acc_count);
+    }
     bool ok = commu_send_blob(HEALTH_DATA_COMMAND_ID, KEY_HR_WINDOW_DUMP,
-                              buf, (uint16_t)(8 + count));
+                              buf, len);
     /* The only point of the whole capture that is observable on the HCPU log:
        the decision and its LOG_I both live on the LCPU, whose console is uart4,
        not the COM12 firmware log. Without this a bench session cannot tell a
        burst that shipped a window from one that never captured. */
-    LOG_I("send hr window bpm=%u conf=%u n=%u -> %s", (unsigned)bpm,
-          (unsigned)conf, (unsigned)count, ok ? "ok" : "FAIL");
+    LOG_I("send hr window bpm=%u conf=%u n=%u acc=%u<<%u -> %s", (unsigned)bpm,
+          (unsigned)conf, (unsigned)count, (unsigned)acc_count,
+          (unsigned)acc_shift, ok ? "ok" : "FAIL");
     return ok;
+}
+
+bool commu_send_hr_window_raw(uint32_t ts, int64_t fit_a_q16, int64_t fit_b_q16,
+                              uint8_t shift, uint16_t first_index,
+                              uint16_t count, const int16_t *win)
+{
+    /* @ref KEY_HR_WINDOW_RAW. 23-byte header + count int16, little-endian.
+       128 samples = 279 B, well inside MAX_PACKET_PAYLOAD_SIZE (507); the
+       chunking lives in the caller so this stays a pure serialiser.
+       The fit is 64-bit: 24-bit raw counts shifted left 16 do not fit int32. */
+    if (win == NULL || count == 0) return false;
+    if (count > 128) count = 128;
+
+    uint8_t buf[23 + 128 * 2];
+    uint16_t n = 0;
+    buf[n++] = (uint8_t)(ts & 0xFF);
+    buf[n++] = (uint8_t)((ts >> 8) & 0xFF);
+    buf[n++] = (uint8_t)((ts >> 16) & 0xFF);
+    buf[n++] = (uint8_t)((ts >> 24) & 0xFF);
+    uint64_t a = (uint64_t)fit_a_q16, b = (uint64_t)fit_b_q16;
+    for (int k = 0; k < 8; k++) buf[n++] = (uint8_t)((a >> (8 * k)) & 0xFF);
+    for (int k = 0; k < 8; k++) buf[n++] = (uint8_t)((b >> (8 * k)) & 0xFF);
+    buf[n++] = (uint8_t)(first_index & 0xFF);
+    buf[n++] = (uint8_t)((first_index >> 8) & 0xFF);
+    buf[n++] = shift;
+    for (uint16_t i = 0; i < count; i++)
+    {
+        uint16_t v = (uint16_t)win[i];
+        buf[n++] = (uint8_t)(v & 0xFF);
+        buf[n++] = (uint8_t)((v >> 8) & 0xFF);
+    }
+    return commu_send_blob(HEALTH_DATA_COMMAND_ID, KEY_HR_WINDOW_RAW, buf, n);
+}
+
+bool commu_send_hr_burst(uint32_t ts, uint32_t dur_ms, uint32_t samples,
+                         uint16_t reads, uint16_t readfail, uint16_t frame_pct,
+                         uint16_t rate_info, uint8_t extends, uint8_t best,
+                         uint8_t reason)
+{
+    /* @ref KEY_HR_BURST_SUMMARY. 23 bytes, little-endian. */
+    uint8_t buf[23];
+    uint16_t n = 0;
+    uint32_t w32[3] = { ts, dur_ms, samples };
+    for (int j = 0; j < 3; j++)
+        for (int k = 0; k < 4; k++) buf[n++] = (uint8_t)((w32[j] >> (8 * k)) & 0xFF);
+    uint16_t w16[4] = { reads, readfail, frame_pct, rate_info };
+    for (int j = 0; j < 4; j++)
+        for (int k = 0; k < 2; k++) buf[n++] = (uint8_t)((w16[j] >> (8 * k)) & 0xFF);
+    buf[n++] = extends;
+    buf[n++] = best;
+    buf[n++] = reason;
+    return commu_send_blob(HEALTH_DATA_COMMAND_ID, KEY_HR_BURST_SUMMARY, buf, n);
 }
 
 bool commu_send_sleep_data(void)

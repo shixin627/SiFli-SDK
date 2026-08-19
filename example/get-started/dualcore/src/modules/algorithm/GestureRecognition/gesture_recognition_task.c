@@ -308,6 +308,10 @@ static void gesture_recognition_algorithm(gesture_data_t *gesture)
         if (gesture_recognition_lock)
         {
             LOG_D("gesture_recognition_algorithm is locked, ignore gesture");
+            /* 第八個靜默 drop:連續 3 次 unknown 會上這道鎖,靠一個一次性 timer
+               解。timer 建不起來的話這鎖是永久的,而且休眠喚醒也解不開 —— 所以它
+               必須看得見。 */
+            gesture_led_notify_gate(GESTURE_LED_GATE_OTHER);
             return;
         }
         else if (sample_num == TAP_TARGET_SAMPLE_NUM)
@@ -517,6 +521,7 @@ static void gesture_recognition_thread_entry(void *parameter)
         if (!gui_is_active())
         {
             gesture_stage2_report("drop=gui-off");
+            gesture_led_notify_gate(GESTURE_LED_GATE_GUI_OFF);
             continue;
         }
 
@@ -527,12 +532,14 @@ static void gesture_recognition_thread_entry(void *parameter)
         if (!SkaiWatchSys.flag_field.is_wearing)
         {
             gesture_stage2_report("drop=not-worn");
+            gesture_led_notify_gate(GESTURE_LED_GATE_NOT_WORN);
             continue;
         }
 
         if (is_user_touching_screen())
         {
             gesture_stage2_report("drop=touching");
+            gesture_led_notify_gate(GESTURE_LED_GATE_TOUCHING);
             continue;
         }
 
@@ -541,6 +548,7 @@ static void gesture_recognition_thread_entry(void *parameter)
             if (!open_gesture_model())
             {
                 gesture_stage2_report("drop=model-off");
+                gesture_led_notify_gate(GESTURE_LED_GATE_OTHER);
                 continue;
             }
 
@@ -551,12 +559,14 @@ static void gesture_recognition_thread_entry(void *parameter)
                 // LOG_D("DEBUG 1:%d,%d", app_control_get_mouse_mode(),
                 //       get_hid_mouse_handfree_mode());
                 gesture_stage2_report("drop=mouse-mode");
+                gesture_led_notify_gate(GESTURE_LED_GATE_OTHER);
                 continue;
             }
 
             if (has_user_started_controlling_with_arm())
             {
                 gesture_stage2_report("drop=arm-control");
+                gesture_led_notify_gate(GESTURE_LED_GATE_OTHER);
                 continue;
             }
         }
@@ -571,6 +581,9 @@ static void gesture_recognition_thread_entry(void *parameter)
             /* The tail condition had no else — a window blocked by the motor
                (haptic feedback still running) vanished silently. */
             gesture_stage2_report("drop=motor");
+            gesture_led_notify_gate(is_user_touching_screen()
+                                        ? GESTURE_LED_GATE_TOUCHING
+                                        : GESTURE_LED_GATE_MOTOR);
         }
     }
 }

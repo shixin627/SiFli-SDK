@@ -442,7 +442,27 @@ static int watch_sys_service_callback(data_callback_arg_t *arg)
     {
         UNPACK_DATA(arg, watch_sys_hr_window_t, data_ind);
         commu_send_hr_window(data_ind->ts, data_ind->bpm, data_ind->conf,
-                             data_ind->count, data_ind->win);
+                             data_ind->count, data_ind->win,
+                             data_ind->acc_count, data_ind->acc_shift,
+                             data_ind->acc);
+        break;
+    }
+    case MSG_SERVICE_HR_RAW_IND:
+    {
+        UNPACK_DATA(arg, watch_sys_hr_raw_t, data_ind);
+        commu_send_hr_window_raw(data_ind->ts, data_ind->fit_a_q16,
+                                 data_ind->fit_b_q16, data_ind->shift,
+                                 data_ind->first_index, data_ind->count,
+                                 data_ind->win);
+        break;
+    }
+    case MSG_SERVICE_HR_BURST_IND:
+    {
+        UNPACK_DATA(arg, watch_sys_hr_burst_t, data_ind);
+        commu_send_hr_burst(data_ind->ts, data_ind->dur_ms, data_ind->samples,
+                            data_ind->reads, data_ind->readfail,
+                            data_ind->frame_pct, data_ind->rate_info,
+                            data_ind->extends, data_ind->best, data_ind->reason);
         break;
     }
     case MSG_SERVICE_SLEEP_STATE_IND:
