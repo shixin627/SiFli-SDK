@@ -16,14 +16,23 @@
 
 /* ---- 外觀 ---- */
 
-#define GLED_DOT_SIZE 20   /* 直徑 px */
-#define GLED_DOT_GAP 16    /* 兩顆之間的間距 */
+#define GLED_DOT_SIZE 20    /* 直徑 px */
+#define GLED_DOT_GAP 16     /* 兩顆之間的間距 */
 #define GLED_BOTTOM_OFS -38 /* 距底部;466 圓螢幕邊緣要留白 */
 
 #define GLED_COLOR_OFF 0x141414     /* 熄滅:看得到位置但不搶戲 */
-#define GLED_COLOR_CAPTURE 0xFFFFFF /* 燈 1 亮:白 */
+#define GLED_COLOR_CAPTURE 0xFFFFFF /* 燈 1:白 = 有送進 stage 2 */
+#define GLED_COLOR_GATED 0xFF2A2A   /* 燈 1:紅 = 被 gate 攔掉,模型沒跑 */
+
 #define GLED_COLOR_RELEASE 0x2E7BFF /* 燈 2:藍 = release */
 #define GLED_COLOR_TAP 0x27D07C     /* 燈 2:綠 = tap */
+
+/* 燈 2 在「燈 1 紅」時改當 gate 指示器 */
+#define GLED_COLOR_GATE_GUI_OFF 0x00D0D0  /* 青 */
+#define GLED_COLOR_GATE_NOT_WORN 0xFFD400 /* 黃 */
+#define GLED_COLOR_GATE_TOUCHING 0xFF8C1A /* 橙 */
+#define GLED_COLOR_GATE_MOTOR 0xB44AFF    /* 紫 */
+#define GLED_COLOR_GATE_OTHER 0xFFFFFF    /* 白 */
 
 #define GLED_OPA_OFF LV_OPA_30
 #define GLED_OPA_ON LV_OPA_COVER
@@ -42,7 +51,9 @@
    的 timer)只讀。沒有 lock:每個欄位都是單字組寬度的 volatile,而且最壞情況只是
    某一幀的燈號晚 50 ms —— 診斷燈不值得為此扛一把鎖進 IMU 熱路徑。 */
 static volatile uint32_t s_capture_tick = 0; /* 0 = 從未發生 */
+static volatile uint32_t s_gate_tick = 0;
 static volatile uint32_t s_verdict_tick = 0;
+static volatile uint8_t s_gate = GESTURE_LED_GATE_OTHER;
 static volatile uint8_t s_verdict = GESTURE_LED_VERDICT_NONE;
 
 static bool s_enabled = true;
@@ -56,6 +67,23 @@ static lv_timer_t *s_timer = NULL;
 /* 上次套用的顏色,用來避免每 50 ms 重寫 style + 重畫 */
 static uint32_t s_applied_capture = GLED_COLOR_OFF;
 static uint32_t s_applied_verdict = GLED_COLOR_OFF;
+
+static uint32_t gled_gate_color(uint8_t gate)
+{
+    switch (gate)
+    {
+    case GESTURE_LED_GATE_GUI_OFF:
+        return GLED_COLOR_GATE_GUI_OFF;
+    case GESTURE_LED_GATE_NOT_WORN:
+        return GLED_COLOR_GATE_NOT_WORN;
+    case GESTURE_LED_GATE_TOUCHING:
+        return GLED_COLOR_GATE_TOUCHING;
+    case GESTURE_LED_GATE_MOTOR:
+        return GLED_COLOR_GATE_MOTOR;
+    default:
+        return GLED_COLOR_GATE_OTHER;
+    }
+}
 
 static void gled_apply(lv_obj_t *dot, uint32_t *applied, uint32_t color)
 {
@@ -72,7 +100,8 @@ static bool gled_within(uint32_t stamp, uint32_t hold_ms)
 {
     if (stamp == 0)
         return false;
-    return (int32_t)(rt_tick_get() - stamp) < (int32_t)rt_tick_from_millisecond(hold_ms);
+    return (int32_t)(rt_tick_get() - stamp) <
+           (int32_t)rt_tick_from_millisecond(hold_ms);
 }
 
 static void gled_timer_cb(lv_timer_t *t)
@@ -82,26 +111,37 @@ static void gled_timer_cb(lv_timer_t *t)
     if (!s_dot_capture || !s_dot_verdict)
         return;
 
-    uint32_t want_capture = gled_within(s_capture_tick, GLED_CAPTURE_HOLD_MS)
-                                ? GLED_COLOR_CAPTURE
-                                : GLED_COLOR_OFF;
-
+    uint32_t want_capture = GLED_COLOR_OFF;
     uint32_t want_verdict = GLED_COLOR_OFF;
-    if (gled_within(s_verdict_tick, GLED_VERDICT_HOLD_MS))
+
+    /* gate 的資訊比 capture 更晚也更確定,所以它贏:同一個視窗先點白再轉紅,
+       最後看到的是紅 + gate 顏色,不會兩種訊息互相蓋來蓋去。 */
+    if (gled_within(s_gate_tick, GLED_CAPTURE_HOLD_MS))
     {
-        /* 讀一次就好:producer 是先寫 verdict 再寫 tick,所以看到新 tick 時
-           verdict 必定已經是對應的那一筆。 */
-        switch (s_verdict)
+        want_capture = GLED_COLOR_GATED;
+        want_verdict = gled_gate_color(s_gate);
+    }
+    else
+    {
+        if (gled_within(s_capture_tick, GLED_CAPTURE_HOLD_MS))
+            want_capture = GLED_COLOR_CAPTURE;
+
+        if (gled_within(s_verdict_tick, GLED_VERDICT_HOLD_MS))
         {
-        case GESTURE_LED_VERDICT_RELEASE:
-            want_verdict = GLED_COLOR_RELEASE;
-            break;
-        case GESTURE_LED_VERDICT_TAP:
-            want_verdict = GLED_COLOR_TAP;
-            break;
-        default:
-            want_verdict = GLED_COLOR_OFF; /* 認不出來 → 不亮,這就是重點 */
-            break;
+            /* 讀一次就好:producer 是先寫 verdict 再寫 tick,所以看到新 tick 時
+               verdict 必定已經是對應的那一筆。 */
+            switch (s_verdict)
+            {
+            case GESTURE_LED_VERDICT_RELEASE:
+                want_verdict = GLED_COLOR_RELEASE;
+                break;
+            case GESTURE_LED_VERDICT_TAP:
+                want_verdict = GLED_COLOR_TAP;
+                break;
+            default:
+                want_verdict = GLED_COLOR_OFF; /* 認不出來 → 不亮,這就是重點 */
+                break;
+            }
         }
     }
 
@@ -171,6 +211,16 @@ void gesture_led_notify_capture(void)
     s_capture_tick = now ? now : 1u;
 }
 
+void gesture_led_notify_gate(gesture_led_gate_t gate)
+{
+    if (!s_enabled)
+        return;
+    /* 順序有意義:先寫 gate 再寫 tick。 */
+    s_gate = (uint8_t)gate;
+    uint32_t now = rt_tick_get();
+    s_gate_tick = now ? now : 1u;
+}
+
 void gesture_led_notify_verdict(gesture_led_verdict_t verdict)
 {
     if (!s_enabled)
@@ -222,21 +272,29 @@ static void gled(int argc, char **argv)
         {
             /* 兩顆燈都點一次,確認位置與顏色 */
             gesture_led_notify_capture();
-            gesture_led_notify_verdict(argc >= 3 && rt_strcmp(argv[2], "tap") == 0
-                                           ? GESTURE_LED_VERDICT_TAP
-                                           : GESTURE_LED_VERDICT_RELEASE);
+            gesture_led_notify_verdict(
+                argc >= 3 && rt_strcmp(argv[2], "tap") == 0
+                    ? GESTURE_LED_VERDICT_TAP
+                    : GESTURE_LED_VERDICT_RELEASE);
+        }
+        else if (rt_strcmp(argv[1], "gate") == 0)
+        {
+            gesture_led_notify_gate(argc >= 3
+                                        ? (gesture_led_gate_t)atoi(argv[2])
+                                        : GESTURE_LED_GATE_TOUCHING);
         }
         else
         {
-            rt_kprintf("usage: gled [on|off|test [tap|release]]\n");
+            rt_kprintf("usage: gled [on|off|test [tap|release]|gate <0-4>]\n");
             return;
         }
     }
-    rt_kprintf("gled: enabled=%d  cap_tick=%u verdict=%u verdict_tick=%u\n",
-               s_enabled, (unsigned)s_capture_tick, (unsigned)s_verdict,
+    rt_kprintf("gled: enabled=%d cap=%u gate=%u/%u verdict=%u/%u\n", s_enabled,
+               (unsigned)s_capture_tick, (unsigned)s_gate,
+               (unsigned)s_gate_tick, (unsigned)s_verdict,
                (unsigned)s_verdict_tick);
 }
-MSH_CMD_EXPORT(gled, "gesture debug LEDs: gled [on|off|test [tap|release]]");
+MSH_CMD_EXPORT(gled, "gesture debug LEDs: gled [on|off|test|gate <0-4>]");
 
 #endif /* RT_USING_FINSH && !kReleaseMode */
 
