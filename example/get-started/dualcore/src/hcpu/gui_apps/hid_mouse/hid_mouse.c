@@ -10122,6 +10122,12 @@ static void media_content_build(lv_obj_t *parent, lv_obj_t **out_title,
     lv_obj_set_style_bg_opa(slider, LV_OPA_100, LV_PART_MAIN);
     lv_bar_set_value(slider, 50, LV_ANIM_OFF); /* 佔位:0x19 回報一到就校準 */
     lv_obj_add_flag(slider, LV_OBJ_FLAG_CLICKABLE); /* lv_bar 預設不可點,要自己開 */
+    /* **捲動死路**:音量條自己不可捲動,LVGL 的 find_scroll_obj 就會往上找可捲動的祖先,
+       把橫向拖曳交給媒體頁的 pager —— 拉音量會把頁面一起拖走(founder 2026-08-19)。
+       清掉 SCROLL_CHAIN 之後,鏈在這裡就斷,拖曳完整留給音量條。兩軸都清:垂直方向上面
+       是媒體 tileview(下拉那層),同樣不該被拉音量的手指帶動。 */
+    lv_obj_clear_flag(slider, LV_OBJ_FLAG_SCROLL_CHAIN_HOR);
+    lv_obj_clear_flag(slider, LV_OBJ_FLAG_SCROLL_CHAIN_VER);
     lv_obj_add_event_cb(slider, media_center_vol_slider_cb, LV_EVENT_ALL, NULL);
     /* 平常收著,點音量鍵才展開(音樂 widget 同款)。寬度 0 起跳,展開動畫從那裡長出來。 */
     lv_obj_add_flag(slider, LV_OBJ_FLAG_HIDDEN);
