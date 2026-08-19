@@ -10066,6 +10066,21 @@ static void media_center_vol_slider_cb(lv_event_t *e)
     }
 }
 
+/* 手機**自己**的音量在別處變動(實體音量鍵、手機上調整、AVRCP 通知)→ 媒體頁若正指著
+   手機那一頁,條子要跟著走。來源是 bloc_control 既有的下行,它本來就在餵音樂 widget 與
+   音樂 app 的兩條 bar,這裡只是第三個消費者(founder 2026-08-19:「手機還沒接上」)。
+   指著遠端設備時不理會:那時條子顯示的是那台電腦的音量,不是手機的。 */
+void mouse_mode_handle_phone_volume(uint8_t percent)
+{
+    if (percent > 100) return;
+    if (!s_media_vol_slider || !lv_obj_is_valid(s_media_vol_slider)) return;
+    if (ble_hid_mouse_app_route()) return; /* 目標是電腦 → 這筆不是它的音量 */
+    if (s_media_vol_dragging) return;      /* 手指還在上面,別跟使用者搶 */
+    if ((int)lv_bar_get_value(s_media_vol_slider) == (int)percent) return;
+    lv_bar_set_value(s_media_vol_slider, percent, LV_ANIM_ON);
+    media_vol_expand(); /* 與電腦那條、與音樂 widget 一致:變動時自己展開 */
+}
+
 /* 0x19 帶回來的該設備音量 → 校準把手。-1 = 對方沒回報,維持現狀。 */
 void mouse_mode_handle_remote_volume(const char *device_id, int percent)
 {

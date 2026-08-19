@@ -141,6 +141,7 @@ typedef struct { uint8_t addr[6]; } bd_addr_t;
 /* lv_instruction_list_layout.c */ void set_skai_widget_opa(uint8_t opa) {  }
 /* app_skai.c */ void set_skai_widget_processing_text(const char *text) {  }
 /* app_media.c */ void set_widget_vol_bar_value(uint8_t volume) {  }
+/* hid_mouse.c */ void mouse_mode_handle_phone_volume(uint8_t percent) {  }
 /* lv_instruction_list_layout.c */ bool skai_widget_has_ai_reply(void) { return false; }
 /* communicate_protocol.h */ void skaiwatch_ble_set_performance(ble_perf_level_t level) {  }
 /* app_mainmenu.c */ rt_int32_t speech_on_pause(void) { return 0; }

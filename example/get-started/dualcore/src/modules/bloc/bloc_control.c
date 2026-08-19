@@ -402,6 +402,7 @@ uint8_t bt_speaker_get_volume_percent(void)
 	return volume_percent;
 }
 extern void set_widget_vol_bar_value(uint8_t volume);
+extern void mouse_mode_handle_phone_volume(uint8_t percent);
 extern void set_app_vol_bar_value(uint8_t volume);
 static void bt_speaker_set_volume_percent(uint8_t percent)
 {
@@ -410,6 +411,8 @@ static void bt_speaker_set_volume_percent(uint8_t percent)
 	volume_percent = percent;
 	set_app_vol_bar_value(volume_percent);
 	set_widget_vol_bar_value(volume_percent);
+	/* 滑鼠 app 媒體頁的「手機」那一頁也吃這筆(它自己判斷目標是不是手機)。 */
+	mouse_mode_handle_phone_volume(volume_percent);
 	// notify ui
 // #ifdef BSP_USING_UI_HANDLER
 // 	lvgl_msg_t msg = {.type = LVGL_MSG_TYPE_MEDIA_VOLUME, .data.media_volume = volume_percent};
