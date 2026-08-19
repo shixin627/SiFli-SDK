@@ -9880,8 +9880,111 @@ static lv_obj_t *media_center_make_icon_btn(lv_obj_t *parent,
     return btn;
 }
 
-/* 音量滑桿:目前顯示中的那一格(同 media_center_title_label 的 live 指標作法)。 */
+/* 音量條:目前顯示中的那一格(同 media_center_title_label 的 live 指標作法)。 */
 static lv_obj_t *s_media_vol_slider = NULL;
+/* 收合狀態的音量鍵。條子平常收著,點它才展開 —— 與音樂 widget 一致
+   (founder 2026-08-19:「我想要他跟那邊一樣是先點個按鈕才展開」)。 */
+static lv_obj_t *s_media_vol_btn = NULL;
+static bool s_media_vol_expanded = false;
+static lv_timer_t *s_media_vol_collapse_timer = NULL;
+#define MEDIA_VOL_BAR_WIDTH 300
+#define MEDIA_VOL_BAR_Y (-70)
+#define MEDIA_VOL_COLLAPSE_MS 3000 /* 同 app_media.c 的 VOL_BAR_COLLAPSE_TIMEOUT */
+
+static void media_vol_bar_anim_width_cb(void *var, int32_t v)
+{
+    lv_obj_t *bar = (lv_obj_t *)var;
+    if (!bar || !lv_obj_is_valid(bar)) return;
+    lv_obj_set_width(bar, v);
+    /* 寬度變了要重新置中,否則會從左緣長出來(音樂 widget 同款做法)。 */
+    lv_obj_align(bar, LV_ALIGN_BOTTOM_MID, 0, MEDIA_VOL_BAR_Y);
+    uint8_t opa = (uint8_t)((v * 255) / MEDIA_VOL_BAR_WIDTH);
+    lv_obj_set_style_bg_opa(bar, opa, LV_PART_MAIN);
+    lv_obj_set_style_bg_opa(bar, opa, LV_PART_INDICATOR);
+}
+
+static void media_vol_collapse_timer_cancel(void)
+{
+    if (s_media_vol_collapse_timer)
+    {
+        lv_timer_del(s_media_vol_collapse_timer);
+        s_media_vol_collapse_timer = NULL;
+    }
+}
+
+static void media_vol_bar_hide_done_cb(lv_anim_t *a)
+{
+    lv_obj_t *bar = (lv_obj_t *)a->var;
+    if (bar && lv_obj_is_valid(bar)) lv_obj_add_flag(bar, LV_OBJ_FLAG_HIDDEN);
+    if (s_media_vol_btn && lv_obj_is_valid(s_media_vol_btn))
+        lv_obj_clear_flag(s_media_vol_btn, LV_OBJ_FLAG_HIDDEN);
+}
+
+static void media_vol_collapse(void)
+{
+    media_vol_collapse_timer_cancel();
+    if (!s_media_vol_expanded) return;
+    s_media_vol_expanded = false;
+    if (!s_media_vol_slider || !lv_obj_is_valid(s_media_vol_slider)) return;
+    lv_anim_del(s_media_vol_slider, media_vol_bar_anim_width_cb);
+    lv_anim_t a;
+    lv_anim_init(&a);
+    lv_anim_set_var(&a, s_media_vol_slider);
+    lv_anim_set_values(&a, lv_obj_get_width(s_media_vol_slider), 0);
+    lv_anim_set_time(&a, 300);
+    lv_anim_set_exec_cb(&a, media_vol_bar_anim_width_cb);
+    lv_anim_set_path_cb(&a, lv_anim_path_ease_in);
+    lv_anim_set_ready_cb(&a, media_vol_bar_hide_done_cb);
+    lv_anim_start(&a);
+}
+
+static void media_vol_collapse_timer_cb(lv_timer_t *t)
+{
+    (void)t;
+    s_media_vol_collapse_timer = NULL; /* one-shot:自己跑完就沒了 */
+    media_vol_collapse();
+}
+
+/* 每一次互動都把 3 秒重新計時 —— 拖到一半被收掉會很惱人。 */
+static void media_vol_arm_collapse(void)
+{
+    media_vol_collapse_timer_cancel();
+    s_media_vol_collapse_timer =
+        lv_timer_create(media_vol_collapse_timer_cb, MEDIA_VOL_COLLAPSE_MS, NULL);
+    lv_timer_set_repeat_count(s_media_vol_collapse_timer, 1);
+}
+
+static void media_vol_expand(void)
+{
+    if (!s_media_vol_slider || !lv_obj_is_valid(s_media_vol_slider)) return;
+    if (s_media_vol_expanded)
+    {
+        media_vol_arm_collapse();
+        return;
+    }
+    s_media_vol_expanded = true;
+    /* 音量鍵讓位:它與條子佔同一格,留著會被壓在條子底下。 */
+    if (s_media_vol_btn && lv_obj_is_valid(s_media_vol_btn))
+        lv_obj_add_flag(s_media_vol_btn, LV_OBJ_FLAG_HIDDEN);
+    lv_obj_clear_flag(s_media_vol_slider, LV_OBJ_FLAG_HIDDEN);
+    lv_anim_del(s_media_vol_slider, media_vol_bar_anim_width_cb);
+    lv_anim_t a;
+    lv_anim_init(&a);
+    lv_anim_set_var(&a, s_media_vol_slider);
+    lv_anim_set_values(&a, 0, MEDIA_VOL_BAR_WIDTH);
+    lv_anim_set_time(&a, 300);
+    lv_anim_set_exec_cb(&a, media_vol_bar_anim_width_cb);
+    lv_anim_set_path_cb(&a, lv_anim_path_ease_out);
+    lv_anim_start(&a);
+    media_vol_arm_collapse();
+}
+
+static void media_vol_btn_cb(lv_event_t *e)
+{
+    if (lv_event_get_code(e) != LV_EVENT_CLICKED) return;
+    if (s_media_vol_expanded) media_vol_collapse();
+    else media_vol_expand();
+}
 /* 使用者正在拖 → 遠端回報先不要動把手,否則手指還按著就被拉回舊值。 */
 static bool s_media_vol_dragging = false;
 /* 上一次真的送出去的值 + 時間,用來節流(拖曳每一格都送會塞滿 BLE)。 */
@@ -9936,6 +10039,7 @@ static void media_center_vol_slider_cb(lv_event_t *e)
         if (!indev) break;
         lv_indev_get_point(indev, &p);
         s_media_vol_dragging = true;
+        media_vol_arm_collapse(); /* 手指在上面 = 別收 */
         {
             int v = media_vol_value_at(sl, &p);
             lv_bar_set_value(sl, v, LV_ANIM_OFF);
@@ -9945,6 +10049,7 @@ static void media_center_vol_slider_cb(lv_event_t *e)
     case LV_EVENT_RELEASED:
     case LV_EVENT_PRESS_LOST:
         s_media_vol_dragging = false;
+        media_vol_arm_collapse(); /* 放手後再數 3 秒 */
         media_vol_send((int)lv_bar_get_value(sl), true); /* 落點一定要送 */
         break;
     default:
@@ -9961,6 +10066,8 @@ void mouse_mode_handle_remote_volume(const char *device_id, int percent)
     if (device_id == NULL || s_dev_active_id[0] == '\0' ||
         strncmp(device_id, s_dev_active_id, SYNCED_DEVICE_ID_LEN) != 0)
         return;
+    /* 只更新數值,**不**自動展開:這個回報搭在每一次 media 更新上,自動展開會讓條子
+       三不五時自己跳出來。音樂 widget 那邊會展開是因為它的來源是使用者按實體音量鍵。 */
     lv_bar_set_value(s_media_vol_slider, percent, LV_ANIM_ON);
     s_media_vol_last_sent = percent; /* 這是電腦端的現況,不要再回送 */
 }
@@ -9973,7 +10080,8 @@ void mouse_mode_handle_remote_volume(const char *device_id, int percent)
    設備名/箭頭**不**在這裡：面板版的設備列是固定在面板頂部、不隨頁捲動的。 */
 static void media_content_build(lv_obj_t *parent, lv_obj_t **out_title,
                                 lv_obj_t **out_play_img,
-                                lv_obj_t **out_vol_slider)
+                                lv_obj_t **out_vol_slider,
+                                lv_obj_t **out_vol_btn)
 {
     lv_obj_t *title = lv_label_create(parent);
     lv_label_set_text(title, "Media Title");
@@ -10015,10 +10123,28 @@ static void media_content_build(lv_obj_t *parent, lv_obj_t **out_title,
     lv_bar_set_value(slider, 50, LV_ANIM_OFF); /* 佔位:0x19 回報一到就校準 */
     lv_obj_add_flag(slider, LV_OBJ_FLAG_CLICKABLE); /* lv_bar 預設不可點,要自己開 */
     lv_obj_add_event_cb(slider, media_center_vol_slider_cb, LV_EVENT_ALL, NULL);
+    /* 平常收著,點音量鍵才展開(音樂 widget 同款)。寬度 0 起跳,展開動畫從那裡長出來。 */
+    lv_obj_add_flag(slider, LV_OBJ_FLAG_HIDDEN);
+    lv_obj_set_width(slider, 0);
+
+    /* 收合狀態的音量鍵 —— 樣式沿用音樂 app 的 app_vol_icon_btn(40x32、圓角 16、白底 8%)。 */
+    lv_obj_t *vol_btn = lv_btn_create(parent);
+    lv_obj_set_size(vol_btn, 40, 32);
+    lv_obj_set_style_radius(vol_btn, 16, 0);
+    lv_obj_set_style_bg_color(vol_btn, lv_color_hex(0xFFFFFF), 0);
+    lv_obj_set_style_bg_opa(vol_btn, 20, 0);
+    lv_obj_set_style_shadow_width(vol_btn, 0, 0);
+    lv_obj_align(vol_btn, LV_ALIGN_BOTTOM_MID, 0, MEDIA_VOL_BAR_Y);
+    lv_obj_add_event_cb(vol_btn, media_vol_btn_cb, LV_EVENT_ALL, NULL);
+    lv_obj_t *vol_ico = lv_img_create(vol_btn);
+    lv_img_set_src(vol_ico, &volume_up);
+    lv_img_set_zoom(vol_ico, 255 * 30 / 85);
+    lv_obj_align(vol_ico, LV_ALIGN_CENTER, 0, 0);
 
     if (out_title) *out_title = title;
     if (out_play_img) *out_play_img = lv_obj_get_child(btn_play, 0);
     if (out_vol_slider) *out_vol_slider = slider;
+    if (out_vol_btn) *out_vol_btn = vol_btn;
 }
 
 /* 面板媒體格:每格記住自己的曲名 label / 播放圖示，bind 時才把 file-static 的
@@ -10029,6 +10155,7 @@ typedef struct
     lv_obj_t *title;
     lv_obj_t *play_img;
     lv_obj_t *vol_slider;
+    lv_obj_t *vol_btn;
 } media_page_widgets_t;
 
 static void media_page_del_cb(lv_event_t *e)
@@ -10040,7 +10167,15 @@ static void media_page_del_cb(lv_event_t *e)
         media_center_title_label = NULL;
         media_center_play_img = NULL;
     }
-    if (s_media_vol_slider == w->vol_slider) s_media_vol_slider = NULL;
+    if (s_media_vol_slider == w->vol_slider)
+    {
+        /* 這一格要被刪了:收合 timer 的 callback 會碰到這些指標,一定要先收掉,
+           否則就是又一個「活過畫面拆除的 lv_timer」(這支 app 已知的 UAF 形狀)。 */
+        media_vol_collapse_timer_cancel();
+        s_media_vol_slider = NULL;
+        s_media_vol_btn = NULL;
+        s_media_vol_expanded = false;
+    }
     lv_mem_free(w);
 }
 
@@ -10058,7 +10193,7 @@ lv_obj_t *hid_mouse_media_page_create(lv_obj_t *parent)
     lv_obj_set_user_data(page, w);
     lv_obj_add_event_cb(page, media_page_del_cb, LV_EVENT_DELETE, w);
 
-    media_content_build(page, &w->title, &w->play_img, &w->vol_slider);
+    media_content_build(page, &w->title, &w->play_img, &w->vol_slider, &w->vol_btn);
     return page;
 }
 
@@ -10070,6 +10205,18 @@ void hid_mouse_media_page_bind(lv_obj_t *page)
     media_center_title_label = w->title;
     media_center_play_img = w->play_img;
     s_media_vol_slider = w->vol_slider;
+    s_media_vol_btn = w->vol_btn;
+    /* 換頁 = 重新收合:上一頁展開過的狀態不該帶到這一頁。 */
+    media_vol_collapse_timer_cancel();
+    s_media_vol_expanded = false;
+    if (w->vol_slider && lv_obj_is_valid(w->vol_slider))
+    {
+        lv_anim_del(w->vol_slider, media_vol_bar_anim_width_cb);
+        lv_obj_add_flag(w->vol_slider, LV_OBJ_FLAG_HIDDEN);
+        lv_obj_set_width(w->vol_slider, 0);
+    }
+    if (w->vol_btn && lv_obj_is_valid(w->vol_btn))
+        lv_obj_clear_flag(w->vol_btn, LV_OBJ_FLAG_HIDDEN);
     /* 換設備 = 換一台機器的音量,舊的節流基準作廢(否則新設備第一筆相同數值會被吃掉)。 */
     s_media_vol_last_sent = -1;
 }
@@ -10176,7 +10323,8 @@ static void create_media_center_panel(lv_obj_t *parent)
 
     // 曲名 + 控制列 + 音量（與錶盤頂部面板的媒體格共用同一份 builder）
     media_content_build(media_tile, &media_center_title_label,
-                        &media_center_play_img, &s_media_vol_slider);
+                        &media_center_play_img, &s_media_vol_slider,
+                        &s_media_vol_btn);
 
     // 離開 App：紅色 Exit 鈕（從舊右側抽屜移來），放媒體頁最底
     lv_obj_t *media_exit_btn = lv_btn_create(media_tile);
