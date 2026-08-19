@@ -10136,6 +10136,10 @@ static void media_content_build(lv_obj_t *parent, lv_obj_t **out_title,
     lv_obj_set_style_radius(slider, 16, LV_PART_INDICATOR);
     lv_obj_set_style_bg_opa(slider, LV_OPA_100, LV_PART_MAIN);
     lv_bar_set_value(slider, 50, LV_ANIM_OFF); /* 佔位:0x19 回報一到就校準 */
+    /* 遠端回報是離散取樣(桌面每 250ms 送一次),直接套用會一格一格跳。給 bar 一個補間
+       時間,兩筆之間就用滑的接起來(founder 2026-08-19:「不要讓它是瞬間跳過去」)。
+       250ms = 取樣間隔:剛好在下一筆到達時走完,不會累積延遲也不會停頓。 */
+    lv_obj_set_style_anim_time(slider, 250, LV_PART_MAIN);
     lv_obj_add_flag(slider, LV_OBJ_FLAG_CLICKABLE); /* lv_bar 預設不可點,要自己開 */
     /* **捲動死路**:音量條自己不可捲動,LVGL 的 find_scroll_obj 就會往上找可捲動的祖先,
        把橫向拖曳交給媒體頁的 pager —— 拉音量會把頁面一起拖走(founder 2026-08-19)。
