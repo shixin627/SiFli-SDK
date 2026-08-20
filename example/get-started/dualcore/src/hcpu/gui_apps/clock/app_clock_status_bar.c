@@ -428,7 +428,7 @@ static void media_col_header_build(int c)
    曲名寫入全都 NULL/validity guard);media_col_headers_refresh / media_col_bind
    對 NULL 欄位本來就跳過。 */
 void clock_main_heap_log(const char *tag);
-extern lv_obj_t *hid_mouse_media_page_create(lv_obj_t *parent);
+extern lv_obj_t *hid_mouse_media_page_create(lv_obj_t *parent, bool is_phone_column);
 
 static void media_col_content_release_one(int c)
 {
@@ -456,7 +456,9 @@ static void media_col_content_build_one(int c)
 {
     if (s_media_tile[c] == NULL || !lv_obj_is_valid(s_media_tile[c]))
         return;
-    s_media_page[c] = hid_mouse_media_page_create(s_media_tile[c]);
+    /* 欄 0 = 手機(見 media_col_bind);它的音量條要用快取的手機音量當初值,
+       其餘欄是電腦,站佔位等 0x19 校準。 */
+    s_media_page[c] = hid_mouse_media_page_create(s_media_tile[c], c == 0);
     media_col_header_build(c);
     if (s_mouse_park_tile[c] && lv_obj_is_valid(s_mouse_park_tile[c]))
     {

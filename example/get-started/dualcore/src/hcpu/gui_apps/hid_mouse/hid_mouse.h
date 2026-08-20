@@ -134,7 +134,7 @@ void hid_mouse_clear_active_device(void);
  *        每頁自帶 widget 指標；用 hid_mouse_media_page_bind 指定「目前顯示中」
  *        的那一頁，0x19 / 0x46 曲名路由就會寫到它。設備名/箭頭不含在內。
  */
-lv_obj_t *hid_mouse_media_page_create(lv_obj_t *parent);
+lv_obj_t *hid_mouse_media_page_create(lv_obj_t *parent, bool is_phone_column);
 /** 把曲名/播放圖示路由綁到這一頁（切頁時呼叫）。 */
 void hid_mouse_media_page_bind(lv_obj_t *page);
 /** 把這一頁的曲名還原成 placeholder（換設備、等新 now-playing 時用）。 */
