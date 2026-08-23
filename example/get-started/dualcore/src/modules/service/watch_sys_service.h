@@ -350,6 +350,7 @@ extern "C"
         uint8_t  extends;                  /* @ref BGHR_EXTEND_MAX              */
         uint8_t  best;                     /* median BPM, 0 = never locked      */
         uint8_t  reason;                   /* wire reason, 0 = published        */
+        uint8_t  power_veto;               /* mode switches refused this burst  */
     } watch_sys_hr_burst_t;
 
     typedef struct

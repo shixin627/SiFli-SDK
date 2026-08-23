@@ -462,7 +462,8 @@ static int watch_sys_service_callback(data_callback_arg_t *arg)
         commu_send_hr_burst(data_ind->ts, data_ind->dur_ms, data_ind->samples,
                             data_ind->reads, data_ind->readfail,
                             data_ind->frame_pct, data_ind->rate_info,
-                            data_ind->extends, data_ind->best, data_ind->reason);
+                            data_ind->extends, data_ind->best, data_ind->reason,
+                            data_ind->power_veto);
         break;
     }
     case MSG_SERVICE_SLEEP_STATE_IND:

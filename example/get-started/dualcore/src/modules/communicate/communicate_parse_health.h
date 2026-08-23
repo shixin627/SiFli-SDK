@@ -129,7 +129,9 @@ typedef enum
        starved. The counters that separate those live only in a LOG_I that is
        compiled out. Purely additive: no existing record or decision changes.
        {ts u32, dur_ms u32, samples u32, reads u16, readfail u16, frame_pct u16,
-        rate_info u16, extends u8, best u8, reason u8} — LE, 23 B. */
+        rate_info u16, extends u8, best u8, reason u8, power_veto u8} — LE,
+       24 B; power_veto appended after the original 23 so both directions of
+       version skew degrade to "no tail" rather than to a misparse. */
     KEY_HR_BURST_SUMMARY = 0x18,
 } HEALTH_KEY;
 

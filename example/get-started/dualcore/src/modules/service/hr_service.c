@@ -177,6 +177,12 @@ uint8_t hr_service_get_latest_bpm(void)
     return last_hr_value;
 }
 
+/* Power/mode requests refused during the current burst, reported in the burst
+   summary so the field can show whether the starvation this veto exists to
+   prevent is still happening. Declared here because hr_set_power below is its
+   first user. */
+static uint8_t bg_hr_burst_power_veto = 0;
+
 void hr_set_power(uint8_t arg)
 {
     if (hr_service_env.is_ready == RT_FALSE)
@@ -212,12 +218,32 @@ void hr_set_power(uint8_t arg)
         return;
     }
     /* A burst owns the light until it finishes -- see hr_service_bg_burst_active.
-     * Power-DOWN only; a redundant power-ON during a burst is the driver's
-     * existing same-mode problem, not this one's. */
+     * BOTH directions, and the power-ON half is the one that mattered.
+     *
+     * hr_set_power(1) means RT_SENSOR_POWER_NORMAL, which the driver implements
+     * as open_gh3018() -> module_start(GH30X_FUNCTION_HRV) -- and HRV samples at
+     * 100 Hz, not 25. Our estimator's ring is fed from the frame callback gated
+     * on unFunctionID == GH30X_FUNCTION_HR, so the moment anything re-opens the
+     * sensor as HRV mid-burst the HR function stops running and the ring
+     * receives NOTHING for the rest of the burst, while the pre-divider frame
+     * counter keeps climbing (frame_pct reads ~178% while samples read ~2%).
+     * The old comment here called a power-ON during a burst "redundant"; it is
+     * not, it is a mode switch that silently starves the measurement.
+     *
+     * Measured over 441 instrumented bursts (2026-08-20..23): every one of the
+     * 103 starved bursts ended with divider == 4 (chip at 100 Hz), and not one
+     * of the 260 bursts that ran at divider == 1 was starved.
+     *
+     * Costs the callers nothing they need: both wear_detect sites ask for power
+     * because the PPG is OFF, and during a burst it is already on -- in the
+     * right mode. The foreground/Exercise path does not come through here at
+     * all (it calls hr_control_mode(RT_SENSOR_POWER_HIGH)), so this cannot
+     * affect a live workout. */
     extern bool hr_service_bg_burst_active(void);
-    if (arg == 0 && hr_service_bg_burst_active())
+    if (hr_service_bg_burst_active())
     {
-        LOG_I("PPG power-down vetoed: bg_hr burst in flight");
+        if (bg_hr_burst_power_veto < 0xFFu) bg_hr_burst_power_veto++;
+        LOG_I("PPG power request (%d) vetoed: bg_hr burst in flight", arg);
         return;
     }
 #endif
@@ -1981,6 +2007,7 @@ static void bg_hr_finish_burst(void)
         sum.rate_info = bg_hr_win_rate_info;
         sum.extends = bg_hr_burst_extends;
         sum.best = bg_hr_burst_best;
+        sum.power_veto = bg_hr_burst_power_veto;
         sum.reason = bghr_published ? 0
                    : (bghr_curve_refused ? BGHR_WIRE_CURVE_REFUSED
                       : (bg_hr_burst_best == 0
@@ -2427,6 +2454,7 @@ static void bg_hr_period_cb(void *param)
     bg_hr_burst_own_conf_max = 0;
     bg_hr_vendor_bpm = 0;
     bg_hr_win_next_total = hr_autocorr_total() + HR_AUTOCORR_WIN;
+    bg_hr_burst_power_veto = 0;
     bg_hr_burst_confi_max = 0;
     bg_hr_burst_snr_max = 0;
     bg_hr_burst_qlevel = 0;
