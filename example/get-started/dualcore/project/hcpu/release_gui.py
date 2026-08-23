@@ -55,7 +55,11 @@ UART_DOWNLOAD_EXE = os.path.join(
 JSROOT_PACKED_BIN = os.path.join(SCRIPT_DIR, "build", "jsroot_packed.bin")
 JSROOT_FLASH_ADDRESS = "0x64280000"
 BLE_BATTERY_LEVEL_UUID = "00002a19-0000-1000-8000-00805f9b34fb"
-BLE_SCAN_SECONDS = 12
+# 30s, not 12: a watch sitting at -96 dBm on the fixture advertises
+# sparsely enough that a 12s window missed it five releases in a row,
+# while a 15s scan heard it first try. The cost of the longer window is
+# only paid when the watch really has gone silent.
+BLE_SCAN_SECONDS = 30
 BLE_CONNECT_TIMEOUT_SECONDS = 15
 BLE_PROVISION_BOOT_WAIT_SECONDS = 8
 DEFAULT_BLE_RSSI_THRESHOLD = -75
