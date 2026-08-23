@@ -103,6 +103,14 @@ jobs:
           # The release only reports "MAC X not found", which reads the same
           # whether the adapter is deaf or the watch went quiet. Listening for
           # everything separates the two.
-          $argv = @('ble_scan_probe.py', '--seconds', '15')
+          # The bench tree sits wherever the last release left it, so the
+          # probe is read straight out of origin/main into a temp file: no
+          # checkout, no index change, nothing left behind in the worktree.
+          git fetch origin main
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          $probe = Join-Path $env:RUNNER_TEMP 'ble_scan_probe.py'
+          git show ('FETCH_HEAD:example/get-started/dualcore/project/hcpu/' +
+                    'ble_scan_probe.py') | Out-File -FilePath $probe -Encoding utf8
+          $argv = @($probe, '--seconds', '15')
           if ($env:IN_EXPECT_MAC) { $argv += @('--expect', $env:IN_EXPECT_MAC) }
           py -3 @argv
