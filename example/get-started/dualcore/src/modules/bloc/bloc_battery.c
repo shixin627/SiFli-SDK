@@ -286,12 +286,111 @@ BatteryChargeState *battery_get_charge_state(void)
     return &battery_charge_state;
 }
 
+/* Debounce the charge IC's own opinion before anyone downstream sees it.
+ *
+ * AW32001's SYS_STATUS charging bits are not a clean "is the cable in" signal.
+ * When the die heats up the IC folds back and suspends charging, reporting
+ * NO_CHARGING while the cable is still plugged in, then resumes once it cools
+ * -- and every one of those blips used to travel the whole chain: the charging
+ * screen pops (gui_app_run(APP_ID_BATTERY)) and is dismissed again seconds
+ * later, over and over, for the whole charge.
+ *
+ * So a new value from the IC must HOLD for CHARGE_STATE_DEBOUNCE_MS before we
+ * publish it. While a candidate is being timed we publish nothing and arm a
+ * one-shot timer to re-read (reads are otherwise event-driven at 10 s while
+ * charging / 5 min otherwise, which is far too coarse to measure a 1 s hold).
+ * A candidate that flips back to the currently published value inside the
+ * window simply never becomes a transition -- which is exactly the flicker we
+ * are killing.
+ *
+ * Note this deliberately does NOT gate the *republishing* of an unchanged
+ * value: the resync-after-LCPU-restart behaviour described below depends on
+ * every read reporting. Only genuine transitions are held. */
+#define CHARGE_STATE_DEBOUNCE_MS 1000
+
+static bool      s_charge_state_valid = false;  /* has anything been published yet */
+static bool      s_charge_published   = false;  /* last value the rest of the system saw */
+static bool      s_charge_candidate   = false;  /* raw IC value currently being timed */
+static rt_tick_t s_charge_candidate_tick = 0;   /* when the candidate first appeared */
+static rt_timer_t s_charge_debounce_timer = RT_NULL;
+
+static void charge_debounce_timer_callback(void *parameter)
+{
+    main_send_read_charge_status_event();
+}
+
+/* Re-read once the hold window is up. The small margin keeps the re-read on
+ * the far side of the window so it settles in one extra pass, not two. */
+static void charge_debounce_arm(void)
+{
+    if (s_charge_debounce_timer == RT_NULL)
+    {
+        s_charge_debounce_timer = rt_timer_create(
+            "chg_deb",
+            charge_debounce_timer_callback,
+            RT_NULL,
+            rt_tick_from_millisecond(CHARGE_STATE_DEBOUNCE_MS / 4 + 20),
+            RT_TIMER_FLAG_ONE_SHOT | RT_TIMER_FLAG_SOFT_TIMER);
+    }
+    if (s_charge_debounce_timer)
+    {
+        rt_timer_stop(s_charge_debounce_timer);
+        rt_timer_start(s_charge_debounce_timer);
+    }
+}
+
+static void charge_debounce_disarm(void)
+{
+    if (s_charge_debounce_timer)
+        rt_timer_stop(s_charge_debounce_timer);
+}
+
 static void read_charge_status(void)
 {
     battery_charger_status_t status = battery_get_charging_status();
     bool charging = (status == BATTERY_CHARGER_STATUS_CHARGING);
 
     LOG_D("[%s] Is charging? %d", __func__, charging);
+
+    if (!s_charge_state_valid)
+    {
+        /* First read since boot: there is no previous value to debounce
+         * against, and holding it back would leave the UI blank. */
+        s_charge_state_valid = true;
+        s_charge_published   = charging;
+        s_charge_candidate   = charging;
+        s_charge_candidate_tick = rt_tick_get();
+    }
+    else if (charging != s_charge_candidate)
+    {
+        /* The IC just moved. Start timing the new value. */
+        s_charge_candidate = charging;
+        s_charge_candidate_tick = rt_tick_get();
+
+        if (charging != s_charge_published)
+        {
+            LOG_I("charge status %d, holding before publish", (int)charging);
+            charge_debounce_arm();
+            return;
+        }
+        /* It bounced straight back to what is already published -- the
+         * transition never happened as far as the UI is concerned. */
+        LOG_I("charge status bounced back to %d", (int)charging);
+    }
+    else if (charging != s_charge_published)
+    {
+        /* Same value as the previous read; has it held long enough? */
+        rt_tick_t held = (rt_tick_t)(rt_tick_get() - s_charge_candidate_tick);
+        if (held < rt_tick_from_millisecond(CHARGE_STATE_DEBOUNCE_MS))
+        {
+            charge_debounce_arm();
+            return;
+        }
+        LOG_I("charge status settled at %d", (int)charging);
+        s_charge_published = charging;
+    }
+
+    charge_debounce_disarm();
 
     /* Report on every read, not just on a local transition. Gating here on our
      * own last-seen value made the two cores unrecoverable once they diverged:
@@ -349,8 +448,15 @@ static void check_battery_voltage(void)
         return;
 
 #if BATTERY_USE_STATE_GAUGE
+    /* Use the debounced state, not a fresh raw read: the gauge switches its
+     * whole model between charge and discharge, so feeding it the IC's
+     * thermal-throttle blips would make it flip direction every few seconds.
+     * Before the first charge read has landed there is nothing debounced yet,
+     * so fall back to the raw value. */
     bool charging =
-        (battery_get_charging_status() == BATTERY_CHARGER_STATUS_CHARGING);
+        s_charge_state_valid
+            ? s_charge_published
+            : (battery_get_charging_status() == BATTERY_CHARGER_STATUS_CHARGING);
     uint8_t full = 0;
     /* Only trust a successful read; an I2C hiccup must not be read as
      * "termination reported", which would snap the gauge to 100%. */
