@@ -25,8 +25,16 @@ extern "C"
 {
 #endif
 
-/* Bounded like every other watch-side list — no heap on the BLE parse path. */
+/* Bounded like every other watch-side list — no heap on the BLE parse path.
+   這是**儲存**上限(每台桌面留幾筆 metadata),不是顯示上限:搜尋要能在使用者看不到的
+   那幾筆裡命中,所以池子必須比畫面上的深。 */
 #define SESSION_PAGER_MAX 8
+/* 一台桌面在清單上**同時畫出來**的 session 上限(founder 2026-08-24:「每個設備只會有
+   最新的 5 個 session」)。四台桌面 × 8 筆全部注入 actions 清單時,LVGL 每次重建 32 列
+   卡片(每列還有右緣圓框/設備名),錶盤左頁明顯卡頓。顯示收到 5、儲存仍留 8:
+   - 平常 = 每台最新 5 筆;
+   - 有語音搜尋字時 = 每台**比中查詢**的最新 5 筆(池子是那台留著的 8 筆)。 */
+#define SESSION_VISIBLE_MAX 5
 /* 桌面設備上限,與媒體欄 / MAX_SYNCED_DEVICES 同步。 */
 #define SESSION_DEVICE_MAX 4
 #define SESSION_DEVICE_NAME_LEN 32
@@ -51,6 +59,10 @@ extern "C"
 
     /** actions 清單有更新(手機推播落地)時由 instruction list 呼叫,重畫合併列表。 */
     void session_list_actions_changed(void);
+
+    /** 語音搜尋字變了(instruction list 的 s_text_filter)時由 instruction list 呼叫:
+        重挑每台桌面要露出的那 5 筆(有查詢字 = 比中的最新 5 筆)並重新注入。 */
+    void session_list_text_filter_changed(void);
 
     /** 對 [device_id] 開新 session 並武裝 walk-in(清單推回來自動進聊天室)。
         滑鼠頁底部 skaibar tap 用;呼叫端負責把畫面切到左頁。 */
