@@ -17,6 +17,9 @@ on:
       hcpu_port:
         description: "HCPU 指令/log COM"
         default: "COM3"
+      expect_mac:
+        description: "要在掃描結果裡找的 BLE MAC（留空 = 只列出聽到什麼）"
+        default: ""
 
 # Shares the release group: never probe a port while a release is using it.
 concurrency:
@@ -90,3 +93,16 @@ jobs:
               Write-Host "(port 開得起來但 5 秒內沒有任何輸出 — 手錶可能沒在跑)"
             }
           } finally { $sp.Close() }
+
+      - name: Hear every BLE advertisement
+        continue-on-error: true
+        env:
+          IN_EXPECT_MAC: ${{ inputs.expect_mac }}
+        working-directory: C:\skaiwalk\SiFli-SDK\example\get-started\dualcore\project\hcpu
+        run: |
+          # The release only reports "MAC X not found", which reads the same
+          # whether the adapter is deaf or the watch went quiet. Listening for
+          # everything separates the two.
+          $argv = @('ble_scan_probe.py', '--seconds', '15')
+          if ($env:IN_EXPECT_MAC) { $argv += @('--expect', $env:IN_EXPECT_MAC) }
+          py -3 @argv
