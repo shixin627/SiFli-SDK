@@ -9886,6 +9886,11 @@ static lv_obj_t *s_media_vol_slider = NULL;
    (founder 2026-08-19:「我想要他跟那邊一樣是先點個按鈕才展開」)。 */
 static lv_obj_t *s_media_vol_btn = NULL;
 static bool s_media_vol_expanded = false;
+/* 綁定一頁之後,還沒收到「這一台的音量」的第一筆回報。第一筆只校準把手、不展開:
+   建立時的值只是佔位,拿它跟真實音量比對必然「看起來像變動」,於是每次滑到一頁
+   條子就自己彈出來 —— 那不是使用者調的音量,不該叫它出來(founder 2026-08-20)。
+   校準之後才恢復「真的變動就展開」。 */
+static bool s_media_vol_calibrated = false;
 static lv_timer_t *s_media_vol_collapse_timer = NULL;
 #define MEDIA_VOL_BAR_WIDTH 300
 #define MEDIA_VOL_BAR_Y (-70)
@@ -9991,6 +9996,17 @@ static bool s_media_vol_dragging = false;
 static int s_media_vol_last_sent = -1;
 static uint32_t s_media_vol_last_tick = 0;
 #define MEDIA_VOL_SEND_MIN_MS 80
+/* 送出去、還在等對方把同一個值回報回來的那個值(-1 = 沒有待對帳的)。
+   為什麼需要:條子是樂觀更新(按下就到位),但對方的回報有往返延遲。放開手指的瞬間
+   s_media_vol_dragging 就解除了,而**在你按之前對方就已經送出、還在路上**的那筆回報
+   這時才到 —— 它帶的是舊音量,於是條子被拉回舊值,等對方真的套用新值再回報一次,才又
+   animate 回去。使用者看到的就是「按下跳到最大、放開彈回中間、再自己滑回最大」
+   (founder 2026-08-20)。送出後只接受自己的回聲,其餘在途的舊回報一律丟掉。 */
+static int s_media_vol_pending_echo = -1;
+static uint32_t s_media_vol_pending_tick = 0;
+/* 對方可能永遠不回(舊桌面不回報音量、或那筆掉了)。超過這個時間就放棄等待,恢復接受
+   回報 —— 寧可晚一點跟上真實值,也不要把條子永久鎖在一個對方其實沒套用的數字上。 */
+#define MEDIA_VOL_ECHO_TIMEOUT_MS 1500
 
 /* 送出目前的滑桿值。force=放開手指那一下:無論節流與否都要送,否則最終落點可能沒送到。 */
 static void media_vol_send(int value, bool force)
@@ -10005,6 +10021,8 @@ static void media_vol_send(int value, bool force)
     }
     s_media_vol_last_sent = value;
     s_media_vol_last_tick = now;
+    s_media_vol_pending_echo = value; /* 等這個值回來才算對帳完成 */
+    s_media_vol_pending_tick = now;
     /* 目標是遠端設備(電腦)→ 送絕對音量給它;目標是**手機自己**→ 走 BLE 的絕對音量,
        也就是音樂 widget 那顆音量條用的同一支(app_media.c 的 bt_speaker_set_volume)。
        原本這裡沒有遠端目標就直接 return,於是媒體頁切到「手機」那一頁時整條拉了沒反應
@@ -10066,6 +10084,23 @@ static void media_center_vol_slider_cb(lv_event_t *e)
     }
 }
 
+/* 送出後的回聲對帳:true = 這筆該丟掉。相同值 = 自己的回聲,對帳完成(條子已經顯示
+   它了,不用再動也不該展開);不同值且還在等待窗內 = 在途的舊回報,丟掉;超時 = 放棄
+   等待,接受對方說的。 */
+static bool media_vol_echo_should_drop(int percent)
+{
+    if (s_media_vol_pending_echo < 0) return false;
+    if (percent == s_media_vol_pending_echo)
+    {
+        s_media_vol_pending_echo = -1;
+        return true;
+    }
+    if ((lv_tick_get() - s_media_vol_pending_tick) < MEDIA_VOL_ECHO_TIMEOUT_MS)
+        return true;
+    s_media_vol_pending_echo = -1;
+    return false;
+}
+
 /* 手機**自己**的音量在別處變動(實體音量鍵、手機上調整、AVRCP 通知)→ 媒體頁若正指著
    手機那一頁,條子要跟著走。來源是 bloc_control 既有的下行,它本來就在餵音樂 widget 與
    音樂 app 的兩條 bar,這裡只是第三個消費者(founder 2026-08-19:「手機還沒接上」)。
@@ -10076,6 +10111,14 @@ void mouse_mode_handle_phone_volume(uint8_t percent)
     if (!s_media_vol_slider || !lv_obj_is_valid(s_media_vol_slider)) return;
     if (ble_hid_mouse_app_route()) return; /* 目標是電腦 → 這筆不是它的音量 */
     if (s_media_vol_dragging) return;      /* 手指還在上面,別跟使用者搶 */
+    if (media_vol_echo_should_drop((int)percent)) return;
+    if (!s_media_vol_calibrated)
+    {
+        /* 這一頁的第一筆:校準,不展開(見 s_media_vol_calibrated)。 */
+        s_media_vol_calibrated = true;
+        lv_bar_set_value(s_media_vol_slider, percent, LV_ANIM_OFF);
+        return;
+    }
     if ((int)lv_bar_get_value(s_media_vol_slider) == (int)percent) return;
     lv_bar_set_value(s_media_vol_slider, percent, LV_ANIM_ON);
     media_vol_expand(); /* 與電腦那條、與音樂 widget 一致:變動時自己展開 */
@@ -10090,6 +10133,15 @@ void mouse_mode_handle_remote_volume(const char *device_id, int percent)
     if (device_id == NULL || s_dev_active_id[0] == '\0' ||
         strncmp(device_id, s_dev_active_id, SYNCED_DEVICE_ID_LEN) != 0)
         return;
+    if (media_vol_echo_should_drop(percent)) return;
+    if (!s_media_vol_calibrated)
+    {
+        /* 這一頁的第一筆:把佔位換成真實音量,但不展開(見 s_media_vol_calibrated)。 */
+        s_media_vol_calibrated = true;
+        lv_bar_set_value(s_media_vol_slider, percent, LV_ANIM_OFF);
+        s_media_vol_last_sent = percent;
+        return;
+    }
     /* 值真的變了才動作 —— 相同數值的重複回報不該把條子叫出來。 */
     if ((int)lv_bar_get_value(s_media_vol_slider) == percent) return;
     lv_bar_set_value(s_media_vol_slider, percent, LV_ANIM_ON);
@@ -10108,10 +10160,15 @@ void mouse_mode_handle_remote_volume(const char *device_id, int percent)
      2) 錶盤頂部面板(lv_top_panel.c)每台設備一頁的媒體格
    所以把控制列抽出來，兩邊共用同一份 callback，避免兩套實作各自漂移。
    設備名/箭頭**不**在這裡：面板版的設備列是固定在面板頂部、不隨頁捲動的。 */
+/* [seed_phone_volume] 只有手機那一欄該給 true。頁面是每台設備各建一頁、而且由
+   clock_main_media_cols_content_ensure() 一個迴圈一次建完,所以這裡不能拿
+   ble_hid_mouse_app_route()(單一的「當前目標」全域旗標)來判斷 —— 那會把手機的
+   音量蓋到每一欄上,包含電腦的(founder 2026-08-20 抓到)。 */
 static void media_content_build(lv_obj_t *parent, lv_obj_t **out_title,
                                 lv_obj_t **out_play_img,
                                 lv_obj_t **out_vol_slider,
-                                lv_obj_t **out_vol_btn)
+                                lv_obj_t **out_vol_btn,
+                                bool seed_phone_volume)
 {
     lv_obj_t *title = lv_label_create(parent);
     lv_label_set_text(title, "Media Title");
@@ -10150,7 +10207,13 @@ static void media_content_build(lv_obj_t *parent, lv_obj_t **out_title,
     lv_obj_set_style_radius(slider, 16, LV_PART_MAIN);
     lv_obj_set_style_radius(slider, 16, LV_PART_INDICATOR);
     lv_obj_set_style_bg_opa(slider, LV_OPA_100, LV_PART_MAIN);
-    lv_bar_set_value(slider, 50, LV_ANIM_OFF); /* 佔位:0x19 回報一到就校準 */
+    /* 電腦那幾頁只能站佔位,等 0x19 回報校準(校準不展開,見 s_media_vol_calibrated)。
+       手機那頁不一樣 —— bloc_control 手上已經有手機的音量(連線當下手機就推過一次),
+       直接拿來當初值,而那一頁沒有 0x19 可以事後校準它。 */
+    uint8_t slider_init = 50;
+    if (seed_phone_volume && control_provider.bt_speaker_get_volume)
+        slider_init = control_provider.bt_speaker_get_volume();
+    lv_bar_set_value(slider, slider_init, LV_ANIM_OFF);
     /* 遠端回報是離散取樣(桌面每 250ms 送一次),直接套用會一格一格跳。給 bar 一個補間
        時間,兩筆之間就用滑的接起來(founder 2026-08-19:「不要讓它是瞬間跳過去」)。
        250ms = 取樣間隔:剛好在下一筆到達時走完,不會累積延遲也不會停頓。 */
@@ -10219,7 +10282,9 @@ static void media_page_del_cb(lv_event_t *e)
     lv_mem_free(w);
 }
 
-lv_obj_t *hid_mouse_media_page_create(lv_obj_t *parent)
+/* [is_phone_column] = 這一頁屬於手機那一欄(頂部面板的第 0 欄)。呼叫端知道欄號,
+   builder 不知道 —— 別在 builder 裡用全域的當前目標旗標猜。 */
+lv_obj_t *hid_mouse_media_page_create(lv_obj_t *parent, bool is_phone_column)
 {
     media_page_widgets_t *w =
         (media_page_widgets_t *)lv_mem_alloc(sizeof(media_page_widgets_t));
@@ -10233,7 +10298,8 @@ lv_obj_t *hid_mouse_media_page_create(lv_obj_t *parent)
     lv_obj_set_user_data(page, w);
     lv_obj_add_event_cb(page, media_page_del_cb, LV_EVENT_DELETE, w);
 
-    media_content_build(page, &w->title, &w->play_img, &w->vol_slider, &w->vol_btn);
+    media_content_build(page, &w->title, &w->play_img, &w->vol_slider, &w->vol_btn,
+                        is_phone_column);
     return page;
 }
 
@@ -10259,6 +10325,10 @@ void hid_mouse_media_page_bind(lv_obj_t *page)
         lv_obj_clear_flag(w->vol_btn, LV_OBJ_FLAG_HIDDEN);
     /* 換設備 = 換一台機器的音量,舊的節流基準作廢(否則新設備第一筆相同數值會被吃掉)。 */
     s_media_vol_last_sent = -1;
+    /* 也還沒收到新這一台的音量:下一筆回報是校準,不是使用者調的。 */
+    s_media_vol_calibrated = false;
+    /* 對上一台送出的值不該拿來跟這一台的回報對帳。 */
+    s_media_vol_pending_echo = -1;
 }
 
 void hid_mouse_media_page_reset_title(lv_obj_t *page)
@@ -10362,9 +10432,10 @@ static void create_media_center_panel(lv_obj_t *parent)
     update_ctrl_dev_label(); // 依目前 active 設備設定文字/顯示 + 箭頭可見性
 
     // 曲名 + 控制列 + 音量（與錶盤頂部面板的媒體格共用同一份 builder）
+    /* 這一頁跟著 active 設備動態切換,沒有固定歸屬 → 不種,靠校準。 */
     media_content_build(media_tile, &media_center_title_label,
                         &media_center_play_img, &s_media_vol_slider,
-                        &s_media_vol_btn);
+                        &s_media_vol_btn, false);
 
     // 離開 App：紅色 Exit 鈕（從舊右側抽屜移來），放媒體頁最底
     lv_obj_t *media_exit_btn = lv_btn_create(media_tile);

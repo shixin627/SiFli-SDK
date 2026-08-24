@@ -61,7 +61,14 @@ BLE_BATTERY_LEVEL_UUID = "00002a19-0000-1000-8000-00805f9b34fb"
 # only paid when the watch really has gone silent.
 BLE_SCAN_SECONDS = 30
 BLE_CONNECT_TIMEOUT_SECONDS = 15
-BLE_PROVISION_BOOT_WAIT_SECONDS = 8
+# 30s, not 8: GET answers on UART well before the BLE stack is actually
+# radiating, so a short wait sends the scan looking for a radio that has not
+# come up yet.
+BLE_PROVISION_BOOT_WAIT_SECONDS = 30
+# The MAC command is sent exactly once and cannot be retried, so the only
+# lever on a late reply is listening longer. Costs nothing when the watch
+# answers promptly - it is a deadline, not a sleep.
+BLE_PROVISION_REPLY_TIMEOUT_SECONDS = 180
 DEFAULT_BLE_RSSI_THRESHOLD = -75
 MAC_REGISTRY_FILE = os.path.join(
     os.environ.get("LOCALAPPDATA", os.path.expanduser("~")),
@@ -492,7 +499,9 @@ def run_ble_provisioning_test(port, rssi_threshold, emit, board, version,
 
     if generate_new_mac:
         emit("=== 透過 HCPU UART 產生並寫入新的 BLE static random MAC ===")
-        provisioned = uart_provision_request(port, "MAC", emit)
+        provisioned = uart_provision_request(
+            port, "MAC", emit,
+            timeout=BLE_PROVISION_REPLY_TIMEOUT_SECONDS)
         if not provisioned["ok"]:
             raise RuntimeError(provisioned["detail"])
         wait_for_system_boot(

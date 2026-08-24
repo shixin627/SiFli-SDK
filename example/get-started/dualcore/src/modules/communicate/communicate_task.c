@@ -516,10 +516,10 @@ bool commu_send_hr_window_raw(uint32_t ts, int64_t fit_a_q16, int64_t fit_b_q16,
 bool commu_send_hr_burst(uint32_t ts, uint32_t dur_ms, uint32_t samples,
                          uint16_t reads, uint16_t readfail, uint16_t frame_pct,
                          uint16_t rate_info, uint8_t extends, uint8_t best,
-                         uint8_t reason)
+                         uint8_t reason, uint8_t power_veto)
 {
     /* @ref KEY_HR_BURST_SUMMARY. 23 bytes, little-endian. */
-    uint8_t buf[23];
+    uint8_t buf[24];
     uint16_t n = 0;
     uint32_t w32[3] = { ts, dur_ms, samples };
     for (int j = 0; j < 3; j++)
@@ -530,6 +530,9 @@ bool commu_send_hr_burst(uint32_t ts, uint32_t dur_ms, uint32_t samples,
     buf[n++] = extends;
     buf[n++] = best;
     buf[n++] = reason;
+    /* Appended after the frozen 23 -- an older phone stops at reason and a newer
+       one reading older firmware simply sees no tail. */
+    buf[n++] = power_veto;
     return commu_send_blob(HEALTH_DATA_COMMAND_ID, KEY_HR_BURST_SUMMARY, buf, n);
 }
 

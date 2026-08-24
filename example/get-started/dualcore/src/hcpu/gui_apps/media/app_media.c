@@ -311,6 +311,17 @@ static void widget_bar_event_cb(lv_event_t *e)
     }
 }
 
+/* 連線當下手機就推了一次音量,但那時 bar 還沒建,set_*_vol_bar_value 的
+   lv_obj_is_valid() 會把它整筆丟掉 —— 之後除非手機音量再變一次,條子就
+   一直停在建立時寫死的初值。bloc_control 一直有存那個值,只是沒人讀回來,
+   所以建立時就跟它要。 */
+static uint8_t vol_bar_initial_value(void)
+{
+    if (control_provider.bt_speaker_get_volume)
+        return control_provider.bt_speaker_get_volume();
+    return 0;
+}
+
 void set_widget_vol_bar_value(uint8_t volume)
 {
     if (lv_obj_is_valid(widget_vol_bar))
@@ -636,7 +647,7 @@ static lv_obj_t *music_app_ui_build(lv_obj_t *parent)
     lv_obj_set_style_radius(app_vol_bar, 16, LV_PART_MAIN);
     lv_obj_set_style_radius(app_vol_bar, 16, LV_PART_INDICATOR);
     lv_obj_set_style_bg_opa(app_vol_bar, LV_OPA_100, LV_PART_MAIN);
-    lv_bar_set_value(app_vol_bar, 0, LV_ANIM_ON);
+    lv_bar_set_value(app_vol_bar, vol_bar_initial_value(), LV_ANIM_OFF);
     lv_obj_add_event_cb(app_vol_bar, app_bar_event_cb, LV_EVENT_ALL, NULL);
     lv_obj_add_flag(app_vol_bar, LV_OBJ_FLAG_HIDDEN);
     app_vol_bar_expanded = false;
@@ -805,7 +816,7 @@ lv_obj_t *lv_media_widget_builder(lv_obj_t *parent)
     lv_obj_set_style_radius(widget_vol_bar, 16, LV_PART_MAIN);
     lv_obj_set_style_radius(widget_vol_bar, 16, LV_PART_INDICATOR);
     lv_obj_set_style_bg_opa(widget_vol_bar, LV_OPA_100, LV_PART_MAIN);
-    lv_bar_set_value(widget_vol_bar, 0, LV_ANIM_ON);
+    lv_bar_set_value(widget_vol_bar, vol_bar_initial_value(), LV_ANIM_OFF);
     lv_obj_add_event_cb(widget_vol_bar, widget_bar_event_cb, LV_EVENT_ALL,
                         NULL);
     lv_obj_add_flag(widget_vol_bar, LV_OBJ_FLAG_HIDDEN);
