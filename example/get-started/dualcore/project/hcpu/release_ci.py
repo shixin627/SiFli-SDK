@@ -57,18 +57,44 @@ def fail(message):
     return 1
 
 
+def _ver_key(version):
+    return tuple(int(part) for part in version.split("."))
+
+
+def published_version_on_oss():
+    """Version currently published on OSS, or None if nothing is published."""
+    published = rg.oss.get_object(
+        rg.oss.load_credentials(), rg.oss.info_json_key(rg.read_board()))
+    if published is None:
+        return None
+    version = json.loads(published.decode("utf-8")).get("version", "")
+    if not rg.VER_RE.match(version):
+        raise RuntimeError("OSS info.json 的版號格式無法解析：%r" % version)
+    return version
+
+
+def reject_stale_version(version):
+    """An explicit --version must be newer than what is already on OSS:
+    re-using a published version silently overwrites that release."""
+    published = published_version_on_oss()
+    if published is None:
+        return
+    if _ver_key(version) <= _ver_key(published):
+        raise RuntimeError(
+            "版號 %s 不高於 OSS 上已發布的 %s，發上去會覆蓋舊版。"
+            "請改用更高的版號，或留空 --version 自動遞增。"
+            % (version, published))
+    emit("版號檢查：OSS 上已發布 %s，本次發布 %s" % (published, version))
+
+
 def next_version_from_oss():
     """Published version on OSS + 1 revision. Errors out rather than guessing:
     silently falling back to the local header could re-publish a version that
     already exists on OSS."""
-    published = rg.oss.get_object(
-        rg.oss.load_credentials(), rg.oss.info_json_key(rg.read_board()))
-    if published is None:
+    version = published_version_on_oss()
+    if version is None:
         raise RuntimeError(
             "OSS 上還沒有 info.json，第一次發布請用 --version 明確指定版號。")
-    version = json.loads(published.decode("utf-8")).get("version", "")
-    if not rg.VER_RE.match(version):
-        raise RuntimeError("OSS info.json 的版號格式無法解析：%r" % version)
     major, minor, revision = version.split(".")
     following = "%s.%s.%d" % (major, minor, int(revision) + 1)
     emit("OSS 上已發布 %s，本次發布 %s" % (version, following))
@@ -253,6 +279,7 @@ def selftest():
         "COM4", "COM3", None)
     # Empty --version is legal: it means "resolve from OSS".
     assert check() == ("", "", None), "auto version must pass validation"
+    assert _ver_key("1.1.129") < _ver_key("1.1.130") < _ver_key("1.2.0")
     print("release_ci selftest: OK")
     return 0
 
@@ -264,7 +291,14 @@ def main(argv=None):
         return fail(error)
 
     try:
-        version = args.version or next_version_from_oss()
+        if args.version:
+            version = args.version
+            # Only an upload can clobber a published release; a build-only run
+            # must still work without OSS credentials.
+            if args.upload:
+                reject_stale_version(version)
+        else:
+            version = next_version_from_oss()
         rc = step_release_mode(version)
         if rc:
             return rc

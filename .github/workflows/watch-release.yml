@@ -148,13 +148,23 @@ jobs:
           if ('${{ inputs.upload }}'      -eq 'true') { $argv += '--upload' }
           Write-Host "release_ci.py args: $($argv -join ' ')"
           py -3 @argv
-          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          $rc = $LASTEXITCODE
+          # A blank `version` input is resolved from OSS inside release_ci.py,
+          # so the real version is only knowable here - read it back from the
+          # info.json the run just wrote, or the artifact would be named
+          # `watch--<board>`. Written before exiting: a failed run still gets
+          # a named artifact.
+          $rel = (Get-Content info.json -Raw | ConvertFrom-Json).version
+          if (-not $rel) { $rel = 'unknown' }
+          "REL_VERSION=$rel" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+          "- 發布版號: ``$rel``" | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Append -Encoding utf8
+          if ($rc -ne 0) { exit $rc }
 
       - name: Upload release artifacts
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: watch-${{ inputs.version }}-${{ inputs.board }}
+          name: watch-${{ env.REL_VERSION || inputs.version }}-${{ inputs.board }}
           if-no-files-found: warn
           path: |
             ${{ env.WATCH_REPO }}\example\get-started\dualcore\project\hcpu\watchOS.zip
