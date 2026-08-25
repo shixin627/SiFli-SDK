@@ -734,6 +734,7 @@ void device_pager_refresh(void)
            這個 refresh 每次手機 E7 同步都跑，不可把它清回 "" — 否則選完設備約 60s
            (下次同步)就把 relay 目標洗掉、控制中斷。只在那情況跳過清 ""。 */
         extern bool hid_mouse_owns_active_target(void);
+        LOG_W("[active] pager refresh onpage=%d", (int)on_device_page);
         if (!(active[0] == '\0' && hid_mouse_owns_active_target()))
             pager_send_active(active);
         /* R3: keep the shared floating list mirroring THIS device's options as

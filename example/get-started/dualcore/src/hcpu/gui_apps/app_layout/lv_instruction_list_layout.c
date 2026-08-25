@@ -675,6 +675,7 @@ static void instruction_list_assert_local_target(void)
     extern bool hid_mouse_owns_active_target(void);
     if (hid_mouse_owns_active_target()) return;
     if (s_bar_single_device) return;
+    LOG_W("[active] inst local");
     commu_send_active_device(""); /* "" = no remote target → primary/local */
 }
 
