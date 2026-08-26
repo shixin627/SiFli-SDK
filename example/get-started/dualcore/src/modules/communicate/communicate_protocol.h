@@ -39,7 +39,12 @@ extern "C"
 
 /* Hard cap on the reassembled L2 payload size (across all fragments of one
    logical command). Anything bigger gets dropped with an error log. */
-#define L2_REASSEMBLY_MAX_BYTES (4096)
+/* 4096 撞到了(founder 2026-08-26):手機每次把**整份 backlog** 塞進一包 conv_state,
+   一段 300 字的中文回覆就 ~1450 bytes,三則加上 JSON 結構 ≈ 4573 bytes → 整包在這裡
+   被丟掉,手錶永遠停在倒數第二則、看不到最新的 AI 回覆(症狀完全不像傳輸問題)。
+   拉到 8192 是止血;真正的解是手機端別每次重送整份對話(見 pushSiFliConvState)。
+   代價 = 這個 static 緩衝 +4KB。 */
+#define L2_REASSEMBLY_MAX_BYTES (8192)
 
 /* ATT NTF/WRT carries its own 3-byte header, so the largest L2 frame we can
    put on the wire is mtu - 3. */
