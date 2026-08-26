@@ -675,6 +675,7 @@ static void instruction_list_assert_local_target(void)
     extern bool hid_mouse_owns_active_target(void);
     if (hid_mouse_owns_active_target()) return;
     if (s_bar_single_device) return;
+    LOG_W("[active] inst local");
     commu_send_active_device(""); /* "" = no remote target → primary/local */
 }
 
@@ -6462,9 +6463,24 @@ static void ai_bar_event_cb(lv_event_t *evt)
    那段空窗裡,陣列與畫面對不起來(你點到的是別人)。與其在每條推播路徑後面補救,不如讓
    搜尋期間的清單就是一份靜態快照:推播照收(佇列留著),只是先不套用。搜尋一結束,
    cat_filter_restore_full 把搜尋前的完整清單放回來,下一次推播(最多 5 秒)就補上最新內容。 */
+/* session pager 正在重挑「每台設備露出哪幾筆」的那一小段（見
+   session_list_text_filter_changed）：這段要能在搜尋期間動清單，所以暫時解除凍結。
+   凍結擋的是**手機每 5 秒的 replace-all**，不是換查詢字時本來就要做的一次重建。 */
+static bool s_session_inject_bypass = false;
+
+void instruction_list_session_inject_begin(void)
+{
+    s_session_inject_bypass = true;
+}
+
+void instruction_list_session_inject_end(void)
+{
+    s_session_inject_bypass = false;
+}
+
 static bool search_freeze_active(void)
 {
-    return s_text_filter[0] != '\0';
+    return s_text_filter[0] != '\0' && !s_session_inject_bypass;
 }
 
 void clear_custom_instructions(void)
@@ -8398,6 +8414,14 @@ static bool text_contains_ci(const char *hay, const char *needle)
    再重建。跟一條持續重寫同一個陣列的資料流搶,只會補完一個路徑漏下一個。
    改成在**所有重建的共同出口** refresh_custom_instructions 裡套用:不管內容是誰重建的、
    走哪條路徑,畫出來之前都會先被篩過一次。 */
+/* session pager 用：這個標題在目前的語音搜尋字底下留不留得住。沒有查詢字時恆真。
+   刻意共用 pack_text_filter 的同一支比對 —— 兩邊語意分岔的話，pager 挑進來的列會被
+   打包階段再篩掉一次，結果就是「搜尋時某台設備只剩兩三筆」。 */
+bool instruction_list_title_matches_filter(const char *title)
+{
+    return text_contains_ci(title, s_text_filter);
+}
+
 static void pack_text_filter(void)
 {
     if (s_text_filter[0] == '\0')
@@ -8580,6 +8604,16 @@ void instruction_list_set_text_filter(const char *text)
     /* 清掉篩選 → 先把完整清單放回來;有篩選 → refresh 出口會套用(pack_text_filter)。 */
     if (s_text_filter[0] == '\0')
         cat_filter_restore_full();
+    /* 查詢字換了 = session 段要重挑：平常每台露出最新 5 筆，搜尋時改成那台比中查詢的
+       最新 5 筆（池子是手錶為那台留著的 8 筆，含畫面上原本沒露出的）。 */
+    {
+        extern void session_list_text_filter_changed(void);
+        extern bool instruction_list_reapply_view_filter(void);
+        session_list_text_filter_changed();
+        /* 注入走 add_or_update_custom_instruction，那支開頭會 cat_filter_restore_full()
+           把 @// 檢視篩選解掉 —— 跟手機推播之後同一個補救。 */
+        instruction_list_reapply_view_filter();
+    }
     refresh_custom_instructions();
 }
 

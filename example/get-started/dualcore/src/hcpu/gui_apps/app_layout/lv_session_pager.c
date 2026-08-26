@@ -558,6 +558,47 @@ static void sp_append_actions(lv_obj_t *view)
    黑底、文字置中、右緣圓形圖標輪播、底部麥克風)。session 以 '@' item 塞進那份
    清單,點了走既有 '@' 路徑(conv_open + chat_page);這裡的自有列表/聊天層退役成
    隱藏備援。upsert/移除都有變動才 refresh,避免 refresh→hook→inject 迴圈。 */
+/* 每台桌面在清單上要露出哪幾筆 —— founder 2026-08-24:「每個設備只會有最新的 5 個
+   session,除非我有搜尋 session,才改成每個設備搜尋到的最新 5 個」。
+
+   為什麼是挑、不是少存:搜尋字是在**手錶本地**比對標題的(instruction list 的
+   pack_text_filter),池子只有露出來的那幾筆的話,搜尋永遠只能命中畫面上已經看得到的
+   東西 —— 那就不叫搜尋了。所以儲存維持 SESSION_PAGER_MAX(8)筆/台,這裡只決定哪
+   幾筆變成清單列;搜尋開著時同一支函式改用「比中查詢的最新 5 筆」。
+
+   out[] 收 items[] 的 index,ts 由新到舊(同 ts / 都沒 ts 時取陣列在前者 —— 手機推
+   來的順序本來就是新→舊)。回傳筆數。 */
+static int sp_visible_for_device(int slot, uint8_t *out, int max)
+{
+    /* 空查詢時恆真 = 平常就是「最新 N 筆」。 */
+    extern bool instruction_list_title_matches_filter(const char *title);
+    const device_sessions_t *dev;
+    bool taken[SESSION_PAGER_MAX];
+    int n = 0;
+    if (slot < 0 || slot >= s_device_count || out == NULL || max <= 0)
+        return 0;
+    dev = &s_devices[slot];
+    memset(taken, 0, sizeof(taken));
+    while (n < max)
+    {
+        int best = -1;
+        for (int k = 0; k < dev->count && k < SESSION_PAGER_MAX; k++)
+        {
+            if (taken[k])
+                continue;
+            if (!instruction_list_title_matches_filter(dev->items[k].title))
+                continue;
+            if (best < 0 || dev->items[k].ts > dev->items[best].ts)
+                best = k;
+        }
+        if (best < 0)
+            break;
+        taken[best] = true;
+        out[n++] = (uint8_t)best;
+    }
+    return n;
+}
+
 static void sp_inject_sessions_into_actions(void)
 {
     extern void add_or_update_custom_instruction(const char *id, const char *title,
@@ -583,7 +624,16 @@ static void sp_inject_sessions_into_actions(void)
 
     bool changed = false;
 
-    /* 移除:清單裡 conv: 開頭、但儲存裡已不存在的(桌面刪了 session)。 */
+    /* 這一輪每台桌面要露出的那幾筆(見 sp_visible_for_device)。清單上的 conv 段
+       **只由這份集合決定** —— 沒被挑中的(第 6 筆之後、或搜尋沒比中的)就跟被桌面
+       刪掉的一樣從清單移除,只是仍留在 s_devices 裡供下一次搜尋比對。 */
+    uint8_t vis[SESSION_DEVICE_MAX][SESSION_VISIBLE_MAX];
+    int vis_n[SESSION_DEVICE_MAX];
+    for (int d = 0; d < SESSION_DEVICE_MAX; d++)
+        vis_n[d] = (d < s_device_count) ? sp_visible_for_device(d, vis[d], SESSION_VISIBLE_MAX) : 0;
+
+    /* 移除:清單裡 conv: 開頭、但這一輪沒被挑中的(桌面刪了 session、或落在最新 5 筆
+       之外 / 搜尋沒比中)。 */
     for (int i = (int)return_total_list_count() - 1; i >= 0; i--)
     {
         const char *iid = instruction_list_export_id((uint8_t)i);
@@ -591,8 +641,8 @@ static void sp_inject_sessions_into_actions(void)
             continue;
         bool still = false;
         for (int d = 0; d < s_device_count && !still; d++)
-            for (int k = 0; k < s_devices[d].count && !still; k++)
-                still = (strcmp(s_devices[d].items[k].id, iid) == 0);
+            for (int v = 0; v < vis_n[d] && !still; v++)
+                still = (strcmp(s_devices[d].items[vis[d][v]].id, iid) == 0);
         if (!still)
         {
             remove_custom_instruction(iid);
@@ -610,13 +660,14 @@ static void sp_inject_sessions_into_actions(void)
         uint8_t slot;
         uint8_t idx;
         uint32_t ts;
-    } order[SESSION_DEVICE_MAX * SESSION_PAGER_MAX];
+    } order[SESSION_DEVICE_MAX * SESSION_VISIBLE_MAX];
     int cnt = 0;
     for (int d = 0; d < s_device_count; d++)
-        for (int k = 0; k < s_devices[d].count; k++)
+        for (int v = 0; v < vis_n[d]; v++)
         {
+            uint8_t k = vis[d][v];
             order[cnt].slot = (uint8_t)d;
-            order[cnt].idx = (uint8_t)k;
+            order[cnt].idx = k;
             order[cnt].ts = s_devices[d].items[k].ts;
             cnt++;
         }
@@ -667,7 +718,7 @@ static void sp_inject_sessions_into_actions(void)
        有沒有真的動到順序,沒動就不 refresh,輪詢才不會每 5s 重繪。 */
     {
         extern bool instruction_list_order_conv_items(const char *const *ids, uint8_t n);
-        const char *ids[SESSION_DEVICE_MAX * SESSION_PAGER_MAX];
+        const char *ids[SESSION_DEVICE_MAX * SESSION_VISIBLE_MAX];
         uint8_t idn = 0;
         for (int o = 0; o < cnt && idn < (uint8_t)(sizeof(ids) / sizeof(ids[0])); o++)
             ids[idn++] = s_devices[order[o].slot].items[order[o].idx].id;
@@ -685,6 +736,21 @@ static void sp_inject_sessions_into_actions(void)
 void session_list_actions_changed(void)
 {
     sp_inject_sessions_into_actions();
+}
+
+/** 語音搜尋字變了 → 重挑可見集合並重新注入。
+    為什麼要單獨一支:平常的注入路徑在搜尋期間被 R60 的清單凍結擋掉(手機每 5 秒
+    replace-all 會把選中項與捲動位置踩掉),但「換查詢字」本來就要重建清單一次,
+    所以這條由 instruction_list_set_text_filter 呼叫、並在期間解除凍結。
+    只在真的有東西動到時才會走到 refresh(sp_inject 自己判斷)。 */
+void session_list_text_filter_changed(void)
+{
+    extern void instruction_list_session_inject_begin(void);
+    extern void instruction_list_session_inject_end(void);
+    instruction_list_session_inject_begin();
+    sp_inject_sessions_into_actions();
+    instruction_list_session_inject_end();
+    sp_rebuild_list();
 }
 
 /** 公開:滑鼠單設備搜尋抽屜用 —— 在 device_id 那台的 0x20 session 清單裡按 title
@@ -792,15 +858,19 @@ static void sp_rebuild_list(void)
         uint8_t slot;
         uint8_t idx;
         uint32_t ts;
-    } order[SESSION_DEVICE_MAX * SESSION_PAGER_MAX];
+    } order[SESSION_DEVICE_MAX * SESSION_VISIBLE_MAX];
     int n = 0;
+    /* 與注入清單同一份可見集合(每台最新 SESSION_VISIBLE_MAX 筆,搜尋時是比中的那幾筆)
+       —— 兩個檢視露出不同筆數會讓「左頁看得到、備援看不到」這種鬼故事很難查。 */
     for (int d = 0; d < s_device_count; d++)
     {
-        for (int i = 0; i < s_devices[d].count; i++)
+        uint8_t vis[SESSION_VISIBLE_MAX];
+        int vn = sp_visible_for_device(d, vis, SESSION_VISIBLE_MAX);
+        for (int i = 0; i < vn; i++)
         {
             order[n].slot = (uint8_t)d;
-            order[n].idx = (uint8_t)i;
-            order[n].ts = s_devices[d].items[i].ts;
+            order[n].idx = vis[i];
+            order[n].ts = s_devices[d].items[vis[i]].ts;
             n++;
         }
     }

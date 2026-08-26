@@ -161,6 +161,9 @@ bool commu_send_active_device(const char *device_id)
     char json[16 + SYNCED_DEVICE_ID_LEN];
     int n = rt_snprintf(json, sizeof(json), "{\"device_id\":\"%s\"}", device_id);
     if (n <= 0 || n >= (int)sizeof(json)) return false;
+    /* PROBE 2026-08-25: 「滑鼠 app 送出後 active 被清掉，文字掉進備忘錄」——這是所有
+       active-target uplink 的唯一咽喉點，先確認送出了什麼，caller 由下面各處的 tag 區分。 */
+    LOG_W("[active] send id=%s", device_id);
     bool ok = commu_send_string(SKAI_LINK_COMMAND_ID, KEY_ACTIVE_SELECT, json);
     if (ok)
     {

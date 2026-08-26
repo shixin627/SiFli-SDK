@@ -11228,6 +11228,7 @@ void hid_mouse_clear_active_device(void)
     if (s_dev_active_id[0] == '\0')
         return;
     s_dev_active_id[0] = '\0';
+    LOG_W("[active] mouse clear");
     commu_send_active_device("");
     ble_hid_mouse_set_app_route(false);
     LOG_I("[dev_switch] active -> phone (cleared)");
@@ -12183,6 +12184,7 @@ static void msg_handler(gui_app_msg_type_t msg, void *param)
         if (active_device_name() != NULL)
         {
             /* 上次控制的設備還在 → 接回 relay 控制 */
+            LOG_W("[active] mouse reenter");
             commu_send_active_device(s_dev_active_id);
             ble_hid_mouse_set_app_route(true);
         }

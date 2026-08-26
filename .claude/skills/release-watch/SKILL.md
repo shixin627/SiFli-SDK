@@ -31,6 +31,12 @@ Inputs: `version` (**留空 = 讀 OSS `skaiwatch/<board>/info.json` 的版號 +1
 `flash_port` (default COM4), `hcpu_port` (default COM3), `skip_hwtest`,
 `upload`.
 
+**重跑一次失敗的發布時，不要把上一次的 `-f version=` 一起複製過來。** 那是
+已經發布出去的版號，再發一次就覆蓋掉線上那版。1.1.129 就這樣被重發過一次：
+本機 `info.json` 和 header 剛好也停在 1.1.129，看起來就像「現在的版號」。留空
+讓它自己 +1，或明確指定下一號。`release_ci.py` 現在會在編譯前擋下不高於 OSS
+已發布版號的 `--version`（僅在 `--upload` 時檢查），但別靠它來想版號。
+
 **A failed flash wedges the watch, and a wedged watch lies about which port is
 which.** After `DownLoadUart fail`, the next attempt fails too — sometimes on
 the *other* port, and `EnterDebugMode success` can even appear on the HCPU port.
