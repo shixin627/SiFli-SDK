@@ -36,7 +36,17 @@ typedef struct lv_font_freetype_lib_dsc
     const char      *font_lib_name;     /* font name             */
 } lv_font_freetype_lib_dsc_t;
 
-typedef struct
+/* MSVC sim: the linker aligns each TU's app_font contribution to 16 bytes,
+   but SECTION_ITEM_GET strides by sizeof — a 12-byte item walks off the real
+   entries and hands out garbage font_name pointers. align(16) makes sizeof
+   match the packing; the zero padding rows it introduces are rejected by the
+   !desc->font_name guard in lvsf_font_create_builtin. ARM layout unchanged. */
+#if defined(_MSC_VER)
+#define FONT_DESC_ALIGN __declspec(align(16))
+#else
+#define FONT_DESC_ALIGN
+#endif
+typedef FONT_DESC_ALIGN struct
 {
     const char                  *font_name;
     const lv_font_freetype_lib_dsc_t *font_lib;

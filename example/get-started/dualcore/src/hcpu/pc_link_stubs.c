@@ -141,7 +141,6 @@ typedef struct { uint8_t addr[6]; } bd_addr_t;
 /* lv_instruction_list_layout.c */ void set_skai_widget_opa(uint8_t opa) {  }
 /* app_skai.c */ void set_skai_widget_processing_text(const char *text) {  }
 /* app_media.c */ void set_widget_vol_bar_value(uint8_t volume) {  }
-/* hid_mouse.c */ void mouse_mode_handle_phone_volume(uint8_t percent) {  }
 /* lv_instruction_list_layout.c */ bool skai_widget_has_ai_reply(void) { return false; }
 /* communicate_protocol.h */ void skaiwatch_ble_set_performance(ble_perf_level_t level) {  }
 /* app_mainmenu.c */ rt_int32_t speech_on_pause(void) { return 0; }
@@ -286,3 +285,10 @@ bool ble_hid_mouse_app_route(void) { return false; }
 /* instruction-op queue — owning TU excluded on PC */ void instruction_op_enqueue_image(const char *id, const char *path) { (void)id; (void)path; }
 /* mic/audio HAL — excluded on PC */ uint16_t mic_get_rms_level(void) { return 0; }
 /* mic/audio HAL — excluded on PC */ bool mic_get_vad_active(void) { return false; }
+/* communicate_task.h */ bool commu_send_conv_list_req(const char *device) { (void)device; return false; }
+/* communicate_task.h */ bool commu_send_conv_new_ex(const char *device, const char *text) { (void)device; (void)text; return false; }
+/* communicate_task.h */ bool commu_send_media_volume(int percent) { (void)percent; return false; }
+/* communicate_task.h */ bool commu_send_tv_key(const char *verb) { (void)verb; return false; }
+/* communicate_task.h */ bool commu_send_hr_burst(uint32_t ts, uint32_t dur_ms, uint32_t samples, uint16_t reads, uint16_t readfail, uint16_t frame_pct, uint16_t rate_info, uint8_t extends, uint8_t best, uint8_t reason, uint8_t power_veto) { (void)ts; (void)dur_ms; (void)samples; (void)reads; (void)readfail; (void)frame_pct; (void)rate_info; (void)extends; (void)best; (void)reason; (void)power_veto; return false; }
+/* communicate_task.h */ bool commu_send_hr_window_raw(uint32_t ts, int64_t fit_a_q16, int64_t fit_b_q16, uint8_t shift, uint16_t first_index, uint16_t count, const int16_t *win) { (void)ts; (void)fit_a_q16; (void)fit_b_q16; (void)shift; (void)first_index; (void)count; (void)win; return false; }
+/* communicate_parse_skailink.c — owning TU excluded on PC */ void tv_state_apply_pending(void) { }

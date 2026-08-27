@@ -116,9 +116,19 @@ typedef struct
     entry- app's entry function
     n    - group id/sytle id
 */
+/* MSVC sim: builtin_app_desc_t leads with magic_flag (byte-scanned by
+   gui_builtin_app_list_* since sections don't pack contiguously on COFF) —
+   the exported initializer must supply it or every field shifts by one. */
+#if defined(_MSC_VER)
+#define BUILTIN_APP_MAGIC_INIT MSC_APP_STRUCT_MAGIC_HEAD,
+#else
+#define BUILTIN_APP_MAGIC_INIT
+#endif
+
 #define BUILTIN_APP_EXPORT(name, icon, id, entry, n)                            \
     SECTION_ITEM_REGISTER(BuiltinApp##n##Tab, RT_USED static const builtin_app_desc_t CONCAT_2(__builtinapp, n)) =  \
     {                                                                           \
+        BUILTIN_APP_MAGIC_INIT                                                  \
         name,                                                                   \
         icon,                                                                   \
         id,                                                                     \

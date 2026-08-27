@@ -259,7 +259,11 @@ time_data_t *service_current_time_get(bool ms_need)
 
 #else
 
-#ifdef BSP_USING_PC_SIMULATOR
+/* quickjs.c ships its own MSVC gettimeofday; two definitions is LNK2005 */
+#if defined(BSP_USING_PC_SIMULATOR) && defined(PKG_USING_QUICKJS)
+extern int gettimeofday(struct _timeval *tp, void *tzp);
+#endif
+#if defined(BSP_USING_PC_SIMULATOR) && !defined(PKG_USING_QUICKJS)
 
 int gettimeofday(struct _timeval *tp, void *tzp)
 {
