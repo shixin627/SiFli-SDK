@@ -1,2317 +1,0 @@
-[459948] D/bt_common bts: hcicn_acl_conn_req closeflag: 0
-
-[459988] I/NO_TAG bts: BT_NOTIFY_COMMON_ACL_CONNECT_IND
-[460009] D/NO_TAG bts: Unknown message class: 2
-
-[460050] I/NO_TAG bts: DM_ACL_ACPT_CONN_STATUS
-[460068] D/NO_TAG bts: Unknown message class: 2
-
-[460355] I/NO_TAG bts: DM_ACL_ACPT_CONN_STATUS
-[460373] D/NO_TAG bts: Unknown message class: 2
-
-[460393] D/bt_common bts: sec_state:0 sec_flag:0
-[460412] D/bt_common bts: flag:6 sec_flag:0
-[460436] I/NO_TAG bts: link connected COD:5898764 Incoming:1 hdl 128 res 0
-
-[460473] I/NO_TAG bts: bd addr 2b-70-9b6bb8
-
-[460494] D/NO_TAG bts: Unknown message class: 2
-
-[460517] D/bt_common bts: dm_set gap_dm_role_discov_req_hdl 3309
-[460548] D/bt_common bts: dm_release gap_wr_lp_settings_comp_gap_hdl 2081
-[460576] D/bt_common bts: svc_release gap_wr_lp_settings_comp_gap_hdl 2082
-[460606] D/bt_common bts: dm_set gap_wr_scan_enb_req_hdl 8731
-[460670] D/bt_common bts: dm_release gap_wr_super_vision_timeout_comp_hdl 2600
-[461005] D/bt_common bts: dm_release gap_dm_role_discov_comp_hdl 3380
-[461033] I/btapp_ge bts: device address: 002B:70:9B6BB8
-[461055] I/btapp_ge bts:     role: slave
-
-[461102] D/bt_common bts: dm_release gap_send_wr_scan_enb_comp_to_app 8657
-[461139] D/bt_common bts: dm_release gap_wr_scan_enb_gap_comp_hdl 8563
-[461169] I/btapp_ge bts: << Write scan enable success
-
-[461194] D/bt_common bts: dm_set gap_rd_scan_enb_req_hdl 8768
-[461222] D/bt_common bts: dm_release gap_rd_rmt_ext_featr_cfm_hdl 6036
-[461250] I/btapp_ge bts: res = 0,page_num = 1,max_page_num = 2
-
-[461280] I/btapp_ge bts: ext_lmp_featr[0] = 0xb,ext_lmp_featr[1] = 0x0,ext_lmp_featr[2] = 0x0,ext_lmp_featr[3] = 0x0
-
-[461343] D/bt_common bts: dm_release gap_rd_scan_enb_comp_hdl 8689
-[461370] I/btapp_ge bts: << Scan mode: 0
-
-[461386] I/btapp_ge bts: <<            No scans enbd.
-
-[461715] D/NO_TAG bts: fsm: L2C_CH st:0 evt:1
-[461736] D/bt_common bts: receive l2cap sig_code 10
-
-[461761] D/bt_common bts: send l2cap sig b
-
-[462374] D/bt_common bts: receive l2cap sig_code 10
-
-[462399] D/bt_common bts: send l2cap sig b
-
-[463028] D/bt_common bts: receive l2cap sig_code 2
-
-[463049] D/NO_TAG bts: fsm: L2C_CH st:2 evt:14
-[463073] D/NO_TAG bts: fsm: L2C_CID st:0 evt:2
-[463091] D/NO_TAG bts: fsm: L2C_CID st:3 evt:8
-[463111] D/bt_common bts: assign_cid2psm,i = 0,phdl = 8,cid = 0x40
-
-[463148] D/NO_TAG bts: fsm: SDS st:0 evt:2
-[463168] D/bt_common bts: l2c_cid_create_rsp 0
-
-[463187] D/NO_TAG bts: fsm: L2C_CID st:3 evt:17
-[463207] D/bt_common bts: send l2cap sig 3
-
-[463628] D/bt_common bts: receive l2cap sig_code 4
-
-[463649] D/bt_common bts: l2c_ch_hdl_sig_rcfreq
-[463667] D/bt_common bts: l2c_cid_rcfreq st:4,flag 0,id:64
-[463690] D/NO_TAG bts: fsm: L2C_CID st:4 evt:25
-[463713] D/bt_common bts:  sdpsh_cfg_indi st 2
-
-[463732] D/NO_TAG bts: fsm: SDS st:2 evt:8
-[463748] D/bt_common bts:  sdpsh_fn_cfg_ind
-
-[463766] D/bt_common bts:  l2ca_cfg_rsp_1
-
-[463786] D/NO_TAG bts: fsm: L2C_CID st:4 evt:4
-[463806] D/bt_common bts: send l2cap sig 5
-
-[463825] D/NO_TAG bts: fsm: L2C_CID st:4 evt:24
-[463847] D/bt_common bts: send l2cap sig 4
-
-[464315] D/bt_common bts: receive l2cap sig_code 5
-
-[464336] D/bt_common bts: l2c cfg res st 4 rmt_cid54 local_cid40 
-
-[464362] D/NO_TAG bts: fsm: L2C_CID st:4 evt:14
-[464381] D/bt_common bts: l2ch_send_cfg_cfm  msgsend des_module3
-
-[464406] D/NO_TAG bts: fsm: L2C_CID st:4 evt:21
-[464431] D/NO_TAG bts: fsm: SDS st:2 evt:10
-[464448] D/NO_TAG bts: fsm: SDS st:2 evt:11
-[464468] D/NO_TAG bts: fsm: SDS st:3 evt:14
-[464520] D/NO_TAG bts: fsm: SDS st:3 evt:12
-[464984] D/bt_common bts: receive l2cap sig_code 6
-
-[465005] D/NO_TAG bts: fsm: L2C_CID st:5 evt:28
-[465030] D/NO_TAG bts: fsm: SDS st:3 evt:7
-[465048] D/bt_common bts: clear_cid,i = 0,phdl = 8,cid = 0x40
-
-[465072] D/NO_TAG bts: fsm: L2C_CID st:7 evt:30
-[465095] D/bt_common bts: send l2cap sig 7
-
-[465114] D/NO_TAG bts: fsm: L2C_CH st:2 evt:6
-[465132] D/bt_common bts: l2c_chcb_idle_st next_cidcb is null
-[465663] D/bt_common bts: rd(2b:70:9b6bb8) lk 1, cnt 1
-[465696] D/bt_common bts: flag:2 sec_flag:2
-[465714] D/bt_common bts: dm_set gap_sm_add_dev_req_hdl 374
-[465775] D/bt_common bts: dm_release gap_dm_arrival_hdl 9461
-[466580] D/bt_common bts: sec_state:0 sec_flag:2
-[466600] D/bt_common bts: flag:6 sec_flag:6
-[466618] D/NO_TAG bts: fsm: HCI_SM st:0 evt:3
-[466636] D/bt_common bts: hcism_kick_req_process p_acl->ev_lock 0x 0 pacl 0x80 p_acl->sm_st 0 
-[466677] I/btapp_ge bts: BTS2MU_GAP_ENCRYPTION_IND
-[466915] D/bt_common bts: receive l2cap sig_code 2
-
-[466936] D/NO_TAG bts: fsm: L2C_CH st:2 evt:14
-[466964] D/NO_TAG bts: fsm: L2C_CID st:0 evt:2
-[466987] D/bt_common bts: send l2cap sig 3
-
-[467007] D/bt_common bts: l2c_cid_fn_rcnreq psm3 local_cid41
-
-[467042] D/bt_common bts: hcism_kick_req_process p_acl->ev_lock 0x 0 pacl 0x80 p_acl->sm_st 0 
-[467080] D/bt_common bts: hcism_kick_req_process p_acl->sm_req 0x2009cfd4 pacl 0x80 
-[467112] D/NO_TAG bts: fsm: HCI_SM st:0 evt:2
-[467130] D/NO_TAG bts: fsm: HCI_SM st:4 evt:11
-[467149] D/NO_TAG bts: fsm: HCI_SM st:5 evt:11
-[467167] D/NO_TAG bts: fsm: HCI_SM st:6 evt:11
-[467185] D/bt_common bts: access_cfm prot_id:0x 3  phdl:0x 4
-[467216] D/bt_common bts: hcism_kick_req_process p_acl->ev_lock 0x 0 pacl 0x80 p_acl->sm_st 0 
-[467252] D/bt_common bts: l2c_cid_sm_access_cfm chcb2009cf68 chnnl 3 context 41 granted 1
-
-[467287] D/bt_common bts: psm3 local_cid 41
-
-[467305] D/NO_TAG bts: fsm: L2C_CID st:3 evt:8
-[467324] D/bt_common bts: assign_cid2psm,i = 0,phdl = 6,cid = 0x41
-
-[467359] D/NO_TAG bts: fsm: RFC_MUX st:0 evt:1
-[467377] D/bt_common bts: l2c_conn_ind rf start mux_id 0x0 l2ca_id 0x 7 cid 0x41 
-
-[467412] D/bt_common bts: gap_rfc_start_ind_hdl sm_in_progress 0 operate mux 255 mux 0 type 0x31
-
-[467449] D/bt_common bts: svc_set gap_rfc_start_ind_hdl 795
-[467475] D/bt_common bts: rfc res mc 2009cfd4
-
-[467493] D/NO_TAG bts: fsm: RFC_MUX st:2 evt:9
-[467513] D/NO_TAG bts: fsm: RFC_MUX st:2 evt:14
-[467533] D/bt_common bts: l2c_cid_create_rsp 0
-
-[467551] D/NO_TAG bts: fsm: L2C_CID st:3 evt:17
-[467583] D/bt_common bts: send l2cap sig 3
-
-[467933] D/bt_common bts: receive l2cap sig_code 4
-
-[467954] D/bt_common bts: l2c_ch_hdl_sig_rcfreq
-[467972] D/bt_common bts: l2c_cid_rcfreq st:4,flag 0,id:65
-[467995] D/NO_TAG bts: fsm: L2C_CID st:4 evt:25
-[468018] D/bt_common bts: rfc_l2cap_cfg_ind_hdl st 3
-[468038] D/NO_TAG bts: fsm: RFC_MUX st:3 evt:16
-[468057] D/bt_common bts: rfcmuxfn_l2c_cfg_ind curid:7,cfgid:8
-[468081] D/bt_common bts: l2c_cfg_ind rf start mux_id:0x 0 l2ca_id:0x 8 cid:0x41
-
-[468115] D/bt_common bts: gap_rfc_start_ind_hdl sm_in_progress 1 operate mux 0 mux 0 type 0x 7
-
-[468153] D/bt_common bts: rfc res mc 2009cfd4
-
-[468172] D/NO_TAG bts: fsm: RFC_MUX st:3 evt:9
-[468194] D/NO_TAG bts: fsm: L2C_CID st:4 evt:4
-[468227] D/bt_common bts: send l2cap sig 5
-
-[468248] D/NO_TAG bts: fsm: L2C_CID st:4 evt:24
-[468270] D/bt_common bts: send l2cap sig 4
-
-[468584] D/bt_common bts: receive l2cap sig_code 5
-
-[468606] D/bt_common bts: l2c cfg res st 4 rmt_cid63 local_cid41 
-
-[468632] D/NO_TAG bts: fsm: L2C_CID st:4 evt:14
-[468651] D/bt_common bts: l2ch_send_cfg_cfm  msgsend des_module3
-
-[468682] D/NO_TAG bts: fsm: L2C_CID st:4 evt:21
-[468703] D/bt_common bts: rfcomm handle l2ca cfg cfm st 3
-[468725] D/NO_TAG bts: fsm: RFC_MUX st:3 evt:17
-[468743] D/NO_TAG bts: fsm: RFC_MUX st:3 evt:20
-[468892] D/NO_TAG bts: fsm: RFC_MUX st:5 evt:7
-[468918] D/bt_common bts: rfc recv data the dlci 0x0 target_dlci 0x0 rfc_len 0 frm_type 1 num_srv_chnls 0
-[468959] D/bt_common bts: gap_rfc_start_cmp_ind_hdl 0
-[469578] D/NO_TAG bts: fsm: RFC_MUX st:6 evt:32
-get_new_dlc_id,id = 1
-[469611] D/NO_TAG bts: fsm: RFC_DLC st:0 evt:1
-[469631] D/bt_common bts: rfc recv data the dlci 0x0 target_dlci 0x0 rfc_len 0 frm_type 5 num_srv_chnls 1
-[469677] D/bt_common bts: gap_rfc_parneg_ind_hdl sm_in_progress:1 mux_id:0 reason:2 operating_mux 0 type 0x 7
-[469719] D/NO_TAG bts: fsm: RFC_DLC st:1 evt:12
-[469738] D/bt_common bts: rfc recv pn req id 0x 0
-[469763] D/NO_TAG bts: fsm: RFC_DLC st:1 evt:20
-[470230] D/NO_TAG bts: fsm: RFC_DLC st:0 evt:7
-[470267] D/bt_common bts: hcism_kick_req_process p_acl->ev_lock 0x 0 pacl 0x80 p_acl->sm_st 0 
-[470303] D/bt_common bts: hcism_kick_req_process p_acl->sm_req 0x200a3fd0 pacl 0x80 
-[470335] D/NO_TAG bts: fsm: HCI_SM st:0 evt:2
-[470353] D/NO_TAG bts: fsm: HCI_SM st:4 evt:11
-[470371] D/NO_TAG bts: fsm: HCI_SM st:5 evt:11
-[470389] D/NO_TAG bts: fsm: HCI_SM st:6 evt:11
-[470407] D/bt_common bts: access_cfm prot_id:0x 6  phdl:0x 7
-[470440] D/bt_common bts: hcism_kick_req_process p_acl->ev_lock 0x 0 pacl 0x80 p_acl->sm_st 0 
-[470477] D/NO_TAG bts: fsm: RFC_DLC st:3 evt:24
-[470504] D/bt_common bts: hfp_hf_gap_rfc_conn_ind_hdl res 0x1
-[470530] I/btapp_hf bts: hfp msg *msg_type 8002 inst_data->st 1
-
-[470567] D/bt_common bts: estb_cfs gap_rfc_estb_ind_hdl 1152
-[470590] D/bt_common bts: svc_release gap_rfc_conn_acpt_cfm_msg_send 428
-[470619] D/bt_common bts: dm_release gap_rfc_estb_ind_hdl 1165
-[470644] D/bt_common bts: hfp_hf_gap_conn_acpt_cfm_hdl res 0x0
-[470669] D/bt_common bts: HF device_state new_sate 0x 2, old_state 0x 0
-[470698] I/btapp_hf bts: hfp msg *msg_type 8003 inst_data->st 1
-
-[470723] I/btapp_hf bts: BTS2MU_HF_CONN_CFM state 2 res:0
-[470746] D/NO_TAG bts: fsm: RFC_DLC st:3 evt:26
-[470777] D/NO_TAG bts: fsm: RFC_DLC st:4 evt:15
-[470805] D/bt_common bts: svc_set gap_rfc_esc_conn_acpt_req_hdl 8309
-[470832] D/bt_common bts: svc_release conn_esc_acpt_cfm_msg_send 8139
-[470867] D/bt_common bts: svc_set gap_rfc_acpt_conn_req_hdl 600
-[470894] D/bt_common bts: svc_release connable_hdl 8165
-[470916] D/bt_common bts: dm_release gap_rfc_profile_st_change_setting_ext 12382
-[470954] D/bt_common bts: dm_release gap_sm_reg_req_hdl 649
-[471566] D/NO_TAG bts: fsm: RFC_DLC st:4 evt:29
-[471588] D/bt_common bts: rfc recv data the dlci 0x0 target_dlci 0x0 rfc_len 0 frm_type 5 num_srv_chnls 1
-[471632] D/NO_TAG bts: fsm: RFC_DLC st:4 evt:30
-[471651] D/bt_common bts: rfc recv data the dlci 0x0 target_dlci 0x0 rfc_len 0 frm_type 5 num_srv_chnls 1
-[471694] D/bt_common bts: hfp_hf_gap_ctrl_ind_hdl
-[471715] D/bt_common bts: send hf at_cmd 0x1, allow 0x1,max_size ff type 0
-
-[472520] D/bt_common bts: supp_brsf_feature fef
-[472539] D/bt_common bts: hfp_hf_init_link_settings: 7
-[472562] I/btapp_hf bts: hfp msg *msg_type 801c inst_data->st 1
-
-[472595] D/bt_common bts: send hf at_cmd 0x2, allow 0x1,max_size ff type 0
-
-[472838] D/ble.app KE_EVT2: BLE_GAP_REMOTE_RSSI_IND -49
-[472860] D/BLE_GAP KE_EVT2: GAPC event status, op: 7, ret 0
-[473038] D/bt_common bts: send hf at_cmd 0x3, allow 0x1,max_size ff type 0
-
-[473833] D/bt_common bts: send hf at_cmd 0x4, allow 0x1,max_size ff type 0
-
-[474555] I/btapp_hf bts: hfp msg *msg_type 801a inst_data->st 1
-
-[474581] I/btapp_hf bts: >> "call":0
-
-[474596] I/btapp_hf bts: >>ciev call st 1 callStatus 0
-
-[474618] I/btapp_hf bts: CIEV name:call val:0
-[474639] I/btapp_hf bts: hfp msg *msg_type 801a inst_data->st 1
-
-[474664] I/btapp_hf bts: >> "callsetup":0
-
-[474681] I/btapp_hf bts: >>ciev call setup callStatus 0
-
-[474703] I/btapp_hf bts: CIEV name:callsetup val:0
-[474728] D/bt_common bts: send hf at_cmd 0x5, allow 0x1,max_size ff type 0
-
-[474759] I/btapp_hf bts: hfp msg *msg_type 801a inst_data->st 1
-
-[474784] I/btapp_hf bts: >> "service":1
-
-[474801] I/btapp_hf bts: CIEV name:service val:1
-[474821] I/btapp_hf bts: hfp msg *msg_type 801a inst_data->st 1
-
-[474846] I/btapp_hf bts: >> "signal":5
-
-[474862] I/btapp_hf bts: CIEV name:signal val:5
-[474893] I/btapp_hf bts: hfp msg *msg_type 801a inst_data->st 1
-
-[474918] I/btapp_hf bts: >> "roam":0
-
-[474933] I/btapp_hf bts: CIEV name:roam val:0
-[474968] I/btapp_hf bts: hfp msg *msg_type 801a inst_data->st 1
-
-[474993] I/btapp_hf bts: >> "battchg":5
-
-[475010] I/btapp_hf bts: CIEV name:battchg val:5
-[475034] I/btapp_hf bts: hfp msg *msg_type 801a inst_data->st 1
-
-[475059] I/btapp_hf bts: >> "callheld":0
-
-[475076] I/btapp_hf bts: >>ciev call hold st 1 callStatus0
-
-[475099] I/btapp_hf bts: CIEV name:callheld val:0
-[475121] I/btapp_hf bts: hfp msg *msg_type 801d inst_data->st 1
-
-[475147] I/btapp_hf bts: cind call status 0 callHeldStatus 0 callSetupStatus 0
-[475828] D/bt_common bts: send hf at_cmd 0x6, allow 0x1,max_size ff type 0
-
-[476848] I/btapp_hf bts: hfp msg *msg_type 800f inst_data->st 1
-
-[476873] I/btapp_hf bts: >> "(0,1,1x,2,2x,3)":63
-
-[476902] D/bt_common bts: HF device_state new_sate 0x 3, old_state 0x 2
-[476930] D/bt_common bts: gap_sco_acpt_conn_req_send codec_id 2
-[476955] D/bt_common bts: HF device_sco_state new_sate 0x 5, old_state 0x 0
-[476984] I/btapp_hf bts: hfp msg *msg_type 8003 inst_data->st 1
-
-[477009] I/btapp_hf bts: BTS2MU_HF_CONN_CFM state 3 res:0
-[477034] I/btapp_hf bts: conn_cfm bd: 9B6BB8:0070:002B
-
-[477055] I/btapp_hf bts: << HF Conneted success
-
-[477084] D/bt_common bts: send hf at_cmd 0x1c, allow 0x1,max_size ff type 0
-
-[477805] I/btapp_hf bts: hfp msg *msg_type 800a inst_data->st 1
-
-[477831] I/btapp_hf bts: bt_hfp_at_cmd_cfm cmd_id:0x1c  res:0x 0
-[535030] D/app.clock app_watc: refresh_time:19:3:0
-[701473] D/NO_TAG bts: Sniff mode st: 0, inv: 480.00
-[701496] I/btapp_hf bts: hfp msg *msg_type 8019 inst_data->st 1
-
-[701521] I/btapp_hf bts: >> Sniff mode
-
-[800355] D/ble.app KE_EVT2: BLE_GAP_REMOTE_RSSI_IND -54
-[800377] D/BLE_GAP KE_EVT2: GAPC event status, op: 7, ret 0
-[1128084] D/ble.app KE_EVT2: BLE_GAP_REMOTE_RSSI_IND -49
-[1128107] D/BLE_GAP KE_EVT2: GAPC event status, op: 7, ret 0
-[1148457] D/app.notification timer: dial_header_music_pause_cb: Music paused, starting timer to hide header
-[1148513] D/app.notification app_watc: Music paused for 30s, hiding dial header
-[1148543] D/ui.handler app_watc: GUI Task: msg type: 68
-[1203124] D/NO_TAG tpread: Touch pressed at (10, 237)
-[1206202] I/instruction.list.layout app_watc: Refreshing custom instructions...
-[1218327] D/sibles KE_EVT2: rev wr rsp:left_txnum 8
-
-[1218371] I/communicate.task app_watc: send skaibar view {"cat":""} -> ok
-[1219703] D/communicate.parse KE_EVT2: NOTIFY_COMMAND_ID, KEY = 0x6b
-[1220060] D/commu.parse.notify app_watc: Applying instruction: id=920f9b15-3a31-4912-8bde-fa35c30d7685, title=?????? sterben??
-[1220166] D/sibles KE_EVT2: rev wr rsp:left_txnum 8
-
-[1220188] I/instruction.list.layout app_watc: Requested instruction image for id=920f9b15-3a31-4912-8bde-fa35c30d7685
-[1220236] D/commu.parse.notify app_watc: Applying instruction: id=1659b0e2-f3ca-4631-9cd1-2615cff1a856, title=?????????
-[1220337] D/sibles KE_EVT2: rev wr rsp:left_txnum 8
-
-[1220359] I/instruction.list.layout app_watc: Requested instruction image for id=1659b0e2-f3ca-4631-9cd1-2615cff1a856
-[1220403] I/commu.parse.notify app_watc: BATCH instructions: 2 of 2 item(s) applied
-[1220438] I/instruction.list.layout app_watc: Refreshing custom instructions...
-[1220468] I/instruction.list.layout app_watc: refresh_custom_instructions: deferred (debounce)
-[1220505] D/ui.handler app_watc: GUI Task: msg type: 70
-[1223728] I/app.mainmenu app_watc: DBG inst_list: before set_power_save_mode
-[1223757] I/app.mainmenu app_watc: DBG inst_list: before sensor_quat
-[1223783] D/bloc.motion_tracking app_watc: set_scroll_segment_count:2,100
-[1223811] I/app.mainmenu app_watc: DBG inst_list: after scroll_seg_count
-[1223839] I/app.mainmenu app_watc: DBG inst_list: before refersh_weather_icon
-[1223871] I/app.mainmenu app_watc: DBG inst_list: before instruction_list_resume
-[1223901] I/bloc.motion_tracking app_watc: set_free_control_with_arm:1
-[1223928] I/instruction.list.layout app_watc: instruction_list_resume
-[1223954] I/app.mainmenu app_watc: DBG inst_list: before display_status_bar_area
-[1223986] I/app.mainmenu app_watc: DBG inst_list: before display_gesture_detect_objs
-[1224022] D/lvsf.gesture app_watc: display_gesture_detect_objs idx=0 display=0
-[1224052] I/app.mainmenu app_watc: DBG inst_list: enter-block done
-[1224077] I/app.mainmenu app_watc: is_at_instruction_list: 1
-[1224102] I/app.mainmenu app_watc: is_at_home: 0
-[1238505] I/instruction.list.layout app_watc: Refreshing custom instructions...
-[1242752] I/instruction.list.layout app_watc: [bar_dev] SCROLL_BEGIN suppressed (s_in_refresh_scroll=true)
-[1242805] D/sibles KE_EVT2: rev wr rsp:left_txnum 8
-
-[1242832] D/sibles KE_EVT2: rev wr rsp:left_txnum 8
-
-[1242911] I/instruction.list.layout app_watc: [VOICE] re-asserted selected_item_index=1 (list_item_count=2)
-[1309794] D/NO_TAG tpread: Touch pressed at (236, 440)
-[1311948] D/NO_TAG tpread: Quick click at (236, 440)
-[1311969] D/NO_TAG tpread: System is already ON, no action taken
-[1312300] I/instruction.list.layout app_watc: Mic bar tapped ??? opening AI widget (is_open flag=0)
-[1312342] I/instruction.list.layout app_watc: [bar_dev] animate_open_ai_widget: s_left_morph_busy=0 s_left_closing=0 box_visib
-[1312394] I/instruction.list.layout app_watc: [bar_dev] animate_open_ai_widget: proceeding to open morph
-[1319514] D/bloc.v2t app_watc: send_voice_recognition_event: 1
-[1319540] I/bloc.motion_tracking app_watc: set_paused_control_with_arm:1
-[1319670] I/bloc.v2t voice_re: set_voice_recognition_started: 1
-[1319719] I/bloc.v2t voice_re: Received start listening event, started: 1
-[1320272] D/app.system.interface app_watc: voice_recognition_hint_create
-[1320304] D/app.system.interface app_watc: open_ai_tap_hint_bg: 0
-[1320365] D/ui.handler app_watc: GUI Task: msg type: 32
-[1320395] D/app.speech.provider voice_re: app_speech_set_content p_app_speech_ctx: 
-[1320454] D/app.system.interface voice_re: refresh_ai_chat_input_message: 
-[1320966] D/app.system.interface voice_re: Input message refreshed1
-[1321035] D/sibles KE_EVT2: rev wr rsp:left_txnum 8
-
-[1321062] I/ble.app voice_re: ble_set_performance 0 -> 1
-[1321095] D/ble.app voice_re: Request conn param update: intv_min=12 (15.00 ms), intv_max=28 (35.00 ms), latency=0, timeout=50
-[1321170] D/ble.app voice_re: ble_gap_update_conn_param result: 0
-get_mic_volume = 0db
-get_mic_volume = 0db
-[1322627] D/bloc.v2t voice_re: Voice recognition event processed: 1
-[1323370] D/ui.handler app_watc: GUI Task: msg type: 20
-[1327391] D/BLE_GAP KE_EVT2: GAPC event status, op: 9, ret 0
-[1327417] I/ble_cm KE_EVT2: BLE_GAP_UPDATE_CONN_PARAM_IND 24, 0
-[1327442] D/ble_cm KE_EVT2: connection_manager_event_process 0x49
-[1327467] I/ble.app KE_EVT2: Updated connection interval: 24 (30.00 ms), latency: 0, timeout: 500
-opus alloc=24544 0x6028ff98
-[1337931] D/bloc.v2t audio_st: opus encoder acquired by owner=2
-
-[1338404] D/ui.handler app_watc: GUI Task: msg type: 21
---audio pipe full
-[1455848] D/ble.app KE_EVT2: BLE_GAP_REMOTE_RSSI_IND -51
-[1455871] D/BLE_GAP KE_EVT2: GAPC event status, op: 7, ret 0
-[1497475] D/ui.handler app_watc: GUI Task: msg type: 21
-[1552969] D/ui.handler app_watc: GUI Task: msg type: 21
-[1566388] D/ui.handler app_watc: GUI Task: msg type: 21
-[1613911] D/ui.handler app_watc: GUI Task: msg type: 21
-[1654932] D/NO_TAG tpread: Touch pressed at (378, 202)
-[1661673] I/instruction.list.layout app_watc: [bar_dev] close_ai_widget: keep_list=0 is_cancel=1 s_left_closing=0 s_bar_single
-[1661817] I/instruction.list.layout app_watc: Refreshing custom instructions...
-[1662116] I/instruction.list.layout app_watc: [bar_dev] SCROLL_BEGIN suppressed (s_in_refresh_scroll=true)
-[1662718] I/instruction.list.layout app_watc: [bar_dev] SCROLL_BEGIN suppressed (s_in_refresh_scroll=true)
-[1662763] I/bloc.motion_tracking app_watc: set_paused_control_with_arm:0
-[1662800] D/sibles KE_EVT2: rev wr rsp:left_txnum 8
-
-[1663392] I/instruction.list.layout app_watc: [VOICE] re-asserted selected_item_index=1 (list_item_count=2)
-[1663448] D/sibles KE_EVT2: rev wr rsp:left_txnum 8
-
-[1663470] I/communicate.task app_watc: send skaibar dismiss -> ok
-[1663495] D/bloc.v2t app_watc: send_stop_listening_event
-[1663576] D/bloc.v2t app_watc: send_voice_recognition_event: 4
-[1663600] I/drv.audcodec peripher: bf0_audio_stop 0x0
-
-[1663622] I/drv.audcodec peripher: audcodec close dac
-[1663644] I/drv.audcodec peripher: bf0_audio_stop 0x0 done
-
-[1663667] I/drv.audprc peripher: bf0_audio_stop 0x0
-
-[1663688] I/drv.audprc peripher: audprc close dac
-[1663707] I/drv.audprc peripher: bf0_audio_stop 0x0 done
-
-[1663729] I/drv.audprc peripher: bf0_audio_stop 0x1
-
-[1663750] I/drv.audprc peripher: audprc close dac
-[1663770] I/drv.audprc peripher: bf0_audio_stop 0x1 done
-
-[1663806] D/sibles KE_EVT2: rev wr rsp:left_txnum 8
-
-[1663828] D/bloc.v2t app_watc: opus encoder released by owner=2
-
-[1663854] I/ble.app app_watc: ble_set_performance 1 -> 0
-[1663876] D/ble.app app_watc: Request conn param update: intv_min=80 (100.00 ms), intv_max=96 (120.00 ms), latency=9, timeout=
-[1663927] D/ble.app app_watc: ble_gap_update_conn_param result: 0
-[1663952] I/bloc.v2t app_watc: set_voice_recognition_started: 0
-[1664219] D/ui.handler app_watc: GUI Task: msg type: 20
-[1664315] D/bloc.v2t voice_re: isTextEmpty, hide indicator2
-[1664385] D/sibles KE_EVT2: rev wr rsp:left_txnum 8
-
-[1664411] I/bloc.v2t voice_re: set_voice_recognition_started: 0
-[1664462] D/bloc.v2t voice_re: Voice recognition event processed: 4
-[1664603] D/communicate.parse KE_EVT2: NOTIFY_COMMAND_ID, KEY = 0x6b
-[1664885] D/ui.handler app_watc: GUI Task: msg type: 32
-[1664919] D/ui.handler app_watc: GUI Task: msg type: 20
-[1664985] D/commu.parse.notify app_watc: Applying instruction: id=920f9b15-3a31-4912-8bde-fa35c30d7685, title=?????? sterben??
-[1665141] D/sibles KE_EVT2: rev wr rsp:left_txnum 8
-
-[1665186] I/instruction.list.layout app_watc: Requested instruction image for id=920f9b15-3a31-4912-8bde-fa35c30d7685
-[1665303] D/commu.parse.notify app_watc: Applying instruction: id=1659b0e2-f3ca-4631-9cd1-2615cff1a856, title=?????????
-[1665466] D/sibles KE_EVT2: rev wr rsp:left_txnum 8
-
-[1665515] I/instruction.list.layout app_watc: Requested instruction image for id=1659b0e2-f3ca-4631-9cd1-2615cff1a856
-[1665565] I/commu.parse.notify app_watc: BATCH instructions: 2 of 2 item(s) applied
-[1665632] I/instruction.list.layout app_watc: Refreshing custom instructions...
-[1665662] I/instruction.list.layout app_watc: refresh_custom_instructions: deferred (debounce)
-[1665716] D/ui.handler app_watc: GUI Task: msg type: 70
-[1675063] D/BLE_GAP KE_EVT2: GAPC event status, op: 9, ret 0
-[1675088] I/ble_cm KE_EVT2: BLE_GAP_UPDATE_CONN_PARAM_IND 96, 9
-[1675113] D/ble_cm KE_EVT2: connection_manager_event_process 0x49
-[1675138] I/ble.app KE_EVT2: Updated connection interval: 96 (120.00 ms), latency: 9, timeout: 400
-[1683383] I/bloc.motion_tracking app_watc: set_paused_control_with_arm:1
-[1683411] I/instruction.list.layout app_watc: instruction_list_pause
-[1683437] D/lvsf.gesture app_watc: display_gesture_detect_objs idx=0 display=1
-[1683509] I/app.mainmenu app_watc: is_at_instruction_list: 0
-[1683532] I/bloc.motion_tracking app_watc: set_free_control_with_arm:0
-[1683559] D/lvsf.gesture app_watc: display_gesture_detect_objs idx=0 display=0
-[1683595] I/app.mainmenu app_watc: is_at_home: 1
-[1683811] I/instruction.list.layout app_watc: Refreshing custom instructions...
-[1683987] I/instruction.list.layout app_watc: [bar_dev] SCROLL_BEGIN suppressed (s_in_refresh_scroll=true)
-[1684392] I/instruction.list.layout app_watc: [bar_dev] SCROLL_BEGIN suppressed (s_in_refresh_scroll=true)
-[1684436] I/bloc.motion_tracking app_watc: set_paused_control_with_arm:0
-[1684472] D/sibles KE_EVT2: rev wr rsp:left_txnum 8
-
-[1684547] I/instruction.list.layout app_watc: [VOICE] re-asserted selected_item_index=1 (list_item_count=2)
-[1723289] D/NO_TAG tpread: Touch pressed at (441, 171)
-[1723515] I/app.clock.status_bar app_watc: notification_status_bar_cb from area: 3
-[1737140] I/app.mainmenu app_watc: is_at_message: 0
-[1737165] I/app.mainmenu app_watc: DBG inst_list: before set_power_save_mode
-[1737221] I/app.mainmenu app_watc: DBG inst_list: before sensor_quat
-[1737248] D/bloc.motion_tracking app_watc: set_scroll_segment_count:2,100
-[1737279] I/app.mainmenu app_watc: DBG inst_list: after scroll_seg_count
-[1737327] I/app.mainmenu app_watc: DBG inst_list: before refersh_weather_icon
-[1737396] I/app.mainmenu app_watc: DBG inst_list: before instruction_list_resume
-[1737455] I/bloc.motion_tracking app_watc: set_free_control_with_arm:1
-[1737516] D/bloc.motion_tracking motion_t: gravity_position:2
-[1737570] I/instruction.list.layout app_watc: instruction_list_resume
-[1737634] I/app.mainmenu app_watc: DBG inst_list: before display_status_bar_area
-[1737713] I/app.mainmenu app_watc: DBG inst_list: before display_gesture_detect_objs
-[1737773] D/lvsf.gesture app_watc: display_gesture_detect_objs idx=0 display=0
-[1737809] I/app.mainmenu app_watc: DBG inst_list: enter-block done
-[1737860] I/app.mainmenu app_watc: is_at_instruction_list: 1
-[1737888] I/app.mainmenu app_watc: is_at_home: 0
-[1750052] D/NO_TAG tpread: Touch pressed at (369, 359)
-[1752185] D/NO_TAG tpread: Quick click at (369, 359)
-[1752206] D/NO_TAG tpread: System is already ON, no action taken
-[1752624] I/app_list.layout app_watc: App list click: mouse
-[1752655] D/APP.FWK app_watc: send msg[GUI_APP_MSG_RUN_APP] [mouse] to gui_app_mbx tick:53444.
-[1752692] I/APP.FWK.INT app_watc: [mouse]
-[1753675] D/APP.SCHE app_watc: ----------------app_schedule_task---------------start
-[1753716] I/APP.SCHE app_watc: >>Execute msg[GUI_APP_MSG_RUN_APP] tick:53444
-[1753810] I/APP.SCHE app_watc: app[mouse] do LOAD, 200a5a60
-[1753841] I/APP.FWK app_watc: finding mouse in builtin apps...
-[1753904] D/APP.SCHE app_watc: app[mouse] tgt_state [LAUNCHED] -> [RUNNING]
-[1753959] I/APP.SCHE app_watc: app[mouse] do START, 200a5a60
-[1753997] I/APP.FWK.INT app_watc: [mouse]
-[1754041] D/APP.FWK app_watc: send msg[GUI_APP_MSG_OPEN_PAGE] [0x200a5a60] to gui_app_mbx tick:53486.
-[1754084] I/APP.SCHE app_watc: >>Execute msg[GUI_APP_MSG_OPEN_PAGE] tick:53486
-[1754146] D/APP.SCHE app_watc: app[mouse] create page[root] 200a591c
-[1754176] D/APP.SCHE app_watc: page[mouse][root] tgt_state [CREATED] -> [RESUMED]
-[1754229] D/APP.SCHE app_watc: Pause all app, and resume to mouse app
-[1754268] D/APP.SCHE app_watc: page[Main][root] tgt_state [RESUMED] -> [PAUSED]
-[1754300] I/APP.SCHE app_watc: page[Main][root] do ONPAUSE, 20090b84
-[1754327] D/app.mainmenu app_watc: [mainmenu_on_pause]
-[1754348] I/bloc.motion_tracking app_watc: set_paused_control_with_arm:1
-[1754376] I/instruction.list.layout app_watc: instruction_list_pause
-[1754406] D/app.clock app_watc: Deiniting active clock id=JW_wf1
-[1754431] D/app.clock app_watc: Deiniting clock id=JW_wf1
-[1754468] D/app.clock app_watc: clock_on_pause
-[1754493] I/APP.SCHE app_watc: page[mouse][root] do ONSTART, 200a591c
-[1754621] D/bloc.motion_tracking motion_t: gravity_position:2
-[1760336] D/hid.mouse app_watc: HID mode -> Trackpad
-[1760357] I/ble.app app_watc: ble_set_performance 0 -> 1
-[1760379] D/ble.app app_watc: Request conn param update: intv_min=12 (15.00 ms), intv_max=28 (35.00 ms), latency=0, timeout=50
-[1760431] D/ble.app app_watc: ble_gap_update_conn_param result: 0
-[1760459] D/app.clock.status_bar app_watc: set_status_bar_area_left_state 0
-[1760488] D/lvsf.gesture app_watc: display_gesture_detect_objs idx=0 display=0
-[1760519] D/APP.FWK app_watc: send msg[GUI_APP_MSG_EXIT_APP] [0x0] to gui_app_mbx tick:53684.
-[1760560] D/sibles KE_EVT2: rev wr rsp:left_txnum 8
-
-[1760889] I/hid.mouse app_watc: [dev_switch] active -> idx=2/3 id=3ad19ddc-ae9a-4c01-a388-3a5e5146d8f9
-[1760931] I/APP.SCHE app_watc: page[mouse][root] do ONRESUME, 200a591c
-[1760963] D/watch.interact app_watc: switch_watch_motion_control_mode 0
-[1760991] D/CLIENT.POWER app_watc: sync_api_lock:0
-[1761011] I/APP.SCHE app_watc: Animation pre-abort.
-[1761031] I/APP.SCHE app_watc: >>Execute msg[GUI_APP_MSG_EXIT_APP] tick:53684
-[1761061] I/APP.SCHE app_watc: Exit specified app[Main]
-[1761082] D/APP.SCHE app_watc: app_exit [Main]
-[1761101] D/APP.SCHE app_watc: app_destory [Main]
-[1761120] D/APP.SCHE app_watc: page[Main][root] tgt_state [PAUSED] -> [STOPED]
-[1761150] D/APP.SCHE app_watc: app[Main] tgt_state [RUNNING] -> [DESTORYED]
-[1761179] I/APP.SCHE app_watc: page[Main][root] do ONSTOP, 20090b84
-[1761205] D/app.mainmenu app_watc: [mainmenu_on_stop]
-[1761235] D/app.notification app_watc: notification_on_deinit
-[1761382] I/instruction.list.layout app_watc: [CHECK_MEMORY]instruction_list_deinit
-[1761413] I/instruction.list.layout app_watc: instruction_list_deinit
-[1761440] D/app.clock app_watc: gui_state_update_timer_stop
-[1761463] D/app.clock app_watc: clock_on_stop
-[1761825] D/APP.SCHE app_watc: app[Main] remove&free page[root] 20090b84
-[1761853] I/APP.SCHE app_watc: app[Main] do SUSPEND, 20090ab8
-[1761877] I/APP.SCHE app_watc: app[Main] do DESTROY, 20090ab8
-[1761901] D/APP.SCHE app_watc: app_schedule_task done.
-[1769839] D/bloc.motion_tracking motion_t: Gesture dataset ready, samples: 35
-[1769870] D/APP.GESTURE gesture_: gesture_recognition_algorithm sample_num:35
-Got output index = 0, score = 0.0000
-Got output index = 1, score = 0.0000
-Got output index = 2, score = 1.0000
-[1770287] I/APP.GESTURE gesture_: recognize tap gesture cost_tick:12, score:2
-[1783673] D/ble.app KE_EVT2: BLE_GAP_REMOTE_RSSI_IND -49
-[1783696] D/BLE_GAP KE_EVT2: GAPC event status, op: 7, ret 0
-[1789036] D/NO_TAG tpread: Touch pressed at (239, 422)
-[1793249] D/NO_TAG tpread: Quick click at (239, 422)
-[1793269] D/NO_TAG tpread: System is already ON, no action taken
-[1793376] D/hid.mouse app_watc: Gesture detected: bottom bar released, move_y: 422
-[1793407] D/hid.mouse app_watc: Bottom bar tap ??? instruction_list_bar_tap_device (????????? skaibar)
-[1793445] I/instruction.list.layout app_watc: [bar_dev] tap device_id="3ad19ddc-ae9a-4c01-a388-3a5e5146d8f9"
-[1793486] I/instruction.list.layout app_watc: [bar_dev] no singleton (????????????) -> lazy create for mouse app
-[1793528] I/instruction.list.layout app_watc: [CHECK_MEMORY]instruction_list_init(408 bytes)
-[1794544] I/instruction.list.layout app_watc: instruction_list_init: before myLancher reset_list
-[1794581] I/bloc.motion_tracking app_watc: set_paused_control_with_arm:0
-[1794659] I/instruction.list.layout app_watc: [bar_dev] SCROLL_BEGIN -> ai_widget_fade_on_scroll (s_in_refresh_scroll=false)
-[1794722] I/instruction.list.layout app_watc: instruction_list_init: before lv_event_send SCROLL
-[1794760] I/instruction.list.layout app_watc: instruction_list_init: after lv_event_send SCROLL
-[1794795] I/instruction.list.layout app_watc: instruction_list_init: returning
-[1794832] D/sibles KE_EVT2: rev wr rsp:left_txnum 8
-
-[1794854] I/communicate.task app_watc: send skaibar open-device -> ok
-[1794880] I/instruction.list.layout app_watc: [bar_dev] device found, usable options=3
-[1794917] I/instruction.list.layout app_watc: Refreshing custom instructions...
-[1794990] I/instruction.list.layout app_watc: [bar_dev] SCROLL_BEGIN suppressed (s_in_refresh_scroll=true)
-[1796347] I/instruction.list.layout app_watc: [bar_dev] SCROLL_BEGIN suppressed (s_in_refresh_scroll=true)
-[1796405] D/sibles KE_EVT2: rev wr rsp:left_txnum 8
-
-[1796518] I/instruction.list.layout app_watc: [VOICE] re-asserted selected_item_index=2 (list_item_count=3)
-[1796629] I/instruction.list.layout app_watc: Refreshing custom instructions...
-[1796659] I/instruction.list.layout app_watc: refresh_custom_instructions: deferred (debounce)
-[1796706] I/app.mainmenu app_watc: is_at_message: 0
-[1796775] D/lvsf.gesture app_watc: display_gesture_detect_objs idx=0 display=1
-[1796808] I/app.mainmenu app_watc: is_at_instruction_list: 0
-[1814707] I/instruction.list.layout app_watc: Refreshing custom instructions...
-[1814776] I/instruction.list.layout app_watc: [bar_dev] SCROLL_BEGIN suppressed (s_in_refresh_scroll=true)
-[1815310] I/instruction.list.layout app_watc: [bar_dev] SCROLL_BEGIN suppressed (s_in_refresh_scroll=true)
-[1815374] D/sibles KE_EVT2: rev wr rsp:left_txnum 8
-
-[1815484] I/instruction.list.layout app_watc: [VOICE] re-asserted selected_item_index=2 (list_item_count=3)
-[1853552] D/NO_TAG tpread: Touch pressed at (244, 405)
-[1856070] D/communicate.parse KE_EVT2: SKAI_LINK_COMMAND, KEY = 0x3
-[1856121] I/commu.parse.skailink KE_EVT2: device actions for 3ad19ddc-ae9a-4c01-a388-3a5e5146d8f9 (name=ANDREW): 5 item(s)
-[1856167] I/commu.parse.skailink KE_EVT2:     item[0]: type=0 AI??????
-[1856199] I/commu.parse.skailink KE_EVT2:     item[1]: type=0 ?????????
-[1856238] I/commu.parse.skailink KE_EVT2:     item[2]: type=0 ?????????
-[1856265] I/commu.parse.skailink KE_EVT2:     item[3]: type=0 5555
-[1856291] I/commu.parse.skailink KE_EVT2:     item[4]: type=0 123456
-[1856329] I/instruction.list.layout app_watc: [bar_dev] device found, usable options=5
-[1856363] I/instruction.list.layout app_watc: Updated id=?????????, enabled=1
-[1856394] I/instruction.list.layout app_watc: Refreshing custom instructions...
-[1856481] I/instruction.list.layout app_watc: [bar_dev] SCROLL_BEGIN suppressed (s_in_refresh_scroll=true)
-[1856723] D/NO_TAG tpread: Quick click at (244, 405)
-[1856743] D/NO_TAG tpread: System is already ON, no action taken
-[1859065] I/instruction.list.layout app_watc: [bar_dev] SCROLL_BEGIN suppressed (s_in_refresh_scroll=true)
-[1859131] D/sibles KE_EVT2: rev wr rsp:left_txnum 8
-
-[1859249] I/instruction.list.layout app_watc: [VOICE] re-asserted selected_item_index=3 (list_item_count=4)
-[1859346] D/ui.handler app_watc: GUI Task: msg type: 72
-[1859373] I/instruction.list.layout app_watc: Mic bar tapped ??? opening AI widget (is_open flag=0)
-[1859412] I/instruction.list.layout app_watc: [bar_dev] animate_open_ai_widget: s_left_morph_busy=0 s_left_closing=0 box_visib
-[1859460] I/instruction.list.layout app_watc: [bar_dev] animate_open_ai_widget: proceeding to open morph
-[1867242] D/bloc.v2t app_watc: send_voice_recognition_event: 1
-[1867344] I/bloc.motion_tracking app_watc: set_paused_control_with_arm:1
-[1867523] I/bloc.v2t voice_re: set_voice_recognition_started: 1
-[1868079] D/app.system.interface app_watc: voice_recognition_hint_create
-[1868165] D/app.system.interface app_watc: open_ai_tap_hint_bg: 0
-[1868207] D/ui.handler app_watc: GUI Task: msg type: 32
-[1868272] I/bloc.v2t voice_re: Received start listening event, started: 1
-[1868744] D/app.speech.provider voice_re: app_speech_set_content p_app_speech_ctx: 
-[1870471] D/app.system.interface voice_re: refresh_ai_chat_input_message: 
-[1873637] D/app.system.interface voice_re: Input message refreshed1
-[1874271] D/sibles KE_EVT2: rev wr rsp:left_txnum 8
-
-get_mic_volume = 0db
-get_mic_volume = 0db
-[1875154] D/bloc.v2t voice_re: Voice recognition event processed: 1
-[1875658] D/ui.handler app_watc: GUI Task: msg type: 20
-opus alloc=24544 0x60295fb0
-[1890738] D/bloc.v2t audio_st: opus encoder acquired by owner=2
-
-[1891207] D/ui.handler app_watc: GUI Task: msg type: 21
-[1922570] D/bloc.motion_tracking motion_t: gravity_position:0
-[1934619] D/communicate.parse KE_EVT2: SKAI_LINK_COMMAND, KEY = 0x3
-[1934666] I/commu.parse.skailink KE_EVT2: device actions for 3ad19ddc-ae9a-4c01-a388-3a5e5146d8f9 (name=ANDREW): 5 item(s)
-[1934712] I/commu.parse.skailink KE_EVT2:     item[0]: type=0 AI??????
-[1934738] I/commu.parse.skailink KE_EVT2:     item[1]: type=0 ?????????
-[1934765] I/commu.parse.skailink KE_EVT2:     item[2]: type=0 ?????????
-[1934792] I/commu.parse.skailink KE_EVT2:     item[3]: type=0 5555
-[1934818] I/commu.parse.skailink KE_EVT2:     item[4]: type=0 123456
-[1934913] I/instruction.list.layout app_watc: [bar_dev] device found, usable options=5
-[1934947] I/instruction.list.layout app_watc: Updated id=?????????, enabled=1
-[1934976] I/instruction.list.layout app_watc: Refreshing custom instructions...
-[1935055] I/instruction.list.layout app_watc: [bar_dev] SCROLL_BEGIN suppressed (s_in_refresh_scroll=true)
-[1935805] I/instruction.list.layout app_watc: [bar_dev] SCROLL_BEGIN suppressed (s_in_refresh_scroll=true)
-[1936397] I/bloc.motion_tracking app_watc: set_paused_control_with_arm:0
-[1936432] D/sibles KE_EVT2: rev wr rsp:left_txnum 8
-
-[1936623] I/instruction.list.layout app_watc: [VOICE] re-asserted selected_item_index=3 (list_item_count=4)
-[1936720] D/ui.handler app_watc: GUI Task: msg type: 72
-[1969343] D/ui.handler app_watc: GUI Task: msg type: 21
-[2013045] D/ui.handler app_watc: GUI Task: msg type: 21
-[2039239] D/sys.perception periodic: Running periodic system perception task - Current time: 2026-7-15 19:3:46
-[2039281] D/sys.perception periodic: Checking /recorder for pending files to sync
-[2039354] D/sys.perception periodic: Reconnect: flushing pending /health files
-[2039557] D/sibles KE_EVT2: rev wr rsp:left_txnum 8
-
-[2039621] I/bloc.health periodic: health: pruned old hr_20260618.json
-[2041271] D/sibles KE_EVT2: rev wr rsp:left_txnum 8
-
-[2041294] I/CLIENT.POWER ds_proc: watch_sys_service_callback: msg_id=32817
-[2041324] W/app.clock peripher: instruction_list_battery is NULL
-[2041350] D/ble_bass peripher: battery level the same 100, skip
-[2041381] D/sibles KE_EVT2: rev wr rsp:left_txnum 7
-
-[2041403] D/sibles KE_EVT2: rev wr rsp:left_txnum 8
-
-[2041598] D/ui.handler app_watc: GUI Task: msg type: 9
-[2041619] D/ui.handler app_watc: GUI Task: msg type: 10
-[2041741] D/sibles KE_EVT2: rev wr rsp:left_txnum 8
-
-[2044796] D/sibles KE_EVT2: rev wr rsp:left_txnum 1
-
-[2045081] D/sibles KE_EVT2: rev wr rsp:left_txnum 2
-
-[2045120] D/sibles KE_EVT2: rev wr rsp:left_txnum 3
-
-[2045564] D/ble.app file_sys: send retry success after 1 attempts
-[2048682] D/sibles KE_EVT2: rev wr rsp:left_txnum 1
-
-[2049040] D/sibles KE_EVT2: rev wr rsp:left_txnum 2
-
-[2049084] D/sibles KE_EVT2: rev wr rsp:left_txnum 3
-
-[2049108] D/sibles KE_EVT2: rev wr rsp:left_txnum 4
-
-[2050404] D/ble.app file_sys: send retry success after 2 attempts
-[2052614] D/sibles KE_EVT2: rev wr rsp:left_txnum 2
-
-[2052719] D/sibles KE_EVT2: rev wr rsp:left_txnum 2
-
-[2053009] D/sibles KE_EVT2: rev wr rsp:left_txnum 3
-
-[2053055] D/sibles KE_EVT2: rev wr rsp:left_txnum 4
-
-[2056534] D/sibles KE_EVT2: rev wr rsp:left_txnum 5
-
-[2057818] D/ui.handler app_watc: GUI Task: msg type: 21
-[2060525] D/sibles KE_EVT2: rev wr rsp:left_txnum 6
-
-[2060583] D/sibles KE_EVT2: rev wr rsp:left_txnum 7
-
-[2060629] D/sibles KE_EVT2: rev wr rsp:left_txnum 8
-
-[2061314] I/CLIENT.POWER ds_proc: watch_sys_service_callback: msg_id=32828
-[2061343] I/watch.interact ds_proc: [Sleep] mode=3 utc=1784142226 total=0 D=0 R=0 L=0 WASO=0 hr=0 rhr=65
-[2061387] D/sibles KE_EVT2: rev wr rsp:left_txnum 8
-
-[2062390] D/bloc.health health_s: store_sleep_data: /health/sleep_20260715.json
-[2069126] D/sibles KE_EVT2: rev wr rsp:left_txnum 8
-
-[2070803] D/sibles KE_EVT2: rev wr rsp:left_txnum 8
-
-[2071005] D/sibles KE_EVT2: rev wr rsp:left_txnum 8
-
-[2072316] D/sibles KE_EVT2: rev wr rsp:left_txnum 3
-
-[2072386] D/sibles KE_EVT2: rev wr rsp:left_txnum 4
-
-[2072492] D/sibles KE_EVT2: rev wr rsp:left_txnum 4
-
-[2072791] D/sibles KE_EVT2: rev wr rsp:left_txnum 4
-
-[2072832] D/sibles KE_EVT2: rev wr rsp:left_txnum 5
-
-[2076287] D/sibles KE_EVT2: rev wr rsp:left_txnum 1
-
-[2076315] D/sibles KE_EVT2: rev wr rsp:left_txnum 2
-
-[2076406] D/sibles KE_EVT2: rev wr rsp:left_txnum 3
-
-[2076748] D/sibles KE_EVT2: rev wr rsp:left_txnum 4
-
-[2076788] D/sibles KE_EVT2: rev wr rsp:left_txnum 5
-
-[2077185] D/ble.app file_sys: send retry success after 2 attempts
-[2078668] D/NO_TAG tpread: Touch pressed at (388, 182)
-[2080127] D/sibles KE_EVT2: rev wr rsp:left_txnum 1
-
-[2080257] D/sibles KE_EVT2: rev wr rsp:left_txnum 2
-
-[2080339] D/sibles KE_EVT2: rev wr rsp:left_txnum 3
-
-[2080692] D/sibles KE_EVT2: rev wr rsp:left_txnum 4
-
-[2080728] D/sibles KE_EVT2: rev wr rsp:left_txnum 5
-
-[2080751] D/sibles KE_EVT2: rev wr rsp:left_txnum 6
-
-[2082236] D/ble.app file_sys: send retry success after 2 attempts
-[2083773] D/bloc.motion_tracking motion_t: gravity_position:2
-[2083889] I/instruction.list.layout app_watc: [bar_dev] SCROLL_BEGIN -> ai_widget_fade_on_scroll (s_in_refresh_scroll=false)
-[2084024] I/instruction.list.layout app_watc: [bar_dev] close_ai_widget: keep_list=1 is_cancel=0 s_left_closing=0 s_bar_single
-[2084090] D/bloc.v2t app_watc: send_stop_listening_event
-[2084112] D/bloc.v2t app_watc: send_voice_recognition_event: 4
-[2084137] I/drv.audcodec peripher: bf0_audio_stop 0x0
-
-[2084159] I/drv.audcodec peripher: audcodec close dac
-[2084180] I/drv.audcodec peripher: bf0_audio_stop 0x0 done
-
-[2084205] I/drv.audprc peripher: bf0_audio_stop 0x0
-
-[2084226] I/drv.audprc peripher: audprc close dac
-[2084247] I/drv.audprc peripher: bf0_audio_stop 0x0 done
-
-[2084270] I/drv.audprc peripher: bf0_audio_stop 0x1
-
-[2084291] I/drv.audprc peripher: audprc close dac
-[2084310] I/drv.audprc peripher: bf0_audio_stop 0x1 done
-
-[2084614] D/sibles KE_EVT2: rev wr rsp:left_txnum 6
-
-[2084665] D/sibles KE_EVT2: rev wr rsp:left_txnum 7
-
-[2084687] D/sibles KE_EVT2: rev wr rsp:left_txnum 8
-
-[2084720] D/sibles KE_EVT2: rev wr rsp:left_txnum 8
-
-[2084742] D/bloc.v2t app_watc: opus encoder released by owner=2
-
-[2084774] I/bloc.v2t app_watc: set_voice_recognition_started: 0
-[2084860] I/bloc.peripheral app_watc: Control motor: ON, duty_cycle: 100, period: 12000, repeat_times: 1
-[2084919] D/CLIENT.POWER peripher: MOTOR control duty_cycle: 100, period: 12000, repeat_times: 1
-[2085665] D/ui.handler app_watc: GUI Task: msg type: 20
-[2086642] D/bloc.v2t voice_re: isTextEmpty, hide indicator2
-[2087986] D/sibles KE_EVT2: rev wr rsp:left_txnum 6
-
-[2088065] D/sibles KE_EVT2: rev wr rsp:left_txnum 7
-
-[2088185] D/sibles KE_EVT2: rev wr rsp:left_txnum 8
-
-[2088880] D/ui.handler app_watc: GUI Task: msg type: 32
-[2088966] D/ui.handler app_watc: GUI Task: msg type: 20
-[2089212] D/sibles KE_EVT2: rev wr rsp:left_txnum 8
-
-[2089697] D/sibles KE_EVT2: rev wr rsp:left_txnum 8
-
-[2089723] I/bloc.v2t voice_re: set_voice_recognition_started: 0
-[2093466] D/sibles KE_EVT2: rev wr rsp:left_txnum 8
-
-[2094069] D/bloc.v2t voice_re: Voice recognition event processed: 4
-[2095380] D/sibles KE_EVT2: rev wr rsp:left_txnum 8
-
-[2099681] D/sibles KE_EVT2: rev wr rsp:left_txnum 8
-
-[2111123] D/ble.app KE_EVT2: BLE_GAP_REMOTE_RSSI_IND -49
-[2111146] D/BLE_GAP KE_EVT2: GAPC event status, op: 7, ret 0
-[2111742] D/BLE_GAP KE_EVT2: GAPC event status, op: 9, ret 0
-[2111766] I/ble_cm KE_EVT2: BLE_GAP_UPDATE_CONN_PARAM_IND 24, 0
-[2111791] D/ble_cm KE_EVT2: connection_manager_event_process 0x49
-[2111816] I/ble.app KE_EVT2: Updated connection interval: 24 (30.00 ms), latency: 0, timeout: 500
-[2116077] D/NO_TAG tpread: Touch pressed at (422, 234)
-[2116186] D/sibles KE_EVT2: rev wr rsp:left_txnum 8
-
-[2118109] D/sibles KE_EVT2: rev wr rsp:left_txnum 8
-
-[2118368] D/sibles KE_EVT2: rev wr rsp:left_txnum 8
-
-[2118794] D/sibles KE_EVT2: rev wr rsp:left_txnum 8
-
-[2119036] D/sibles KE_EVT2: rev wr rsp:left_txnum 8
-
-[2120212] D/sibles KE_EVT2: rev wr rsp:left_txnum 8
-
-[2120873] D/sibles KE_EVT2: rev wr rsp:left_txnum 8
-
-[2122065] D/sibles KE_EVT2: rev wr rsp:left_txnum 8
-
-[2122125] I/instruction.list.layout app_watc: [bar_dev] close_ai_widget: keep_list=0 is_cancel=1 s_left_closing=0 s_bar_single
-[2122368] I/instruction.list.layout app_watc: Refreshing custom instructions...
-[2122488] I/instruction.list.layout app_watc: [bar_dev] SCROLL_BEGIN suppressed (s_in_refresh_scroll=true)
-[2122919] I/instruction.list.layout app_watc: [bar_dev] SCROLL_BEGIN suppressed (s_in_refresh_scroll=true)
-[2122975] D/sibles KE_EVT2: rev wr rsp:left_txnum 8
-
-[2123056] I/instruction.list.layout app_watc: [VOICE] re-asserted selected_item_index=1 (list_item_count=2)
-[2123145] D/sibles KE_EVT2: rev wr rsp:left_txnum 8
-
-[2123172] I/communicate.task app_watc: send skaibar dismiss -> ok
-[2123197] D/bloc.v2t app_watc: send_stop_listening_event
-[2123219] D/bloc.v2t app_watc: send_voice_recognition_event: 4
-[2123247] D/sibles KE_EVT2: rev wr rsp:left_txnum 8
-
-[2123269] I/bloc.v2t app_watc: set_voice_recognition_started: 0
-[2123503] D/ui.handler app_watc: GUI Task: msg type: 20
-[2123642] D/bloc.v2t voice_re: isTextEmpty, hide indicator2
-[2123770] D/sibles KE_EVT2: rev wr rsp:left_txnum 8
-
-[2123793] I/bloc.v2t voice_re: set_voice_recognition_started: 0
-[2124065] D/sibles KE_EVT2: rev wr rsp:left_txnum 8
-
-[2124122] D/ui.handler app_watc: GUI Task: msg type: 32
-[2124229] D/ui.handler app_watc: GUI Task: msg type: 20
-[2124364] D/bloc.v2t voice_re: Voice recognition event processed: 4
-[2124633] D/sibles KE_EVT2: rev wr rsp:left_txnum 8
-
-[2124726] D/communicate.parse KE_EVT2: NOTIFY_COMMAND_ID, KEY = 0x6b
-[2125216] D/commu.parse.notify app_watc: Applying instruction: id=920f9b15-3a31-4912-8bde-fa35c30d7685, title=?????? sterben??
-[2125502] D/sibles KE_EVT2: rev wr rsp:left_txnum 8
-
-[2125554] I/instruction.list.layout app_watc: Requested instruction image for id=920f9b15-3a31-4912-8bde-fa35c30d7685
-[2125628] D/commu.parse.notify app_watc: Applying instruction: id=1659b0e2-f3ca-4631-9cd1-2615cff1a856, title=?????????
-[2125736] D/sibles KE_EVT2: rev wr rsp:left_txnum 8
-
-[2125758] I/instruction.list.layout app_watc: Requested instruction image for id=1659b0e2-f3ca-4631-9cd1-2615cff1a856
-[2125803] I/commu.parse.notify app_watc: BATCH instructions: 2 of 2 item(s) applied
-[2125837] I/instruction.list.layout app_watc: Refreshing custom instructions...
-[2125868] I/instruction.list.layout app_watc: refresh_custom_instructions: deferred (debounce)
-[2125903] D/ui.handler app_watc: GUI Task: msg type: 70
-[2126643] D/sibles KE_EVT2: rev wr rsp:left_txnum 8
-
-[2138305] D/communicate.parse KE_EVT2: SKAI_LINK_COMMAND, KEY = 0x3
-[2138339] I/commu.parse.skailink KE_EVT2: device actions for 3ad19ddc-ae9a-4c01-a388-3a5e5146d8f9 (name=ANDREW): 6 item(s)
-[2138385] I/commu.parse.skailink KE_EVT2:     item[0]: type=0 5555
-[2138410] I/commu.parse.skailink KE_EVT2:     item[1]: type=0 123456
-[2138436] I/commu.parse.skailink KE_EVT2:     item[2]: type=0 expecto patronum
-[2138466] I/commu.parse.skailink KE_EVT2:     item[3]: type=0 AI??????
-[2138493] I/commu.parse.skailink KE_EVT2:     item[4]: type=0 ?????????
-[2138520] I/commu.parse.skailink KE_EVT2:     item[5]: type=0 ?????????
-[2138555] D/ui.handler app_watc: GUI Task: msg type: 72
-[2143122] D/sibles KE_EVT2: rev wr rsp:left_txnum 8
-
-[2143900] I/instruction.list.layout app_watc: Refreshing custom instructions...
-[2143956] I/instruction.list.layout app_watc: [bar_dev] SCROLL_BEGIN suppressed (s_in_refresh_scroll=true)
-[2144310] I/instruction.list.layout app_watc: [bar_dev] SCROLL_BEGIN suppressed (s_in_refresh_scroll=true)
-[2144362] D/sibles KE_EVT2: rev wr rsp:left_txnum 8
-
-[2144438] I/instruction.list.layout app_watc: [VOICE] re-asserted selected_item_index=1 (list_item_count=2)
-[2144773] D/sibles KE_EVT2: rev wr rsp:left_txnum 8
-
-[2146626] D/sibles KE_EVT2: rev wr rsp:left_txnum 8
-
-[2163074] D/sibles KE_EVT2: rev wr rsp:left_txnum 8
-
-[2165036] D/sibles KE_EVT2: rev wr rsp:left_txnum 8
-
-[2165243] D/sibles KE_EVT2: rev wr rsp:left_txnum 8
-
-[2165856] D/sibles KE_EVT2: rev wr rsp:left_txnum 7
-
-[2166007] D/sibles KE_EVT2: rev wr rsp:left_txnum 8
-
-[2166299] D/sibles KE_EVT2: rev wr rsp:left_txnum 7
-
-[2166334] D/sibles KE_EVT2: rev wr rsp:left_txnum 8
-
-[2166947] D/sibles KE_EVT2: rev wr rsp:left_txnum 6
-
-[2166976] D/sibles KE_EVT2: rev wr rsp:left_txnum 7
-
-[2167138] D/sibles KE_EVT2: rev wr rsp:left_txnum 7
-
-[2167175] D/sibles KE_EVT2: rev wr rsp:left_txnum 8
-
-[2167280] D/sibles KE_EVT2: rev wr rsp:left_txnum 8
-
-[2167619] D/sibles KE_EVT2: rev wr rsp:left_txnum 7
-
-[2167650] D/sibles KE_EVT2: rev wr rsp:left_txnum 8
-
-[2167866] D/sibles KE_EVT2: rev wr rsp:left_txnum 8
-
-[2168250] D/sibles KE_EVT2: rev wr rsp:left_txnum 8
-
-[2168456] D/sibles KE_EVT2: rev wr rsp:left_txnum 8
-
-[2168678] D/sibles KE_EVT2: rev wr rsp:left_txnum 8
-
-[2170513] D/sibles KE_EVT2: rev wr rsp:left_txnum 8
-
-[2186969] D/sibles KE_EVT2: rev wr rsp:left_txnum 8
-
-[2188649] D/sibles KE_EVT2: rev wr rsp:left_txnum 8
-
-[2190502] D/sibles KE_EVT2: rev wr rsp:left_txnum 8
-
-[2206948] D/sibles KE_EVT2: rev wr rsp:left_txnum 8
-
-[2208611] D/sibles KE_EVT2: rev wr rsp:left_txnum 8
-
-[2208989] D/sibles KE_EVT2: rev wr rsp:left_txnum 8
-
-[2209186] D/sibles KE_EVT2: rev wr rsp:left_txnum 8
-
-[2209425] D/sibles KE_EVT2: rev wr rsp:left_txnum 8
-
-[2209753] D/sibles KE_EVT2: rev wr rsp:left_txnum 8
-
-[2210092] D/sibles KE_EVT2: rev wr rsp:left_txnum 8
-
-[2210417] D/sibles KE_EVT2: rev wr rsp:left_txnum 8
-
-[2210459] D/sibles KE_EVT2: rev wr rsp:left_txnum 8
-
-[2211082] D/sibles KE_EVT2: rev wr rsp:left_txnum 7
-
-[2211181] D/sibles KE_EVT2: rev wr rsp:left_txnum 7
-
-[2212306] D/sibles KE_EVT2: rev wr rsp:left_txnum 3
-
-[2212401] D/sibles KE_EVT2: rev wr rsp:left_txnum 3
-
-[2212439] D/sibles KE_EVT2: rev wr rsp:left_txnum 4
-
-[2213069] D/sibles KE_EVT2: rev wr rsp:left_txnum 5
-
-[2213163] D/sibles KE_EVT2: rev wr rsp:left_txnum 6
-
-[2213269] D/sibles KE_EVT2: rev wr rsp:left_txnum 7
-
-[2213394] D/sibles KE_EVT2: rev wr rsp:left_txnum 8
-
-[2214160] D/sibles KE_EVT2: rev wr rsp:left_txnum 8
-
-[2230614] D/sibles KE_EVT2: rev wr rsp:left_txnum 8
-
-[2232263] D/sibles KE_EVT2: rev wr rsp:left_txnum 8
-
-[2232465] I/btapp_hf bts: hfp msg *msg_type 801a inst_data->st 1
-
-[2232491] I/btapp_hf bts: >> "signal":4
-
-[2232508] I/btapp_hf bts: CIEV name:signal val:4
-[2234150] D/sibles KE_EVT2: rev wr rsp:left_txnum 8
-
-[2250601] D/sibles KE_EVT2: rev wr rsp:left_txnum 8
-
-[2252255] D/sibles KE_EVT2: rev wr rsp:left_txnum 8
-
-[2252545] D/sibles KE_EVT2: rev wr rsp:left_txnum 8
-
-[2253370] D/sibles KE_EVT2: rev wr rsp:left_txnum 5
-
-[2253452] D/sibles KE_EVT2: rev wr rsp:left_txnum 6
-
-[2253560] D/sibles KE_EVT2: rev wr rsp:left_txnum 6
-
-[2253885] D/sibles KE_EVT2: rev wr rsp:left_txnum 6
-
-[2254532] D/sibles KE_EVT2: rev wr rsp:left_txnum 7
-
-[2254560] D/sibles KE_EVT2: rev wr rsp:left_txnum 8
-
-[2255580] D/sibles KE_EVT2: rev wr rsp:left_txnum 8
-
-[2261186] D/communicate.parse KE_EVT2: SKAI_LINK_COMMAND, KEY = 0x3
-[2261230] I/commu.parse.skailink KE_EVT2: device actions for 3ad19ddc-ae9a-4c01-a388-3a5e5146d8f9 (name=ANDREW): 6 item(s)
-[2261276] I/commu.parse.skailink KE_EVT2:     item[0]: type=0 5555
-[2261301] I/commu.parse.skailink KE_EVT2:     item[1]: type=0 123456
-[2261327] I/commu.parse.skailink KE_EVT2:     item[2]: type=0 expecto patronum
-[2261357] I/commu.parse.skailink KE_EVT2:     item[3]: type=0 AI??????
-[2261384] I/commu.parse.skailink KE_EVT2:     item[4]: type=0 ?????????
-[2261411] I/commu.parse.skailink KE_EVT2:     item[5]: type=0 ?????????
-[2261573] D/ui.handler app_watc: GUI Task: msg type: 72
-[2272035] D/sibles KE_EVT2: rev wr rsp:left_txnum 8
-
-[2273680] D/sibles KE_EVT2: rev wr rsp:left_txnum 8
-
-[2275536] D/sibles KE_EVT2: rev wr rsp:left_txnum 8
-
-[2291983] D/sibles KE_EVT2: rev wr rsp:left_txnum 8
-
-[2293680] D/sibles KE_EVT2: rev wr rsp:left_txnum 8
-
-[2294011] D/sibles KE_EVT2: rev wr rsp:left_txnum 8
-
-[2294689] D/sibles KE_EVT2: rev wr rsp:left_txnum 6
-
-[2294741] D/sibles KE_EVT2: rev wr rsp:left_txnum 7
-
-[2294848] D/sibles KE_EVT2: rev wr rsp:left_txnum 7
-
-[2295002] D/sibles KE_EVT2: rev wr rsp:left_txnum 8
-
-[2295061] D/sibles KE_EVT2: rev wr rsp:left_txnum 8
-
-[2295369] D/sibles KE_EVT2: rev wr rsp:left_txnum 8
-
-[2295445] D/sibles KE_EVT2: rev wr rsp:left_txnum 8
-
-[2295674] D/sibles KE_EVT2: rev wr rsp:left_txnum 8
-
-[2296020] D/sibles KE_EVT2: rev wr rsp:left_txnum 8
-
-[2296188] D/sibles KE_EVT2: rev wr rsp:left_txnum 8
-
-[2296671] D/sibles KE_EVT2: rev wr rsp:left_txnum 8
-
-[2296842] D/sibles KE_EVT2: rev wr rsp:left_txnum 8
-
-[2297227] D/sibles KE_EVT2: rev wr rsp:left_txnum 8
-
-[2297432] D/sibles KE_EVT2: rev wr rsp:left_txnum 8
-
-[2297667] D/sibles KE_EVT2: rev wr rsp:left_txnum 8
-
-[2299523] D/sibles KE_EVT2: rev wr rsp:left_txnum 8
-
-[2315977] D/sibles KE_EVT2: rev wr rsp:left_txnum 8
-
-[2317622] D/sibles KE_EVT2: rev wr rsp:left_txnum 8
-
-[2319479] D/sibles KE_EVT2: rev wr rsp:left_txnum 8
-
-[2335927] D/sibles KE_EVT2: rev wr rsp:left_txnum 8
-
-[2337616] D/sibles KE_EVT2: rev wr rsp:left_txnum 8
-
-[2337838] D/sibles KE_EVT2: rev wr rsp:left_txnum 8
-
-[2338161] D/sibles KE_EVT2: rev wr rsp:left_txnum 8
-
-[2338327] D/sibles KE_EVT2: rev wr rsp:left_txnum 8
-
-[2338946] D/sibles KE_EVT2: rev wr rsp:left_txnum 8
-
-[2338984] D/sibles KE_EVT2: rev wr rsp:left_txnum 8
-
-[2339455] D/sibles KE_EVT2: rev wr rsp:left_txnum 8
-
-[2339671] D/sibles KE_EVT2: rev wr rsp:left_txnum 8
-
-[2340132] D/sibles KE_EVT2: rev wr rsp:left_txnum 8
-
-[2340326] D/sibles KE_EVT2: rev wr rsp:left_txnum 8
-
-[2340838] D/sibles KE_EVT2: rev wr rsp:left_txnum 8
-
-[2340953] D/sibles KE_EVT2: rev wr rsp:left_txnum 8
-
-[2341431] D/sibles KE_EVT2: rev wr rsp:left_txnum 8
-
-[2341637] D/sibles KE_EVT2: rev wr rsp:left_txnum 8
-
-[2342111] D/sibles KE_EVT2: rev wr rsp:left_txnum 8
-
-[2342325] D/sibles KE_EVT2: rev wr rsp:left_txnum 8
-
-[2342804] D/sibles KE_EVT2: rev wr rsp:left_txnum 8
-
-[2342947] D/sibles KE_EVT2: rev wr rsp:left_txnum 8
-
-[2343407] D/sibles KE_EVT2: rev wr rsp:left_txnum 8
-
-[2343636] D/sibles KE_EVT2: rev wr rsp:left_txnum 8
-
-[2344075] D/sibles KE_EVT2: rev wr rsp:left_txnum 8
-
-[2344291] D/sibles KE_EVT2: rev wr rsp:left_txnum 8
-
-[2344515] D/sibles KE_EVT2: rev wr rsp:left_txnum 8
-
-[2346349] D/sibles KE_EVT2: rev wr rsp:left_txnum 8
-
-[2362804] D/sibles KE_EVT2: rev wr rsp:left_txnum 8
-
-[2364448] D/sibles KE_EVT2: rev wr rsp:left_txnum 8
-
-[2366305] D/sibles KE_EVT2: rev wr rsp:left_txnum 8
-
-[2382754] D/sibles KE_EVT2: rev wr rsp:left_txnum 8
-
-[2384411] D/sibles KE_EVT2: rev wr rsp:left_txnum 8
-
-[2384875] D/sibles KE_EVT2: rev wr rsp:left_txnum 8
-
-[2385088] D/sibles KE_EVT2: rev wr rsp:left_txnum 8
-
-[2386235] D/sibles KE_EVT2: rev wr rsp:left_txnum 4
-
-[2386274] D/sibles KE_EVT2: rev wr rsp:left_txnum 5
-
-[2386333] D/sibles KE_EVT2: rev wr rsp:left_txnum 6
-
-[2386524] D/sibles KE_EVT2: rev wr rsp:left_txnum 6
-
-[2386553] D/sibles KE_EVT2: rev wr rsp:left_txnum 7
-
-[2386880] D/sibles KE_EVT2: rev wr rsp:left_txnum 7
-
-[2386911] D/sibles KE_EVT2: rev wr rsp:left_txnum 8
-
-[2388391] D/sibles KE_EVT2: rev wr rsp:left_txnum 8
-
-[2404845] D/sibles KE_EVT2: rev wr rsp:left_txnum 8
-
-[2406495] D/sibles KE_EVT2: rev wr rsp:left_txnum 8
-
-[2408347] D/sibles KE_EVT2: rev wr rsp:left_txnum 8
-
-[2424793] D/sibles KE_EVT2: rev wr rsp:left_txnum 8
-
-[2426450] D/sibles KE_EVT2: rev wr rsp:left_txnum 8
-
-[2428303] D/sibles KE_EVT2: rev wr rsp:left_txnum 8
-
-[2438960] D/ble.app KE_EVT2: BLE_GAP_REMOTE_RSSI_IND -55
-[2438983] D/BLE_GAP KE_EVT2: GAPC event status, op: 7, ret 0
-[2444753] D/sibles KE_EVT2: rev wr rsp:left_txnum 8
-
-[2446413] D/sibles KE_EVT2: rev wr rsp:left_txnum 8
-
-[2446783] D/sibles KE_EVT2: rev wr rsp:left_txnum 8
-
-[2447008] D/sibles KE_EVT2: rev wr rsp:left_txnum 8
-
-[2447184] D/sibles KE_EVT2: rev wr rsp:left_txnum 8
-
-[2447471] D/sibles KE_EVT2: rev wr rsp:left_txnum 8
-
-[2448121] D/sibles KE_EVT2: rev wr rsp:left_txnum 6
-
-[2448149] D/sibles KE_EVT2: rev wr rsp:left_txnum 7
-
-[2448314] D/sibles KE_EVT2: rev wr rsp:left_txnum 7
-
-[2448357] D/sibles KE_EVT2: rev wr rsp:left_txnum 8
-
-[2448464] D/sibles KE_EVT2: rev wr rsp:left_txnum 8
-
-[2448780] D/sibles KE_EVT2: rev wr rsp:left_txnum 8
-
-[2448994] D/sibles KE_EVT2: rev wr rsp:left_txnum 8
-
-[2449142] D/sibles KE_EVT2: rev wr rsp:left_txnum 8
-
-[2449470] D/sibles KE_EVT2: rev wr rsp:left_txnum 7
-
-[2449501] D/sibles KE_EVT2: rev wr rsp:left_txnum 8
-
-[2450102] D/sibles KE_EVT2: rev wr rsp:left_txnum 6
-
-[2450144] D/sibles KE_EVT2: rev wr rsp:left_txnum 7
-
-[2450171] D/sibles KE_EVT2: rev wr rsp:left_txnum 8
-
-[2450324] D/sibles KE_EVT2: rev wr rsp:left_txnum 8
-
-[2450439] D/sibles KE_EVT2: rev wr rsp:left_txnum 8
-
-[2450768] D/sibles KE_EVT2: rev wr rsp:left_txnum 8
-
-[2450816] D/sibles KE_EVT2: rev wr rsp:left_txnum 8
-
-[2452652] D/sibles KE_EVT2: rev wr rsp:left_txnum 8
-
-[2469110] D/sibles KE_EVT2: rev wr rsp:left_txnum 8
-
-[2470789] D/sibles KE_EVT2: rev wr rsp:left_txnum 8
-
-[2471149] D/sibles KE_EVT2: rev wr rsp:left_txnum 8
-
-[2472570] D/sibles KE_EVT2: rev wr rsp:left_txnum 3
-
-[2472765] D/sibles KE_EVT2: rev wr rsp:left_txnum 3
-
-[2472792] D/sibles KE_EVT2: rev wr rsp:left_txnum 4
-
-[2473160] D/sibles KE_EVT2: rev wr rsp:left_txnum 3
-
-[2473205] D/sibles KE_EVT2: rev wr rsp:left_txnum 4
-
-[2473230] D/sibles KE_EVT2: rev wr rsp:left_txnum 5
-
-[2473807] D/sibles KE_EVT2: rev wr rsp:left_txnum 3
-
-[2473851] D/sibles KE_EVT2: rev wr rsp:left_txnum 4
-
-[2473875] D/sibles KE_EVT2: rev wr rsp:left_txnum 5
-
-[2474549] D/sibles KE_EVT2: rev wr rsp:left_txnum 2
-
-[2474656] D/sibles KE_EVT2: rev wr rsp:left_txnum 3
-
-[2474765] D/sibles KE_EVT2: rev wr rsp:left_txnum 3
-
-[2475123] D/sibles KE_EVT2: rev wr rsp:left_txnum 4
-
-[2475784] D/sibles KE_EVT2: rev wr rsp:left_txnum 5
-
-[2475827] D/sibles KE_EVT2: rev wr rsp:left_txnum 6
-
-[2475852] D/sibles KE_EVT2: rev wr rsp:left_txnum 7
-
-[2476515] D/sibles KE_EVT2: rev wr rsp:left_txnum 7
-
-[2476560] D/sibles KE_EVT2: rev wr rsp:left_txnum 8
-
-[2492961] D/sibles KE_EVT2: rev wr rsp:left_txnum 8
-
-[2494606] D/sibles KE_EVT2: rev wr rsp:left_txnum 8
-
-[2496462] D/sibles KE_EVT2: rev wr rsp:left_txnum 8
-
-[2512975] D/sibles KE_EVT2: rev wr rsp:left_txnum 8
-
-[2514630] D/sibles KE_EVT2: rev wr rsp:left_txnum 8
-
-[2516484] D/sibles KE_EVT2: rev wr rsp:left_txnum 8
-
-[2522679] D/communicate.parse KE_EVT2: SKAI_LINK_COMMAND, KEY = 0x3
-[2522723] I/commu.parse.skailink KE_EVT2: device actions for 3ad19ddc-ae9a-4c01-a388-3a5e5146d8f9 (name=ANDREW): 6 item(s)
-[2522769] I/commu.parse.skailink KE_EVT2:     item[0]: type=0 5555
-[2522795] I/commu.parse.skailink KE_EVT2:     item[1]: type=0 123456
-[2522821] I/commu.parse.skailink KE_EVT2:     item[2]: type=0 expecto patronum
-[2522851] I/commu.parse.skailink KE_EVT2:     item[3]: type=0 AI??????
-[2522877] I/commu.parse.skailink KE_EVT2:     item[4]: type=0 ?????????
-[2522905] I/commu.parse.skailink KE_EVT2:     item[5]: type=0 ?????????
-[2522942] D/ui.handler app_watc: GUI Task: msg type: 72
-[2532975] D/sibles KE_EVT2: rev wr rsp:left_txnum 8
-
-[2534664] D/sibles KE_EVT2: rev wr rsp:left_txnum 8
-
-[2535019] D/sibles KE_EVT2: rev wr rsp:left_txnum 8
-
-[2535703] D/sibles KE_EVT2: rev wr rsp:left_txnum 6
-
-[2535749] D/sibles KE_EVT2: rev wr rsp:left_txnum 7
-
-[2535774] D/sibles KE_EVT2: rev wr rsp:left_txnum 8
-
-[2535873] D/sibles KE_EVT2: rev wr rsp:left_txnum 8
-
-[2536052] D/sibles KE_EVT2: rev wr rsp:left_txnum 8
-
-[2536344] D/sibles KE_EVT2: rev wr rsp:left_txnum 8
-
-[2536592] D/sibles KE_EVT2: rev wr rsp:left_txnum 8
-
-[2536993] D/sibles KE_EVT2: rev wr rsp:left_txnum 8
-
-[2537697] D/sibles KE_EVT2: rev wr rsp:left_txnum 6
-
-[2537737] D/sibles KE_EVT2: rev wr rsp:left_txnum 7
-
-[2538513] D/sibles KE_EVT2: rev wr rsp:left_txnum 4
-
-[2538542] D/sibles KE_EVT2: rev wr rsp:left_txnum 5
-
-[2538647] D/sibles KE_EVT2: rev wr rsp:left_txnum 5
-
-[2539005] D/sibles KE_EVT2: rev wr rsp:left_txnum 4
-
-[2539051] D/sibles KE_EVT2: rev wr rsp:left_txnum 5
-
-[2539657] D/sibles KE_EVT2: rev wr rsp:left_txnum 3
-
-[2539700] D/sibles KE_EVT2: rev wr rsp:left_txnum 4
-
-[2539731] D/sibles KE_EVT2: rev wr rsp:left_txnum 5
-
-[2539843] D/sibles KE_EVT2: rev wr rsp:left_txnum 5
-
-[2539870] D/sibles KE_EVT2: rev wr rsp:left_txnum 6
-
-[2539963] D/sibles KE_EVT2: rev wr rsp:left_txnum 7
-
-[2540009] D/sibles KE_EVT2: rev wr rsp:left_txnum 8
-
-[2541584] D/sibles KE_EVT2: rev wr rsp:left_txnum 8
-
-[2558091] D/sibles KE_EVT2: rev wr rsp:left_txnum 8
-
-[2559759] D/sibles KE_EVT2: rev wr rsp:left_txnum 8
-
-[2560058] D/sibles KE_EVT2: rev wr rsp:left_txnum 8
-
-[2561045] D/sibles KE_EVT2: rev wr rsp:left_txnum 5
-
-[2561393] D/sibles KE_EVT2: rev wr rsp:left_txnum 4
-
-[2561440] D/sibles KE_EVT2: rev wr rsp:left_txnum 5
-
-[2562029] D/sibles KE_EVT2: rev wr rsp:left_txnum 3
-
-[2563071] D/sibles KE_EVT2: rev wr rsp:left_txnum 1
-
-[2563368] D/sibles KE_EVT2: rev wr rsp:left_txnum 2
-
-[2563417] D/sibles KE_EVT2: rev wr rsp:left_txnum 3
-
-[2564007] D/sibles KE_EVT2: rev wr rsp:left_txnum 4
-
-[2564113] D/sibles KE_EVT2: rev wr rsp:left_txnum 5
-
-[2564285] D/sibles KE_EVT2: rev wr rsp:left_txnum 6
-
-[2564325] D/sibles KE_EVT2: rev wr rsp:left_txnum 7
-
-[2564348] D/ble.app file_sys: send retry success after 1 attempts
-[2564701] D/sibles KE_EVT2: rev wr rsp:left_txnum 6
-
-[2564742] D/sibles KE_EVT2: rev wr rsp:left_txnum 7
-
-[2564977] D/sibles KE_EVT2: rev wr rsp:left_txnum 7
-
-[2565334] D/sibles KE_EVT2: rev wr rsp:left_txnum 6
-
-[2565377] D/sibles KE_EVT2: rev wr rsp:left_txnum 7
-
-[2565399] D/sibles KE_EVT2: rev wr rsp:left_txnum 8
-
-[2565980] D/sibles KE_EVT2: rev wr rsp:left_txnum 6
-
-[2566080] D/sibles KE_EVT2: rev wr rsp:left_txnum 6
-
-[2567002] D/sibles KE_EVT2: rev wr rsp:left_txnum 6
-
-[2567327] D/sibles KE_EVT2: rev wr rsp:left_txnum 7
-
-[2567360] D/sibles KE_EVT2: rev wr rsp:left_txnum 8
-
-[2568028] D/sibles KE_EVT2: rev wr rsp:left_txnum 8
-
-[2584529] D/sibles KE_EVT2: rev wr rsp:left_txnum 8
-
-[2586197] D/sibles KE_EVT2: rev wr rsp:left_txnum 8
-
-[2588050] D/sibles KE_EVT2: rev wr rsp:left_txnum 8
-
-[2604542] D/sibles KE_EVT2: rev wr rsp:left_txnum 8
-
-[2606236] D/sibles KE_EVT2: rev wr rsp:left_txnum 8
-
-[2606439] D/sibles KE_EVT2: rev wr rsp:left_txnum 8
-
-[2608245] D/sibles KE_EVT2: rev wr rsp:left_txnum 1
-
-[2608351] D/sibles KE_EVT2: rev wr rsp:left_txnum 2
-
-[2608457] D/sibles KE_EVT2: rev wr rsp:left_txnum 3
-
-[2609414] D/sibles KE_EVT2: rev wr rsp:left_txnum 4
-
-[2609451] D/sibles KE_EVT2: rev wr rsp:left_txnum 5
-
-[2609474] D/sibles KE_EVT2: rev wr rsp:left_txnum 6
-
-[2610271] D/sibles KE_EVT2: rev wr rsp:left_txnum 6
-
-[2611387] D/sibles KE_EVT2: rev wr rsp:left_txnum 7
-
-[2611418] D/sibles KE_EVT2: rev wr rsp:left_txnum 8
-
-[2626436] D/sibles KE_EVT2: rev wr rsp:left_txnum 8
-
-[2628108] D/sibles KE_EVT2: rev wr rsp:left_txnum 8
-
-[2629961] D/sibles KE_EVT2: rev wr rsp:left_txnum 8
-
-[2646448] D/sibles KE_EVT2: rev wr rsp:left_txnum 8
-
-[2648095] D/sibles KE_EVT2: rev wr rsp:left_txnum 8
-
-[2649950] D/sibles KE_EVT2: rev wr rsp:left_txnum 8
-
-[2665398] D/communicate.parse KE_EVT2: SKAI_LINK_COMMAND, KEY = 0x17
-[2665427] I/commu.parse.skailink KE_EVT2: skailink: remote_text_focus -> true
-[2666447] D/sibles KE_EVT2: rev wr rsp:left_txnum 8
-
-[2668126] D/sibles KE_EVT2: rev wr rsp:left_txnum 8
-
-[2668372] D/sibles KE_EVT2: rev wr rsp:left_txnum 8
-
-[2668693] D/sibles KE_EVT2: rev wr rsp:left_txnum 8
-
-[2669370] D/sibles KE_EVT2: rev wr rsp:left_txnum 6
-
-[2669412] D/sibles KE_EVT2: rev wr rsp:left_txnum 7
-
-[2669433] D/sibles KE_EVT2: rev wr rsp:left_txnum 8
-
-[2669519] D/sibles KE_EVT2: rev wr rsp:left_txnum 8
-
-[2669748] D/sibles KE_EVT2: rev wr rsp:left_txnum 8
-
-[2670023] D/sibles KE_EVT2: rev wr rsp:left_txnum 8
-
-[2670241] D/sibles KE_EVT2: rev wr rsp:left_txnum 8
-
-[2670666] D/sibles KE_EVT2: rev wr rsp:left_txnum 8
-
-[2670897] D/sibles KE_EVT2: rev wr rsp:left_txnum 8
-
-[2671350] D/sibles KE_EVT2: rev wr rsp:left_txnum 8
-
-[2671518] D/sibles KE_EVT2: rev wr rsp:left_txnum 8
-
-[2672130] D/sibles KE_EVT2: rev wr rsp:left_txnum 7
-
-[2672235] D/sibles KE_EVT2: rev wr rsp:left_txnum 8
-
-[2672346] D/sibles KE_EVT2: rev wr rsp:left_txnum 8
-
-[2672670] D/sibles KE_EVT2: rev wr rsp:left_txnum 8
-
-[2673319] D/sibles KE_EVT2: rev wr rsp:left_txnum 6
-
-[2673361] D/sibles KE_EVT2: rev wr rsp:left_txnum 7
-
-[2673387] D/sibles KE_EVT2: rev wr rsp:left_txnum 8
-
-[2673477] D/sibles KE_EVT2: rev wr rsp:left_txnum 8
-
-[2673650] D/sibles KE_EVT2: rev wr rsp:left_txnum 8
-
-[2673971] D/sibles KE_EVT2: rev wr rsp:left_txnum 8
-
-[2674217] D/sibles KE_EVT2: rev wr rsp:left_txnum 8
-
-[2674428] D/sibles KE_EVT2: rev wr rsp:left_txnum 8
-
-[2676296] D/sibles KE_EVT2: rev wr rsp:left_txnum 8
-
-[2688607] I/btapp_hf bts: hfp msg *msg_type 801a inst_data->st 1
-
-[2688633] I/btapp_hf bts: >> "signal":5
-
-[2688649] I/btapp_hf bts: CIEV name:signal val:5
-[2689251] D/NO_TAG tpread: Touch pressed at (228, 442)
-[2691198] D/NO_TAG tpread: Quick click at (228, 442)
-[2691220] D/NO_TAG tpread: System is already ON, no action taken
-[2691249] D/hid.mouse app_watc: Gesture detected: bottom bar released, move_y: 442
-[2691280] D/hid.mouse app_watc: Bottom bar tap ??? instruction_list_bar_tap_device (????????? skaibar)
-[2691318] I/instruction.list.layout app_watc: [bar_dev] tap device_id="3ad19ddc-ae9a-4c01-a388-3a5e5146d8f9"
-[2691365] D/sibles KE_EVT2: rev wr rsp:left_txnum 8
-
-[2691386] I/communicate.task app_watc: send skaibar open-device -> ok
-[2691413] I/instruction.list.layout app_watc: [bar_dev] device found, usable options=6
-[2691450] I/instruction.list.layout app_watc: Updated id=?????????, enabled=1
-[2691480] I/instruction.list.layout app_watc: Refreshing custom instructions...
-[2691540] I/instruction.list.layout app_watc: [bar_dev] SCROLL_BEGIN suppressed (s_in_refresh_scroll=true)
-[2692333] I/instruction.list.layout app_watc: [bar_dev] SCROLL_BEGIN suppressed (s_in_refresh_scroll=true)
-[2692389] D/sibles KE_EVT2: rev wr rsp:left_txnum 8
-
-[2692539] I/instruction.list.layout app_watc: [VOICE] re-asserted selected_item_index=4 (list_item_count=5)
-[2692638] I/instruction.list.layout app_watc: [bar_dev] animate_open_ai_widget: s_left_morph_busy=0 s_left_closing=0 box_visib
-[2692687] I/instruction.list.layout app_watc: [bar_dev] animate_open_ai_widget: proceeding to open morph
-[2693239] D/sibles KE_EVT2: rev wr rsp:left_txnum 8
-
-[2695153] D/sibles KE_EVT2: rev wr rsp:left_txnum 8
-
-[2697008] D/sibles KE_EVT2: rev wr rsp:left_txnum 8
-
-[2701317] D/bloc.v2t app_watc: send_voice_recognition_event: 1
-[2701382] I/bloc.motion_tracking app_watc: set_paused_control_with_arm:1
-[2701570] I/bloc.v2t voice_re: set_voice_recognition_started: 1
-[2701825] D/app.system.interface app_watc: voice_recognition_hint_create
-[2701854] D/app.system.interface app_watc: open_ai_tap_hint_bg: 0
-[2701909] D/ui.handler app_watc: GUI Task: msg type: 32
-[2701976] I/bloc.v2t voice_re: Received start listening event, started: 1
-[2702039] D/app.speech.provider voice_re: app_speech_set_content p_app_speech_ctx: 
-[2702097] D/app.system.interface voice_re: refresh_ai_chat_input_message: 
-[2702453] D/app.system.interface voice_re: Input message refreshed1
-[2702527] D/sibles KE_EVT2: rev wr rsp:left_txnum 8
-
-get_mic_volume = 0db
-get_mic_volume = 0db
-[2704150] D/bloc.v2t voice_re: Voice recognition event processed: 1
-[2704886] D/ui.handler app_watc: GUI Task: msg type: 20
-[2713569] D/sibles KE_EVT2: rev wr rsp:left_txnum 8
-
-[2715446] D/sibles KE_EVT2: rev wr rsp:left_txnum 8
-
-[2715783] D/sibles KE_EVT2: rev wr rsp:left_txnum 8
-
-[2716103] D/sibles KE_EVT2: rev wr rsp:left_txnum 8
-
-[2718012] D/sibles KE_EVT2: rev wr rsp:left_txnum 8
-
-opus alloc=24544 0x6029bfc0
-[2732883] D/bloc.v2t audio_st: opus encoder acquired by owner=2
-
-[2733363] D/ui.handler app_watc: GUI Task: msg type: 21
-[2734571] D/sibles KE_EVT2: rev wr rsp:left_txnum 8
-
-[2736247] D/sibles KE_EVT2: rev wr rsp:left_txnum 8
-
-[2738099] D/sibles KE_EVT2: rev wr rsp:left_txnum 8
-
-[2766484] D/ble.app KE_EVT2: BLE_GAP_REMOTE_RSSI_IND -49
-[2766507] D/BLE_GAP KE_EVT2: GAPC event status, op: 7, ret 0
-[2785169] D/communicate.parse KE_EVT2: SKAI_LINK_COMMAND, KEY = 0x3
-[2785211] I/commu.parse.skailink KE_EVT2: device actions for 3ad19ddc-ae9a-4c01-a388-3a5e5146d8f9 (name=ANDREW): 6 item(s)
-[2785257] I/commu.parse.skailink KE_EVT2:     item[0]: type=0 5555
-[2785282] I/commu.parse.skailink KE_EVT2:     item[1]: type=0 123456
-[2785308] I/commu.parse.skailink KE_EVT2:     item[2]: type=0 expecto patronum
-[2785338] I/commu.parse.skailink KE_EVT2:     item[3]: type=0 AI??????
-[2785365] I/commu.parse.skailink KE_EVT2:     item[4]: type=0 ?????????
-[2785392] I/commu.parse.skailink KE_EVT2:     item[5]: type=0 ?????????
-[2785488] I/instruction.list.layout app_watc: [bar_dev] device found, usable options=6
-[2785579] I/instruction.list.layout app_watc: Updated id=?????????, enabled=1
-[2785609] I/instruction.list.layout app_watc: Refreshing custom instructions...
-[2785699] I/instruction.list.layout app_watc: [bar_dev] SCROLL_BEGIN suppressed (s_in_refresh_scroll=true)
-[2787227] I/instruction.list.layout app_watc: [bar_dev] SCROLL_BEGIN suppressed (s_in_refresh_scroll=true)
-[2787277] I/bloc.motion_tracking app_watc: set_paused_control_with_arm:0
-[2787317] D/sibles KE_EVT2: rev wr rsp:left_txnum 8
-
-[2787471] I/instruction.list.layout app_watc: [VOICE] re-asserted selected_item_index=4 (list_item_count=5)
-[2787626] D/ui.handler app_watc: GUI Task: msg type: 72
-[2805597] D/ui.handler app_watc: GUI Task: msg type: 21
-[2823740] D/ui.handler app_watc: GUI Task: msg type: 21
-[2870479] D/ui.handler app_watc: GUI Task: msg type: 21
-[2885338] D/NO_TAG tpread: Touch pressed at (259, 336)
-[2888135] D/NO_TAG tpread: Quick click at (259, 336)
-[2888157] D/NO_TAG tpread: System is already ON, no action taken
-[2888338] I/instruction.list.layout app_watc: Mic bar tapped ??? dismissing AI widget (box=1 list=1)
-[2888376] I/instruction.list.layout app_watc: [bar_dev] close_ai_widget: keep_list=0 is_cancel=1 s_left_closing=0 s_bar_single
-[2888487] I/instruction.list.layout app_watc: Refreshing custom instructions...
-[2888581] I/instruction.list.layout app_watc: [bar_dev] SCROLL_BEGIN suppressed (s_in_refresh_scroll=true)
-[2889019] I/instruction.list.layout app_watc: [bar_dev] SCROLL_BEGIN suppressed (s_in_refresh_scroll=true)
-[2889133] D/sibles KE_EVT2: rev wr rsp:left_txnum 8
-
-[2889213] I/instruction.list.layout app_watc: [VOICE] re-asserted selected_item_index=1 (list_item_count=2)
-[2889292] D/sibles KE_EVT2: rev wr rsp:left_txnum 8
-
-[2889314] I/communicate.task app_watc: send skaibar dismiss -> ok
-[2889339] D/bloc.v2t app_watc: send_stop_listening_event
-[2889361] D/bloc.v2t app_watc: send_voice_recognition_event: 4
-[2889386] I/drv.audcodec peripher: bf0_audio_stop 0x0
-
-[2889408] I/drv.audcodec peripher: audcodec close dac
-[2889430] I/drv.audcodec peripher: bf0_audio_stop 0x0 done
-
-[2889453] I/drv.audprc peripher: bf0_audio_stop 0x0
-
-[2889474] I/drv.audprc peripher: audprc close dac
-[2889493] I/drv.audprc peripher: bf0_audio_stop 0x0 done
-
-[2889515] I/drv.audprc peripher: bf0_audio_stop 0x1
-
-[2889536] I/drv.audprc peripher: audprc close dac
-[2889555] I/drv.audprc peripher: bf0_audio_stop 0x1 done
-
-[2889591] D/sibles KE_EVT2: rev wr rsp:left_txnum 8
-
-[2889612] D/bloc.v2t app_watc: opus encoder released by owner=2
-
-[2889638] I/bloc.v2t app_watc: set_voice_recognition_started: 0
-[2889863] D/ui.handler app_watc: GUI Task: msg type: 20
-[2890075] D/bloc.v2t voice_re: isTextEmpty, hide indicator2
-[2890135] D/sibles KE_EVT2: rev wr rsp:left_txnum 8
-
-[2890176] I/bloc.v2t voice_re: set_voice_recognition_started: 0
-[2890398] D/ui.handler app_watc: GUI Task: msg type: 32
-[2890507] D/ui.handler app_watc: GUI Task: msg type: 20
-[2890562] D/bloc.v2t voice_re: Voice recognition event processed: 4
-[2892538] D/communicate.parse KE_EVT2: NOTIFY_COMMAND_ID, KEY = 0x6b
-[2892829] D/commu.parse.notify app_watc: Applying instruction: id=920f9b15-3a31-4912-8bde-fa35c30d7685, title=?????? sterben??
-[2892984] D/sibles KE_EVT2: rev wr rsp:left_txnum 8
-
-[2893035] I/instruction.list.layout app_watc: Requested instruction image for id=920f9b15-3a31-4912-8bde-fa35c30d7685
-[2893183] D/commu.parse.notify app_watc: Applying instruction: id=1659b0e2-f3ca-4631-9cd1-2615cff1a856, title=?????????
-[2893363] D/sibles KE_EVT2: rev wr rsp:left_txnum 8
-
-[2893386] I/instruction.list.layout app_watc: Requested instruction image for id=1659b0e2-f3ca-4631-9cd1-2615cff1a856
-[2893435] I/commu.parse.notify app_watc: BATCH instructions: 2 of 2 item(s) applied
-[2893470] I/instruction.list.layout app_watc: Refreshing custom instructions...
-[2893501] I/instruction.list.layout app_watc: refresh_custom_instructions: deferred (debounce)
-[2893537] D/ui.handler app_watc: GUI Task: msg type: 70
-[2911537] I/instruction.list.layout app_watc: Refreshing custom instructions...
-[2911591] I/instruction.list.layout app_watc: [bar_dev] SCROLL_BEGIN suppressed (s_in_refresh_scroll=true)
-[2911953] I/instruction.list.layout app_watc: [bar_dev] SCROLL_BEGIN suppressed (s_in_refresh_scroll=true)
-[2912005] D/sibles KE_EVT2: rev wr rsp:left_txnum 8
-
-[2912078] I/instruction.list.layout app_watc: [VOICE] re-asserted selected_item_index=1 (list_item_count=2)
-[2940632] D/communicate.parse KE_EVT2: SKAI_LINK_COMMAND, KEY = 0x17
-[2940661] I/commu.parse.skailink KE_EVT2: skailink: remote_text_focus -> false
-[2979782] D/communicate.parse KE_EVT2: SKAI_LINK_COMMAND, KEY = 0x17
-[2979810] I/commu.parse.skailink KE_EVT2: skailink: remote_text_focus -> true
-[2999444] D/communicate.parse KE_EVT2: SKAI_LINK_COMMAND, KEY = 0x17
-[2999471] I/commu.parse.skailink KE_EVT2: skailink: remote_text_focus -> false
-[3047664] D/communicate.parse KE_EVT2: SKAI_LINK_COMMAND, KEY = 0x3
-[3047699] I/commu.parse.skailink KE_EVT2: device actions for 3ad19ddc-ae9a-4c01-a388-3a5e5146d8f9 (name=ANDREW): 6 item(s)
-[3047745] I/commu.parse.skailink KE_EVT2:     item[0]: type=0 5555
-[3047771] I/commu.parse.skailink KE_EVT2:     item[1]: type=0 123456
-[3047797] I/commu.parse.skailink KE_EVT2:     item[2]: type=0 expecto patronum
-[3047826] I/commu.parse.skailink KE_EVT2:     item[3]: type=0 AI??????
-[3047853] I/commu.parse.skailink KE_EVT2:     item[4]: type=0 ?????????
-[3047881] I/commu.parse.skailink KE_EVT2:     item[5]: type=0 ?????????
-[3047986] D/ui.handler app_watc: GUI Task: msg type: 72
-[3094148] D/ble.app KE_EVT2: BLE_GAP_REMOTE_RSSI_IND -53
-[3094170] D/BLE_GAP KE_EVT2: GAPC event status, op: 7, ret 0
-[3160513] I/btapp_hf bts: hfp msg *msg_type 801a inst_data->st 1
-
-[3160539] I/btapp_hf bts: >> "signal":4
-
-[3160555] I/btapp_hf bts: CIEV name:signal val:4
-[3311212] D/communicate.parse KE_EVT2: SKAI_LINK_COMMAND, KEY = 0x3
-[3311248] I/commu.parse.skailink KE_EVT2: device actions for 3ad19ddc-ae9a-4c01-a388-3a5e5146d8f9 (name=ANDREW): 6 item(s)
-[3311294] I/commu.parse.skailink KE_EVT2:     item[0]: type=0 5555
-[3311319] I/commu.parse.skailink KE_EVT2:     item[1]: type=0 123456
-[3311345] I/commu.parse.skailink KE_EVT2:     item[2]: type=0 expecto patronum
-[3311375] I/commu.parse.skailink KE_EVT2:     item[3]: type=0 AI??????
-[3311402] I/commu.parse.skailink KE_EVT2:     item[4]: type=0 ?????????
-[3311429] I/commu.parse.skailink KE_EVT2:     item[5]: type=0 ?????????
-[3311707] D/ui.handler app_watc: GUI Task: msg type: 72
-[3422002] D/ble.app KE_EVT2: BLE_GAP_REMOTE_RSSI_IND -55
-[3422025] D/BLE_GAP KE_EVT2: GAPC event status, op: 7, ret 0
-[3571680] D/communicate.parse KE_EVT2: SKAI_LINK_COMMAND, KEY = 0x3
-[3571716] I/commu.parse.skailink KE_EVT2: device actions for 3ad19ddc-ae9a-4c01-a388-3a5e5146d8f9 (name=ANDREW): 6 item(s)
-[3571762] I/commu.parse.skailink KE_EVT2:     item[0]: type=0 5555
-[3571787] I/commu.parse.skailink KE_EVT2:     item[1]: type=0 123456
-[3571813] I/commu.parse.skailink KE_EVT2:     item[2]: type=0 expecto patronum
-[3571843] I/commu.parse.skailink KE_EVT2:     item[3]: type=0 AI??????
-[3571869] I/commu.parse.skailink KE_EVT2:     item[4]: type=0 ?????????
-[3571897] I/commu.parse.skailink KE_EVT2:     item[5]: type=0 ?????????
-[3571934] D/ui.handler app_watc: GUI Task: msg type: 72
-[3749649] D/ble.app KE_EVT2: BLE_GAP_REMOTE_RSSI_IND -57
-[3749672] D/BLE_GAP KE_EVT2: GAPC event status, op: 7, ret 0
-[3834079] D/communicate.parse KE_EVT2: SKAI_LINK_COMMAND, KEY = 0x3
-[3834114] I/commu.parse.skailink KE_EVT2: device actions for 3ad19ddc-ae9a-4c01-a388-3a5e5146d8f9 (name=ANDREW): 6 item(s)
-[3834160] I/commu.parse.skailink KE_EVT2:     item[0]: type=0 5555
-[3834186] I/commu.parse.skailink KE_EVT2:     item[1]: type=0 123456
-[3834212] I/commu.parse.skailink KE_EVT2:     item[2]: type=0 expecto patronum
-[3834242] I/commu.parse.skailink KE_EVT2:     item[3]: type=0 AI??????
-[3834269] I/commu.parse.skailink KE_EVT2:     item[4]: type=0 ?????????
-[3834295] I/commu.parse.skailink KE_EVT2:     item[5]: type=0 ?????????
-[3834333] D/ui.handler app_watc: GUI Task: msg type: 72
-[4005943] D/sys.perception periodic: Running periodic system perception task - Current time: 2026-7-15 19:4:46
-[4005985] D/sys.perception periodic: Checking /recorder for pending files to sync
-[4007261] I/CLIENT.POWER ds_proc: watch_sys_service_callback: msg_id=32817
-[4007292] W/app.clock peripher: instruction_list_battery is NULL
-[4007317] D/ble_bass peripher: battery level the same 100, skip
-[4007348] D/sibles KE_EVT2: rev wr rsp:left_txnum 7
-
-[4007370] D/sibles KE_EVT2: rev wr rsp:left_txnum 8
-
-[4007395] D/ui.handler app_watc: GUI Task: msg type: 9
-[4007416] D/ui.handler app_watc: GUI Task: msg type: 10
-[4077268] D/ble.app KE_EVT2: BLE_GAP_REMOTE_RSSI_IND -46
-[4077290] D/BLE_GAP KE_EVT2: GAPC event status, op: 7, ret 0
-[4095572] D/communicate.parse KE_EVT2: SKAI_LINK_COMMAND, KEY = 0x3
-[4095608] I/commu.parse.skailink KE_EVT2: device actions for 3ad19ddc-ae9a-4c01-a388-3a5e5146d8f9 (name=ANDREW): 6 item(s)
-[4095653] I/commu.parse.skailink KE_EVT2:     item[0]: type=0 5555
-[4095679] I/commu.parse.skailink KE_EVT2:     item[1]: type=0 123456
-[4095705] I/commu.parse.skailink KE_EVT2:     item[2]: type=0 expecto patronum
-[4095735] I/commu.parse.skailink KE_EVT2:     item[3]: type=0 AI??????
-[4095762] I/commu.parse.skailink KE_EVT2:     item[4]: type=0 ?????????
-[4095789] I/commu.parse.skailink KE_EVT2:     item[5]: type=0 ?????????
-[4095991] D/ui.handler app_watc: GUI Task: msg type: 72
-[4277226] I/btapp_hf bts: hfp msg *msg_type 801a inst_data->st 1
-
-[4277252] I/btapp_hf bts: >> "signal":5
-
-[4277269] I/btapp_hf bts: CIEV name:signal val:5
-[4358049] D/communicate.parse KE_EVT2: SKAI_LINK_COMMAND, KEY = 0x3
-[4358085] I/commu.parse.skailink KE_EVT2: device actions for 3ad19ddc-ae9a-4c01-a388-3a5e5146d8f9 (name=ANDREW): 6 item(s)
-[4358131] I/commu.parse.skailink KE_EVT2:     item[0]: type=0 5555
-[4358156] I/commu.parse.skailink KE_EVT2:     item[1]: type=0 123456
-[4358183] I/commu.parse.skailink KE_EVT2:     item[2]: type=0 expecto patronum
-[4358212] I/commu.parse.skailink KE_EVT2:     item[3]: type=0 AI??????
-[4358239] I/commu.parse.skailink KE_EVT2:     item[4]: type=0 ?????????
-[4358266] I/commu.parse.skailink KE_EVT2:     item[5]: type=0 ?????????
-[4358304] D/ui.handler app_watc: GUI Task: msg type: 72
-[4404949] D/ble.app KE_EVT2: BLE_GAP_REMOTE_RSSI_IND -49
-[4404971] D/BLE_GAP KE_EVT2: GAPC event status, op: 7, ret 0
-[4620593] D/communicate.parse KE_EVT2: SKAI_LINK_COMMAND, KEY = 0x3
-[4620629] I/commu.parse.skailink KE_EVT2: device actions for 3ad19ddc-ae9a-4c01-a388-3a5e5146d8f9 (name=ANDREW): 6 item(s)
-[4620675] I/commu.parse.skailink KE_EVT2:     item[0]: type=0 5555
-[4620700] I/commu.parse.skailink KE_EVT2:     item[1]: type=0 123456
-[4620726] I/commu.parse.skailink KE_EVT2:     item[2]: type=0 expecto patronum
-[4620756] I/commu.parse.skailink KE_EVT2:     item[3]: type=0 AI??????
-[4620783] I/commu.parse.skailink KE_EVT2:     item[4]: type=0 ?????????
-[4620810] I/commu.parse.skailink KE_EVT2:     item[5]: type=0 ?????????
-[4620847] D/ui.handler app_watc: GUI Task: msg type: 72
-[4639050] I/btapp_hf bts: hfp msg *msg_type 801a inst_data->st 1
-
-[4639076] I/btapp_hf bts: >> "signal":4
-
-[4639093] I/btapp_hf bts: CIEV name:signal val:4
-[4732556] D/ble.app KE_EVT2: BLE_GAP_REMOTE_RSSI_IND -45
-[4732578] D/BLE_GAP KE_EVT2: GAPC event status, op: 7, ret 0
-[4865308] D/communicate.parse KE_EVT2: SKAI_LINK_COMMAND, KEY = 0x3
-[4865343] I/commu.parse.skailink KE_EVT2: device actions for 3ad19ddc-ae9a-4c01-a388-3a5e5146d8f9 (name=ANDREW): 6 item(s)
-[4865389] I/commu.parse.skailink KE_EVT2:     item[0]: type=0 5555
-[4865414] I/commu.parse.skailink KE_EVT2:     item[1]: type=0 123456
-[4865440] I/commu.parse.skailink KE_EVT2:     item[2]: type=0 expecto patronum
-[4865470] I/commu.parse.skailink KE_EVT2:     item[3]: type=0 AI??????
-[4865497] I/commu.parse.skailink KE_EVT2:     item[4]: type=0 ?????????
-[4865524] I/commu.parse.skailink KE_EVT2:     item[5]: type=0 ?????????
-[4865692] D/ui.handler app_watc: GUI Task: msg type: 72
-[4882056] D/communicate.parse KE_EVT2: SKAI_LINK_COMMAND, KEY = 0x3
-[4882091] I/commu.parse.skailink KE_EVT2: device actions for 3ad19ddc-ae9a-4c01-a388-3a5e5146d8f9 (name=ANDREW): 6 item(s)
-[4882138] I/commu.parse.skailink KE_EVT2:     item[0]: type=0 5555
-[4882163] I/commu.parse.skailink KE_EVT2:     item[1]: type=0 123456
-[4882189] I/commu.parse.skailink KE_EVT2:     item[2]: type=0 expecto patronum
-[4882219] I/commu.parse.skailink KE_EVT2:     item[3]: type=0 AI??????
-[4882246] I/commu.parse.skailink KE_EVT2:     item[4]: type=0 ?????????
-[4882273] I/commu.parse.skailink KE_EVT2:     item[5]: type=0 ?????????
-[4882470] D/ui.handler app_watc: GUI Task: msg type: 72
-[4890666] I/btapp_hf bts: hfp msg *msg_type 801a inst_data->st 1
-
-[4890692] I/btapp_hf bts: >> "signal":5
-
-[4890709] I/btapp_hf bts: CIEV name:signal val:5
-[5060346] D/ble.app KE_EVT2: BLE_GAP_REMOTE_RSSI_IND -48
-[5060369] D/BLE_GAP KE_EVT2: GAPC event status, op: 7, ret 0
-[5144719] D/communicate.parse KE_EVT2: SKAI_LINK_COMMAND, KEY = 0x3
-[5144755] I/commu.parse.skailink KE_EVT2: device actions for 3ad19ddc-ae9a-4c01-a388-3a5e5146d8f9 (name=ANDREW): 6 item(s)
-[5144801] I/commu.parse.skailink KE_EVT2:     item[0]: type=0 5555
-[5144826] I/commu.parse.skailink KE_EVT2:     item[1]: type=0 123456
-[5144852] I/commu.parse.skailink KE_EVT2:     item[2]: type=0 expecto patronum
-[5144882] I/commu.parse.skailink KE_EVT2:     item[3]: type=0 AI??????
-[5144909] I/commu.parse.skailink KE_EVT2:     item[4]: type=0 ?????????
-[5144936] I/commu.parse.skailink KE_EVT2:     item[5]: type=0 ?????????
-[5145143] D/ui.handler app_watc: GUI Task: msg type: 72
-[5387965] D/ble.app KE_EVT2: BLE_GAP_REMOTE_RSSI_IND -52
-[5387987] D/BLE_GAP KE_EVT2: GAPC event status, op: 7, ret 0
-[5406971] D/communicate.parse KE_EVT2: SKAI_LINK_COMMAND, KEY = 0x3
-[5407007] I/commu.parse.skailink KE_EVT2: device actions for 3ad19ddc-ae9a-4c01-a388-3a5e5146d8f9 (name=ANDREW): 6 item(s)
-[5407053] I/commu.parse.skailink KE_EVT2:     item[0]: type=0 5555
-[5407079] I/commu.parse.skailink KE_EVT2:     item[1]: type=0 123456
-[5407105] I/commu.parse.skailink KE_EVT2:     item[2]: type=0 expecto patronum
-[5407134] I/commu.parse.skailink KE_EVT2:     item[3]: type=0 AI??????
-[5407161] I/commu.parse.skailink KE_EVT2:     item[4]: type=0 ?????????
-[5407188] I/commu.parse.skailink KE_EVT2:     item[5]: type=0 ?????????
-[5407291] D/ui.handler app_watc: GUI Task: msg type: 72
-[5668604] D/communicate.parse KE_EVT2: SKAI_LINK_COMMAND, KEY = 0x3
-[5668640] I/commu.parse.skailink KE_EVT2: device actions for 3ad19ddc-ae9a-4c01-a388-3a5e5146d8f9 (name=ANDREW): 6 item(s)
-[5668686] I/commu.parse.skailink KE_EVT2:     item[0]: type=0 5555
-[5668711] I/commu.parse.skailink KE_EVT2:     item[1]: type=0 123456
-[5668737] I/commu.parse.skailink KE_EVT2:     item[2]: type=0 expecto patronum
-[5668767] I/commu.parse.skailink KE_EVT2:     item[3]: type=0 AI??????
-[5668794] I/commu.parse.skailink KE_EVT2:     item[4]: type=0 ?????????
-[5668821] I/commu.parse.skailink KE_EVT2:     item[5]: type=0 ?????????
-[5668916] D/ui.handler app_watc: GUI Task: msg type: 72
-[5715658] D/ble.app KE_EVT2: BLE_GAP_REMOTE_RSSI_IND -48
-[5715680] D/BLE_GAP KE_EVT2: GAPC event status, op: 7, ret 0
-[5930942] D/communicate.parse KE_EVT2: SKAI_LINK_COMMAND, KEY = 0x3
-[5930977] I/commu.parse.skailink KE_EVT2: device actions for 3ad19ddc-ae9a-4c01-a388-3a5e5146d8f9 (name=ANDREW): 6 item(s)
-[5931023] I/commu.parse.skailink KE_EVT2:     item[0]: type=0 5555
-[5931048] I/commu.parse.skailink KE_EVT2:     item[1]: type=0 123456
-[5931074] I/commu.parse.skailink KE_EVT2:     item[2]: type=0 expecto patronum
-[5931104] I/commu.parse.skailink KE_EVT2:     item[3]: type=0 AI??????
-[5931131] I/commu.parse.skailink KE_EVT2:     item[4]: type=0 ?????????
-[5931158] I/commu.parse.skailink KE_EVT2:     item[5]: type=0 ?????????
-[5931192] D/ui.handler app_watc: GUI Task: msg type: 72
-[5972124] D/sys.perception periodic: Running periodic system perception task - Current time: 2026-7-15 19:5:46
-[5972170] D/sys.perception periodic: Checking /recorder for pending files to sync
-[5973475] E/drv.adc fsr_smp: ADC input voltage too large, register value 4095
-
-[5973570] I/CLIENT.POWER ds_proc: watch_sys_service_callback: msg_id=32817
-[5973601] W/app.clock peripher: instruction_list_battery is NULL
-[5973626] D/ble_bass peripher: battery level the same 100, skip
-[5973658] D/sibles KE_EVT2: rev wr rsp:left_txnum 7
-
-[5973680] D/sibles KE_EVT2: rev wr rsp:left_txnum 8
-
-[5973705] D/ui.handler app_watc: GUI Task: msg type: 9
-[5973726] D/ui.handler app_watc: GUI Task: msg type: 10
-[5994723] I/CLIENT.POWER ds_proc: watch_sys_service_callback: msg_id=32828
-[5994752] I/watch.interact ds_proc: [Sleep] mode=1 utc=1784142346 total=1 D=0 R=0 L=1 WASO=0 hr=0 rhr=65
-[5994797] D/sibles KE_EVT2: rev wr rsp:left_txnum 8
-
-[5995537] D/bloc.health health_s: store_sleep_data: /health/sleep_20260715.json
-[6043322] D/ble.app KE_EVT2: BLE_GAP_REMOTE_RSSI_IND -46
-[6043345] D/BLE_GAP KE_EVT2: GAPC event status, op: 7, ret 0
-[6126828] D/NO_TAG tpread: Touch pressed at (219, 439)
-[6128663] D/NO_TAG tpread: Quick click at (219, 439)
-[6128684] D/NO_TAG tpread: System is already ON, no action taken
-[6128889] D/hid.mouse app_watc: Gesture detected: bottom bar released, move_y: 439
-[6128920] D/hid.mouse app_watc: Bottom bar tap ??? instruction_list_bar_tap_device (????????? skaibar)
-[6128959] I/instruction.list.layout app_watc: [bar_dev] tap device_id="3ad19ddc-ae9a-4c01-a388-3a5e5146d8f9"
-[6129008] D/sibles KE_EVT2: rev wr rsp:left_txnum 8
-
-[6129030] I/communicate.task app_watc: send skaibar open-device -> ok
-[6129057] I/instruction.list.layout app_watc: [bar_dev] device found, usable options=6
-[6129093] I/instruction.list.layout app_watc: Updated id=?????????, enabled=1
-[6129123] I/instruction.list.layout app_watc: Refreshing custom instructions...
-[6129178] I/instruction.list.layout app_watc: [bar_dev] SCROLL_BEGIN suppressed (s_in_refresh_scroll=true)
-[6129926] I/instruction.list.layout app_watc: [bar_dev] SCROLL_BEGIN suppressed (s_in_refresh_scroll=true)
-[6129989] D/sibles KE_EVT2: rev wr rsp:left_txnum 8
-
-[6130128] I/instruction.list.layout app_watc: [VOICE] re-asserted selected_item_index=4 (list_item_count=5)
-[6130292] I/instruction.list.layout app_watc: Refreshing custom instructions...
-[6130322] I/instruction.list.layout app_watc: refresh_custom_instructions: deferred (debounce)
-[6130372] I/app.mainmenu app_watc: is_at_message: 0
-[6148352] I/instruction.list.layout app_watc: Refreshing custom instructions...
-[6148442] I/instruction.list.layout app_watc: [bar_dev] SCROLL_BEGIN suppressed (s_in_refresh_scroll=true)
-[6149233] I/instruction.list.layout app_watc: [bar_dev] SCROLL_BEGIN suppressed (s_in_refresh_scroll=true)
-[6149296] D/sibles KE_EVT2: rev wr rsp:left_txnum 8
-
-[6149446] I/instruction.list.layout app_watc: [VOICE] re-asserted selected_item_index=4 (list_item_count=5)
-[6152127] D/communicate.parse KE_EVT2: SKAI_LINK_COMMAND, KEY = 0x3
-[6152173] I/commu.parse.skailink KE_EVT2: device actions for 3ad19ddc-ae9a-4c01-a388-3a5e5146d8f9 (name=ANDREW): 5 item(s)
-[6152219] I/commu.parse.skailink KE_EVT2:     item[0]: type=0 AI??????
-[6152245] I/commu.parse.skailink KE_EVT2:     item[1]: type=0 ?????????
-[6152272] I/commu.parse.skailink KE_EVT2:     item[2]: type=0 ?????????
-[6152300] I/commu.parse.skailink KE_EVT2:     item[3]: type=0 5555
-[6152325] I/commu.parse.skailink KE_EVT2:     item[4]: type=0 123456
-[6152361] I/instruction.list.layout app_watc: [bar_dev] device found, usable options=5
-[6152395] I/instruction.list.layout app_watc: Updated id=?????????, enabled=1
-[6152424] I/instruction.list.layout app_watc: Refreshing custom instructions...
-[6152454] I/instruction.list.layout app_watc: refresh_custom_instructions: deferred (debounce)
-[6152490] D/ui.handler app_watc: GUI Task: msg type: 72
-[6156969] D/NO_TAG tpread: Touch pressed at (219, 434)
-[6159335] D/NO_TAG tpread: Quick click at (219, 434)
-[6159355] D/NO_TAG tpread: System is already ON, no action taken
-[6159691] I/instruction.list.layout app_watc: Mic bar tapped ??? opening AI widget (is_open flag=0)
-[6159730] I/instruction.list.layout app_watc: [bar_dev] animate_open_ai_widget: s_left_morph_busy=0 s_left_closing=0 box_visib
-[6159781] I/instruction.list.layout app_watc: [bar_dev] animate_open_ai_widget: proceeding to open morph
-[6168027] D/bloc.v2t app_watc: send_voice_recognition_event: 1
-[6168093] I/bloc.motion_tracking app_watc: set_paused_control_with_arm:1
-[6168281] I/bloc.v2t voice_re: set_voice_recognition_started: 1
-[6168836] D/app.system.interface app_watc: voice_recognition_hint_create
-[6168895] D/app.system.interface app_watc: open_ai_tap_hint_bg: 0
-[6168953] D/ui.handler app_watc: GUI Task: msg type: 32
-[6169014] I/bloc.v2t voice_re: Received start listening event, started: 1
-[6169565] D/app.speech.provider voice_re: app_speech_set_content p_app_speech_ctx: 
-[6170781] I/instruction.list.layout app_watc: Refreshing custom instructions...
-[6170980] I/instruction.list.layout app_watc: [bar_dev] SCROLL_BEGIN suppressed (s_in_refresh_scroll=true)
-[6171849] I/instruction.list.layout app_watc: [bar_dev] SCROLL_BEGIN suppressed (s_in_refresh_scroll=true)
-[6171901] I/bloc.motion_tracking app_watc: set_paused_control_with_arm:0
-[6171936] D/sibles KE_EVT2: rev wr rsp:left_txnum 8
-
-[6172058] I/instruction.list.layout app_watc: [VOICE] re-asserted selected_item_index=3 (list_item_count=4)
-[6172406] D/app.system.interface voice_re: refresh_ai_chat_input_message: 
-[6172644] D/app.system.interface voice_re: Input message refreshed1
-[6173119] D/sibles KE_EVT2: rev wr rsp:left_txnum 8
-
-get_mic_volume = 0db
-get_mic_volume = 0db
-[6174959] D/bloc.v2t voice_re: Voice recognition event processed: 1
-[6175660] D/ui.handler app_watc: GUI Task: msg type: 20
-opus alloc=24544 0x602a1fd8
-[6189646] D/bloc.v2t audio_st: opus encoder acquired by owner=2
-
-[6190143] D/ui.handler app_watc: GUI Task: msg type: 21
-[6195404] D/communicate.parse KE_EVT2: SKAI_LINK_COMMAND, KEY = 0x3
-[6195442] I/commu.parse.skailink KE_EVT2: device actions for 3ad19ddc-ae9a-4c01-a388-3a5e5146d8f9 (name=ANDREW): 5 item(s)
-[6195488] I/commu.parse.skailink KE_EVT2:     item[0]: type=0 AI??????
-[6195515] I/commu.parse.skailink KE_EVT2:     item[1]: type=0 ?????????
-[6195542] I/commu.parse.skailink KE_EVT2:     item[2]: type=0 ?????????
-[6195569] I/commu.parse.skailink KE_EVT2:     item[3]: type=0 5555
-[6195594] I/commu.parse.skailink KE_EVT2:     item[4]: type=0 123456
-[6196201] I/instruction.list.layout app_watc: [bar_dev] device found, usable options=5
-[6196234] I/instruction.list.layout app_watc: Updated id=?????????, enabled=1
-[6196264] I/instruction.list.layout app_watc: Refreshing custom instructions...
-[6196343] I/instruction.list.layout app_watc: [bar_dev] SCROLL_BEGIN suppressed (s_in_refresh_scroll=true)
-[6197146] I/instruction.list.layout app_watc: [bar_dev] SCROLL_BEGIN suppressed (s_in_refresh_scroll=true)
-[6197203] D/sibles KE_EVT2: rev wr rsp:left_txnum 8
-
-[6197320] I/instruction.list.layout app_watc: [VOICE] re-asserted selected_item_index=3 (list_item_count=4)
-[6197491] D/ui.handler app_watc: GUI Task: msg type: 72
-[6235157] D/ui.handler app_watc: GUI Task: msg type: 21
-[6243514] D/ui.handler app_watc: GUI Task: msg type: 21
-[6337395] D/ui.handler app_watc: GUI Task: msg type: 21
-[6371090] D/ble.app KE_EVT2: BLE_GAP_REMOTE_RSSI_IND -48
-[6371112] D/BLE_GAP KE_EVT2: GAPC event status, op: 7, ret 0
-[6440227] D/communicate.parse KE_EVT2: SKAI_LINK_COMMAND, KEY = 0x3
-[6440264] I/commu.parse.skailink KE_EVT2: device actions for 3ad19ddc-ae9a-4c01-a388-3a5e5146d8f9 (name=ANDREW): 6 item(s)
-[6440310] I/commu.parse.skailink KE_EVT2:     item[0]: type=0 5555
-[6440335] I/commu.parse.skailink KE_EVT2:     item[1]: type=0 123456
-[6440361] I/commu.parse.skailink KE_EVT2:     item[2]: type=0 expecto patronum
-[6440391] I/commu.parse.skailink KE_EVT2:     item[3]: type=0 AI??????
-[6440418] I/commu.parse.skailink KE_EVT2:     item[4]: type=0 ?????????
-[6440445] I/commu.parse.skailink KE_EVT2:     item[5]: type=0 ?????????
-[6440510] I/instruction.list.layout app_watc: [bar_dev] device found, usable options=6
-[6440602] I/instruction.list.layout app_watc: Updated id=?????????, enabled=1
-[6440632] I/instruction.list.layout app_watc: Refreshing custom instructions...
-[6440711] I/instruction.list.layout app_watc: [bar_dev] SCROLL_BEGIN suppressed (s_in_refresh_scroll=true)
-[6441766] I/instruction.list.layout app_watc: [bar_dev] SCROLL_BEGIN suppressed (s_in_refresh_scroll=true)
-[6441826] D/sibles KE_EVT2: rev wr rsp:left_txnum 8
-
-[6442041] I/instruction.list.layout app_watc: [VOICE] re-asserted selected_item_index=4 (list_item_count=5)
-[6442149] D/ui.handler app_watc: GUI Task: msg type: 72
-[6454911] D/communicate.parse KE_EVT2: SKAI_LINK_COMMAND, KEY = 0x3
-[6454956] I/commu.parse.skailink KE_EVT2: device actions for 3ad19ddc-ae9a-4c01-a388-3a5e5146d8f9 (name=ANDREW): 6 item(s)
-[6455002] I/commu.parse.skailink KE_EVT2:     item[0]: type=0 5555
-[6455028] I/commu.parse.skailink KE_EVT2:     item[1]: type=0 123456
-[6455054] I/commu.parse.skailink KE_EVT2:     item[2]: type=0 expecto patronum
-[6455083] I/commu.parse.skailink KE_EVT2:     item[3]: type=0 AI??????
-[6455110] I/commu.parse.skailink KE_EVT2:     item[4]: type=0 ?????????
-[6455137] I/commu.parse.skailink KE_EVT2:     item[5]: type=0 ?????????
-[6455233] I/instruction.list.layout app_watc: [bar_dev] device found, usable options=6
-[6455338] I/instruction.list.layout app_watc: Updated id=?????????, enabled=1
-[6455368] I/instruction.list.layout app_watc: Refreshing custom instructions...
-[6455398] I/instruction.list.layout app_watc: refresh_custom_instructions: deferred (debounce)
-[6455438] D/ui.handler app_watc: GUI Task: msg type: 72
-[6463651] D/ui.handler app_watc: GUI Task: msg type: 21
-[6473501] I/instruction.list.layout app_watc: Refreshing custom instructions...
-[6473592] I/instruction.list.layout app_watc: [bar_dev] SCROLL_BEGIN suppressed (s_in_refresh_scroll=true)
-[6474564] I/instruction.list.layout app_watc: [bar_dev] SCROLL_BEGIN suppressed (s_in_refresh_scroll=true)
-[6474686] D/sibles KE_EVT2: rev wr rsp:left_txnum 8
-
-[6474837] I/instruction.list.layout app_watc: [VOICE] re-asserted selected_item_index=4 (list_item_count=5)
-[6520244] D/ui.handler app_watc: GUI Task: msg type: 21
-[6550180] D/ui.handler app_watc: GUI Task: msg type: 21
-[6559566] D/ui.handler app_watc: GUI Task: msg type: 21
-[6698657] D/ble.app KE_EVT2: BLE_GAP_REMOTE_RSSI_IND -49
-[6698680] D/BLE_GAP KE_EVT2: GAPC event status, op: 7, ret 0
-[6717444] D/communicate.parse KE_EVT2: SKAI_LINK_COMMAND, KEY = 0x3
-[6717488] I/commu.parse.skailink KE_EVT2: device actions for 3ad19ddc-ae9a-4c01-a388-3a5e5146d8f9 (name=ANDREW): 6 item(s)
-[6717534] I/commu.parse.skailink KE_EVT2:     item[0]: type=0 5555
-[6717560] I/commu.parse.skailink KE_EVT2:     item[1]: type=0 123456
-[6717586] I/commu.parse.skailink KE_EVT2:     item[2]: type=0 expecto patronum
-[6717615] I/commu.parse.skailink KE_EVT2:     item[3]: type=0 AI??????
-[6717642] I/commu.parse.skailink KE_EVT2:     item[4]: type=0 ?????????
-[6717669] I/commu.parse.skailink KE_EVT2:     item[5]: type=0 ?????????
-[6717904] I/instruction.list.layout app_watc: [bar_dev] device found, usable options=6
-[6717937] I/instruction.list.layout app_watc: Updated id=?????????, enabled=1
-[6717971] I/instruction.list.layout app_watc: Refreshing custom instructions...
-[6718061] I/instruction.list.layout app_watc: [bar_dev] SCROLL_BEGIN suppressed (s_in_refresh_scroll=true)
-[6719049] I/instruction.list.layout app_watc: [bar_dev] SCROLL_BEGIN suppressed (s_in_refresh_scroll=true)
-[6719171] D/sibles KE_EVT2: rev wr rsp:left_txnum 8
-
-[6719320] I/instruction.list.layout app_watc: [VOICE] re-asserted selected_item_index=4 (list_item_count=5)
-[6719493] D/ui.handler app_watc: GUI Task: msg type: 72
-[6734964] D/ui.handler app_watc: GUI Task: msg type: 21
-[6826958] D/ui.handler app_watc: GUI Task: msg type: 21
-[6979996] D/communicate.parse KE_EVT2: SKAI_LINK_COMMAND, KEY = 0x3
-[6980041] I/commu.parse.skailink KE_EVT2: device actions for 3ad19ddc-ae9a-4c01-a388-3a5e5146d8f9 (name=ANDREW): 6 item(s)
-[6980087] I/commu.parse.skailink KE_EVT2:     item[0]: type=0 5555
-[6980112] I/commu.parse.skailink KE_EVT2:     item[1]: type=0 123456
-[6980138] I/commu.parse.skailink KE_EVT2:     item[2]: type=0 expecto patronum
-[6980168] I/commu.parse.skailink KE_EVT2:     item[3]: type=0 AI??????
-[6980194] I/commu.parse.skailink KE_EVT2:     item[4]: type=0 ?????????
-[6980222] I/commu.parse.skailink KE_EVT2:     item[5]: type=0 ?????????
-[6980335] I/instruction.list.layout app_watc: [bar_dev] device found, usable options=6
-[6980369] I/instruction.list.layout app_watc: Updated id=?????????, enabled=1
-[6980398] I/instruction.list.layout app_watc: Refreshing custom instructions...
-[6980488] I/instruction.list.layout app_watc: [bar_dev] SCROLL_BEGIN suppressed (s_in_refresh_scroll=true)
-[6981476] I/instruction.list.layout app_watc: [bar_dev] SCROLL_BEGIN suppressed (s_in_refresh_scroll=true)
-[6981599] D/sibles KE_EVT2: rev wr rsp:left_txnum 8
-
-[6981750] I/instruction.list.layout app_watc: [VOICE] re-asserted selected_item_index=4 (list_item_count=5)
-[6981849] D/ui.handler app_watc: GUI Task: msg type: 72
-[7026358] D/ble.app KE_EVT2: BLE_GAP_REMOTE_RSSI_IND -49
-[7026381] D/BLE_GAP KE_EVT2: GAPC event status, op: 7, ret 0
-[7228076] D/NO_TAG tpread: Touch pressed at (315, 222)
-[7231127] D/ui.handler app_watc: GUI Task: msg type: 21
-[7233770] I/instruction.list.layout app_watc: [bar_dev] close_ai_widget: keep_list=0 is_cancel=1 s_left_closing=0 s_bar_single
-[7233820] I/instruction.list.layout app_watc: Refreshing custom instructions...
-[7234010] I/instruction.list.layout app_watc: [bar_dev] SCROLL_BEGIN suppressed (s_in_refresh_scroll=true)
-[7235073] I/instruction.list.layout app_watc: [bar_dev] SCROLL_BEGIN suppressed (s_in_refresh_scroll=true)
-[7235126] D/sibles KE_EVT2: rev wr rsp:left_txnum 8
-
-[7235275] I/instruction.list.layout app_watc: [VOICE] re-asserted selected_item_index=1 (list_item_count=2)
-[7235358] D/sibles KE_EVT2: rev wr rsp:left_txnum 8
-
-[7235380] I/communicate.task app_watc: send skaibar dismiss -> ok
-[7235405] D/bloc.v2t app_watc: send_stop_listening_event
-[7235432] D/bloc.v2t app_watc: send_voice_recognition_event: 4
-[7235457] I/drv.audcodec peripher: bf0_audio_stop 0x0
-
-[7235478] I/drv.audcodec peripher: audcodec close dac
-[7235500] I/drv.audcodec peripher: bf0_audio_stop 0x0 done
-
-[7235524] I/drv.audprc peripher: bf0_audio_stop 0x0
-
-[7235545] I/drv.audprc peripher: audprc close dac
-[7235564] I/drv.audprc peripher: bf0_audio_stop 0x0 done
-
-[7235587] I/drv.audprc peripher: bf0_audio_stop 0x1
-
-[7235607] I/drv.audprc peripher: audprc close dac
-[7235626] I/drv.audprc peripher: bf0_audio_stop 0x1 done
-
-[7235663] D/sibles KE_EVT2: rev wr rsp:left_txnum 8
-
-[7235686] D/bloc.v2t app_watc: opus encoder released by owner=2
-
-[7235711] I/bloc.v2t app_watc: set_voice_recognition_started: 0
-[7235979] D/ui.handler app_watc: GUI Task: msg type: 20
-[7236112] D/bloc.v2t voice_re: isTextEmpty, hide indicator2
-[7236231] D/sibles KE_EVT2: rev wr rsp:left_txnum 8
-
-[7236565] D/ui.handler app_watc: GUI Task: msg type: 32
-[7236646] D/ui.handler app_watc: GUI Task: msg type: 20
-[7236774] I/bloc.v2t voice_re: set_voice_recognition_started: 0
-[7237240] D/bloc.v2t voice_re: Voice recognition event processed: 4
-[7238491] D/communicate.parse KE_EVT2: NOTIFY_COMMAND_ID, KEY = 0x6b
-[7238977] D/commu.parse.notify app_watc: Applying instruction: id=920f9b15-3a31-4912-8bde-fa35c30d7685, title=?????? sterben??
-[7239394] D/sibles KE_EVT2: rev wr rsp:left_txnum 8
-
-[7239438] I/instruction.list.layout app_watc: Requested instruction image for id=920f9b15-3a31-4912-8bde-fa35c30d7685
-[7239501] D/commu.parse.notify app_watc: Applying instruction: id=1659b0e2-f3ca-4631-9cd1-2615cff1a856, title=?????????
-[7239600] D/sibles KE_EVT2: rev wr rsp:left_txnum 8
-
-[7239623] I/instruction.list.layout app_watc: Requested instruction image for id=1659b0e2-f3ca-4631-9cd1-2615cff1a856
-[7239667] I/commu.parse.notify app_watc: BATCH instructions: 2 of 2 item(s) applied
-[7239702] I/instruction.list.layout app_watc: Refreshing custom instructions...
-[7239732] I/instruction.list.layout app_watc: refresh_custom_instructions: deferred (debounce)
-[7239768] D/ui.handler app_watc: GUI Task: msg type: 70
-[7241372] D/communicate.parse KE_EVT2: SKAI_LINK_COMMAND, KEY = 0x3
-[7241410] I/commu.parse.skailink KE_EVT2: device actions for 3ad19ddc-ae9a-4c01-a388-3a5e5146d8f9 (name=ANDREW): 6 item(s)
-[7241457] I/commu.parse.skailink KE_EVT2:     item[0]: type=0 5555
-[7241482] I/commu.parse.skailink KE_EVT2:     item[1]: type=0 123456
-[7241508] I/commu.parse.skailink KE_EVT2:     item[2]: type=0 expecto patronum
-[7241538] I/commu.parse.skailink KE_EVT2:     item[3]: type=0 AI??????
-[7241565] I/commu.parse.skailink KE_EVT2:     item[4]: type=0 ?????????
-[7241592] I/commu.parse.skailink KE_EVT2:     item[5]: type=0 ?????????
-[7241645] I/instruction.list.layout app_watc: [bar_dev] device found, usable options=6
-[7241780] I/instruction.list.layout app_watc: Updated id=?????????, enabled=1
-[7241865] I/instruction.list.layout app_watc: Refreshing custom instructions...
-[7241906] I/instruction.list.layout app_watc: refresh_custom_instructions: deferred (debounce)
-[7241942] D/ui.handler app_watc: GUI Task: msg type: 72
-[7243023] I/instruction.list.layout app_watc: Refreshing custom instructions...
-[7243079] I/instruction.list.layout app_watc: refresh_custom_instructions: deferred (debounce)
-[7257766] I/instruction.list.layout app_watc: Refreshing custom instructions...
-[7257824] I/instruction.list.layout app_watc: [bar_dev] SCROLL_BEGIN suppressed (s_in_refresh_scroll=true)
-[7258184] I/instruction.list.layout app_watc: [bar_dev] SCROLL_BEGIN suppressed (s_in_refresh_scroll=true)
-[7258236] D/sibles KE_EVT2: rev wr rsp:left_txnum 8
-
-[7258311] I/instruction.list.layout app_watc: [VOICE] re-asserted selected_item_index=1 (list_item_count=2)
-[7354034] D/ble.app KE_EVT2: BLE_GAP_REMOTE_RSSI_IND -53
-[7354056] D/BLE_GAP KE_EVT2: GAPC event status, op: 7, ret 0
-[7503835] D/communicate.parse KE_EVT2: SKAI_LINK_COMMAND, KEY = 0x3
-[7503870] I/commu.parse.skailink KE_EVT2: device actions for 3ad19ddc-ae9a-4c01-a388-3a5e5146d8f9 (name=ANDREW): 6 item(s)
-[7503916] I/commu.parse.skailink KE_EVT2:     item[0]: type=0 5555
-[7503941] I/commu.parse.skailink KE_EVT2:     item[1]: type=0 123456
-[7503967] I/commu.parse.skailink KE_EVT2:     item[2]: type=0 expecto patronum
-[7503997] I/commu.parse.skailink KE_EVT2:     item[3]: type=0 AI??????
-[7504024] I/commu.parse.skailink KE_EVT2:     item[4]: type=0 ?????????
-[7504051] I/commu.parse.skailink KE_EVT2:     item[5]: type=0 ?????????
-[7504284] D/ui.handler app_watc: GUI Task: msg type: 72
-[7681934] D/ble.app KE_EVT2: BLE_GAP_REMOTE_RSSI_IND -56
-[7681957] D/BLE_GAP KE_EVT2: GAPC event status, op: 7, ret 0
-[7760955] D/NO_TAG tpread: Touch pressed at (242, 420)
-[7763586] D/NO_TAG tpread: Quick click at (242, 420)
-[7763607] D/NO_TAG tpread: System is already ON, no action taken
-[7763779] D/hid.mouse app_watc: Gesture detected: bottom bar released, move_y: 420
-[7763810] D/hid.mouse app_watc: Bottom bar tap ??? instruction_list_bar_tap_device (????????? skaibar)
-[7763848] I/instruction.list.layout app_watc: [bar_dev] tap device_id="3ad19ddc-ae9a-4c01-a388-3a5e5146d8f9"
-[7763899] D/sibles KE_EVT2: rev wr rsp:left_txnum 8
-
-[7763921] I/communicate.task app_watc: send skaibar open-device -> ok
-[7763948] I/instruction.list.layout app_watc: [bar_dev] device found, usable options=6
-[7763984] I/instruction.list.layout app_watc: Updated id=?????????, enabled=1
-[7764014] I/instruction.list.layout app_watc: Refreshing custom instructions...
-[7764069] I/instruction.list.layout app_watc: [bar_dev] SCROLL_BEGIN suppressed (s_in_refresh_scroll=true)
-[7764820] I/instruction.list.layout app_watc: [bar_dev] SCROLL_BEGIN suppressed (s_in_refresh_scroll=true)
-[7764876] D/sibles KE_EVT2: rev wr rsp:left_txnum 8
-
-[7765027] I/instruction.list.layout app_watc: [VOICE] re-asserted selected_item_index=4 (list_item_count=5)
-[7765190] I/instruction.list.layout app_watc: Refreshing custom instructions...
-[7765221] I/instruction.list.layout app_watc: refresh_custom_instructions: deferred (debounce)
-[7765266] I/app.mainmenu app_watc: is_at_message: 0
-[7765556] D/communicate.parse KE_EVT2: SKAI_LINK_COMMAND, KEY = 0x3
-[7765596] I/commu.parse.skailink KE_EVT2: device actions for 3ad19ddc-ae9a-4c01-a388-3a5e5146d8f9 (name=ANDREW): 6 item(s)
-[7765642] I/commu.parse.skailink KE_EVT2:     item[0]: type=0 5555
-[7765668] I/commu.parse.skailink KE_EVT2:     item[1]: type=0 123456
-[7765694] I/commu.parse.skailink KE_EVT2:     item[2]: type=0 expecto patronum
-[7765724] I/commu.parse.skailink KE_EVT2:     item[3]: type=0 AI??????
-[7765750] I/commu.parse.skailink KE_EVT2:     item[4]: type=0 ?????????
-[7765778] I/commu.parse.skailink KE_EVT2:     item[5]: type=0 ?????????
-[7766046] I/instruction.list.layout app_watc: [bar_dev] device found, usable options=6
-[7766179] I/instruction.list.layout app_watc: Updated id=?????????, enabled=1
-[7766273] I/instruction.list.layout app_watc: Refreshing custom instructions...
-[7766333] I/instruction.list.layout app_watc: refresh_custom_instructions: deferred (debounce)
-[7766394] D/ui.handler app_watc: GUI Task: msg type: 72
-[7783275] I/instruction.list.layout app_watc: Refreshing custom instructions...
-[7783365] I/instruction.list.layout app_watc: [bar_dev] SCROLL_BEGIN suppressed (s_in_refresh_scroll=true)
-[7784155] I/instruction.list.layout app_watc: [bar_dev] SCROLL_BEGIN suppressed (s_in_refresh_scroll=true)
-[7784212] D/sibles KE_EVT2: rev wr rsp:left_txnum 8
-
-[7784363] I/instruction.list.layout app_watc: [VOICE] re-asserted selected_item_index=4 (list_item_count=5)
-[7785970] D/communicate.parse KE_EVT2: SKAI_LINK_COMMAND, KEY = 0x3
-[7786015] I/commu.parse.skailink KE_EVT2: device actions for 3ad19ddc-ae9a-4c01-a388-3a5e5146d8f9 (name=ANDREW): 5 item(s)
-[7786061] I/commu.parse.skailink KE_EVT2:     item[0]: type=0 AI??????
-[7786088] I/commu.parse.skailink KE_EVT2:     item[1]: type=0 ?????????
-[7786115] I/commu.parse.skailink KE_EVT2:     item[2]: type=0 ?????????
-[7786142] I/commu.parse.skailink KE_EVT2:     item[3]: type=0 5555
-[7786168] I/commu.parse.skailink KE_EVT2:     item[4]: type=0 123456
-[7786225] I/instruction.list.layout app_watc: [bar_dev] device found, usable options=5
-[7786258] I/instruction.list.layout app_watc: Updated id=?????????, enabled=1
-[7786287] I/instruction.list.layout app_watc: Refreshing custom instructions...
-[7786317] I/instruction.list.layout app_watc: refresh_custom_instructions: deferred (debounce)
-[7786353] D/ui.handler app_watc: GUI Task: msg type: 72
-[7800089] D/NO_TAG tpread: Touch pressed at (245, 365)
-[7804056] D/NO_TAG tpread: Quick click at (246, 388)
-[7804076] D/NO_TAG tpread: System is already ON, no action taken
-[7804346] I/instruction.list.layout app_watc: Refreshing custom instructions...
-[7804438] I/instruction.list.layout app_watc: [bar_dev] SCROLL_BEGIN suppressed (s_in_refresh_scroll=true)
-[7805099] I/instruction.list.layout app_watc: [bar_dev] SCROLL_BEGIN suppressed (s_in_refresh_scroll=true)
-[7805155] D/sibles KE_EVT2: rev wr rsp:left_txnum 8
-
-[7805273] I/instruction.list.layout app_watc: [VOICE] re-asserted selected_item_index=3 (list_item_count=4)
-[7805380] I/instruction.list.layout app_watc: Mic bar tapped ??? opening AI widget (is_open flag=0)
-[7805419] I/instruction.list.layout app_watc: [bar_dev] animate_open_ai_widget: s_left_morph_busy=0 s_left_closing=0 box_visib
-[7805466] I/instruction.list.layout app_watc: [bar_dev] animate_open_ai_widget: proceeding to open morph
-[7813247] D/bloc.v2t app_watc: send_voice_recognition_event: 1
-[7813337] I/bloc.motion_tracking app_watc: set_paused_control_with_arm:1
-[7813475] I/bloc.v2t voice_re: set_voice_recognition_started: 1
-[7813997] D/app.system.interface app_watc: voice_recognition_hint_create
-[7814062] D/app.system.interface app_watc: open_ai_tap_hint_bg: 0
-[7814115] D/ui.handler app_watc: GUI Task: msg type: 32
-[7814146] I/bloc.v2t voice_re: Received start listening event, started: 1
-[7815212] D/app.speech.provider voice_re: app_speech_set_content p_app_speech_ctx: 
-[7817413] D/app.system.interface voice_re: refresh_ai_chat_input_message: 
-[7818078] D/app.system.interface voice_re: Input message refreshed1
-[7818713] D/sibles KE_EVT2: rev wr rsp:left_txnum 8
-
-get_mic_volume = 0db
-get_mic_volume = 0db
-[7820944] D/bloc.v2t voice_re: Voice recognition event processed: 1
-[7821461] D/ui.handler app_watc: GUI Task: msg type: 20
-opus alloc=24544 0x602a7fe8
-[7835613] D/bloc.v2t audio_st: opus encoder acquired by owner=2
-
-[7836120] D/ui.handler app_watc: GUI Task: msg type: 21
-[7839304] D/communicate.parse KE_EVT2: SKAI_LINK_COMMAND, KEY = 0x3
-[7839344] I/commu.parse.skailink KE_EVT2: device actions for 3ad19ddc-ae9a-4c01-a388-3a5e5146d8f9 (name=ANDREW): 5 item(s)
-[7839390] I/commu.parse.skailink KE_EVT2:     item[0]: type=0 AI??????
-[7839417] I/commu.parse.skailink KE_EVT2:     item[1]: type=0 ?????????
-[7839444] I/commu.parse.skailink KE_EVT2:     item[2]: type=0 ?????????
-[7839471] I/commu.parse.skailink KE_EVT2:     item[3]: type=0 5555
-[7839497] I/commu.parse.skailink KE_EVT2:     item[4]: type=0 123456
-[7840212] I/instruction.list.layout app_watc: [bar_dev] device found, usable options=5
-[7840245] I/instruction.list.layout app_watc: Updated id=?????????, enabled=1
-[7840275] I/instruction.list.layout app_watc: Refreshing custom instructions...
-[7840355] I/instruction.list.layout app_watc: [bar_dev] SCROLL_BEGIN suppressed (s_in_refresh_scroll=true)
-[7841163] I/instruction.list.layout app_watc: [bar_dev] SCROLL_BEGIN suppressed (s_in_refresh_scroll=true)
-[7841213] I/bloc.motion_tracking app_watc: set_paused_control_with_arm:0
-[7841248] D/sibles KE_EVT2: rev wr rsp:left_txnum 8
-
-[7841366] I/instruction.list.layout app_watc: [VOICE] re-asserted selected_item_index=3 (list_item_count=4)
-[7841527] D/ui.handler app_watc: GUI Task: msg type: 72
-[7888988] D/ui.handler app_watc: GUI Task: msg type: 21
-[7911079] D/ui.handler app_watc: GUI Task: msg type: 21
-[7938770] D/sys.perception periodic: Running periodic system perception task - Current time: 2026-7-15 19:6:46
-[7938813] D/sys.perception periodic: Checking /recorder for pending files to sync
-[7940152] I/CLIENT.POWER ds_proc: watch_sys_service_callback: msg_id=32817
-[7940184] W/app.clock peripher: instruction_list_battery is NULL
-[7940209] D/ble_bass peripher: battery level the same 100, skip
-[7940241] D/sibles KE_EVT2: rev wr rsp:left_txnum 7
-
-[7940263] D/sibles KE_EVT2: rev wr rsp:left_txnum 8
-
-[7940819] D/ui.handler app_watc: GUI Task: msg type: 9
-[7940841] D/ui.handler app_watc: GUI Task: msg type: 10
-[7991553] D/ui.handler app_watc: GUI Task: msg type: 21
-[8005752] D/ui.handler app_watc: GUI Task: msg type: 21
-[8009380] D/ble.app KE_EVT2: BLE_GAP_REMOTE_RSSI_IND -48
-[8009403] D/BLE_GAP KE_EVT2: GAPC event status, op: 7, ret 0
-[8046604] D/ui.handler app_watc: GUI Task: msg type: 21
-[8056878] D/ui.handler app_watc: GUI Task: msg type: 21
-[8164604] D/ui.handler app_watc: GUI Task: msg type: 21
-[8166988] D/ui.handler app_watc: GUI Task: msg type: 21
-[8180300] D/ui.handler app_watc: GUI Task: msg type: 21
-[8212203] D/ui.handler app_watc: GUI Task: msg type: 21
-[8278606] D/ui.handler app_watc: GUI Task: msg type: 21
-[8298696] D/ui.handler app_watc: GUI Task: msg type: 21
-[8329725] D/ui.handler app_watc: GUI Task: msg type: 21
-[8337149] D/ble.app KE_EVT2: BLE_GAP_REMOTE_RSSI_IND -47
-[8337173] D/BLE_GAP KE_EVT2: GAPC event status, op: 7, ret 0
-[8351801] D/ui.handler app_watc: GUI Task: msg type: 21
-[8373920] D/communicate.parse KE_EVT2: SKAI_LINK_COMMAND, KEY = 0x3
-[8373956] I/commu.parse.skailink KE_EVT2: device actions for 3ad19ddc-ae9a-4c01-a388-3a5e5146d8f9 (name=ANDREW): 6 item(s)
-[8374002] I/commu.parse.skailink KE_EVT2:     item[0]: type=0 5555
-[8374027] I/commu.parse.skailink KE_EVT2:     item[1]: type=0 123456
-[8374053] I/commu.parse.skailink KE_EVT2:     item[2]: type=0 expecto patronum
-[8374083] I/commu.parse.skailink KE_EVT2:     item[3]: type=0 AI??????
-[8374110] I/commu.parse.skailink KE_EVT2:     item[4]: type=0 ?????????
-[8374137] I/commu.parse.skailink KE_EVT2:     item[5]: type=0 ?????????
-[8374185] I/instruction.list.layout app_watc: [bar_dev] device found, usable options=6
-[8374281] I/instruction.list.layout app_watc: Updated id=?????????, enabled=1
-[8374311] I/instruction.list.layout app_watc: Refreshing custom instructions...
-[8374390] I/instruction.list.layout app_watc: [bar_dev] SCROLL_BEGIN suppressed (s_in_refresh_scroll=true)
-[8375980] I/instruction.list.layout app_watc: [bar_dev] SCROLL_BEGIN suppressed (s_in_refresh_scroll=true)
-[8376044] D/sibles KE_EVT2: rev wr rsp:left_txnum 8
-
-[8376271] I/instruction.list.layout app_watc: [VOICE] re-asserted selected_item_index=4 (list_item_count=5)
-[8376372] D/ui.handler app_watc: GUI Task: msg type: 72
-[8440155] D/ui.handler app_watc: GUI Task: msg type: 21
-[8487761] D/ui.handler app_watc: GUI Task: msg type: 21
-[8524698] D/ui.handler app_watc: GUI Task: msg type: 21
-[8530820] D/bloc.motion_tracking motion_t: Gesture dataset ready, samples: 35
-[8530908] D/APP.GESTURE gesture_: gesture_recognition_algorithm sample_num:35
-Got output index = 0, score = 0.0040
-Got output index = 1, score = 0.6512
-Got output index = 2, score = 0.3448
-[8531384] I/APP.GESTURE gesture_: recognize tap gesture cost_tick:14, score:1
-[8531413] I/bloc.peripheral gesture_: Control motor: ON, duty_cycle: 100, period: 12000, repeat_times: 1
-[8531453] D/CLIENT.POWER peripher: MOTOR control duty_cycle: 100, period: 12000, repeat_times: 1
-[8532989] D/ui.handler app_watc: GUI Task: msg type: 21
-[8550258] D/ui.handler app_watc: GUI Task: msg type: 21
-[8551834] D/communicate.parse KE_EVT2: SKAI_LINK_COMMAND, KEY = 0x3
-[8551880] I/commu.parse.skailink KE_EVT2: device actions for 3ad19ddc-ae9a-4c01-a388-3a5e5146d8f9 (name=ANDREW): 6 item(s)
-[8551926] I/commu.parse.skailink KE_EVT2:     item[0]: type=0 5555
-[8551952] I/commu.parse.skailink KE_EVT2:     item[1]: type=0 123456
-[8551978] I/commu.parse.skailink KE_EVT2:     item[2]: type=0 expecto patronum
-[8552007] I/commu.parse.skailink KE_EVT2:     item[3]: type=0 AI??????
-[8552034] I/commu.parse.skailink KE_EVT2:     item[4]: type=0 ?????????
-[8552061] I/commu.parse.skailink KE_EVT2:     item[5]: type=0 ?????????
-[8552201] I/instruction.list.layout app_watc: [bar_dev] device found, usable options=6
-[8552234] I/instruction.list.layout app_watc: Updated id=?????????, enabled=1
-[8552264] I/instruction.list.layout app_watc: Refreshing custom instructions...
-[8552355] I/instruction.list.layout app_watc: [bar_dev] SCROLL_BEGIN suppressed (s_in_refresh_scroll=true)
-[8553344] I/instruction.list.layout app_watc: [bar_dev] SCROLL_BEGIN suppressed (s_in_refresh_scroll=true)
-[8553406] D/sibles KE_EVT2: rev wr rsp:left_txnum 8
-
-[8553619] I/instruction.list.layout app_watc: [VOICE] re-asserted selected_item_index=4 (list_item_count=5)
-[8553728] D/ui.handler app_watc: GUI Task: msg type: 72
-[8617509] D/ui.handler app_watc: GUI Task: msg type: 21
-[8624970] D/ui.handler app_watc: GUI Task: msg type: 21
-[8635202] D/ui.handler app_watc: GUI Task: msg type: 21
-[8642665] D/ui.handler app_watc: GUI Task: msg type: 21
-[8664931] D/ble.app KE_EVT2: BLE_GAP_REMOTE_RSSI_IND -45
-[8664955] D/BLE_GAP KE_EVT2: GAPC event status, op: 7, ret 0
-[8763042] D/ui.handler app_watc: GUI Task: msg type: 21
-[8814344] D/communicate.parse KE_EVT2: SKAI_LINK_COMMAND, KEY = 0x3
-[8814390] I/commu.parse.skailink KE_EVT2: device actions for 3ad19ddc-ae9a-4c01-a388-3a5e5146d8f9 (name=ANDREW): 6 item(s)
-[8814436] I/commu.parse.skailink KE_EVT2:     item[0]: type=0 5555
-[8814461] I/commu.parse.skailink KE_EVT2:     item[1]: type=0 123456
-[8814487] I/commu.parse.skailink KE_EVT2:     item[2]: type=0 expecto patronum
-[8814517] I/commu.parse.skailink KE_EVT2:     item[3]: type=0 AI??????
-[8814544] I/commu.parse.skailink KE_EVT2:     item[4]: type=0 ?????????
-[8814571] I/commu.parse.skailink KE_EVT2:     item[5]: type=0 ?????????
-[8814671] I/instruction.list.layout app_watc: [bar_dev] device found, usable options=6
-[8814704] I/instruction.list.layout app_watc: Updated id=?????????, enabled=1
-[8814734] I/instruction.list.layout app_watc: Refreshing custom instructions...
-[8814824] I/instruction.list.layout app_watc: [bar_dev] SCROLL_BEGIN suppressed (s_in_refresh_scroll=true)
-[8815828] I/instruction.list.layout app_watc: [bar_dev] SCROLL_BEGIN suppressed (s_in_refresh_scroll=true)
-[8815890] D/sibles KE_EVT2: rev wr rsp:left_txnum 8
-
-[8816110] I/instruction.list.layout app_watc: [VOICE] re-asserted selected_item_index=4 (list_item_count=5)
-[8816210] D/ui.handler app_watc: GUI Task: msg type: 72
-[8816232] D/ui.handler app_watc: GUI Task: msg type: 21
-[8831860] D/ui.handler app_watc: GUI Task: msg type: 21
-[8876633] D/ui.handler app_watc: GUI Task: msg type: 21
-[8879003] D/ui.handler app_watc: GUI Task: msg type: 21
-[8921853] D/ui.handler app_watc: GUI Task: msg type: 21
-[8937997] D/ui.handler app_watc: GUI Task: msg type: 21
-[8949379] D/ui.handler app_watc: GUI Task: msg type: 21
-[8985183] D/ui.handler app_watc: GUI Task: msg type: 21
-[8992395] D/ble.app KE_EVT2: BLE_GAP_REMOTE_RSSI_IND -46
-[8992417] D/BLE_GAP KE_EVT2: GAPC event status, op: 7, ret 0
-[8992634] D/ui.handler app_watc: GUI Task: msg type: 21
-[9044157] D/ui.handler app_watc: GUI Task: msg type: 21
-[9051617] D/ui.handler app_watc: GUI Task: msg type: 21
-[9076729] D/communicate.parse KE_EVT2: SKAI_LINK_COMMAND, KEY = 0x3
-[9076776] I/commu.parse.skailink KE_EVT2: device actions for 3ad19ddc-ae9a-4c01-a388-3a5e5146d8f9 (name=ANDREW): 6 item(s)
-[9076822] I/commu.parse.skailink KE_EVT2:     item[0]: type=0 5555
-[9076847] I/commu.parse.skailink KE_EVT2:     item[1]: type=0 123456
-[9076873] I/commu.parse.skailink KE_EVT2:     item[2]: type=0 expecto patronum
-[9076903] I/commu.parse.skailink KE_EVT2:     item[3]: type=0 AI??????
-[9076930] I/commu.parse.skailink KE_EVT2:     item[4]: type=0 ?????????
-[9076957] I/commu.parse.skailink KE_EVT2:     item[5]: type=0 ?????????
-[9077054] I/instruction.list.layout app_watc: [bar_dev] device found, usable options=6
-[9077163] I/instruction.list.layout app_watc: Updated id=?????????, enabled=1
-[9077193] I/instruction.list.layout app_watc: Refreshing custom instructions...
-[9077283] I/instruction.list.layout app_watc: [bar_dev] SCROLL_BEGIN suppressed (s_in_refresh_scroll=true)
-[9078271] I/instruction.list.layout app_watc: [bar_dev] SCROLL_BEGIN suppressed (s_in_refresh_scroll=true)
-[9078333] D/sibles KE_EVT2: rev wr rsp:left_txnum 8
-
-[9078554] I/instruction.list.layout app_watc: [VOICE] re-asserted selected_item_index=4 (list_item_count=5)
-[9078655] D/ui.handler app_watc: GUI Task: msg type: 72

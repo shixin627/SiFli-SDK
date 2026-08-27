@@ -13,3 +13,21 @@ _oss_selftest.txt
 #   skaiapp/ whatever the simulator has installed at the moment.
 disk/pkgsrc/
 disk/skaiapp/
+
+# Build / release / IDE artifacts — every one of these is (re)written by the
+# build wrappers, release_ci/release_gui, the sim, or Keil on each run. They
+# were tracked for a while and bloated history (watchOS.zip alone was
+# committed 21 times); untracked 2026-08-27. The release workflow reads them
+# from the working tree, so ignoring them changes nothing on the bench.
+_*.log
+/pc_console.log
+/info.json
+/watchOS.zip
+/watchOS/
+/prefdb/
+/vc140.pdb
+/project.uvprojx
+*.uvguix.*
+.vscode/*.log
+.vscode/uv4.log.lock
+.claude/scheduled_tasks.lock
