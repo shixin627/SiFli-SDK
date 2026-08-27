@@ -1,0 +1,65 @@
+name: Watch Sim Build
+
+# Nightly canary for the Win32 LVGL PC simulator (MSVC). The sim is the
+# fastest dev loop (~30s incremental) and the whole MSH test harness runs on
+# it, but nothing build-tests it per-commit, so armclang-tolerated MSVC-isms
+# rot it silently — in Aug 2026 it sat broken for 18 days / ~180 commits
+# before anyone noticed. This job pins any new breakage to a one-day window.
+#
+# Like watch-release.yml, there is deliberately no actions/checkout: it
+# builds the bench working tree exactly as it stands (recorded in the run
+# summary), so the user's in-flight work is never clobbered. It touches no
+# COM ports and writes only build output (build_pc_hcpu/, _pc_build.log).
+#
+# Success is gated on the log, not the exit code: _pc_build.cmd always exits
+# 0 (its trailing `type` of the log clobbers ERRORLEVEL).
+
+on:
+  schedule:
+    - cron: "0 19 * * *" # 03:00 Asia/Taipei
+  workflow_dispatch:
+
+# Shares the bench with releases: queue behind them, never cancel them.
+concurrency:
+  group: watch-bench
+  cancel-in-progress: false
+
+jobs:
+  sim-build:
+    runs-on: [self-hosted, windows, watch-bench]
+    timeout-minutes: 30
+    env:
+      WATCH_REPO: C:\skaiwalk\SiFli-SDK
+
+    steps:
+      - name: Record working tree state
+        working-directory: ${{ env.WATCH_REPO }}
+        run: |
+          $sha = git rev-parse HEAD
+          $dirty = git status --short
+          "## PC sim build" | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Append -Encoding utf8
+          "- commit: ``$sha``" | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Append -Encoding utf8
+          if ($dirty) {
+            "- working tree is DIRTY:" | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Append -Encoding utf8
+            '```' + "`n$dirty`n" + '```' | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Append -Encoding utf8
+          }
+
+      - name: Build the simulator
+        working-directory: ${{ env.WATCH_REPO }}\example\get-started\dualcore\project\hcpu
+        run: |
+          cmd /c "$env:WATCH_REPO\example\get-started\dualcore\project\hcpu\_pc_build.cmd" -j8
+          if (Select-String -Path _pc_build.log -Pattern 'scons: done building targets' -Quiet) {
+            "- build: OK" | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Append -Encoding utf8
+          } else {
+            "- build: FAILED — see _pc_build.log artifact" | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Append -Encoding utf8
+            Get-Content _pc_build.log -Tail 30
+            exit 1
+          }
+
+      - name: Upload build log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: pc-sim-build-log
+          if-no-files-found: warn
+          path: ${{ env.WATCH_REPO }}\example\get-started\dualcore\project\hcpu\_pc_build.log
