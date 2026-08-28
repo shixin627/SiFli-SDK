@@ -139,6 +139,45 @@ void init_gesture_recognition_release_model(void)
     MicroPrintf("Quantization params: scale=%f, zero_point=%d\n", input_scale, input_zero_point);
 }
 
+/* ── Golden self-test(2026-08-28)────────────────────────────────────────
+   一個固定視窗 + PC 端 TFLite 對它的輸出,由
+   `paper_progam/mouse3/work/watch_tap/export_tflite.py` 跟模型一起產生。
+   MSH `gtap golden` 跑它:三個機率對得上(±0.02)才代表「真機上的模型與前處理
+   跟離線那份是同一個東西」。沒有這個,模型換了以後只能靠手感判斷有沒有裝對。
+   成本 ~420 B rodata,所以不分 dev/release 一律編入。 */
+#include "gesture_tap_golden.inc"
+
+extern "C" int gesture_model_selftest(float *out_prob)
+{
+    if (release_interpreter == nullptr)
+    {
+        return -1;
+    }
+    TfLiteTensor *in = release_interpreter->input(0);
+    for (int i = 0; i < kGestureGoldenSamples; i++)
+    {
+        for (int j = 0; j < kGestureGoldenChannels; j++)
+        {
+            in->data.f[i * kGestureGoldenChannels + j] = kGestureGoldenInput[i][j];
+        }
+    }
+    if (release_interpreter->Invoke() != kTfLiteOk)
+    {
+        return -2;
+    }
+    const float *o = release_interpreter->output(0)->data.f;
+    for (int i = 0; i < kGestureCount; i++)
+    {
+        out_prob[i] = o[i];
+    }
+    return 0;
+}
+
+extern "C" const float *gesture_model_golden_expected(void)
+{
+    return kGestureGoldenProb;
+}
+
 int recognize_gesture_release(float (*matrix)[kChannelReleaseNumber])
 {
     TfLiteTensor *model_input = release_interpreter->input(0);

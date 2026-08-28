@@ -61,8 +61,30 @@
 
     #define FEEDBACK_ACCEL_SAMPLES_FOR_TAP 9
     #define FEEDBACK_ACCEL_SAMPLES_FOR_RELEASE 10
-    #define RELEASE_START_THRESHOLD 1.0f
-    #define TAP_START_THRESHOLD 0.3f
+
+    /* ── Arming 特徵與門檻(2026-08-28,mouse3 FSR 真值量出來的)────────────
+       特徵從「先取模再差分」`|Δ‖a‖|` 換成「二階差分向量的模」
+       `‖a[t] − 2a[t−1] + a[t−2]‖`(見 waveform_capture_process)。
+
+       量測:mouse3 `data3/mouse` 153 分鐘、8 位受試者、2445 個按壓,
+       真值 = 指尖 FSR(壓感墊)。在同一個「每分鐘切幾個視窗」的預算下:
+         20 窗/分  舊 |Δ‖a‖| recall 0.389 → 新 ‖Δ²a‖ recall 0.562
+       舊設定(0.3 / K5)實測只切到 40.0% 的按壓,而漏掉的 1467 個裡有 1432 個
+       (97.6%)是「特徵從沒超過門檻」—— 不是狀態機吃掉的,是門檻本身太高。
+       tap 峰值的中位數就是 0.29 m/s²,門檻 0.3 正好壓在分布中位數上,沒有餘裕。
+
+       門檻改成「地板 0.10 + 4×背景中位數」後,地板幾乎不再作用,判定變成
+       相對於當下雜訊底的比值 → **對訊號強度免疫**。把整段 accel 乘 1.5/2/3
+       倍重跑:舊設定 recall 0.400→0.651→0.725→0.762(且窗率 20→53/分,
+       只是沿著同一條 ROC 滑動);新設定固定在 0.782 / 48 窗/分。
+       這一點很重要:錶上真正的捏指若比這份資料用力,舊設定的表現會「看起來
+       還行」,但那是碰運氣,換個人或換個戴法就垮(實測每人 recall 0.12~0.61)。
+
+       視窗率 20 → 48 窗/分的代價:stage-2 每分鐘多跑 28 次 ~12K MAC 的
+       CNN(<0.5 ms/次),可以忽略;真正的代價是 stage-2 必須擋得住誤報,
+       所以模型同時換掉並加了信心門檻。 */
+    #define RELEASE_START_THRESHOLD 1.35f /* 舊 1.0,照等窗率係數 ×1.35 換算 */
+    #define TAP_START_THRESHOLD 0.10f     /* 舊 0.3;現在只是地板,平常不作用 */
 
     /* ── Peak-aligned capture (2026-07-29) ────────────────────────────────
        Replaces "threshold crossing starts an exclusive 35-sample collection".
@@ -90,9 +112,12 @@
        6 events caught, alignment [9,9,17]/[18,17,17] → [9,9,9]/[9,9,9]. */
     #define GESTURE_PEAK_SEARCH 10   /* samples of quiet needed to confirm peak */
     #define GESTURE_ARM_TIMEOUT 80   /* give up if no window in 800 ms          */
-    #define GESTURE_ADAPTIVE_K 5.0f  /* thr = max(fixed, median × K)            */
+    #define GESTURE_ADAPTIVE_K 4.0f  /* thr = max(fixed, median × K)            */
     #define GESTURE_ADAPTIVE_MEDIAN_SAMPLES 75
-    #define GESTURE_CONTEXT_WALK_MEDIAN 0.03f /* median above this ≈ walking    */
+    /* 背景中位數在新特徵下整體 ×1.9(mouse3 153 分鐘 + free 實測:
+       |Δ‖a‖| 0.028 / ‖Δ²a‖ 0.054),所以吃「背景中位數」的兩個常數同步換算。 */
+    #define GESTURE_CONTEXT_WALK_MEDIAN 0.058f /* 舊 0.03;median 高於此 ≈ 走路 */
+    #define GESTURE_MEDIAN_VETO 0.48f /* 舊寫死 0.25:背景太吵就整個視窗不算   */
 
 // Gesture types
 typedef enum
@@ -207,7 +232,8 @@ static watch_sys_linear_acce_t targetWave_algo[MAX_RAWDATA_TIME_STEP];
 
 static float difference_accel_sliding_window[MAX_GESTURE_SAMPLES] = {0.0f};
 static int difference_accel_count = 0;
-static float prev_linear_accel_resultant = 0.0f;
+/* 二階差分要看前兩個 linear accel 向量;[0] = t−1、[1] = t−2。 */
+static Vector3 prev_linear_acce[2] = {{0.0f, 0.0f, 0.0f}, {0.0f, 0.0f, 0.0f}};
 static bool user_hand_horizontal = false;
 
 // Forward declarations for waveform capture functions
@@ -631,7 +657,11 @@ static void gesture_capture_report(gesture_type_t type, capture_state_t *cap,
                 : !confirm_ok    ? "DROP-confirm"
                                  : "SENT",
                 (pk100 >= (int)gesture_big_pk) ? " BIG" : "");
-    LOG_I("%s", line);
+    /* rt_kprintf 而非 LOG_I:dev build 為了塞進 image 保留了
+       ULOG_OUTPUT_LVL_W,那會在編譯期把 LOG_I 整個拿掉 —— 這行是唯一能在真機上
+       看到 stage-1 在幹嘛的管道,不能被日誌等級吃掉。本來就被 `gcap log on`
+       gate 住,不會洗版。 */
+    rt_kprintf("%s\n", line);
     #ifdef BSP_USING_COMMUNICATE
     commu_send_bluetooth_log(line);
     #endif
@@ -815,7 +845,7 @@ static void gesture_event_capture_hcpu(uint16_t freq, time_t ts,
            .arm_median. Re-computing here lets a strong gesture veto itself. */
         float median_difference_accel = cap->arm_median;
         bool is_gesture = true;
-        if (median_difference_accel > 0.25f)
+        if (median_difference_accel > GESTURE_MEDIAN_VETO)
         {
             is_gesture = false;
             median_lock_trigger_time = current_time;
@@ -1070,11 +1100,17 @@ static void waveform_capture_process(motion_data_t *motion_data, Vector3 *gyro)
         (gravity->y > -0.7 && gravity->z > -0.6) ||
         app_control_get_mouse_mode() || message_media_widget_focused();
 
-    // Calculate linear acceleration difference
-    float linear_accel_resultant = total_acceleration_magnitude(
-        linear_acce->x, linear_acce->y, linear_acce->z);
+    /* Arming 特徵:二階差分向量的模 ‖a[t] − 2a[t−1] + a[t−2]‖。
+       舊版是 |‖a[t]‖ − ‖a[t−1]‖| —— 先取模再差分,方向資訊在取模時就丟了,
+       而敲擊最明顯的特徵正是「加速度方向在兩三個樣本內翻轉」。
+       數學上恆有 |Δ‖a‖| ≤ ‖Δa‖,舊特徵是新特徵的下界。
+       實測(見上面 TAP_START_THRESHOLD 的註解):同樣 20 窗/分,
+       recall 0.389 → 0.562。額外成本 = 每樣本 6 減 3 乘 2 加 1 平方根。 */
+    float jx = linear_acce->x - 2.0f * prev_linear_acce[0].x + prev_linear_acce[1].x;
+    float jy = linear_acce->y - 2.0f * prev_linear_acce[0].y + prev_linear_acce[1].y;
+    float jz = linear_acce->z - 2.0f * prev_linear_acce[0].z + prev_linear_acce[1].z;
     waveform_gesture_state.difference_accel =
-        fabsf(linear_accel_resultant - prev_linear_accel_resultant);
+        total_acceleration_magnitude(jx, jy, jz);
     difference_accel_sliding_window[difference_accel_count] =
         waveform_gesture_state.difference_accel;
     if (difference_accel_count < MAX_GESTURE_SAMPLES - 1)
@@ -1085,7 +1121,8 @@ static void waveform_capture_process(motion_data_t *motion_data, Vector3 *gyro)
     {
         difference_accel_count = 0;
     }
-    prev_linear_accel_resultant = linear_accel_resultant;
+    prev_linear_acce[1] = prev_linear_acce[0];
+    prev_linear_acce[0] = *linear_acce;
 
     #ifdef REAL_TIME_IMU_DATA_COLLECTION
     extern bool imu_raw_data_collection;
@@ -1211,6 +1248,7 @@ static void gcap(int argc, char **argv)
 }
 MSH_CMD_EXPORT(gcap, "gesture capture extractors: gcap [both|normal]");
 
+
 /**
  * @brief MSH: `ppgdiag [on|off]` — force the [PPG-DIAG] line on.
  *
@@ -1256,6 +1294,66 @@ static void ppgpwr(int argc, char **argv)
 }
 MSH_CMD_EXPORT(ppgpwr, "force the raw PPG stream on/off: ppgpwr [on|off]");
 #endif
+
+/**
+ * @brief MSH: `gtap [thr <0..100>]` — stage-2 的 tap 信心門檻。
+ *
+ * 調高 = 誤報少但漏按多,調低反之。預設 75(=0.75)是「mouse 與 free 兩個資料集
+ * 都不比現行差」的最低門檻:recall 0.367→0.514、mouse 誤報 3.66→0.77/分、
+ * free(自由活動沒按)誤報 1.78→1.70/分。真機上覺得「按不太到」就往下減
+ * (每降 5 檔約 +1pt recall、free 誤報 +0.2/分),覺得誤觸多就往上加,不必重編。
+ * 完整曲線與為什麼是 free 主導,見 gesture_predictor.cc 的註解。
+ */
+/* stage-2 的門檻住在 GestureRecognition/gesture_predictor.cc;這裡照這個檔既有
+   的慣例用 extern 宣告,不把該模組的 include path 綁進 bloc 這個 group。 */
+extern void gesture_set_tap_confidence(float thr);
+extern float gesture_get_tap_confidence(void);
+
+extern int gesture_model_selftest(float *out_prob);
+extern const float *gesture_model_golden_expected(void);
+
+static void gtap(int argc, char **argv)
+{
+    if (argc >= 3 && strcmp(argv[1], "thr") == 0)
+    {
+        int v = atoi(argv[2]);
+        if (v < 0) v = 0;
+        if (v > 100) v = 100;
+        gesture_set_tap_confidence((float)v / 100.0f);
+    }
+    else if (argc >= 2 && strcmp(argv[1], "golden") == 0)
+    {
+        float p[3] = {0};
+        int rc = gesture_model_selftest(p);
+        if (rc != 0)
+        {
+            rt_kprintf("gtap golden: FAIL rc=%d(模型沒初始化或 Invoke 失敗)\n", rc);
+            return;
+        }
+        const float *e = gesture_model_golden_expected();
+        int ok = 1;
+        for (int i = 0; i < 3; i++)
+        {
+            float d = p[i] - e[i];
+            if (d < 0) d = -d;
+            if (d > 0.02f) ok = 0;
+        }
+        /* 千分之一列印:rt_kprintf 的 %f 在 microlib 下不可靠。 */
+        rt_kprintf("gtap golden: got %d %d %d / want %d %d %d -> %s\n",
+                   (int)(p[0] * 1000), (int)(p[1] * 1000), (int)(p[2] * 1000),
+                   (int)(e[0] * 1000), (int)(e[1] * 1000), (int)(e[2] * 1000),
+                   ok ? "MATCH" : "MISMATCH");
+        return;
+    }
+    else if (argc >= 2)
+    {
+        rt_kprintf("usage: gtap [thr <0..100>|golden]\n");
+        return;
+    }
+    rt_kprintf("gtap: tap_confidence=%d/100\n",
+               (int)(gesture_get_tap_confidence() * 100.0f + 0.5f));
+}
+MSH_CMD_EXPORT(gtap, "stage-2 tap: gtap [thr <0..100>|golden]");
 
 #endif // ENABLE_WAVEFORM_CAPTURE
 void set_prev_sensor_quat(uint16_t target_value)
