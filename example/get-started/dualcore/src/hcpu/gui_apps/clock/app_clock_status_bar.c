@@ -760,6 +760,14 @@ static lv_timer_t *s_conv_poll_timer = NULL;
 static void conv_poll_timer_cb(lv_timer_t *t)
 {
     (void)t;
+    /* 聊天室開著時停掉(founder 2026-08-26):聊天室是掛在 lv_layer_top 的浮層,底下的
+       tileview 位置沒變,所以上面那個「停在左頁才輪詢」的閘門認不出來 —— 人在房裡讀
+       AI 回覆,背景還在每 5s 跟每一台桌面重拉一次 session 清單。清單這時根本看不到,
+       純浪費 BLE;更糟的是它把手錶黑盒子的 8KB ring 跟手機 logcat 都洗掉,真的出事時
+       等於沒有現場(今天為此兩次抓不到操作當下的紀錄)。 */
+    extern bool chat_page_is_open(void);
+    if (chat_page_is_open())
+        return;
     extern bool commu_send_conv_list_req(const char *device);
     commu_send_conv_list_req(NULL); /* NULL = 每一台桌面 */
 }

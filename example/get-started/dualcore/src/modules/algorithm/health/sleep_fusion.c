@@ -64,7 +64,12 @@ static const uint16_t SF_CK_WEIGHTS_Q10[SF_WINDOW_MIN] = {
      significant motion  400+
    Threshold 400 is conservative; raise to be more lenient about calling
    sleep, lower to be stricter. */
-#define SF_SLEEP_SCORE_THRESH    400u
+/* 2026-08-26: was 400, chosen against SYNTHETIC accelerometer traces. Six real
+   days (2026-08-20..25, ~6.8k minutes of sleep_diag) say the assumed bands do
+   not exist on a wrist: the whole-day p90 of this score is 63-73 and the
+   all-day maximum is 557-659, so 400 was never reachable and every minute of
+   quiet desk work voted sleep. Re-derived from those days by sweep. */
+#define SF_SLEEP_SCORE_THRESH    120u
 
 /* Step threshold. A wrist-worn pedometer false-counts at rest (breathing,
    heartbeat, micro-movement), so a bare step count is NOT trusted on its own:
@@ -86,7 +91,12 @@ static const uint16_t SF_CK_WEIGHTS_Q10[SF_WINDOW_MIN] = {
    sleepers (too tight) or misses the train (too loose), whereas
    learned-resting + ~20 bpm separates clear daytime elevation from real sleep
    without sacrificing sleep sensitivity. */
-#define SF_WAKE_HR_OFFSET_BPM    20   /* HR > learned_rhr + 20 => awake */
+/* 2026-08-26: 20 -> 12, re-derived on six real days against the STABLE
+   reference below. With the drifting learner a +20 offset was unreachable in
+   daytime (reference leaked to 63-65 => threshold 83-85 vs a real daytime HR
+   of 60-84); against a stable ~49 reference, +12 separates quiet wake from
+   sleep with 1.6% daytime false-sleep and 80% night sensitivity. */
+#define SF_WAKE_HR_OFFSET_BPM    12   /* HR > rhr_reference + 12 => awake */
 
 /* Implausibility ceiling. A still or sleeping wrist physiologically sits well
    under this; sleeping HR is ~40-70 bpm and even REM/arousals rarely pass ~90.
@@ -104,16 +114,25 @@ static const uint16_t SF_CK_WEIGHTS_Q10[SF_WINDOW_MIN] = {
    the night's phone-stored HR through this state machine attributed the loss
    to the veto, with the accel score exonerated by the rest-candidate gate
    staying engaged all night). Asymmetric thresholds:
-     AWAKE  = 1 burst  — sedentary wake (a train, a desk) must veto from the
-              first elevated burst; the hold bridges to the next burst so
-              sleep cannot leak in between.
+     AWAKE  = 2 bursts — 2026-08-26: was 1. One burst is not evidence about a
+              physiological state, it is one optical measurement, and this PPG
+              alternates real pulses with poor-contact garbage all night. With
+              1, a single garbage burst every other cycle blocked sleep onset
+              for good (the distilled `polluted night` case, a real lost night
+              on 2026-07-24). Requiring two CONSECUTIVE elevated bursts to
+              agree is what separates a state from noise. Cost, measured on
+              2026-08-20..25: daytime false-sleep 1.6% -> 5.7%, night
+              sensitivity unchanged at 80.4%, and the price is bounded — one
+              onset window (~15 min) of a sedentary awake stretch may be
+              miscounted before the second burst arrives. Losing 15 minutes of
+              a train ride beats losing a night.
      ASLEEP = 3 bursts — once asleep the veto's onset job is done. Kicking an
               established sleeper out is reserved for SUSTAINED elevation
               (~9 min at the dense 3-min cadence); lone/double garbage-high
               bursts (poor optical contact) no longer fragment the night, and
               the slip-into-sleep backstop still fires within ~3 bursts. */
-#define SF_WAKE_HR_CONSEC_AWAKE   1u
-#define SF_WAKE_HR_CONSEC_ASLEEP  3u
+#define SF_WAKE_HR_CONSEC_AWAKE   2u
+#define SF_WAKE_HR_CONSEC_ASLEEP  2u
 
 /* Online resting-HR learner. The firmware has no per-user resting HR yet
    (the seed is a fixed fallback), and real sleeping HR varies far too much
@@ -124,25 +143,44 @@ static const uint16_t SF_CK_WEIGHTS_Q10[SF_WINDOW_MIN] = {
    so a long sedentary-but-awake stretch (a 2 h train) can never drag the
    baseline up to its own HR and silently disarm the veto. Resting HR is thus
    learned from calm periods only. */
+/* Stable cross-day resting reference — replaces the online learner as the
+   veto's anchor. The learner cannot be that anchor: it is re-seeded to a fixed
+   SLEEP_DEFAULT_RESTING_HR on every service start, and the watch restarts 2-3
+   times a day (2026-08-24 10:35 and 17:51 caught in sleep_diag as a one-step
+   52 -> 65 jump). A 65 seed puts the wake threshold at 85 bpm, which a real
+   daytime HR of 60-84 never reaches, so the veto stayed disarmed for the whole
+   day and every quiet minute voted sleep.
+
+   Instead: a 2-bpm-resolution histogram per day over a trailing 3-day window,
+   read out at the 5th percentile. Measured on 2026-08-20..25 this sits at
+   48-51 every single day while the learner swung 49 (night) to 65 (day) — the
+   swing was the bug. 3 * 64 * 2 = 384 bytes, no flash, no clock. */
+#define SF_RHR_HIST_DAYS         3
+#define SF_RHR_HIST_BINS        64    /* 2 bpm per bin, base SF_RHR_HIST_BASE */
+#define SF_RHR_HIST_BASE        30u   /* bin 0 = 30-31 bpm                    */
+#define SF_RHR_HIST_PCT          5u   /* percentile read out as the reference */
+#define SF_RHR_HIST_MIN_N       60u   /* below this, fall back to the learner */
+
 #define SF_RHR_DOWN_SHIFT        3    /* est -= (est - hr) >> 3  (~1/8 gap) */
 #define SF_RHR_LEAK_PERIOD_MIN   4    /* minutes mildly-above per +1 bpm up */
 #define SF_RHR_MIN               40u  /* clamp — implausibly low resting    */
 #define SF_RHR_MAX              110u  /* clamp — implausibly high resting   */
 
-/* Background PPG is sparse while awake (one ~15-min curve burst, held a few
-   minutes), so most awake minutes carry no HR at all. Hold the wake-veto this
-   many minutes to bridge those HR-ABSENT gaps so a still wrist cannot creep
-   into "sleep" between bursts. The hold counts down ONLY while HR is truly
-   missing; a HELD window repeat neither refreshes nor decays it (same
-   observation, not new data — and decaying on held minutes would open a
-   ~3-min sleep leak per sparse 15-min cycle, since 12 < 15). A fresh,
-   non-elevated reading clears it immediately (positive sleep evidence), so a
-   lone sleep-time spike can't snowball into false wake. */
-#define SF_WAKE_HR_HOLD_MIN      12u
+/* (2026-08-26) The HR-absent gaps between sparse bursts used to be bridged by
+   a countdown hold, SF_WAKE_HR_HOLD_MIN. It is gone: the veto is now latched
+   (@ref wake_hr_latched), which bridges those gaps without ever forgetting. */
 
-/* Hysteresis — minutes of agreement to enter / exit sleep. */
-#define SF_ENTER_SLEEP_MIN       3
-#define SF_EXIT_SLEEP_MIN        2
+/* Hysteresis — minutes of agreement to enter / exit sleep. 2026-08-26: 3/2 was
+   twitchy enough that a couple of quiet minutes started a "sleep session" in
+   the middle of the afternoon. Sleep onset is not a three-minute event. */
+#define SF_ENTER_SLEEP_MIN       15
+#define SF_EXIT_SLEEP_MIN        5
+
+/* A session shorter than this is not sleep — it is a few quiet minutes. Its
+   minutes are held provisionally and only committed to the daily counters once
+   the session survives this long, so afternoon stillness cannot inflate the
+   day's total. */
+#define SF_MIN_SESSION_MIN       30u
 
 /* Stage thresholds (when already asleep). Activity is the minute total. */
 #define SF_DEEP_ACTIVITY_MAX     50u
@@ -173,6 +211,12 @@ typedef struct
     uint8_t resting_hr_bpm; /* configured seed / enable (0 disables HR) */
     uint8_t learned_rhr_bpm; /* online resting-HR estimate (seeded from above) */
     uint8_t rhr_leak_acc;    /* minutes counted toward the slow upward leak */
+    bool    rhr_seeded;      /* learner has adopted a real HR, not the fallback */
+
+    /* Trailing-window HR histogram feeding the stable reference. Slot
+       rhr_hist_day is today; midnight rotates. */
+    uint16_t rhr_hist[SF_RHR_HIST_DAYS][SF_RHR_HIST_BINS];
+    uint8_t  rhr_hist_day;
 
     /* Activity ring buffer (last SF_WINDOW_MIN minutes). Index points
        to the slot that will be overwritten next — i.e. "oldest". */
@@ -195,15 +239,24 @@ typedef struct
     uint8_t consec_sleep_candidate; /* minutes voting sleep in a row */
     uint8_t consec_wake_candidate;  /* minutes voting wake in a row */
 
-    /* HR wake-veto hold. Set to SF_WAKE_HR_HOLD_MIN on an elevated-HR
-       minute, decremented otherwise; while nonzero the minute votes wake.
-       Bridges the HR-absent gaps between sparse background PPG bursts. */
-    uint8_t wake_hr_hold_min;
+    /* HR wake-veto, LATCHED. 2026-08-26: this used to be a countdown
+       (SF_WAKE_HR_HOLD_MIN, 12 min) that expired between bursts, and sleep
+       leaked in through every expiry — replaying six real days, switching the
+       countdown for a latch is what took daytime false-sleep from 16% to 1.6%,
+       more than any threshold change. A burst's verdict is the best estimate
+       of the wrist's state until the NEXT burst contradicts it; a timer that
+       forgets it is discarding evidence, not aging it. Cleared only by a
+       present, non-elevated reading. */
+    bool    wake_hr_latched;
 
     /* Consecutive elevated-HR readings seen, for the sustained-elevation gate.
        Incremented on each elevated reading, reset by any present non-elevated
        (sleep-consistent) reading. The veto arms only at SF_WAKE_HR_CONSEC_MIN. */
     uint8_t hr_elev_consec;
+
+    /* Provisional session accounting — see SF_MIN_SESSION_MIN. */
+    uint16_t session_min;          /* minutes in the current sleep session */
+    uint16_t pend_total, pend_deep, pend_rem, pend_light;
 
     /* Output snapshot. */
     sleep_fusion_output_t out;
@@ -343,6 +396,59 @@ static uint8_t prv_rmssd_baseline(void)
    slowly, and FREEZE the upward leak while elevated so a long awake-but-still
    stretch (a train) cannot pull the baseline up to itself and disarm the
    veto. No-op returning false when HR is absent or HR staging is disabled. */
+/* Feed one plausible HR reading into today's histogram. */
+static void prv_rhr_hist_push(uint8_t hr_bpm)
+{
+    if (hr_bpm < SF_RHR_HIST_BASE)
+    {
+        return;
+    }
+    uint8_t bin = (uint8_t)((hr_bpm - SF_RHR_HIST_BASE) >> 1);
+    if (bin >= SF_RHR_HIST_BINS)
+    {
+        return;
+    }
+    uint16_t *c = &s_sf.rhr_hist[s_sf.rhr_hist_day][bin];
+    if (*c < 0xFFFFu)
+    {
+        (*c)++;
+    }
+}
+
+/* The stable reference: SF_RHR_HIST_PCT-th percentile over the whole trailing
+   window. Returns 0 while the window is too thin to mean anything, and the
+   caller then falls back to the online learner. */
+static uint8_t prv_rhr_reference(void)
+{
+    uint32_t total = 0;
+    for (uint8_t d = 0; d < SF_RHR_HIST_DAYS; d++)
+    {
+        for (uint8_t b = 0; b < SF_RHR_HIST_BINS; b++)
+        {
+            total += s_sf.rhr_hist[d][b];
+        }
+    }
+    if (total < SF_RHR_HIST_MIN_N)
+    {
+        return 0;
+    }
+
+    uint32_t want = (total * SF_RHR_HIST_PCT) / 100u;
+    uint32_t seen = 0;
+    for (uint8_t b = 0; b < SF_RHR_HIST_BINS; b++)
+    {
+        for (uint8_t d = 0; d < SF_RHR_HIST_DAYS; d++)
+        {
+            seen += s_sf.rhr_hist[d][b];
+        }
+        if (seen > want)
+        {
+            return (uint8_t)(SF_RHR_HIST_BASE + ((uint32_t)b << 1));
+        }
+    }
+    return 0;
+}
+
 static bool prv_hr_elevated_and_learn(uint8_t hr_bpm)
 {
     if (hr_bpm == 0 || s_sf.resting_hr_bpm == 0)
@@ -350,9 +456,34 @@ static bool prv_hr_elevated_and_learn(uint8_t hr_bpm)
         return false; /* no HR this minute, or HR veto disabled */
     }
 
+    /* First real reading after a (re)start: anchor the learner just below it
+       instead of the fixed SLEEP_DEFAULT_RESTING_HR. HR at rest sits at the
+       resting level and above it while active, so "first reading minus a
+       margin" errs toward calling the wrist AWAKE — the safe direction. The
+       old fixed 65 erred the other way and cost whole days. */
+    if (!s_sf.rhr_seeded)
+    {
+        /* Exactly at the elevation boundary, not below it: seeding lower
+           would make the very first reading "elevated", and the learner
+           FREEZES its upward leak while elevated — so a too-low seed latches
+           the veto on for good. Neutral is the only safe seed. */
+        uint8_t seed = (hr_bpm > SF_RHR_MIN + SF_WAKE_HR_OFFSET_BPM)
+                           ? (uint8_t)(hr_bpm - SF_WAKE_HR_OFFSET_BPM)
+                           : (uint8_t)SF_RHR_MIN;
+        s_sf.learned_rhr_bpm = seed;
+        s_sf.rhr_seeded = true;
+        s_sf.rhr_leak_acc = 0;
+    }
+
     uint8_t rhr = s_sf.learned_rhr_bpm;
-    /* Decide elevation against the established baseline (pre-update). */
-    bool elevated = ((uint32_t)hr_bpm > (uint32_t)rhr + SF_WAKE_HR_OFFSET_BPM);
+    /* Elevation is judged against the STABLE reference whenever the trailing
+       window has enough data; the learner is only the warm-up fallback. */
+    uint8_t ref = prv_rhr_reference();
+    if (ref == 0)
+    {
+        ref = rhr;
+    }
+    bool elevated = ((uint32_t)hr_bpm > (uint32_t)ref + SF_WAKE_HR_OFFSET_BPM);
 
     if (hr_bpm < rhr)
     {
@@ -444,6 +575,9 @@ static sleep_fusion_stage_t prv_classify_sleep_stage(
     return SLEEP_FUSION_STAGE_LIGHT;
 }
 
+static void prv_commit_session(void);
+static void prv_drop_session(void);
+
 static void prv_apply_stage_transition(uint32_t utc_sec,
                                        sleep_fusion_stage_t prev,
                                        sleep_fusion_stage_t next)
@@ -476,25 +610,52 @@ static void prv_apply_stage_transition(uint32_t utc_sec,
     if (prev_was_sleep && !next_is_sleep)
     {
         s_sf.out.last_wake_utc = utc_sec;
+        /* Session over. Anything still provisional never reached
+           SF_MIN_SESSION_MIN, so it was not sleep. */
+        prv_drop_session();
     }
+}
+
+/* Commit the provisional minutes held for the current session, then keep
+   counting straight into the daily totals. @ref SF_MIN_SESSION_MIN. */
+static void prv_commit_session(void)
+{
+    s_sf.out.total_sleep_min = (uint16_t)SF_MIN_CLAMP((uint32_t)s_sf.out.total_sleep_min + s_sf.pend_total);
+    s_sf.out.deep_min  = (uint16_t)SF_MIN_CLAMP((uint32_t)s_sf.out.deep_min  + s_sf.pend_deep);
+    s_sf.out.rem_min   = (uint16_t)SF_MIN_CLAMP((uint32_t)s_sf.out.rem_min   + s_sf.pend_rem);
+    s_sf.out.light_min = (uint16_t)SF_MIN_CLAMP((uint32_t)s_sf.out.light_min + s_sf.pend_light);
+    s_sf.pend_total = s_sf.pend_deep = s_sf.pend_rem = s_sf.pend_light = 0;
+}
+
+/* Discard a session that never reached SF_MIN_SESSION_MIN — it was a quiet
+   stretch, not sleep. */
+static void prv_drop_session(void)
+{
+    s_sf.pend_total = s_sf.pend_deep = s_sf.pend_rem = s_sf.pend_light = 0;
+    s_sf.session_min = 0;
 }
 
 static void prv_update_daily_counters(sleep_fusion_stage_t stage,
                                       bool had_sleep_onset)
 {
+    /* 2026-08-26: these used to increment on ANY non-AWAKE stage with no
+       session gate at all, so a day spent quietly at a desk was counted minute
+       by minute as sleep — 2026-08-21 reported 1164 min (19.4 h). A minute
+       only counts inside a session, and only once that session has proven
+       itself SF_MIN_SESSION_MIN long. */
+    bool provisional = (s_sf.session_min < SF_MIN_SESSION_MIN);
+    uint16_t *bucket = NULL;
+
     switch (stage)
     {
     case SLEEP_FUSION_STAGE_LIGHT:
-        s_sf.out.light_min = (uint16_t)SF_MIN_CLAMP((uint32_t)s_sf.out.light_min + 1);
-        s_sf.out.total_sleep_min = (uint16_t)SF_MIN_CLAMP((uint32_t)s_sf.out.total_sleep_min + 1);
+        bucket = provisional ? &s_sf.pend_light : &s_sf.out.light_min;
         break;
     case SLEEP_FUSION_STAGE_DEEP:
-        s_sf.out.deep_min = (uint16_t)SF_MIN_CLAMP((uint32_t)s_sf.out.deep_min + 1);
-        s_sf.out.total_sleep_min = (uint16_t)SF_MIN_CLAMP((uint32_t)s_sf.out.total_sleep_min + 1);
+        bucket = provisional ? &s_sf.pend_deep : &s_sf.out.deep_min;
         break;
     case SLEEP_FUSION_STAGE_REM:
-        s_sf.out.rem_min = (uint16_t)SF_MIN_CLAMP((uint32_t)s_sf.out.rem_min + 1);
-        s_sf.out.total_sleep_min = (uint16_t)SF_MIN_CLAMP((uint32_t)s_sf.out.total_sleep_min + 1);
+        bucket = provisional ? &s_sf.pend_rem : &s_sf.out.rem_min;
         break;
     case SLEEP_FUSION_STAGE_AWAKE:
         /* Only count WASO (Wake After Sleep Onset). */
@@ -503,9 +664,29 @@ static void prv_update_daily_counters(sleep_fusion_stage_t stage,
             s_sf.out.awake_after_onset_min = (uint16_t)SF_MIN_CLAMP(
                 (uint32_t)s_sf.out.awake_after_onset_min + 1);
         }
-        break;
+        return;
     default:
-        break;
+        return;
+    }
+
+    /* Inside a session. */
+    s_sf.session_min = (uint16_t)SF_MIN_CLAMP((uint32_t)s_sf.session_min + 1);
+    if (*bucket < 0xFFFFu)
+    {
+        (*bucket)++;
+    }
+    if (provisional)
+    {
+        s_sf.pend_total = (uint16_t)SF_MIN_CLAMP((uint32_t)s_sf.pend_total + 1);
+        if (s_sf.session_min >= SF_MIN_SESSION_MIN)
+        {
+            prv_commit_session();   /* it lasted — the held minutes are real */
+        }
+    }
+    else
+    {
+        s_sf.out.total_sleep_min =
+            (uint16_t)SF_MIN_CLAMP((uint32_t)s_sf.out.total_sleep_min + 1);
     }
 }
 
@@ -534,7 +715,15 @@ void sleep_fusion_set_resting_hr(uint8_t resting_hr_bpm)
 
 void sleep_fusion_midnight_reset(void)
 {
+    /* Rotate the resting-HR histogram onto a fresh day slot, discarding the
+       oldest of the SF_RHR_HIST_DAYS. The reference itself must NOT be reset —
+       it is the one thing in here that has to survive the day boundary. */
+    s_sf.rhr_hist_day = (uint8_t)((s_sf.rhr_hist_day + 1u) % SF_RHR_HIST_DAYS);
+    memset(s_sf.rhr_hist[s_sf.rhr_hist_day], 0,
+           sizeof(s_sf.rhr_hist[s_sf.rhr_hist_day]));
+
     /* Keep recent history and current stage — only zero daily counters. */
+    prv_drop_session();
     s_sf.out.total_sleep_min = 0;
     s_sf.out.deep_min = 0;
     s_sf.out.rem_min = 0;
@@ -550,6 +739,7 @@ void sleep_fusion_reset(void)
     memset(&s_sf, 0, sizeof(s_sf));
     s_sf.resting_hr_bpm = saved_resting;
     s_sf.learned_rhr_bpm = saved_resting; /* re-seed the online estimate */
+    s_sf.rhr_seeded = false;              /* first real HR still re-anchors it */
     s_sf.out.stage = SLEEP_FUSION_STAGE_AWAKE;
 }
 
@@ -564,7 +754,7 @@ const sleep_fusion_output_t *sleep_fusion_update(
     {
         s_sf.consec_sleep_candidate = 0;
         s_sf.consec_wake_candidate = 0;
-        s_sf.wake_hr_hold_min = 0;
+        s_sf.wake_hr_latched = false;
         s_sf.hr_elev_consec = 0;
         prv_apply_stage_transition(utc_sec, prev_stage, SLEEP_FUSION_STAGE_NOT_WORN);
         s_sf.out.last_cole_kripke_score = 0;
@@ -583,6 +773,16 @@ const sleep_fusion_output_t *sleep_fusion_update(
     /* Push current minute into history first so the score includes it. */
     prv_push_activity(input->activity_count);
     prv_push_hr(hr_clean);
+    /* Feed the stable-reference histogram on EVERY minute that carries a
+       plausible HR, not only on fresh bursts. Fresh minutes arrive roughly
+       once per 10 min, so a fresh-only histogram would need ~7 h of wear to
+       clear SF_RHR_HIST_MIN_N — and the whole point of the reference is to be
+       usable soon after a restart. Held repeats are the same observation
+       re-stated, which for a percentile over three days is just weighting. */
+    if (hr_clean != 0)
+    {
+        prv_rhr_hist_push(hr_clean);
+    }
     prv_push_rmssd(input->hr_rmssd_ms); /* no-op until RR plumbing feeds it */
 
     uint32_t score = prv_cole_kripke_score();
@@ -616,7 +816,7 @@ const sleep_fusion_output_t *sleep_fusion_update(
             }
             if (s_sf.hr_elev_consec >= arm_at)
             {
-                s_sf.wake_hr_hold_min = SF_WAKE_HR_HOLD_MIN;
+                s_sf.wake_hr_latched = true;
             }
         }
         else
@@ -624,23 +824,15 @@ const sleep_fusion_output_t *sleep_fusion_update(
             /* Fresh and NOT elevated — positive, sleep-consistent evidence.
                Clear the veto and the elevation run at once. */
             s_sf.hr_elev_consec = 0;
-            s_sf.wake_hr_hold_min = 0;
+            s_sf.wake_hr_latched = false;
         }
     }
-    else if (hr_clean == 0)
-    {
-        /* HR absent this minute (or artefact-rejected) — bridge the gap. Leave
-           hr_elev_consec untouched: a sparse run of elevated bursts across the
-           HR-absent gaps still counts as sustained (a train), and only a fresh
-           low reading breaks the run above. */
-        if (s_sf.wake_hr_hold_min > 0)
-        {
-            s_sf.wake_hr_hold_min--;
-        }
-    }
-    /* else: held window repeat — veto-neutral by design (no count, no clear,
-       no decay). Staging above still consumes the held mean/std. */
-    s_sf.out.hr_wake_veto_active = (s_sf.wake_hr_hold_min > 0);
+    /* HR absent, or a held window repeat: the latch is left exactly as it is.
+       Nothing new was measured, so nothing changed — only the next fresh burst
+       may move it. (This is the latch: the countdown that used to live here
+       expired mid-gap and let sleep in, which was the single biggest source of
+       daytime false-sleep in the 2026-08-20..25 replay.) */
+    s_sf.out.hr_wake_veto_active = s_sf.wake_hr_latched;
     s_sf.out.learned_rhr_bpm = s_sf.learned_rhr_bpm;
 
     /* Sleep-vs-wake vote for this minute. A still wrist counts as sleep unless
@@ -651,7 +843,7 @@ const sleep_fusion_output_t *sleep_fusion_update(
                              (score >= SF_STEP_CORROB_SCORE);
     bool vote_sleep = (score < SF_SLEEP_SCORE_THRESH) &&
                       !steps_with_motion &&
-                      (s_sf.wake_hr_hold_min == 0);
+                      !s_sf.wake_hr_latched;
 
     if (vote_sleep)
     {

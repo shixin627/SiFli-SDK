@@ -86,11 +86,9 @@
    of the verdict. Dense readings let the veto self-heal (one clean
    sub-threshold reading clears hold + run at once, sleep_fusion.c), so the
    algorithm itself stays untouched. */
-#define SLEEP_REST_SCORE_THRESH   400u /* mirror SF_SLEEP_SCORE_THRESH        */
+#define SLEEP_REST_SCORE_THRESH   120u /* mirror SF_SLEEP_SCORE_THRESH        */
 #define SLEEP_REST_ENTER_MIN      10   /* still minutes in a row to go dense  */
 #define SLEEP_REST_EXIT_MIN       3    /* active minutes in a row to drop out */
-#define SLEEP_REST_WINDOW_START_H 21   /* overnight window: 21:00 ..          */
-#define SLEEP_REST_WINDOW_END_H   11   /* .. 10:59 local wall-clock           */
 
 /* TEMP accel diagnostic (per-second raw accel + delta + per-minute SLPMIN to the
    HCPU log / COM12 via notify_debug_log). DISABLED for overnight collection: the
@@ -458,21 +456,21 @@ static void prv_minute_eval(uint32_t utc_now)
                    out->stage == SLEEP_FUSION_STAGE_DEEP ||
                    out->stage == SLEEP_FUSION_STAGE_REM);
 
-    /* Rest-candidate: a still wrist inside the overnight window also drives
-       dense bursts, independent of the verdict (see SLEEP_REST_* block).
-       Exit needs SLEEP_REST_EXIT_MIN active minutes so one mid-night toss
-       doesn't drop density; the tracker keeps counting while asleep too
-       (harmless — OR'd below — and keeps density across brief wake blips). */
+    /* Rest-candidate: a still wrist also drives dense bursts, independent of
+       the verdict (see SLEEP_REST_* block). Exit needs SLEEP_REST_EXIT_MIN
+       active minutes so one mid-night toss doesn't drop density; the tracker
+       keeps counting while asleep too (harmless — OR'd below — and keeps
+       density across brief wake blips).
+
+       2026-08-26: this used to be gated on a hard-coded 21:00-10:59 local
+       window. A wall clock is not evidence about whether this person is
+       resting: a shift worker, a nap, jet lag and anyone sleeping days got
+       nothing from it. Stillness is the evidence, and it is already measured
+       here — so the window is gone and only stillness (plus being worn)
+       decides. Nothing downstream needs a clock either; the verdict comes from
+       the fusion state machine, which has never had one. */
     {
-        bool in_window = false;
-        time_t t = (time_t)utc_now;
-        struct tm *lt = localtime(&t);
-        if (lt)
-        {
-            in_window = (lt->tm_hour >= SLEEP_REST_WINDOW_START_H ||
-                         lt->tm_hour < SLEEP_REST_WINDOW_END_H);
-        }
-        if (!in_window || !input.is_worn)
+        if (!input.is_worn)
         {
             s_env.rest_still_run = 0;
             s_env.rest_active_run = 0;

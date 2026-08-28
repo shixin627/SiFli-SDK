@@ -30,6 +30,29 @@ LV_IMG_DECLARE(message_widget_bg);
    closed. A FRESH panel is built per open + torn down on close (no reuse). */
 static lv_obj_t *s_chat_panel = NULL;
 static lv_obj_t *s_title_label = NULL;
+
+/* ── 螢幕診斷 HUD(2026-08-26)──
+   這個組態拿不到手錶的即時 log:kReleaseMode=1、ULOG_OUTPUT_LVL_W 濾掉大半、
+   RT_USING_FINSH 沒開所以 msh 不通,而黑盒子只在**當機重開**時才把 ring 推出來 ——
+   一旦不當機,內部狀態就完全看不到。所以把關鍵計數直接畫在標題列上,由使用者唸回來。
+   查完就把 CHAT_DEBUG_HUD 關掉。 */
+#define CHAT_DEBUG_HUD 0
+#if CHAT_DEBUG_HUD
+/* 追加被擋下來的最後一個原因:
+   1=沒訊息 2=則數變了 3=還沒對帳(live=0) 4=有 clarify
+   5=最後一則是我講的 6=沒有變長 7=前綴雜湊對不上 8=環滿了 */
+#define DBG_REJ(c) do { s_dbg_rej = (c); s_dbg_rejn++; } while (0)
+static uint32_t s_dbg_rej;
+static uint32_t s_dbg_rejn;
+static uint32_t s_dbg_full;   /* 跑了幾次完整重建 */
+static uint32_t s_dbg_append; /* 走了幾次追加快路徑 */
+static uint32_t s_dbg_tick;   /* 揭露 timer 跑了幾拍 */
+static uint32_t s_dbg_ins;    /* 實際呼叫 ins_text 幾次 */
+static uint32_t s_dbg_setlen; /* 最後一次重建時,交給 label 的完整內容有多長 */
+static int s_dbg_keep;       /* 最後一次重建時,決定保留幾 byte 已畫內容 */
+#else
+#define DBG_REJ(c) do { } while (0)
+#endif
 static lv_obj_t *s_msg_list = NULL;      /* scrollable flex column the messages render into */
 static lv_obj_t *s_loading_label = NULL; /* "載入中…" centered on the panel, shown while empty */
 
@@ -37,16 +60,79 @@ static lv_obj_t *s_loading_label = NULL; /* "載入中…" centered on the panel
    buffers (no heap on the 4KB BLE stack), then rendered on the LVGL thread
    (chat_page_apply_pending_state) via LVGL_MSG_TYPE_REFRESH_CHAT. */
 #define CHAT_MAX_MSGS 16
-#define CHAT_MSG_TEXT_LEN 256
+
+/* ■ 文字池(founder 2026-08-26)
+   原本每則訊息各自一個固定陣列(16 × 256),兩個毛病同時存在:
+     · 短訊息也持續佔掉整格 ——「嗨」跟 250 字一樣貴
+     · 長訊息再怎麼調也卡死在那個格子大小,超過就默默被砍
+   改成**所有訊息共用一塊固定大小的池**,每則只記 (offset, len):
+     · 用多少算多少 —— 一串短訊息就擠得很緊
+     · 單則可以拉到 CHAT_MSG_TEXT_MAX(遠比舊的 256/512 寬)
+     · 總量硬上限 = 池子大小,全靜態、沒有 malloc —— 不會因為文字太多把記憶體吃光,
+       也沒有動態配置的 use-after-free / 碎片化問題
+   RAM:3072 + 16×16 ≈ 3.3KB(舊的 16×512 = 8.4KB),容量反而變大、佔用變小。 */
+#define CHAT_TEXT_POOL 4096    /* 整間聊天室的文字總量硬上限 */
+/* 單則上限。1024 是實測打臉出來的:founder 要「300 字小說」,Hermes 實際回了
+   418 個字元(手機 log `textLen=418`)≈ 1250 bytes,尾巴被 1024 切掉。3072 ≈ 1000
+   個中文字,單則可以吃掉大半個池子——長回覆本來就該是房裡的主角。 */
+#define CHAT_MSG_TEXT_MAX 3072
 typedef struct
 {
     char role[12]; /* user / ai / assistant / incoming / outgoing */
-    char text[CHAT_MSG_TEXT_LEN];
+    uint16_t off;  /* 文字在 s_text_pool 的起點 */
+    uint16_t len;  /* 不含結尾 NUL */
 } chat_msg_t;
+/* +1 = 永久 NUL 哨兵,**永遠不寫入**。BLE 執行緒重填池子的同時 LVGL 可能正在畫上一版,
+   讀到的 off 可能是舊的(指向池子中段而那裡已經沒有結尾 NUL)—— 有哨兵在,最壞情況也
+   只是讀到池尾就停,不會一路 strlen 出界。無鎖交接下這是最後一道界線。 */
+static char s_text_pool[CHAT_TEXT_POOL + 1];
+static uint16_t s_pool_used;
+
+static inline const char *chat_msg_text(const chat_msg_t *m)
+{
+    /* off 只可能落在 [0, CHAT_TEXT_POOL];越界就當空字串,絕不解出界指標。 */
+    return (m->off <= CHAT_TEXT_POOL) ? (s_text_pool + m->off) : "";
+}
+/* ── 逐字揭露:走在文字池上的一個游標(2026-08-26 重寫)──
+   原本設計成「只收手機送來的增量」,但實測打臉:整篇 1038 bytes 的回覆,手錶總共只收到
+   10 包 conv_state,而且**最後一包就含著整篇**(HUD 的 R3.9 → R2.10)。手機那端一秒推
+   幾百包沒錯,但 BLE 吞不下,絕大多數在手機的寫入佇列裡就被後來的蓋掉 —— 手錶這邊根本
+   沒有「串流」,自然也沒有尾巴可以追加。所以揭露的來源改成**手錶自己已經拿到的完整
+   文字**:文字池裡那一整段就在那裡,讓游標自己走過去。
+   環形緩衝跟 BLE 端那條追加快路徑因此整個刪掉 —— 少 2KB RAM、少一整套跨執行緒交接。
+   「來源回頭改了前面」還是守得住:重建時拿已畫長度的雜湊對一次,對不上就從頭畫。 */
+static uint32_t chat_fnv1a(const char *p, size_t n)
+{
+    uint32_t h = 2166136261u;
+    for (size_t i = 0; i < n; i++)
+        h = (h ^ (uint8_t)p[i]) * 16777619u;
+    return h;
+}
+
+/* 逐字是給「我在這裡等回覆」用的;翻舊訊息還要一個字一個字浮出來只是擋著人看
+   (founder 2026-08-26)。
+   第一版用「進房後的第一次重畫」當判準,錯了 —— 舊房的歷史是**一則一則補進來的**
+   (手機推 msgs=0 → 1 → 2 → … 每則一包、間隔十幾毫秒),所以只有第一則吃到「直接
+   出現」,後面每一則都被當成新內容而逐字,包括最後那則早就回完的 AI 回覆。
+   該問的不是「是不是第一次重畫」,是「這一則是不是我在這裡等來的」:送出過(或手機
+   說 sending)才翻真,進舊房讀歷史時是 false。 */
+static bool s_live_turn;
+
 static char s_pending_title[64];
 static bool s_pending_sending;
 static chat_msg_t s_pending_msgs[CHAT_MAX_MSGS];
 static volatile int s_pending_msg_count; /* written LAST on BLE, read FIRST on LVGL */
+
+/* 送出一句之後、AI 還沒開口的這段時間要有「在等」的表示(founder 2026-08-26)。
+   本機旗標而不是只信手機的 `sending`:手機那邊 sending 何時翻真不在我們手上,
+   而「我剛按了送出」是手錶自己最確定的事實。收到任何 AI 發言(或 clarify)就清掉。 */
+static bool s_awaiting_reply = false;
+
+/* 剛送出的那一句,在手機把它回音進 conv_state 之前先自己畫出來。
+   ⚠ 這裡**不碰文字池** —— 池子由 BLE 執行緒獨佔填寫,LVGL 執行緒(送出是在這條上)
+   若也去 memmove/改 offset,兩邊會撞在同一塊緩衝上。改成獨立的一格小緩衝、渲染時
+   當成串尾多出來的一則 user 訊息畫上去;手機的 conv_state 一到就清掉(裡面已含這句)。 */
+static char s_local_echo[192];
 
 /* Pending clarify/approval (0x12 top-level `approval` {rid,q,opts:[{id,label}]}, 2026-08-13):
    the desktop agent is BLOCKED asking — render the question + one tappable chip per option.
@@ -81,6 +167,53 @@ static void chat_copy_utf8(char *dst, size_t cap, const char *src)
     dst[n] = '\0';
 }
 
+/* AI 回覆逐字浮現的狀態機定義在下方(Turn treatment 區)—— 關房時要清乾淨,所以先宣告。 */
+static void chat_type_stop(void);
+static void chat_type_timer_start(void);
+static void chat_type_reset(void);
+static void chat_wait_stop(void);
+
+/* 把 text 放進文字池尾端,回寫 dst 的 (off,len)。UTF-8 邊界安全;放不下就切。 */
+static void chat_pool_put(chat_msg_t *dst, const char *text)
+{
+    size_t avail = (size_t)(CHAT_TEXT_POOL - s_pool_used); /* 含結尾 NUL */
+    size_t cap = (avail < (size_t)CHAT_MSG_TEXT_MAX + 1) ? avail : (size_t)CHAT_MSG_TEXT_MAX + 1;
+    dst->off = s_pool_used;
+    if (cap == 0)
+    {
+        dst->len = 0;
+        return;
+    }
+    char *dstp = s_text_pool + s_pool_used;
+    chat_copy_utf8(dstp, cap, text);
+    dst->len = (uint16_t)strlen(dstp);
+    s_pool_used = (uint16_t)(s_pool_used + dst->len + 1);
+}
+
+/* ── 重建合流(founder 2026-08-26「卡住不動,看門狗自動重啟」)──
+   看門狗會咬,代表有一條執行緒一直在跑、把 idle 餓死 —— 不是「慢」,是「從不讓出 CPU」。
+   兇手是 GUI:手機串流時一秒推幾百包 conv_state,只要有一包不符合追加條件就會觸發一次
+   lv_obj_clean + 重建所有訊息泡泡(比 ins_text 更貴,長回覆要重排幾百個中文字形)。
+   一秒幾十次這種重建,GUI 就再也沒空做別的。
+   所以在這裡硬性設一個下限:250ms 內已經重建過就不重建,改掛一次性 timer 稍後補做
+   (最後一份狀態一定會被畫出來,只是延後)。這道閘門跟動畫無關,是**不管上游怎麼洗頻
+   都打不死 GUI** 的保險。 */
+#define CHAT_REBUILD_MIN_MS 250
+
+static uint32_t s_last_rebuild_tick;
+static lv_timer_t *s_rebuild_defer;
+
+static void chat_rebuild_defer_cb(lv_timer_t *t)
+{
+    LV_UNUSED(t);
+    if (s_rebuild_defer != NULL)
+    {
+        lv_timer_del(s_rebuild_defer);
+        s_rebuild_defer = NULL;
+    }
+    chat_page_apply_pending_state();
+}
+
 bool chat_page_is_open(void)
 {
     return s_chat_panel != NULL && lv_obj_is_valid(s_chat_panel);
@@ -98,9 +231,12 @@ void chat_page_seed_local_message(const char *text)
     s_appr_pending = false;  /* 上個房間殘留的 clarify 不屬於新房間 */
     rt_strncpy(s_pending_msgs[0].role, "user", sizeof(s_pending_msgs[0].role) - 1);
     s_pending_msgs[0].role[sizeof(s_pending_msgs[0].role) - 1] = '\0';
-    rt_strncpy(s_pending_msgs[0].text, text, CHAT_MSG_TEXT_LEN - 1);
-    s_pending_msgs[0].text[CHAT_MSG_TEXT_LEN - 1] = '\0';
+    s_pool_used = 0; /* 新房間 = 空的池子 */
+    s_local_echo[0] = 0; /* 新房間,上一房的本機回音不屬於這裡 */
+    chat_pool_put(&s_pending_msgs[0], text);
     s_pending_msg_count = 1; /* count 最後寫(與 BLE 側同一個順序約定) */
+    s_awaiting_reply = true; /* 這句剛送出去,接下來就是在等 AI */
+    s_live_turn = true;      /* 這一輪的回覆要逐字 */
     chat_page_apply_pending_state();
 }
 
@@ -354,6 +490,11 @@ static void chat_stop_recording_and_send(void)
     {
         commu_send_conv_send(text);
         clearVoice2Text();
+        /* 不等手機回音:自己那句馬上上牆,並立刻進入「等待中」。 */
+        chat_copy_utf8(s_local_echo, sizeof(s_local_echo), text);
+        s_awaiting_reply = true;
+        s_live_turn = true;
+        chat_page_apply_pending_state();
     }
 }
 
@@ -651,6 +792,8 @@ void chat_page_open(const char *title, const char *icon_src)
         lv_top_panel_mouse_layer_set_covered(true);
     }
 
+    s_live_turn = false;     /* 剛進房:接下來畫的是歷史,不逐字 */
+    chat_type_timer_start(); /* 常駐揭露 timer:整個房間開著期間都在跑,不靠任何時序啟動 */
     LOG_I("chat page opened: %s", (title && title[0]) ? title : "(none)");
 }
 
@@ -679,6 +822,16 @@ void chat_page_close(void)
     s_transcript_label = NULL;
     s_transcript_pill = NULL;
     s_input_scrim = NULL;
+    chat_type_reset();
+    if (s_rebuild_defer != NULL)
+    {
+        lv_timer_del(s_rebuild_defer);
+        s_rebuild_defer = NULL;
+    }
+    s_last_rebuild_tick = 0;
+    chat_wait_stop();
+    s_local_echo[0] = 0;
+    s_awaiting_reply = false;
     {
         extern void lv_top_panel_mouse_layer_set_covered(bool covered);
         lv_top_panel_mouse_layer_set_covered(false);
@@ -726,36 +879,70 @@ void skai_chat_on_conv_state(const uint8_t *json, uint16_t length)
     cJSON *j_msgs = cJSON_GetObjectItem(root, "messages");
     if (cJSON_IsArray(j_msgs))
     {
+        /* 兩趟。第一趟只收「有效訊息」的指標(最多 CHAT_MAX_MSGS 則,滿了就頂掉最舊的),
+           第二趟從**最新往回**累加長度,決定文字池放得下哪一段 —— 這個順序保證剛送出/
+           剛回覆的那則一定留得住,被擠掉的永遠是最舊的歷史(founder 2026-06-29 踩過反過來
+           的版本:backlog 塞滿時新訊息反而不見)。 */
+        cJSON *items[CHAT_MAX_MSGS];
+        int n = 0;
         cJSON *m = NULL;
-        /* Keep the LAST CHAT_MAX_MSGS valid messages, not the first: when a full backlog already fills
-           the cap, a freshly-sent message is the NEWEST and was being dropped (founder 2026-06-29: sent
-           message didn't appear). Count valid (non-empty) messages first, then skip the oldest overflow. */
-        int valid_total = 0;
         cJSON_ArrayForEach(m, j_msgs)
         {
             cJSON *jt = cJSON_GetObjectItem(m, "text");
-            if (cJSON_IsString(jt) && jt->valuestring[0] != '\0')
-                valid_total++;
-        }
-        int skip = (valid_total > CHAT_MAX_MSGS) ? (valid_total - CHAT_MAX_MSGS) : 0;
-        int seen = 0;
-        cJSON_ArrayForEach(m, j_msgs)
-        {
-            cJSON *j_text = cJSON_GetObjectItem(m, "text");
-            if (!cJSON_IsString(j_text) || j_text->valuestring[0] == '\0')
+            if (!cJSON_IsString(jt) || jt->valuestring[0] == '\0')
                 continue;
-            if (seen++ < skip)
-                continue; /* drop the oldest beyond the cap so the newest always survives */
-            if (count >= CHAT_MAX_MSGS)
+            if (n < CHAT_MAX_MSGS)
+            {
+                items[n++] = m;
+            }
+            else
+            {
+                for (int i = 1; i < CHAT_MAX_MSGS; i++)
+                    items[i - 1] = items[i];
+                items[CHAT_MAX_MSGS - 1] = m;
+            }
+        }
+
+        /* ── 純追加的快路徑 ──
+           條件全部成立才算:則數沒變、沒有待答 clarify、最後一則是 AI、而且它的前
+           s_live_len 個 byte 跟我們已經收下的**完全一樣**(雜湊比對)。成立就只把多出來
+           的尾巴推進環,文字池 / count / approval 一律不動,LVGL 那邊也不重建。
+           串流時這條會吃掉幾乎所有更新 —— 每包只多 1~2 個字。 */
+        int first = n;
+        size_t need = 0;
+        for (int i = n - 1; i >= 0; i--)
+        {
+            size_t l = strlen(cJSON_GetObjectItem(items[i], "text")->valuestring);
+            if (l > (size_t)CHAT_MSG_TEXT_MAX)
+                l = (size_t)CHAT_MSG_TEXT_MAX;
+            if (need + l + 1 > (size_t)CHAT_TEXT_POOL)
                 break;
-            cJSON *j_role = cJSON_GetObjectItem(m, "role");
+            need += l + 1;
+            first = i;
+        }
+        if (first >= n && n > 0)
+            first = n - 1; /* 連最新一則都超過整個池 —— 還是收它,由 chat_pool_put 切 */
+
+        s_pool_used = 0;
+        for (int i = first; i < n; i++)
+        {
+            cJSON *j_text = cJSON_GetObjectItem(items[i], "text");
+            cJSON *j_role = cJSON_GetObjectItem(items[i], "role");
             const char *role = cJSON_IsString(j_role) ? j_role->valuestring : "";
             strncpy(s_pending_msgs[count].role, role, sizeof(s_pending_msgs[count].role) - 1);
             s_pending_msgs[count].role[sizeof(s_pending_msgs[count].role) - 1] = '\0';
-            strncpy(s_pending_msgs[count].text, j_text->valuestring, sizeof(s_pending_msgs[count].text) - 1);
-            s_pending_msgs[count].text[sizeof(s_pending_msgs[count].text) - 1] = '\0';
+            /* 截斷要**出聲** —— 靜默截斷正是「電腦上完整、手錶只有前半」這種看起來像
+               UI bug、其實是容量不夠的症狀(founder 2026-08-26)。 */
+            int src_len = (int)strlen(j_text->valuestring);
+            chat_pool_put(&s_pending_msgs[count], j_text->valuestring);
+            if (s_pending_msgs[count].len < (uint16_t)src_len)
+                LOG_W("[chat] msg TRUNCATED src=%d kept=%d",
+                      src_len, (int)s_pending_msgs[count].len);
             count++;
         }
+        if (first > 0)
+            LOG_W("[chat] pool: dropped %d oldest, used=%d", first, (int)s_pool_used);
+
     }
     /* 解析出幾則、丟了幾則。手機端的 msgs 是單調成長的(實測 3→4→5→6,從不縮),所以只要
        這裡的 count 比它小,差額就是在這一層掉的 —— 分辨「手機沒送」與「手錶沒收下」。 */
@@ -801,8 +988,12 @@ void skai_chat_on_conv_state(const uint8_t *json, uint16_t length)
     }
     cJSON_Delete(root);
 
+    s_local_echo[0] = '\0'; /* 手機的版本到了,本機回音讓位 */
     s_pending_msg_count = count; /* publish LAST so an LVGL reader never sees a half-filled buffer */
     LOG_I("conv_state rx: title=%s msgs=%d sending=%d", s_pending_title, count, (int)s_pending_sending);
+    /* 這條是 W 級:本機組態 ULOG_OUTPUT_LVL_W,D/I 在 COM12 上一個字都看不到,
+       而「手錶收到多少 bytes / 解析出幾則」是所有聊天室問題的第一個分岔口。 */
+    LOG_W("[chat] rx len=%u parsed=%d", (unsigned)length, count);
 
     lvgl_msg_t msg = {.type = LVGL_MSG_TYPE_REFRESH_CHAT};
     lvgl_send_msg(msg);
@@ -840,7 +1031,135 @@ void chat_page_set_style_hermes(bool hermes)
     s_hermes_style = hermes;
 }
 
+/* ── AI 回覆逐字浮現(founder 2026-08-26)──
+   桌面的 AI 回覆是串流打字,手錶這邊 conv_state 是整包重畫,所以每次刷新整段字
+   瞬間跳出。這裡在「最後一則 AI 訊息」上補一層逐字揭露:記住上次已顯示到哪(s_type_shown),
+   只把新增的那一段一個字一個字補上 —— 內容成長時接著打,不會每收一包就從頭重來。
+   只用在 Hermes(AI)房;@聯絡人房的來訊是真人講的話,不該假裝在打字。 */
+/* ── 重繪成本才是真正的天花板(founder 2026-08-26「回覆完後手錶直接當機」)──
+   每一次 lv_label_ins_text 都會讓**整個** label 重新斷行 + 重新取字形。回覆長到
+   三四百個中文字時,單次重繪本身就很貴;一拍 40ms 追加一次 = 一秒 25 次全量重繪,
+   GUI 執行緒被自己餵飽,畫面就此不動(BLE 還活著、也沒有重開 → 不是 crash,是 GUI
+   餓死)。所以節流的對象不是「一次接幾個字」,是「一秒重繪幾次」:
+     · 一拍拉長到 100ms → 最多一秒 10 次
+     · 一拍把環**整個排空**成一次 ins_text,而不是分很多次
+     · 捲動只在排空後做一次(它會逼一次 layout)
+     · label 長到一定程度就完全停掉動畫,直接整段補上 —— 長文的閱讀價值遠高於打字感 */
+#define CHAT_TYPE_PERIOD_MS 100
+#define CHAT_TYPE_NOANIM_LEN 900 /* 超過這個長度就不再逐字,直接整段接上 */
+#define CHAT_TYPE_PIECE_MAX 256 /* 一拍最多搬進來的 byte 數 */
+#define CHAT_TYPE_STEP 2       /* 一拍接 2 個字:每拍都要重排版+FT 取字形,一次一個字
+                                  在長回覆上是白白多花一倍的重繪 */
+
+/* 直播那一則的 label。字就存在它裡面 —— 我們這邊**沒有**第二份全文緩衝。 */
+/* 接字的工作緩衝。**静態不放 stack**:lvgl_task 的 stack 只有 14*256=3584 bytes,
+   而 ins_text 還要往下跑 realloc + 重新斷行 + 畫圖。在這條路上放幾百 bytes 的
+   局部陣列是在踩線(參考 tpread stack 溢位那次)。只有 LVGL 執行緒碰它。 */
+static char s_type_piece[CHAT_TYPE_PIECE_MAX + 1];
+static lv_obj_t *s_live_lbl = NULL;
+/* 揭露游標。s_reveal_src 指進文字池 —— BLE 重寫池子時內容會變,但池尾有永久 NUL
+   哨兵、off 也夾過,讀取永遠在界內;而任何重寫都會帶來一次重建,那時重新對帳。 */
+static const char *s_reveal_src;
+static int s_reveal_total;
+static int s_reveal_pos;
+static uint32_t s_paint_hash;
+static lv_timer_t *s_type_timer = NULL;
+
+static void chat_type_stop(void)
+{
+    if (s_type_timer != NULL)
+    {
+        lv_timer_del(s_type_timer);
+        s_type_timer = NULL;
+    }
+}
+
+/* 關房重置:下次開房是另一個對話,環裡的尾巴跟前綴雜湊都不屬於它。 */
+static void chat_type_reset(void)
+{
+    chat_type_stop();
+    s_live_lbl = NULL;
+    s_reveal_src = NULL;
+    s_reveal_total = 0;
+    s_reveal_pos = 0;
+    s_paint_hash = 0;
+}
+
+/* 把 t 的前 upto 個 byte 分段餵進 label(切點對齊 UTF-8 字元邊界)。 */
+static void chat_reveal_paint_upto(lv_obj_t *lbl, const char *t, int upto)
+{
+    lv_label_set_text(lbl, "");
+    int off = 0;
+    while (off < upto)
+    {
+        int n = upto - off;
+        if (n > CHAT_TYPE_PIECE_MAX)
+        {
+            n = CHAT_TYPE_PIECE_MAX;
+            while (n > 0 && ((uint8_t)t[off + n] & 0xC0) == 0x80)
+                n--; /* 別切在字元中間 */
+        }
+        if (n <= 0)
+            break;
+        memcpy(s_type_piece, t + off, (size_t)n);
+        s_type_piece[n] = '\0';
+        lv_label_ins_text(lbl, LV_LABEL_POS_LAST, s_type_piece);
+        off += n;
+    }
+}
+
+static void chat_type_tick(lv_timer_t *t)
+{
+    LV_UNUSED(t);
+#if CHAT_DEBUG_HUD
+    s_dbg_tick++;
+#endif
+    /* timer 是常駐的:沒 label、沒東西可揭露,這一拍就什麼都不做。 */
+    if (s_live_lbl == NULL || !lv_obj_is_valid(s_live_lbl))
+    {
+        s_live_lbl = NULL;
+        return;
+    }
+    if (s_reveal_src == NULL || s_reveal_pos >= s_reveal_total)
+        return;
+
+    /* 還短就慢慢來(打字感),長了就大口吃 —— 每拍都要整段重排版+取字形,長回覆上
+       一次多接一點才不會把 GUI 餵飽(那是先前看門狗咬下去的原因)。 */
+    int take = (s_reveal_pos < CHAT_TYPE_NOANIM_LEN) ? (CHAT_TYPE_STEP * 4)
+                                                     : CHAT_TYPE_PIECE_MAX;
+    int left = s_reveal_total - s_reveal_pos;
+    if (take > left)
+        take = left;
+    if (take > CHAT_TYPE_PIECE_MAX)
+        take = CHAT_TYPE_PIECE_MAX;
+    /* 切在 UTF-8 字元邊界上,不然中文會閃出半個字的 tofu。 */
+    while (take > 0 && ((uint8_t)s_reveal_src[s_reveal_pos + take] & 0xC0) == 0x80)
+        take--;
+    if (take <= 0)
+        return;
+
+    memcpy(s_type_piece, s_reveal_src + s_reveal_pos, (size_t)take);
+    s_type_piece[take] = '\0';
+    lv_label_ins_text(s_live_lbl, LV_LABEL_POS_LAST, s_type_piece);
+#if CHAT_DEBUG_HUD
+    s_dbg_ins++;
+#endif
+    s_reveal_pos += take;
+    s_paint_hash = chat_fnv1a(s_reveal_src, (size_t)s_reveal_pos);
+    /* 捲動會逼一次 layout —— 一拍只做一次。 */
+    if (s_msg_list != NULL && lv_obj_is_valid(s_msg_list))
+        lv_obj_scroll_to_y(s_msg_list, LV_COORD_MAX, LV_ANIM_OFF);
+}
+
+/* 開房時建立、關房時刪除,中間**永遠不停**。 */
+static void chat_type_timer_start(void)
+{
+    if (s_type_timer == NULL)
+        s_type_timer = lv_timer_create(chat_type_tick, CHAT_TYPE_PERIOD_MS, NULL);
+}
+
 /* Hermes 卡片/平鋪的共用塗裝。mine=true → 玻璃卡;false → 平鋪文字。 */
+/* 回傳裡面的 label(逐字揭露要拿它) —— card 可從 lv_obj_get_parent() 取得。 */
 static lv_obj_t *chat_add_hermes_turn(lv_obj_t *parent, const char *text, bool mine)
 {
     lv_obj_t *card = lv_obj_create(parent);
@@ -873,7 +1192,59 @@ static lv_obj_t *chat_add_hermes_turn(lv_obj_t *parent, const char *text, bool m
     lv_obj_set_width(lbl, lv_pct(100));
     lv_label_set_text(lbl, text);
     lv_obj_set_style_text_color(lbl, lv_color_hex(0xFFFFFF), 0);
-    return card;
+    return lbl;
+}
+
+/* ── 等待 AI 回覆的提示(founder 2026-08-26)──
+   送出之後到第一個字浮出來之間,畫面上完全沒有東西在動,分不出「在想」還是「斷線了」。
+   這裡在訊息串尾端掛一則 AI 側的平鋪文字,點點循環跑;第一個字一到就被正常重畫取代。
+   觸發條件是「手機說 sending」**或**「本機剛送出還沒等到回覆」—— 後者是手錶自己最
+   確定的事實,不必等手機的狀態翻真。 */
+#define CHAT_WAIT_PERIOD_MS 400
+
+static lv_obj_t *s_wait_lbl = NULL;
+static lv_timer_t *s_wait_timer = NULL;
+static int s_wait_phase;
+
+static void chat_wait_stop(void)
+{
+    if (s_wait_timer != NULL)
+    {
+        lv_timer_del(s_wait_timer);
+        s_wait_timer = NULL;
+    }
+    s_wait_lbl = NULL;
+}
+
+static void chat_wait_tick(lv_timer_t *t)
+{
+    LV_UNUSED(t);
+    if (s_wait_lbl == NULL || !lv_obj_is_valid(s_wait_lbl))
+    {
+        chat_wait_stop();
+        return;
+    }
+    static const char *const frames[4] =
+    {
+        "思考中",
+        "思考中 ·",
+        "思考中 · ·",
+        "思考中 · · ·",
+    };
+    s_wait_phase = (s_wait_phase + 1) & 3;
+    lv_label_set_text(s_wait_lbl, frames[s_wait_phase]);
+}
+
+static void chat_render_waiting(void)
+{
+    if (s_msg_list == NULL || !lv_obj_is_valid(s_msg_list))
+        return;
+    lv_obj_t *lbl = chat_add_hermes_turn(s_msg_list, "思考中", false);
+    /* 比真正的回覆淡:它是狀態不是內容,不該跟 AI 說的話一樣重。 */
+    lv_obj_set_style_text_opa(lbl, LV_OPA_60, 0);
+    s_wait_phase = 0;
+    s_wait_lbl = lbl;
+    s_wait_timer = lv_timer_create(chat_wait_tick, CHAT_WAIT_PERIOD_MS, NULL);
 }
 
 /* Render the pending clarify/approval under the transcript: the question as a THEIRS bubble, then
@@ -887,6 +1258,7 @@ static void chat_render_pending_approval(void)
     {
         /* Clarify 只發生在 Hermes 房:問題照桌面畫法 = 平鋪全寬文字(assistant turn),
            不再上灰色氣泡。 */
+        /* 這題反問才是房裡最新的 AI 發言 —— 逐字揭露的對象是它(chips 照常直接出現)。 */
         chat_add_hermes_turn(s_msg_list, s_appr_q, false);
     }
 
@@ -933,7 +1305,41 @@ void chat_page_apply_pending_state(void)
 
     if (s_title_label != NULL && lv_obj_is_valid(s_title_label) && s_pending_title[0] != '\0')
         lv_label_set_text(s_title_label, s_pending_title);
+#if CHAT_DEBUG_HUD
+    if (s_title_label != NULL && lv_obj_is_valid(s_title_label))
+    {
+        int clen = 0;
+        if (s_live_lbl != NULL && lv_obj_is_valid(s_live_lbl))
+        {
+            const char *ct = lv_label_get_text(s_live_lbl);
+            clen = (ct != NULL) ? (int)strlen(ct) : 0;
+        }
+        lv_label_set_text_fmt(s_title_label, "P%d/%d V%d K%d C%d N%d T%u",
+                              s_reveal_pos, s_reveal_total,
+                              (int)s_live_turn, (int)s_dbg_keep, clen,
+                              (int)s_pending_msg_count, (unsigned)s_dbg_tick);
+    }
+#endif
 
+    /* 重建太密就延後 —— 這是 GUI 不被上游洗頻打死的閘門(見上方說明)。 */
+    if (s_last_rebuild_tick != 0 && lv_tick_elaps(s_last_rebuild_tick) < CHAT_REBUILD_MIN_MS)
+    {
+        if (s_rebuild_defer == NULL)
+            s_rebuild_defer = lv_timer_create(chat_rebuild_defer_cb, CHAT_REBUILD_MIN_MS, NULL);
+        return;
+    }
+#if CHAT_DEBUG_HUD
+    s_dbg_full++;
+#endif
+    s_last_rebuild_tick = lv_tick_get();
+    if (s_rebuild_defer != NULL)
+    {
+        lv_timer_del(s_rebuild_defer);
+        s_rebuild_defer = NULL;
+    }
+
+    s_live_lbl = NULL;        /* 下面重建時會重新指到直播那一則 */
+    chat_wait_stop();         /* 等待點點同理;要不要重新掛下面重算 */
     lv_obj_clean(s_msg_list); /* drop the old bubbles (and the M1 "連線中…" hint) */
 
     int count = s_pending_msg_count;
@@ -943,7 +1349,23 @@ void chat_page_apply_pending_state(void)
     /* Toggle the centered "載入中…" placeholder: shown while the transcript is still empty (the Matrix
        backlog can take many seconds for a cold room), hidden once any message has arrived — or once a
        clarify question is pending (the question IS the content then). */
-    bool empty = (count == 0 && !s_appr_pending);
+    /* 還在等 AI 嗎?最後一則是我講的(或這房還空)才算在等 —— AI 一開口
+       (或丟出 clarify)就不是了，點點要讓位給真正的內容。 */
+    bool echo = (s_local_echo[0] != '\0');
+    bool last_is_mine = echo; /* 本機回音一定是我講的 */
+    if (!echo && count > 0)
+    {
+        const char *r = s_pending_msgs[count - 1].role;
+        last_is_mine = (strcmp(r, "user") == 0 || strcmp(r, "outgoing") == 0);
+    }
+    if ((count > 0 && !last_is_mine) || s_appr_pending)
+        s_awaiting_reply = false;
+    if (s_pending_sending || s_awaiting_reply)
+        s_live_turn = true; /* 有一輪正在進行 → 接下來長出來的字要逐字 */
+    bool waiting = (s_pending_sending || s_awaiting_reply) && !s_appr_pending &&
+                   (count == 0 || last_is_mine);
+
+    bool empty = (count == 0 && !s_appr_pending && !waiting && !echo);
     if (s_loading_label != NULL && lv_obj_is_valid(s_loading_label))
     {
         if (empty)
@@ -963,7 +1385,51 @@ void chat_page_apply_pending_state(void)
            全寬文字(見 chat_add_hermes_turn 的說明)。@聯絡人房走下面的氣泡。 */
         if (s_hermes_style)
         {
-            chat_add_hermes_turn(s_msg_list, cm->text, mine);
+            lv_obj_t *lbl = chat_add_hermes_turn(s_msg_list, chat_msg_text(cm), mine);
+            if (i == count - 1 && !echo)
+            {
+                /* 直播那一則:掛上揭露游標。新文字若是已畫內容的**延長**(拿已畫長度
+                   的雜湊對一次),就保留已畫的部分、只接後面 —— 不會閃回開頭;對不上
+                   代表來源回頭改了前面,才從 0 重畫(founder 最早提的那個漏洞)。 */
+                if (!mine && !s_appr_pending)
+                {
+                    const char *t = chat_msg_text(cm);
+                    int tl = (int)strlen(t);
+                    int keep = 0;
+                    bool trim = true;
+                    if (!s_live_turn)
+                    {
+                        /* 不是我等來的(讀歷史)→ 整段直接出現。
+                           **不要清掉再貼回去** —— chat_add_hermes_turn 剛剛才把完整內容
+                           放上去了,重貼一遭是多餘的;而且那是在 flex 版面正在建立
+                           的當下連續做 ins_text,外層卡片的 LV_SIZE_CONTENT 高度會停在
+                           「空字串」那個值,整則被裁成看不見(founder 2026-08-26)。 */
+                        keep = tl;
+                        trim = false;
+                    }
+                    else if (s_reveal_pos > 0 && s_reveal_pos <= tl &&
+                             chat_fnv1a(t, (size_t)s_reveal_pos) == s_paint_hash)
+                        keep = s_reveal_pos;
+                    s_reveal_src = t;
+                    s_reveal_total = tl;
+                    s_reveal_pos = keep;
+                    s_paint_hash = chat_fnv1a(t, (size_t)keep);
+                    if (trim)
+                        chat_reveal_paint_upto(lbl, t, keep);
+#if CHAT_DEBUG_HUD
+                    s_dbg_keep = trim ? keep : -1; /* -1 = 完全沒動 label */
+#endif
+                    s_live_lbl = lbl;
+                }
+                else if (mine)
+                {
+                    /* 換我講話 → 游標歸零,下一則 AI 回覆從頭打。 */
+                    s_reveal_src = NULL;
+                    s_reveal_total = 0;
+                    s_reveal_pos = 0;
+                    s_paint_hash = 0;
+                }
+            }
             continue;
         }
 
@@ -1004,13 +1470,19 @@ void chat_page_apply_pending_state(void)
             lv_coord_t lsp = lv_obj_get_style_text_letter_space(lbl, LV_PART_MAIN);
             lv_coord_t lnsp = lv_obj_get_style_text_line_space(lbl, LV_PART_MAIN);
             lv_point_t tsz;
-            lv_txt_get_size(&tsz, cm->text, fnt, lsp, lnsp, LV_COORD_MAX, LV_TEXT_FLAG_NONE);
+            lv_txt_get_size(&tsz, chat_msg_text(cm), fnt, lsp, lnsp, LV_COORD_MAX, LV_TEXT_FLAG_NONE);
             lv_coord_t cap = (LV_HOR_RES * 72) / 100;
             lv_obj_set_width(lbl, tsz.x > cap ? cap : LV_SIZE_CONTENT);
         }
-        lv_label_set_text(lbl, cm->text);
+        lv_label_set_text(lbl, chat_msg_text(cm));
         lv_obj_set_style_text_color(lbl, lv_color_hex(0xFFFFFF), 0);
     }
+
+    if (echo)
+        chat_add_hermes_turn(s_msg_list, s_local_echo, true);
+
+    if (waiting)
+        chat_render_waiting();
 
     chat_render_pending_approval();
 
