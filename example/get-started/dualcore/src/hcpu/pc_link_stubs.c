@@ -108,6 +108,7 @@ typedef struct { uint8_t addr[6]; } bd_addr_t;
 /* app_gesture.c */ void imu_mouse_data_collection_sw_event_callback(lv_event_t *e) {  }
 /* app_incoming_call.h */ void incoming_call_close_if_active(const char *id) {  }
 /* app_incoming_call.h */ void incoming_call_set_caller(const char *title, const char *id, uint8_t type) {  }
+/* app_incoming_call.h */ void incoming_call_on_action_result(bool ok) {  }
 /* main_functions.h */ void init_gesture_recognition_release_model(void) {  }
 /* bloc_v2t.h */ bool isTextEmpty(void) { return false; }
 /* communicate_update_image.h */ bool is_ble_dfu_thread_running(void) { return false; }

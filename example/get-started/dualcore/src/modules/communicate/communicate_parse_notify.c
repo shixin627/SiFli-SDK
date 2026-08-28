@@ -38,6 +38,12 @@
 #define DBG_LVL BSP_DBG_LVL
 #include <rtdbg.h>
 
+/* Implemented in gui_apps/incoming_call/app_incoming_call.c. Declared here
+   rather than #include'd: that directory is on the hcpu group's CPPPATH, not
+   this module's -- same reason bloc_notification.c externs the sibling
+   incoming_call_* entry points. */
+extern void incoming_call_on_action_result(bool ok);
+
 /**
  * @brief   resolve notify command received from remote APP
  * @param   key: L2 key
@@ -427,6 +433,19 @@ void resolve_Notify_command(uint8_t key, uint8_t *pValue, uint16_t length)
             LOG_I("Dismiss notification id: %s", id_buf);
             dismiss_notification_from_phone(id_buf);
         }
+        break;
+    }
+
+    case KEY_CALL_ACTION_RESULT:
+    {
+        /* The phone acted (or could not act) on the accept / refuse we sent.
+           Empty payload counts as failure -- a truncated frame must not be
+           read as success and close the screen on a still-ringing call. */
+        bool ok = (length > 0) && (pValue[0] != 0);
+        LOG_W("[call] verdict from phone ok=%d", (int)ok);
+        /* BLE RX thread: the app only latches a flag here, its own lv_timer
+           does the drawing. Never touch LVGL from this thread. */
+        incoming_call_on_action_result(ok);
         break;
     }
 

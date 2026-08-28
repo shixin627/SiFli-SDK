@@ -115,6 +115,13 @@ extern "C"
 		   locally. Mirrors send_file_compare_result's shape
 		   (commu_send_status). */
 		KEY_FILE_SYNC_RESULT = 0X6D,
+		/* phone -> watch: outcome of the KEY_INCOMMING_CALL_ACCEPT / _REFUSE the
+		   watch just sent. 1 byte: 1 = the phone really answered / rejected the
+		   call, 0 = it could not (the ringing notification carried no answer
+		   action and ANSWER_PHONE_CALLS was not granted). Without this the watch
+		   cannot tell "answered" from "nothing happened": the accept button used
+		   to close the screen either way while the phone kept ringing. */
+		KEY_CALL_ACTION_RESULT = 0X6E,
 	} NOTIFY_KEY;
 
 	void resolve_Notify_command(uint8_t key, uint8_t *pValue, uint16_t length);

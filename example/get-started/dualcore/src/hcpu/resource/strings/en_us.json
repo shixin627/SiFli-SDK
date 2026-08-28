@@ -199,5 +199,9 @@
   "delete_selected": "Delete Selected",
   "swipe_explore": "Swipe in four directions to explore",
   "swipe_run_ai": "Tap to run, or swipe again for AI",
-  "no_notifications": "No notifications"
+  "no_notifications": "No notifications",
+
+  "call_connecting": "Connecting...",
+  "call_answer_failed": "Could not answer - use your phone",
+  "call_hangup_failed": "Could not hang up - use your phone"
 }

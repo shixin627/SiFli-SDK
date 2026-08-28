@@ -117,6 +117,14 @@ bool commu_send_charge_status(void);
 bool commu_send_weather_request(void);
 bool commu_send_remote_input(const char *json);
 bool commu_send_dismiss_notification(const char *id);
+/* watch->phone incoming-call action, keyed by the forwarded notification id
+   (may be "" when the caller id is unknown -- the phone then acts on whatever
+   call is currently ringing). The phone answers / rejects on our behalf and
+   reports back with KEY_CALL_ACTION_RESULT. This is the fallback for the
+   Android case where the watch is not bonded as an HFP hands-free device, so
+   the local AT ATA / CHUP has nothing to talk to. */
+bool commu_send_call_accept(const char *id);
+bool commu_send_call_refuse(const char *id);
 bool commu_send_user_speaking_state(uint8_t status);
 bool commu_send_chat_with_ai(const char *json);
 bool commu_send_battery_level(uint8_t level);

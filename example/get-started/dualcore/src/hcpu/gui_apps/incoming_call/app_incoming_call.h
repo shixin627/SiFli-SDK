@@ -21,6 +21,12 @@ void incoming_call_set_ancs_uid(uint32_t noti_uid);
  * phone signals end-of-call via a new event (e.g. iOS missed-call category). */
 void incoming_call_force_close(void);
 
+/* Phone verdict for the accept / refuse the watch relayed over BWPS
+ * (KEY_CALL_ACTION_RESULT): true = the phone really answered / rejected the
+ * call, false = it could not. Called from the BLE RX thread; the screen only
+ * latches it and renders on the LVGL thread. */
+void incoming_call_on_action_result(bool ok);
+
 #ifdef __cplusplus
 }
 #endif

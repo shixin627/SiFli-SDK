@@ -199,5 +199,9 @@
   "delete_selected": "刪除選取",
   "swipe_explore": "向四方向滑動探索",
   "swipe_run_ai": "點擊執行,或再次滑動進入 AI",
-  "no_notifications": "沒有通知"
+  "no_notifications": "沒有通知",
+
+  "call_connecting": "接聽中...",
+  "call_answer_failed": "接聽失敗，請用手機接聽",
+  "call_hangup_failed": "掛斷失敗，請用手機操作"
 }
