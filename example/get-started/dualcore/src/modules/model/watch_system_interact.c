@@ -732,7 +732,8 @@ void watch_system_sleep(void)
      * 30 ms (see idempotency note above), so without it a persistent
      * reason -- e.g. power save off -- would spam the log continuously.
      * Log only on the first call that hits a given reason. */
-    enum { SKIP_NONE, SKIP_POWER_SAVE, SKIP_DEV_PAUSE, SKIP_MOTOR, SKIP_ALARM };
+    enum { SKIP_NONE, SKIP_POWER_SAVE, SKIP_DEV_PAUSE, SKIP_MOTOR, SKIP_ALARM,
+           SKIP_MOUSE };
     static int last_skip = SKIP_NONE;
 
     if (!setting_provider.get_power_save_mode())
@@ -756,6 +757,38 @@ void watch_system_sleep(void)
         return;
     }
 #endif
+
+    /* Mouse mode never sleeps. The cursor is driven by wrist motion (air mouse)
+     * and FSR squeeze, and NEITHER touches LVGL's inactivity timer -- only
+     * touch / keys / pinch gestures call lv_disp_trig_activity(). So a user
+     * actively steering the pointer looks perfectly idle to the caller above,
+     * which fires us after oled_display_time (10 s by default) mid-use.
+     *
+     * The gate lives HERE rather than as a set_power_save_mode(0) hold taken on
+     * page entry, because that hold does not survive: _power_save_enable is one
+     * global uint8_t with no refcount, and app_mainmenu's check_is_at_instruction
+     * _list() writes 1 into it whenever the list becomes visible -- which is
+     * exactly what the mouse page's skaibar does. On the hosted trackpad (Main
+     * still running) that wiped the hold within a poll or two; the standalone
+     * APP_ID_MOUSE app only looked correct because it exits Main, so that
+     * checker stops running (founder 2026-08-28: "他還是休眠了").
+     *
+     * isMouseMode is set by hid_mouse_enter_mode() / watch_system_mouse_resume()
+     * and cleared by exit_mode / destroy / pause, so all three entry paths
+     * (standalone app, top-panel hosted layer, device page) are covered. The
+     * inert off-page UI device_pager builds never calls enter_mode, so it does
+     * not hold the watch awake. */
+    extern bool app_control_get_mouse_mode(void); /* bloc_control.h is behind
+                                                     #ifdef BSP_USING_BLOC */
+    if (app_control_get_mouse_mode())
+    {
+        if (last_skip != SKIP_MOUSE)
+        {
+            LOG_D("Sleep skipped: mouse mode");
+            last_skip = SKIP_MOUSE;
+        }
+        return;
+    }
 
     if (get_motor_status())
     {
