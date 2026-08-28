@@ -56,6 +56,9 @@
 #include "watch_global_data.h"
 #include "watch_sys_service.h"
 #include "disp_refr_governor.h"
+#include <string.h>
+#include "gui_app_fwk.h"
+#include "gui_app_int.h" /* gui_runing_app_t + app_schedule_get_active():可從非 GUI thread 讀前景 app */
 
 #define DBG_TAG "gesture.handler"
 #define DBG_LVL DBG_LOG
@@ -68,6 +71,39 @@
 extern bool imu_data_collection;
 extern bool get_hid_mouse_handfree_mode(void);
 extern bool get_imu_data_collection_status(void);
+/* app_gesture.c 的三個收集開關(手勢 / raw / mouse)。`get_imu_data_collection_status()`
+   只回傳第一個,所以原本的守衛只擋得住其中一種模式。 */
+extern bool pause_sleep_cause_of_imu_reson(void);
+
+/**
+ * @brief 手勢資料收集進行中嗎 —— 用來擋掉「會導航離開」的手勢。
+ *
+ * 2026-08-28:收集 app 開著的時候,轉腕 back 與 wrist pronation 都會把使用者
+ * 踢出 app(前者走 handle_wrist_back,後者走 lvgl_set_global_keypad_esc_cmd,
+ * 兩個都等於返回)。這讓「戴著日常收集」根本做不到 —— 收集時本來就會一直做手勢。
+ *
+ * 原本的守衛是 `imu_data_collection || get_imu_data_collection_status()`,但後者
+ * 就是 `return imu_data_collection`,**兩項是同一個旗標**,所以只擋得住「手勢收集」
+ * 那一個開關;用 raw / mouse 收集時照樣會被踢出去。
+ *
+ * 這裡改成兩條件取聯集:
+ *   1. 收集 app 在前景(不管有沒有按下開關,人在那個畫面裡就不該被手勢導航走)
+ *   2. 任何一個收集開關開著(即使 app 退到背景,收集還在跑)
+ *
+ * 前景判斷用 `app_schedule_get_active()` 而不是 `gui_app_is_actived()` —— 後者會
+ * assert 呼叫者是 GUI scheduler thread,而這裡跑在 virtual_gesture_processor thread。
+ *
+ * 左緣右滑返回不受影響:那條路走觸控,不經過這個 handler。
+ */
+static bool gesture_collection_in_progress(void)
+{
+  gui_runing_app_t *cur = app_schedule_get_active();
+  if (cur != RT_NULL && strcmp(cur->id, APP_ID_GESTURE) == 0)
+  {
+    return true;
+  }
+  return pause_sleep_cause_of_imu_reson();
+}
 #if ENABLE_VIRTUAL_TOUCH
 extern void release_navigation_bar(void);
 #endif
@@ -373,7 +409,8 @@ static void gesture_event_handler_hcpu(rt_uint32_t recv_set)
   // 手轉一下，視為swipe back
   case GESTURE_EVENT_BACK:
   {
-    if (imu_data_collection || get_imu_data_collection_status())
+    /* 收集期間不讓手勢把人導航走 —— 只留左緣右滑返回(走觸控,不經過這裡)。 */
+    if (gesture_collection_in_progress())
     {
       return;
     }
@@ -386,7 +423,8 @@ static void gesture_event_handler_hcpu(rt_uint32_t recv_set)
 
   case GESTURE_EVENT_WRIST_PRONATION:
   {
-    if (imu_data_collection)
+    /* 同 BACK:非主錶面時這條路會送出全域 ESC(= 返回),一樣會踢出收集 app。 */
+    if (gesture_collection_in_progress())
     {
       return;
     }
