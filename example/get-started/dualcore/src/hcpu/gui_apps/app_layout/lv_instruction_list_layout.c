@@ -5867,7 +5867,7 @@ static char s_sd_chat_id[96];
 static char s_sd_chat_dev[SESSION_ID_LEN];
 static char s_sd_chat_bot[SESSION_BOT_LEN];
 
-static void sd_chat_swipe_cb(int dir);
+static bool sd_chat_switch_cb(int dir, bool dry_run);
 
 static void sd_open_chat_async_cb(void *unused)
 {
@@ -5880,33 +5880,39 @@ static void sd_open_chat_async_cb(void *unused)
     clock_main_blur_force_hide();
     chat_page_set_style_hermes(strncmp(s_sd_chat_id, "conv:", 5) == 0);
     chat_page_open(s_sd_chat_title, NULL);
-    /* 左右滑=切同 bot 的上一個/下一個 session(founder 2026-08-30)。open 內部的
-       close 會把 cb 歸零,所以每次(含換房重開)都要重新註冊。 */
-    chat_page_set_swipe_session_cb(sd_chat_swipe_cb);
+    /* 左右滑=切同 bot 的上一個/下一個 session(founder 2026-08-30,tileview 手感,
+       視覺與換房動畫由 chat page 駕駛)。open 內部的 close 會把 cb 歸零,所以每次
+       都要重新註冊。 */
+    chat_page_set_session_switcher(sd_chat_switch_cb);
 }
 
-/* 聊天室裡非邊緣的左右滑:在同 bot 的 session(ts 新→舊)間走。手勢 handler 中
-   不可當場拆建浮層(R70)—— 換 id 後丟給同一顆 async 重開。 */
-static void sd_chat_swipe_cb(int dir)
+/* 聊天室左右滑的資料端:dry_run 只查同 bot(ts 新→舊)有沒有鄰居;真切換時送
+   conv_open + 就地換內容(滑入滑出由 chat page 做,不重建面板)。 */
+static bool sd_chat_switch_cb(int dir, bool dry_run)
 {
     if (s_sd_chat_dev[0] == '\0')
-        return;
+        return false;
     char nid[SESSION_ID_LEN];
     char ntitle[SESSION_TITLE_LEN];
     if (!session_list_neighbor(s_sd_chat_dev, s_sd_chat_bot, s_sd_chat_id, dir,
                                nid, sizeof(nid), ntitle, sizeof(ntitle)))
     {
-        LOG_W("[sd-chat] swipe dir=%d: no neighbor (bot=%s)", dir, s_sd_chat_bot);
-        return;
+        if (!dry_run)
+            LOG_W("[sd-chat] switch dir=%d: no neighbor (bot=%s)", dir, s_sd_chat_bot);
+        return false;
     }
+    if (dry_run)
+        return true;
     strncpy(s_sd_chat_id, nid, sizeof(s_sd_chat_id) - 1);
     s_sd_chat_id[sizeof(s_sd_chat_id) - 1] = '\0';
     strncpy(s_sd_chat_title, ntitle, sizeof(s_sd_chat_title) - 1);
     s_sd_chat_title[sizeof(s_sd_chat_title) - 1] = '\0';
-    LOG_W("[sd-chat] swipe dir=%d -> \"%s\" (%s)", dir, s_sd_chat_title, s_sd_chat_id);
+    LOG_W("[sd-chat] switch dir=%d -> \"%s\" (%s)", dir, s_sd_chat_title, s_sd_chat_id);
     extern bool commu_send_conv_open(const char *title, const char *id, uint8_t index);
     commu_send_conv_open(s_sd_chat_title, s_sd_chat_id, 0);
-    lv_async_call(sd_open_chat_async_cb, NULL);
+    extern void chat_page_switch_session(const char *title);
+    chat_page_switch_session(s_sd_chat_title);
+    return true;
 }
 
 static bool single_device_try_open_session(const list_item_t *item)

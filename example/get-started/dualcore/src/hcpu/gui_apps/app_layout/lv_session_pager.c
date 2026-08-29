@@ -6,6 +6,7 @@
  */
 
 #include "lvgl.h"
+#include "app_mem.h" /* app_cache_alloc(IMAGE_CACHE_PSRAM) — session 倉庫在 PSRAM */
 #include "lv_session_pager.h"
 #include "communicate_task.h"
 #include "ui_handler.h"
@@ -84,7 +85,12 @@ typedef struct
     int count;
 } device_sessions_t;
 
-static device_sessions_t s_devices[SESSION_DEVICE_MAX];
+/* 倉庫本體在 PSRAM(2026-08-30):SESSION_PAGER_MAX 提到 25(5 bot × 5 session)後,
+   committed+pending 兩份 × 4 台 ≈ 54KB,SRAM 塞不下。app_cache_alloc(IMAGE_CACHE_PSRAM)
+   池 >1.8MB、CPU-only 資料走 cached PSRAM 安全(同 opus/webrtc 先例)。**只在 LVGL
+   執行緒配置**(sp_storage_ensure);BLE parse 端看到 NULL 就整包丟 —— 桌面每 3 秒
+   重推,掉一包無感。PC sim 沒有 app_cache_alloc,退回靜態陣列。 */
+static device_sessions_t *s_devices; /* [SESSION_DEVICE_MAX] */
 static int s_device_count;
 static int s_shown_slot = -1; /* s_devices slot the OPEN conversation belongs to */
 static int s_current;         /* index into that slot's items — the open session */
@@ -128,10 +134,47 @@ typedef struct
     int count;
 } pending_list_t;
 
-static pending_list_t s_pending_lists[SESSION_DEVICE_MAX];
+static pending_list_t *s_pending_lists; /* [SESSION_DEVICE_MAX], PSRAM(同 s_devices) */
 
 /* Working copies the LVGL-thread apply path reads. */
-static session_meta_t s_pending_sessions[SESSION_PAGER_MAX];
+static session_meta_t *s_pending_sessions; /* [SESSION_PAGER_MAX], PSRAM */
+
+#ifdef BSP_USING_PC_SIMULATOR
+static device_sessions_t s_devices_store[SESSION_DEVICE_MAX];
+static pending_list_t s_pending_lists_store[SESSION_DEVICE_MAX];
+static session_meta_t s_pending_sessions_store[SESSION_PAGER_MAX];
+#endif
+
+/** LVGL 執行緒限定:第一次呼叫時把三塊倉庫配置在 PSRAM。失敗回 false(功能靜默
+    停用,不當機)。BLE parse 端**不可**呼叫 —— 只讀指標,NULL 就丟包。 */
+static bool sp_storage_ensure(void)
+{
+    if (s_devices != NULL)
+        return true;
+#ifdef BSP_USING_PC_SIMULATOR
+    s_pending_lists = s_pending_lists_store;
+    s_pending_sessions = s_pending_sessions_store;
+    s_devices = s_devices_store; /* 最後設:BLE 端拿它當 ready 旗標 */
+    return true;
+#else
+    size_t sz_dev = sizeof(device_sessions_t) * SESSION_DEVICE_MAX;
+    size_t sz_pend = sizeof(pending_list_t) * SESSION_DEVICE_MAX;
+    size_t sz_work = sizeof(session_meta_t) * SESSION_PAGER_MAX;
+    uint8_t *blk = (uint8_t *)app_cache_alloc(sz_dev + sz_pend + sz_work,
+                                              IMAGE_CACHE_PSRAM);
+    if (blk == NULL)
+    {
+        LOG_E("session store PSRAM alloc failed (%u bytes)",
+              (unsigned)(sz_dev + sz_pend + sz_work));
+        return false;
+    }
+    memset(blk, 0, sz_dev + sz_pend + sz_work);
+    s_pending_lists = (pending_list_t *)(blk + sz_dev);
+    s_pending_sessions = (session_meta_t *)(blk + sz_dev + sz_pend);
+    s_devices = (device_sessions_t *)blk; /* 最後設:發布旗標 */
+    return true;
+#endif
+}
 static int s_pending_session_count;
 static char s_pending_dev_id[SESSION_ID_LEN];
 static char s_pending_dev_name[SESSION_DEVICE_NAME_LEN];
@@ -1228,6 +1271,10 @@ void skai_sessions_on_conv_list(const uint8_t *json, uint16_t length)
 {
     if (json == NULL || length == 0)
         return;
+    /* 倉庫還沒配置(開機極早期)就整包丟 —— 只有 LVGL 執行緒能配置(見
+       sp_storage_ensure),桌面每 3 秒重推,下一包就補上。 */
+    if (s_devices == NULL)
+        return;
     cJSON *root = cJSON_ParseWithLength((const char *)json, length);
     if (!cJSON_IsObject(root))
     {
@@ -1235,11 +1282,12 @@ void skai_sessions_on_conv_list(const uint8_t *json, uint16_t length)
         return;
     }
     /* Parsed into LOCALS, not shared statics: two desktops answer within ~100 ms on
-       this same thread, so anything shared here is a lost push. */
+       this same thread, so anything shared here is a lost push.
+       ⚠ rows 例外:SESSION_PAGER_MAX=25 後一份 6.7KB,放 BLE parse 執行緒的棧上會
+       爆 —— 先選好 pending slot、把 ready 放下,**直接寫進那個 slot**(slot 落選
+       改寫別人前都先 ready=0,drain 端讀不到半包)。 */
     char dev_id[SESSION_ID_LEN];
     char dev_name[SESSION_DEVICE_NAME_LEN];
-    session_meta_t parsed[SESSION_PAGER_MAX];
-    memset(parsed, 0, sizeof(parsed));
     dev_id[0] = '\0';
     dev_name[0] = '\0';
     {
@@ -1265,6 +1313,41 @@ void skai_sessions_on_conv_list(const uint8_t *json, uint16_t length)
             dev_id[SESSION_ID_LEN - 1] = '\0';
         }
     }
+    /* Park it in THIS DESKTOP's own slot (see pending_list_t) — slot 先選、ready 先放,
+       rows 直接寫進 slot(不佔 BLE 棧)。 */
+    int slot = -1;
+    for (int i = 0; i < SESSION_DEVICE_MAX; i++)
+    {
+        if (s_pending_lists[i].ready && strcmp(s_pending_lists[i].dev_id, dev_id) == 0)
+        {
+            slot = i; /* this desktop re-pushed before we drained — replace its own slot */
+            break;
+        }
+    }
+    if (slot < 0)
+    {
+        for (int i = 0; i < SESSION_DEVICE_MAX; i++)
+        {
+            if (!s_pending_lists[i].ready)
+            {
+                slot = i;
+                break;
+            }
+        }
+    }
+    if (slot < 0)
+    {
+        LOG_W("conv_list rx: pending full, dropping %s", dev_id);
+        cJSON_Delete(root);
+        return;
+    }
+    pending_list_t *p = &s_pending_lists[slot];
+    p->ready = 0; /* stop a drain from reading a half-written payload */
+    strncpy(p->dev_id, dev_id, SESSION_ID_LEN - 1);
+    p->dev_id[SESSION_ID_LEN - 1] = '\0';
+    strncpy(p->dev_name, dev_name, SESSION_DEVICE_NAME_LEN - 1);
+    p->dev_name[SESSION_DEVICE_NAME_LEN - 1] = '\0';
+    memset(p->sessions, 0, sizeof(p->sessions));
     cJSON *arr = cJSON_GetObjectItem(root, "sessions");
     int count = 0;
     if (cJSON_IsArray(arr))
@@ -1274,69 +1357,31 @@ void skai_sessions_on_conv_list(const uint8_t *json, uint16_t length)
         {
             if (count >= SESSION_PAGER_MAX)
                 break;
+            session_meta_t *dst = &p->sessions[count];
             cJSON *j_id = cJSON_GetObjectItem(it, "id");
             if (!cJSON_IsString(j_id) || j_id->valuestring[0] == '\0')
                 continue; /* a row with no identity can never be opened — drop it */
-            strncpy(parsed[count].id, j_id->valuestring, SESSION_ID_LEN - 1);
+            strncpy(dst->id, j_id->valuestring, SESSION_ID_LEN - 1);
             cJSON *j_title = cJSON_GetObjectItem(it, "title");
             if (cJSON_IsString(j_title))
-                strncpy(parsed[count].title, j_title->valuestring, SESSION_TITLE_LEN - 1);
+                strncpy(dst->title, j_title->valuestring, SESSION_TITLE_LEN - 1);
             cJSON *j_prev = cJSON_GetObjectItem(it, "preview");
             if (cJSON_IsString(j_prev))
-                strncpy(parsed[count].preview, j_prev->valuestring, SESSION_PREVIEW_LEN - 1);
+                strncpy(dst->preview, j_prev->valuestring, SESSION_PREVIEW_LEN - 1);
             cJSON *j_ts = cJSON_GetObjectItem(it, "ts");
             if (cJSON_IsNumber(j_ts) && j_ts->valuedouble > 0)
-                parsed[count].ts = (uint32_t)j_ts->valuedouble;
+                dst->ts = (uint32_t)j_ts->valuedouble;
             cJSON *j_bot = cJSON_GetObjectItem(it, "bot");
             if (cJSON_IsString(j_bot))
-                strncpy(parsed[count].bot, j_bot->valuestring, SESSION_BOT_LEN - 1);
+                strncpy(dst->bot, j_bot->valuestring, SESSION_BOT_LEN - 1);
             count++;
         }
     }
     cJSON_Delete(root);
-    /* Park it in THIS DESKTOP's own slot (see pending_list_t). */
-    {
-        int slot = -1;
-        for (int i = 0; i < SESSION_DEVICE_MAX; i++)
-        {
-            if (s_pending_lists[i].ready && strcmp(s_pending_lists[i].dev_id, dev_id) == 0)
-            {
-                slot = i; /* this desktop re-pushed before we drained — replace its own slot */
-                break;
-            }
-        }
-        if (slot < 0)
-        {
-            for (int i = 0; i < SESSION_DEVICE_MAX; i++)
-            {
-                if (!s_pending_lists[i].ready)
-                {
-                    slot = i;
-                    break;
-                }
-            }
-        }
-        if (slot < 0)
-        {
-            LOG_W("conv_list rx: pending full, dropping %s", dev_id);
-            return;
-        }
-        pending_list_t *p = &s_pending_lists[slot];
-        p->ready = 0; /* stop a drain from reading a half-written payload */
-        strncpy(p->dev_id, dev_id, SESSION_ID_LEN - 1);
-        p->dev_id[SESSION_ID_LEN - 1] = '\0';
-        strncpy(p->dev_name, dev_name, SESSION_DEVICE_NAME_LEN - 1);
-        p->dev_name[SESSION_DEVICE_NAME_LEN - 1] = '\0';
-        memcpy(p->sessions, parsed, sizeof(p->sessions));
-        p->count = count;
-        p->ready = 1; /* publish LAST */
-        LOG_W("conv_list rx: dev=%s name=%s sessions=%d -> pending[%d]", dev_id, dev_name,
-              count, slot);
-        /* R28 診斷:排序吃的是 ts,所以把每一筆收到的 ts 印出來 —— 桌面漏送 / 送 0 的話
-           排序怎麼改都不會對(founder 2026-08-12「新增的還是在舊的上面」)。穩定後移除。 */
-        for (int di = 0; di < count; di++)
-            LOG_W("  [ts] %u %s", (unsigned)parsed[di].ts, parsed[di].title);
-    }
+    p->count = count;
+    p->ready = 1; /* publish LAST */
+    LOG_W("conv_list rx: dev=%s name=%s sessions=%d -> pending[%d]", dev_id, dev_name,
+          count, slot);
 
     lvgl_msg_t msg = {.type = LVGL_MSG_TYPE_REFRESH_SESSIONS};
     lvgl_send_msg(msg);
@@ -1646,6 +1691,8 @@ static void sp_apply_state(void)
 /* Dispatched from ui_handler.c on LVGL_MSG_TYPE_REFRESH_SESSIONS. */
 void session_pager_apply_pending(void)
 {
+    if (!sp_storage_ensure())
+        return;
     int kind = s_pending_kind;
     s_pending_kind = SP_PENDING_NONE;
     /* R79(founder:「是不是我在進去之前拿到的 session 都不會刷上去?」):對 —— 這裡原本
@@ -1666,7 +1713,8 @@ void session_pager_apply_pending(void)
         s_pending_dev_id[SESSION_ID_LEN - 1] = '\0';
         strncpy(s_pending_dev_name, p->dev_name, SESSION_DEVICE_NAME_LEN - 1);
         s_pending_dev_name[SESSION_DEVICE_NAME_LEN - 1] = '\0';
-        memcpy(s_pending_sessions, p->sessions, sizeof(s_pending_sessions));
+        memcpy(s_pending_sessions, p->sessions,
+               sizeof(session_meta_t) * SESSION_PAGER_MAX);
         s_pending_session_count = p->count;
         p->ready = 0; /* released BEFORE the apply, so a re-push mid-apply is kept */
         sp_apply_list();
@@ -1680,6 +1728,8 @@ void session_pager_apply_pending(void)
 
 lv_obj_t *lv_session_pager_create(lv_obj_t *parent)
 {
+    /* 倉庫配置(PSRAM)在建 UI 之前 —— BLE 端只認指標非 NULL 才收包。 */
+    sp_storage_ensure();
     /* No backdrop object here: the blurred dial behind this tile is the clock's
        SCREEN-LEVEL gaus_dial_bg (a tile-parented one would slide with the page). */
     lv_obj_t *root = lv_obj_create(parent);
@@ -1842,6 +1892,8 @@ void lv_session_pager_set_sessions(const char (*ids)[SESSION_ID_LEN],
                                    const char (*previews)[SESSION_PREVIEW_LEN],
                                    int count)
 {
+    if (!sp_storage_ensure())
+        return;
     if (count < 0)
         count = 0;
     if (count > SESSION_PAGER_MAX)

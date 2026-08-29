@@ -558,30 +558,246 @@ void chat_page_start_voice_input(void)
 }
 
 /* ── 聊天室左右滑切換 session(2026-08-30,滑鼠抽屜 bot 房)──────────────────
-   由開房的人註冊(instruction list 的抽屜流程),chat_page_close 歸零 —— 錶盤
-   '@' 房沒人註冊,行為不變。滑左 = +1(更舊的 session)、滑右 = -1(更新)。
-   左緣右滑仍是返回:native 邊緣偵測物件疊在面板上方,起點在邊緣的手勢根本
-   到不了訊息列表。 */
-static void (*s_swipe_session_cb)(int dir) = NULL;
+   tileview 手感:內容跟著手指平移,過門檻放開才換房(founder 2026-08-30:
+   「我希望他用像tileview的方式切換」)。第一版走 LV_EVENT_GESTURE,真機沒反應
+   —— 訊息列表是垂直捲動物件,手指只要先累積 ~10px 垂直位移 LVGL 就把 scroll_obj
+   釘在列表上,之後整個手勢的 GESTURE 事件被捲動抑制,永遠輪不到我們(同
+   reference_watch_gesture_scroll_deadend 的教訓)。正解 = repo 慣例的「catcher
+   當捲動死路」:一片透明、**不可捲動**的 catcher 蓋在訊息區上自己收 press,
+   軸向自己判 —— 垂直=手動捲列表(帶簡易慣性),水平=平移列表跟手;點一下=
+   把 CLICKED 轉送給底下的 clarify chip。catcher 平時 HIDDEN,只有註冊了
+   switcher 的房(滑鼠抽屜 bot 房)才現身 —— 錶盤 '@' 房保持原生捲動手感。
+   左緣右滑仍是返回:native 邊緣偵測物件疊在 catcher 之上。 */
+static lv_obj_t *s_swipe_catcher = NULL;
+/* dry_run=true 只問「這個方向有沒有房」;false 才真的切(送 conv_open +
+   chat_page_switch_session)。dir=+1 滑左(更舊)、-1 滑右(更新)。 */
+static bool (*s_session_switch_cb)(int dir, bool dry_run) = NULL;
 
-void chat_page_set_swipe_session_cb(void (*cb)(int dir))
+void chat_page_set_session_switcher(bool (*cb)(int dir, bool dry_run))
 {
-    s_swipe_session_cb = cb;
+    s_session_switch_cb = cb;
+    if (s_swipe_catcher != NULL && lv_obj_is_valid(s_swipe_catcher))
+    {
+        if (cb != NULL)
+            lv_obj_clear_flag(s_swipe_catcher, LV_OBJ_FLAG_HIDDEN);
+        else
+            lv_obj_add_flag(s_swipe_catcher, LV_OBJ_FLAG_HIDDEN);
+    }
 }
 
-static void chat_list_gesture_cb(lv_event_t *e)
+/* 換房(就地,不拆面板):標題換字、清空泡泡、回到「載入中」,揭露/等待/clarify
+   全部歸零 —— 新房的 conv_state 一到就正常補畫。滑入滑出動畫由 catcher 驅動,
+   這裡只換內容。 */
+void chat_page_switch_session(const char *title)
 {
-    (void)e;
-    if (s_swipe_session_cb == NULL)
+    if (!chat_page_is_open())
         return;
+    if (s_title_label != NULL && lv_obj_is_valid(s_title_label))
+        lv_label_set_text(s_title_label, (title && title[0]) ? title : "聊天室");
+    if (s_msg_list != NULL && lv_obj_is_valid(s_msg_list))
+        lv_obj_clean(s_msg_list);
+    if (s_loading_label != NULL && lv_obj_is_valid(s_loading_label))
+        lv_obj_clear_flag(s_loading_label, LV_OBJ_FLAG_HIDDEN);
+    s_pending_msg_count = 0;
+    s_pool_used = 0;
+    s_appr_pending = false;
+    s_local_echo[0] = 0;
+    s_awaiting_reply = false;
+    s_live_turn = false;
+    chat_wait_stop();
+    chat_type_reset();
+    s_last_rebuild_tick = 0;
+    if (s_rebuild_defer != NULL)
+    {
+        lv_timer_del(s_rebuild_defer);
+        s_rebuild_defer = NULL;
+    }
+}
+
+/* ── catcher 手勢狀態機 ── */
+#define CHAT_HS_MODE_IDLE 0
+#define CHAT_HS_MODE_VSCROLL 1
+#define CHAT_HS_MODE_HSWIPE 2
+#define CHAT_HS_DECIDE_V 12  /* 垂直先過這麼多 = 捲動 */
+#define CHAT_HS_DECIDE_H 28  /* 水平過這麼多且明顯佔優 = 換房拖曳 */
+#define CHAT_HS_COMMIT_PX (LV_HOR_RES / 4)
+static lv_point_t s_hs_last;
+static int s_hs_dx, s_hs_dy;
+static int s_hs_mode;
+static int s_hs_last_vy; /* 慣性:最後一拍的垂直速度 */
+static int s_hs_commit_dir;
+
+static void chat_hslide_exec(void *var, int32_t v)
+{
+    lv_obj_t *obj = (lv_obj_t *)var;
+    if (obj != NULL && lv_obj_is_valid(obj))
+        lv_obj_set_style_translate_x(obj, (lv_coord_t)v, 0);
+}
+
+static void chat_hslide_in(void)
+{
+    if (s_msg_list == NULL || !lv_obj_is_valid(s_msg_list))
+        return;
+    lv_coord_t from = (s_hs_commit_dir > 0) ? LV_HOR_RES : -LV_HOR_RES;
+    lv_obj_set_style_translate_x(s_msg_list, from, 0);
+    lv_anim_t a;
+    lv_anim_init(&a);
+    lv_anim_set_var(&a, s_msg_list);
+    lv_anim_set_values(&a, from, 0);
+    lv_anim_set_time(&a, 240);
+    lv_anim_set_path_cb(&a, lv_anim_path_ease_out);
+    lv_anim_set_exec_cb(&a, chat_hslide_exec);
+    lv_anim_start(&a);
+}
+
+static void chat_hslide_out_done(lv_anim_t *a)
+{
+    (void)a;
+    /* 內容換掉(cb 會呼叫 chat_page_switch_session),再從另一側滑進來。 */
+    if (s_session_switch_cb != NULL)
+        s_session_switch_cb(s_hs_commit_dir, false);
+    chat_hslide_in();
+}
+
+static void chat_hslide_settle(int from, int to, uint16_t ms, lv_anim_ready_cb_t done)
+{
+    lv_anim_t a;
+    lv_anim_init(&a);
+    lv_anim_set_var(&a, s_msg_list);
+    lv_anim_set_values(&a, from, to);
+    lv_anim_set_time(&a, ms);
+    lv_anim_set_path_cb(&a, lv_anim_path_ease_out);
+    lv_anim_set_exec_cb(&a, chat_hslide_exec);
+    if (done != NULL)
+        lv_anim_set_ready_cb(&a, done);
+    lv_anim_start(&a);
+}
+
+/* 點一下(沒拖成任何模式):把 CLICKED 轉送給 catcher 底下、訊息列表裡命中的
+   clarify chip(唯一可點的東西)。catcher 蓋住了 hit-test,不轉送 chips 就死了。 */
+static void chat_catcher_forward_click(lv_point_t *p)
+{
+    if (s_msg_list == NULL || !lv_obj_is_valid(s_msg_list))
+        return;
+    uint32_t n = lv_obj_get_child_cnt(s_msg_list);
+    for (uint32_t i = 0; i < n; i++)
+    {
+        lv_obj_t *child = lv_obj_get_child(s_msg_list, i);
+        if (child == NULL || !lv_obj_has_flag(child, LV_OBJ_FLAG_CLICKABLE))
+            continue;
+        if (lv_obj_has_flag(child, LV_OBJ_FLAG_HIDDEN))
+            continue;
+        lv_area_t coords;
+        lv_obj_get_coords(child, &coords);
+        if (p->x >= coords.x1 && p->x <= coords.x2 && p->y >= coords.y1 && p->y <= coords.y2)
+        {
+            lv_event_send(child, LV_EVENT_CLICKED, NULL);
+            return;
+        }
+    }
+}
+
+static void chat_swipe_catcher_cb(lv_event_t *e)
+{
+    lv_event_code_t code = lv_event_get_code(e);
     lv_indev_t *indev = lv_indev_get_act();
     if (indev == NULL)
         return;
-    lv_dir_t dir = lv_indev_get_gesture_dir(indev);
-    if (dir == LV_DIR_LEFT)
-        s_swipe_session_cb(1);
-    else if (dir == LV_DIR_RIGHT)
-        s_swipe_session_cb(-1);
+    if (code == LV_EVENT_PRESSED)
+    {
+        lv_indev_get_point(indev, &s_hs_last);
+        s_hs_dx = 0;
+        s_hs_dy = 0;
+        s_hs_last_vy = 0;
+        s_hs_mode = CHAT_HS_MODE_IDLE;
+        /* 手指一按住就停掉尚未走完的平移動畫,別跟拖曳打架。 */
+        if (s_msg_list != NULL)
+            lv_anim_del(s_msg_list, chat_hslide_exec);
+        return;
+    }
+    if (code == LV_EVENT_PRESSING)
+    {
+        lv_point_t now;
+        lv_indev_get_point(indev, &now);
+        int vx = now.x - s_hs_last.x;
+        int vy = now.y - s_hs_last.y;
+        s_hs_last = now;
+        s_hs_dx += vx;
+        s_hs_dy += vy;
+        if (s_hs_mode == CHAT_HS_MODE_IDLE)
+        {
+            if (LV_ABS(s_hs_dy) > CHAT_HS_DECIDE_V && LV_ABS(s_hs_dy) >= LV_ABS(s_hs_dx))
+                s_hs_mode = CHAT_HS_MODE_VSCROLL;
+            else if (LV_ABS(s_hs_dx) > CHAT_HS_DECIDE_H &&
+                     LV_ABS(s_hs_dx) > LV_ABS(s_hs_dy) * 2)
+                s_hs_mode = CHAT_HS_MODE_HSWIPE;
+        }
+        if (s_hs_mode == CHAT_HS_MODE_VSCROLL && s_msg_list != NULL &&
+            lv_obj_is_valid(s_msg_list))
+        {
+            /* 內容跟著手指走;夾在可捲範圍內(scroll_by 本身不夾)。 */
+            lv_coord_t st = lv_obj_get_scroll_top(s_msg_list);
+            lv_coord_t sb = lv_obj_get_scroll_bottom(s_msg_list);
+            int dy = vy;
+            if (dy > st)
+                dy = st;
+            if (dy < -sb)
+                dy = -sb;
+            if (dy != 0)
+                lv_obj_scroll_by(s_msg_list, 0, dy, LV_ANIM_OFF);
+            s_hs_last_vy = vy;
+        }
+        else if (s_hs_mode == CHAT_HS_MODE_HSWIPE && s_msg_list != NULL &&
+                 lv_obj_is_valid(s_msg_list))
+        {
+            lv_obj_set_style_translate_x(s_msg_list, (lv_coord_t)s_hs_dx, 0);
+        }
+        return;
+    }
+    if (code == LV_EVENT_RELEASED || code == LV_EVENT_PRESS_LOST)
+    {
+        int mode = s_hs_mode;
+        s_hs_mode = CHAT_HS_MODE_IDLE;
+        if (mode == CHAT_HS_MODE_HSWIPE)
+        {
+            int dir = (s_hs_dx <= -CHAT_HS_COMMIT_PX) ? 1
+                      : (s_hs_dx >= CHAT_HS_COMMIT_PX) ? -1
+                                                       : 0;
+            if (dir != 0 && s_session_switch_cb != NULL && s_session_switch_cb(dir, true))
+            {
+                s_hs_commit_dir = dir;
+                chat_hslide_settle(s_hs_dx, (dir > 0) ? -LV_HOR_RES : LV_HOR_RES, 160,
+                                   chat_hslide_out_done);
+            }
+            else
+            {
+                /* 沒過門檻 / 這個方向沒有房了:彈回原位。 */
+                chat_hslide_settle(s_hs_dx, 0, 200, NULL);
+            }
+        }
+        else if (mode == CHAT_HS_MODE_VSCROLL && s_msg_list != NULL &&
+                 lv_obj_is_valid(s_msg_list) && code == LV_EVENT_RELEASED)
+        {
+            /* 簡易慣性:最後一拍速度 × 8,交給 LVGL 的捲動動畫收尾(scroll_by 帶
+               ANIM_ON 自帶 ease)。範圍一樣先夾。 */
+            int throw_dy = s_hs_last_vy * 8;
+            lv_coord_t st = lv_obj_get_scroll_top(s_msg_list);
+            lv_coord_t sb = lv_obj_get_scroll_bottom(s_msg_list);
+            if (throw_dy > st)
+                throw_dy = st;
+            if (throw_dy < -sb)
+                throw_dy = -sb;
+            if (throw_dy != 0)
+                lv_obj_scroll_by(s_msg_list, 0, throw_dy, LV_ANIM_ON);
+        }
+        else if (mode == CHAT_HS_MODE_IDLE && code == LV_EVENT_RELEASED)
+        {
+            lv_point_t p;
+            lv_indev_get_point(indev, &p);
+            chat_catcher_forward_click(&p);
+        }
+        return;
+    }
 }
 
 void chat_page_open(const char *title, const char *icon_src)
@@ -696,11 +912,23 @@ void chat_page_open(const char *title, const char *icon_src)
        The big bottom pad also keeps the newest message clear of the floating mic. */
     lv_obj_set_style_pad_top(list, 180, 0);
     lv_obj_set_style_pad_bottom(list, 180, 0);
-    /* 左右滑切 session(抽屜 bot 房才有人註冊)。手勢事件送到按壓當下的 act_obj,
-       所以訊息卡片/氣泡都清掉 CLICKABLE(見 chat_add_hermes_turn 與氣泡建立處),
-       按在訊息上的手勢才會落到這個 list 身上。 */
-    lv_obj_add_event_cb(list, chat_list_gesture_cb, LV_EVENT_GESTURE, NULL);
     s_msg_list = list;
+
+    /* 左右滑切 session 的 catcher(見上方狀態機說明):蓋住訊息區、避開底部麥克風
+       那條帶。平時 HIDDEN;只有 chat_page_set_session_switcher 註冊了 cb 的房
+       (滑鼠抽屜 bot 房)才現身,錶盤 '@' 房維持原生捲動。建立順序刻意在 list 之後、
+       麥克風/錄音 scrim 之前 —— 那些浮在 catcher 上面照常可點。 */
+    lv_obj_t *catcher = lv_obj_create(panel);
+    lv_obj_remove_style_all(catcher);
+    lv_obj_set_size(catcher, LV_HOR_RES, LV_VER_RES - 66 - 84);
+    lv_obj_set_pos(catcher, 0, 66);
+    lv_obj_set_style_bg_opa(catcher, LV_OPA_TRANSP, 0);
+    lv_obj_add_flag(catcher, LV_OBJ_FLAG_CLICKABLE);
+    lv_obj_add_flag(catcher, LV_OBJ_FLAG_PRESS_LOCK);
+    lv_obj_clear_flag(catcher, LV_OBJ_FLAG_SCROLLABLE); /* 捲動死路 — 事件全留在這 */
+    lv_obj_add_flag(catcher, LV_OBJ_FLAG_HIDDEN);
+    lv_obj_add_event_cb(catcher, chat_swipe_catcher_cb, LV_EVENT_ALL, NULL);
+    s_swipe_catcher = catcher;
 
     /* "Loading" placeholder, CENTERED on the screen (not in the list, which would push it to the top-
        left). Shown until the first message arrives — the Matrix backlog can take many seconds for a
@@ -841,6 +1069,7 @@ void chat_page_close(void)
     /* Kill any in-flight morph anims before the objects are freed (their ready cbs touch these). */
     lv_anim_del(s_transcript_box, chat_box_grow_cb);
     lv_anim_del(s_transcript_pill, chat_pill_fade_cb);
+    lv_anim_del(s_msg_list, chat_hslide_exec); /* 換房平移動畫的 ready cb 會碰 list */
     lv_obj_del(s_chat_panel);
     s_chat_panel = NULL;
     s_title_label = NULL;
@@ -853,7 +1082,9 @@ void chat_page_close(void)
     s_transcript_label = NULL;
     s_transcript_pill = NULL;
     s_input_scrim = NULL;
-    s_swipe_session_cb = NULL; /* 換房重開時由開房的人重新註冊 */
+    s_swipe_catcher = NULL;      /* 隨面板一起被 lv_obj_del 帶走 */
+    s_session_switch_cb = NULL;  /* 重開時由開房的人重新註冊 */
+    s_hs_mode = CHAT_HS_MODE_IDLE;
     chat_type_reset();
     if (s_rebuild_defer != NULL)
     {

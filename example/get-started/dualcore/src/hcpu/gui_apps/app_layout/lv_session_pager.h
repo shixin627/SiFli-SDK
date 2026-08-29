@@ -28,7 +28,11 @@ extern "C"
 /* Bounded like every other watch-side list — no heap on the BLE parse path.
    這是**儲存**上限(每台桌面留幾筆 metadata),不是顯示上限:搜尋要能在使用者看不到的
    那幾筆裡命中,所以池子必須比畫面上的深。 */
-#define SESSION_PAGER_MAX 8
+/* 2026-08-30 起 = 25:最近 5 個 bot × 各自最新 5 個 session(founder;桌面
+   ConversationRelayController.TrimToRecentBots 先修剪好才推)。倉庫本體因此搬進
+   PSRAM(見 lv_session_pager.c sp_storage_ensure)—— 25 列 × 268B × 4 台 × 2 份
+   (committed+pending)≈54KB,SRAM 塞不下。 */
+#define SESSION_PAGER_MAX 25
 /* 一台桌面在清單上**同時畫出來**的 session 上限(founder 2026-08-24:「每個設備只會有
    最新的 5 個 session」)。四台桌面 × 8 筆全部注入 actions 清單時,LVGL 每次重建 32 列
    卡片(每列還有右緣圓框/設備名),錶盤左頁明顯卡頓。顯示收到 5、儲存仍留 8:

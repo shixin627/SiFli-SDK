@@ -31,10 +31,16 @@ extern "C"
        AI=平鋪全寬文字);false = iMessage 氣泡(左灰右藍)。 */
     void chat_page_set_style_hermes(bool hermes);
 
-    /* 聊天室內非邊緣的左右滑手勢(2026-08-30,滑鼠抽屜 bot 房用):dir=+1 滑左
-       (切更舊的 session)、-1 滑右(更新)。開房後由開房的人註冊;chat_page_close
-       歸零,沒註冊的房(錶盤 '@' 房)行為不變。LVGL thread。 */
-    void chat_page_set_swipe_session_cb(void (*cb)(int dir));
+    /* 聊天室內非邊緣的左右滑(2026-08-30,滑鼠抽屜 bot 房用,tileview 手感):
+       dir=+1 滑左(切更舊的 session)、-1 滑右(更新)。dry_run=true 只回答
+       「這個方向有沒有房」(彈回判定);false 才真的換(送 conv_open + 呼叫
+       chat_page_switch_session)。開房後由開房的人註冊;chat_page_close 歸零,
+       沒註冊的房(錶盤 '@' 房)行為不變。LVGL thread。 */
+    void chat_page_set_session_switcher(bool (*cb)(int dir, bool dry_run));
+
+    /* 就地換房:標題/清空泡泡/回「載入中」,不拆面板(滑入滑出動畫由 chat page
+       自己駕駛)。switcher cb 的 dry_run=false 分支呼叫。LVGL thread。 */
+    void chat_page_switch_session(const char *title);
 
     /* Tear the chat panel down (revealing the @-list underneath). Idempotent. LVGL thread. */
     void chat_page_close(void);
