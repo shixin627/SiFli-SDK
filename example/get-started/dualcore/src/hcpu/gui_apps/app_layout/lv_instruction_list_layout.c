@@ -5884,6 +5884,9 @@ static void sd_open_chat_async_cb(void *unused)
        視覺與換房動畫由 chat page 駕駛)。open 內部的 close 會把 cb 歸零,所以每次
        都要重新註冊。 */
     chat_page_set_session_switcher(sd_chat_switch_cb);
+    /* 來過的房間立即補畫快取的轉錄,不必等桌面繞一圈(founder 2026-08-30:
+       「內容不能是直接進來的嗎」)。 */
+    chat_page_try_restore(s_sd_chat_id);
 }
 
 /* 聊天室左右滑的資料端:dry_run 只查同 bot(ts 新→舊)有沒有鄰居;真切換時送
@@ -5910,8 +5913,9 @@ static bool sd_chat_switch_cb(int dir, bool dry_run)
     LOG_W("[sd-chat] switch dir=%d -> \"%s\" (%s)", dir, s_sd_chat_title, s_sd_chat_id);
     extern bool commu_send_conv_open(const char *title, const char *id, uint8_t index);
     commu_send_conv_open(s_sd_chat_title, s_sd_chat_id, 0);
-    extern void chat_page_switch_session(const char *title);
     chat_page_switch_session(s_sd_chat_title);
+    /* 快取命中=內容跟著滑進來;沒看過的房才停在「載入中」等桌面。 */
+    chat_page_try_restore(s_sd_chat_id);
     return true;
 }
 

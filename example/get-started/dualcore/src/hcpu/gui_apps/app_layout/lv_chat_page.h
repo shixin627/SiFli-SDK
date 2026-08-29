@@ -42,6 +42,11 @@ extern "C"
        自己駕駛)。switcher cb 的 dry_run=false 分支呼叫。LVGL thread。 */
     void chat_page_switch_session(const char *title);
 
+    /* 用 per-session 快取立即補畫 [sid](conv:hermes:<id>)最後已知的轉錄 ——
+       切房內容「滑進來就在」;live conv_state 稍後照常覆蓋。false = 沒看過,
+       維持「載入中」。LVGL thread。 */
+    bool chat_page_try_restore(const char *sid);
+
     /* Tear the chat panel down (revealing the @-list underneath). Idempotent. LVGL thread. */
     void chat_page_close(void);
 

@@ -6,6 +6,7 @@
  */
 
 #include "lvgl.h"
+#include "app_mem.h" /* app_cache_alloc(IMAGE_CACHE_PSRAM) — per-session 轉錄快取 */
 #include "lv_chat_page.h"
 #include "communicate_task.h"
 #include "ui_handler.h"
@@ -122,6 +123,85 @@ static char s_pending_title[64];
 static bool s_pending_sending;
 static chat_msg_t s_pending_msgs[CHAT_MAX_MSGS];
 static volatile int s_pending_msg_count; /* written LAST on BLE, read FIRST on LVGL */
+
+/* ── per-session 轉錄快取(2026-08-30,PSRAM)──
+   左右滑切房時,鄰居的內容要「滑進來就在」(founder:切換完才刷上去不行)。手機
+   push 的每一份完整 conv_state 都帶 sid —— 順手在 BLE 端拓一份進快取;切房當下
+   (chat_page_try_restore)命中就立刻整份畫出來,桌面繞一圈回來的 live 狀態稍後
+   照常覆蓋。LRU 12 格 × ~4.4KB ≈ 53KB,放 PSRAM(同 session pager 倉庫的理由)。
+   配置只在 LVGL 執行緒(chat_page_open);BLE 端指標 NULL 就跳過不拓。 */
+#define CHAT_CACHE_ENTRIES 12
+typedef struct
+{
+    char sid[64];        /* "conv:hermes:<id>";"" = 空格 */
+    uint32_t used_tick;  /* LRU */
+    uint16_t pool_used;
+    int msg_count;
+    chat_msg_t msgs[CHAT_MAX_MSGS];
+    char pool[CHAT_TEXT_POOL + 1];
+} chat_cache_entry_t;
+static chat_cache_entry_t *s_chat_cache; /* [CHAT_CACHE_ENTRIES] */
+/* 最近一包 conv_state 的 sid(BLE 執行緒寫;快取拓寫也在同一執行緒,不跨)。 */
+static char s_state_sid[64];
+
+static void chat_cache_ensure(void)
+{
+    if (s_chat_cache != NULL)
+        return;
+#ifdef BSP_USING_PC_SIMULATOR
+    static chat_cache_entry_t s_chat_cache_store[CHAT_CACHE_ENTRIES];
+    s_chat_cache = s_chat_cache_store;
+#else
+    void *blk = app_cache_alloc(sizeof(chat_cache_entry_t) * CHAT_CACHE_ENTRIES,
+                                IMAGE_CACHE_PSRAM);
+    if (blk == NULL)
+    {
+        LOG_E("chat cache PSRAM alloc failed");
+        return;
+    }
+    memset(blk, 0, sizeof(chat_cache_entry_t) * CHAT_CACHE_ENTRIES);
+    s_chat_cache = (chat_cache_entry_t *)blk;
+#endif
+}
+
+static chat_cache_entry_t *chat_cache_find(const char *sid)
+{
+    if (s_chat_cache == NULL || sid == NULL || sid[0] == '\0')
+        return NULL;
+    for (int i = 0; i < CHAT_CACHE_ENTRIES; i++)
+        if (strncmp(s_chat_cache[i].sid, sid, sizeof(s_chat_cache[i].sid)) == 0)
+            return &s_chat_cache[i];
+    return NULL;
+}
+
+/* BLE 執行緒:把剛解析好的 pending 狀態拓進 [sid] 的快取格(找同 sid,否則 LRU)。 */
+static void chat_cache_store(const char *sid)
+{
+    if (s_chat_cache == NULL || sid == NULL || sid[0] == '\0' || s_pending_msg_count <= 0)
+        return;
+    chat_cache_entry_t *e = chat_cache_find(sid);
+    if (e == NULL)
+    {
+        e = &s_chat_cache[0];
+        for (int i = 0; i < CHAT_CACHE_ENTRIES; i++)
+        {
+            if (s_chat_cache[i].sid[0] == '\0')
+            {
+                e = &s_chat_cache[i];
+                break;
+            }
+            if (s_chat_cache[i].used_tick < e->used_tick)
+                e = &s_chat_cache[i];
+        }
+        strncpy(e->sid, sid, sizeof(e->sid) - 1);
+        e->sid[sizeof(e->sid) - 1] = '\0';
+    }
+    e->used_tick = (uint32_t)rt_tick_get();
+    e->pool_used = s_pool_used;
+    e->msg_count = s_pending_msg_count;
+    memcpy(e->msgs, s_pending_msgs, sizeof(e->msgs));
+    memcpy(e->pool, s_text_pool, sizeof(e->pool));
+}
 
 /* 送出一句之後、AI 還沒開口的這段時間要有「在等」的表示(founder 2026-08-26)。
    本機旗標而不是只信手機的 `sending`:手機那邊 sending 何時翻真不在我們手上,
@@ -614,6 +694,29 @@ void chat_page_switch_session(const char *title)
     }
 }
 
+/* 切房/開房後試著用快取立即補畫(LVGL thread):命中就把那個 session 最後已知的
+   整份轉錄搬回 pending+文字池並立刻渲染 —— 內容「滑進來就在」;桌面繞一圈回來的
+   live conv_state 稍後照常覆蓋。回傳 false = 沒看過這個 session,維持「載入中」。 */
+bool chat_page_try_restore(const char *sid)
+{
+    if (!chat_page_is_open())
+        return false;
+    chat_cache_entry_t *e = chat_cache_find(sid);
+    if (e == NULL || e->msg_count <= 0)
+        return false;
+    memcpy(s_text_pool, e->pool, sizeof(s_text_pool));
+    memcpy(s_pending_msgs, e->msgs, sizeof(s_pending_msgs));
+    s_pool_used = e->pool_used;
+    s_pending_sending = false;
+    s_appr_pending = false;
+    s_live_turn = false; /* 快取是歷史,不逐字 */
+    e->used_tick = (uint32_t)rt_tick_get();
+    s_pending_msg_count = e->msg_count;
+    chat_page_apply_pending_state();
+    LOG_W("[chat] cache hit sid=%.24s msgs=%d", sid, e->msg_count);
+    return true;
+}
+
 /* ── catcher 手勢狀態機 ── */
 #define CHAT_HS_MODE_IDLE 0
 #define CHAT_HS_MODE_VSCROLL 1
@@ -627,11 +730,20 @@ static int s_hs_mode;
 static int s_hs_last_vy; /* 慣性:最後一拍的垂直速度 */
 static int s_hs_commit_dir;
 
+/* 內容跟標題一起平移(founder 2026-08-30:「標題也要跟著左右動」)。anim 的 var
+   仍掛 s_msg_list(刪除動畫時好找),exec 統一走這裡。 */
+static void chat_hslide_apply(lv_coord_t x)
+{
+    if (s_msg_list != NULL && lv_obj_is_valid(s_msg_list))
+        lv_obj_set_style_translate_x(s_msg_list, x, 0);
+    if (s_title_label != NULL && lv_obj_is_valid(s_title_label))
+        lv_obj_set_style_translate_x(s_title_label, x, 0);
+}
+
 static void chat_hslide_exec(void *var, int32_t v)
 {
-    lv_obj_t *obj = (lv_obj_t *)var;
-    if (obj != NULL && lv_obj_is_valid(obj))
-        lv_obj_set_style_translate_x(obj, (lv_coord_t)v, 0);
+    (void)var;
+    chat_hslide_apply((lv_coord_t)v);
 }
 
 static void chat_hslide_in(void)
@@ -639,7 +751,7 @@ static void chat_hslide_in(void)
     if (s_msg_list == NULL || !lv_obj_is_valid(s_msg_list))
         return;
     lv_coord_t from = (s_hs_commit_dir > 0) ? LV_HOR_RES : -LV_HOR_RES;
-    lv_obj_set_style_translate_x(s_msg_list, from, 0);
+    chat_hslide_apply(from);
     lv_anim_t a;
     lv_anim_init(&a);
     lv_anim_set_var(&a, s_msg_list);
@@ -750,7 +862,7 @@ static void chat_swipe_catcher_cb(lv_event_t *e)
         else if (s_hs_mode == CHAT_HS_MODE_HSWIPE && s_msg_list != NULL &&
                  lv_obj_is_valid(s_msg_list))
         {
-            lv_obj_set_style_translate_x(s_msg_list, (lv_coord_t)s_hs_dx, 0);
+            chat_hslide_apply((lv_coord_t)s_hs_dx);
         }
         return;
     }
@@ -804,6 +916,7 @@ void chat_page_open(const char *title, const char *icon_src)
 {
     if (chat_page_is_open())
         chat_page_close();
+    chat_cache_ensure(); /* per-session 轉錄快取(LVGL thread 配置;BLE 端 NULL 就跳過) */
 
     lv_obj_t *panel = lv_obj_create(lv_layer_top());
     lv_obj_set_size(panel, LV_HOR_RES, LV_VER_RES);
@@ -1136,6 +1249,21 @@ void skai_chat_on_conv_state(const uint8_t *json, uint16_t length)
         s_pending_title[0] = '\0';
     }
 
+    /* sid = 這份狀態屬於哪個 session(手機 open 時綁的 conv:hermes:<id>)——
+       快取拓寫的 key。沒帶(舊 APK)就不拓,行為不變。 */
+    {
+        cJSON *j_sid = cJSON_GetObjectItem(root, "sid");
+        if (cJSON_IsString(j_sid))
+        {
+            strncpy(s_state_sid, j_sid->valuestring, sizeof(s_state_sid) - 1);
+            s_state_sid[sizeof(s_state_sid) - 1] = '\0';
+        }
+        else
+        {
+            s_state_sid[0] = '\0';
+        }
+    }
+
     s_pending_sending = cJSON_IsTrue(cJSON_GetObjectItem(root, "sending"));
 
     int count = 0;
@@ -1253,6 +1381,8 @@ void skai_chat_on_conv_state(const uint8_t *json, uint16_t length)
 
     s_local_echo[0] = '\0'; /* 手機的版本到了,本機回音讓位 */
     s_pending_msg_count = count; /* publish LAST so an LVGL reader never sees a half-filled buffer */
+    /* 拓一份進 per-session 快取(同一條 BLE 執行緒,pending 剛寫完就 memcpy,不跨執行緒)。 */
+    chat_cache_store(s_state_sid);
     LOG_I("conv_state rx: title=%s msgs=%d sending=%d", s_pending_title, count, (int)s_pending_sending);
     /* 這條是 W 級:本機組態 ULOG_OUTPUT_LVL_W,D/I 在 COM12 上一個字都看不到,
        而「手錶收到多少 bytes / 解析出幾則」是所有聊天室問題的第一個分岔口。 */
