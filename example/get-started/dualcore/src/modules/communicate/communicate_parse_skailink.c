@@ -216,6 +216,35 @@ static void handle_device_status_delta(uint8_t *pValue, uint16_t length)
     cJSON_Delete(root);
 }
 
+/* ── 0x03 批次的每列穩定 id 側表(2026-08-30)────────────────────────────────
+   registry 的 T_SYNCED_DEVICE 只存 title(DEFAULT_ACTION_LEN=32,塞不下
+   "conv:hermes:local:<profile>:<uuid>" 這種 60 字的 id,而且 8 台×12 列×64B
+   的靜態擴欄太肥)。滑鼠抽屜真正需要 id 的只有「使用者剛點下去的那份清單」,
+   所以只留最後一個批次:與 default_actions 同步、同 index 對齊(在同一個
+   迴圈裡寫入,跳過的列跳過)。查詢用 title 反查 —— 抽屜的 list_items id
+   沿用 title(歷史契約,見 feed_single_device_options),真 id 只在點下
+   bot/session 列時才需要。 */
+static char s_batch_ids_dev[SYNCED_DEVICE_ID_LEN];
+static char s_batch_ids[MAX_DEFAULT_ACTIONS][64];
+static char s_batch_titles[MAX_DEFAULT_ACTIONS][DEFAULT_ACTION_LEN];
+static uint8_t s_batch_ids_count;
+
+/** 用 title 在最後一個 0x03 批次裡反查該列的穩定 id(LauncherAction.Id)。
+    回傳 NULL = 該批不是這台設備的 / 沒帶 ids / title 沒中。同 title 多列取第一列。 */
+const char *device_actions_id_for_title(const char *device_id, const char *title)
+{
+    if (device_id == NULL || title == NULL || title[0] == '\0')
+        return NULL;
+    if (strncmp(s_batch_ids_dev, device_id, SYNCED_DEVICE_ID_LEN) != 0)
+        return NULL;
+    for (uint8_t i = 0; i < s_batch_ids_count; i++)
+    {
+        if (s_batch_ids[i][0] != '\0' && strcmp(s_batch_titles[i], title) == 0)
+            return s_batch_ids[i];
+    }
+    return NULL;
+}
+
 /* 0x03 — {device_id, items:[...]}: a device's actions list (same as the left
    primary list's sync, just targeted at one device). */
 static void handle_device_actions_batch(uint8_t *pValue, uint16_t length)
@@ -226,8 +255,10 @@ static void handle_device_actions_batch(uint8_t *pValue, uint16_t length)
     /* Phone payload: {device_id, items:[<name strings>], types:[<int per item>]}.
        "types" is a SEPARATE array PARALLEL to "items" (same index), 0=instruction
        1=application 2=folder 3=ai. We walk types in lockstep with items by
-       position (not by stored count) so a skipped item keeps the rest aligned. */
+       position (not by stored count) so a skipped item keeps the rest aligned.
+       "ids"(選配,2026-08-30)同樣 parallel:每列的桌面 LauncherAction.Id。 */
     cJSON *j_types = cJSON_GetObjectItem(root, "types");
+    cJSON *j_ids = cJSON_GetObjectItem(root, "ids");
     if (cJSON_IsString(j_dev) && cJSON_IsArray(j_items))
     {
         int idx = find_device_index(j_dev->valuestring);
@@ -236,8 +267,14 @@ static void handle_device_actions_batch(uint8_t *pValue, uint16_t length)
             T_SYNCED_DEVICE *d =
                 (T_SYNCED_DEVICE *)&SkaiWatchSys.device_registry.devices[idx];
             d->default_action_count = 0;
+            /* 每個批次都整份換掉側表(沒帶 ids 就清空)——舊批次的 id 對上新批次的
+               title 會開錯房間,寧可 NULL。 */
+            strncpy(s_batch_ids_dev, j_dev->valuestring, SYNCED_DEVICE_ID_LEN - 1);
+            s_batch_ids_dev[SYNCED_DEVICE_ID_LEN - 1] = '\0';
+            s_batch_ids_count = 0;
             cJSON *it = NULL;
             cJSON *jt = cJSON_IsArray(j_types) ? j_types->child : NULL;
+            cJSON *ji = cJSON_IsArray(j_ids) ? j_ids->child : NULL;
             cJSON_ArrayForEach(it, j_items)
             {
                 if (d->default_action_count >= MAX_DEFAULT_ACTIONS)
@@ -261,10 +298,26 @@ static void handle_device_actions_batch(uint8_t *pValue, uint16_t length)
                     /* category from the parallel types[] entry at this position. */
                     d->default_action_types[d->default_action_count] =
                         (jt && cJSON_IsNumber(jt)) ? (uint8_t)jt->valueint : 0;
+                    /* 側表:title 存截斷後的(跟 registry 一致,反查才對得上)。 */
+                    strncpy(s_batch_titles[s_batch_ids_count], slot,
+                            DEFAULT_ACTION_LEN - 1);
+                    s_batch_titles[s_batch_ids_count][DEFAULT_ACTION_LEN - 1] = '\0';
+                    if (ji && cJSON_IsString(ji))
+                    {
+                        strncpy(s_batch_ids[s_batch_ids_count], ji->valuestring,
+                                sizeof(s_batch_ids[0]) - 1);
+                        s_batch_ids[s_batch_ids_count][sizeof(s_batch_ids[0]) - 1] = '\0';
+                    }
+                    else
+                    {
+                        s_batch_ids[s_batch_ids_count][0] = '\0';
+                    }
+                    s_batch_ids_count++;
                     d->default_action_count++;
                 }
-                /* advance types in lockstep with items (by position, every item) */
+                /* advance types/ids in lockstep with items (by position, every item) */
                 if (jt) jt = jt->next;
+                if (ji) ji = ji->next;
             }
             /* Dump the device's item (action) list so it can be inspected. */
             LOG_I("device actions for %s (name=%s): %u item(s)",

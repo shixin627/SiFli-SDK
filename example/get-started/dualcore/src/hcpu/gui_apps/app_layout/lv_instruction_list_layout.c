@@ -56,6 +56,7 @@
 #include "ui_helper.h"
 #include "ui_img_helper.h"
 #include "lv_chat_page.h"
+#include "lv_session_pager.h"
 
 #ifndef M_PI
     #define M_PI 3.14159265358979323846
@@ -5861,6 +5862,12 @@ void instruction_list_open_pending_chat(const char *title)
    layer_top 浮層(close_ai_widget 正在收清單,GUI 會當在半拆半建的樹上)。 */
 static char s_sd_chat_title[96];
 static char s_sd_chat_id[96];
+/* 聊天室左右滑切 session 的脈絡(2026-08-30):抽屜收掉後 s_single_device_id 會被清,
+   所以開房當下把設備與 bot(Hermes profile)自己留一份。 */
+static char s_sd_chat_dev[SESSION_ID_LEN];
+static char s_sd_chat_bot[SESSION_BOT_LEN];
+
+static void sd_chat_swipe_cb(int dir);
 
 static void sd_open_chat_async_cb(void *unused)
 {
@@ -5873,6 +5880,33 @@ static void sd_open_chat_async_cb(void *unused)
     clock_main_blur_force_hide();
     chat_page_set_style_hermes(strncmp(s_sd_chat_id, "conv:", 5) == 0);
     chat_page_open(s_sd_chat_title, NULL);
+    /* 左右滑=切同 bot 的上一個/下一個 session(founder 2026-08-30)。open 內部的
+       close 會把 cb 歸零,所以每次(含換房重開)都要重新註冊。 */
+    chat_page_set_swipe_session_cb(sd_chat_swipe_cb);
+}
+
+/* 聊天室裡非邊緣的左右滑:在同 bot 的 session(ts 新→舊)間走。手勢 handler 中
+   不可當場拆建浮層(R70)—— 換 id 後丟給同一顆 async 重開。 */
+static void sd_chat_swipe_cb(int dir)
+{
+    if (s_sd_chat_dev[0] == '\0')
+        return;
+    char nid[SESSION_ID_LEN];
+    char ntitle[SESSION_TITLE_LEN];
+    if (!session_list_neighbor(s_sd_chat_dev, s_sd_chat_bot, s_sd_chat_id, dir,
+                               nid, sizeof(nid), ntitle, sizeof(ntitle)))
+    {
+        LOG_W("[sd-chat] swipe dir=%d: no neighbor (bot=%s)", dir, s_sd_chat_bot);
+        return;
+    }
+    strncpy(s_sd_chat_id, nid, sizeof(s_sd_chat_id) - 1);
+    s_sd_chat_id[sizeof(s_sd_chat_id) - 1] = '\0';
+    strncpy(s_sd_chat_title, ntitle, sizeof(s_sd_chat_title) - 1);
+    s_sd_chat_title[sizeof(s_sd_chat_title) - 1] = '\0';
+    LOG_W("[sd-chat] swipe dir=%d -> \"%s\" (%s)", dir, s_sd_chat_title, s_sd_chat_id);
+    extern bool commu_send_conv_open(const char *title, const char *id, uint8_t index);
+    commu_send_conv_open(s_sd_chat_title, s_sd_chat_id, 0);
+    lv_async_call(sd_open_chat_async_cb, NULL);
 }
 
 static bool single_device_try_open_session(const list_item_t *item)
@@ -5881,13 +5915,88 @@ static bool single_device_try_open_session(const list_item_t *item)
         return false;
     extern const char *session_list_find_conv_id(const char *device_id, const char *title);
     const char *conv_id = session_list_find_conv_id(s_single_device_id, item->title);
-    if (conv_id == NULL)
-        return false;
-    strncpy(s_sd_chat_title, item->title, sizeof(s_sd_chat_title) - 1);
+    char resolved_id[SESSION_ID_LEN];
+    char resolved_title[SESSION_TITLE_LEN];
+    char resolved_bot[SESSION_BOT_LEN];
+    resolved_bot[0] = '\0';
+    if (conv_id != NULL)
+    {
+        /* 既有路徑:鏡像列 title 直接對上這台的 0x20 roster = 一筆 session。 */
+        strncpy(resolved_id, conv_id, sizeof(resolved_id) - 1);
+        resolved_id[sizeof(resolved_id) - 1] = '\0';
+        strncpy(resolved_title, item->title, sizeof(resolved_title) - 1);
+        resolved_title[sizeof(resolved_title) - 1] = '\0';
+        session_list_lookup(s_single_device_id, resolved_id, NULL, 0,
+                            resolved_bot, sizeof(resolved_bot));
+    }
+    else
+    {
+        /* BOT 列(2026-08-30):桌面 Sessions 檢視現在列的是 Bot,鏡像列 title=bot 名,
+           在 roster 按 title 反查必落空 —— 之前就 fall through 去 commit,結果電腦開了
+           bot、手錶沒反應(founder:「點bot手表沒有開啟聊天室」)。真身在 0x03 批次
+           parallel 帶下來的穩定 id:conv:hermes:local:<profile>:<handle>(handle=該 bot
+           最新 session)。解出 profile 後開這個 bot「最新」的 session,聊天室內左右滑
+           在同 bot session 間切換。 */
+        extern const char *device_actions_id_for_title(const char *device_id, const char *title);
+        const char *rid = device_actions_id_for_title(s_single_device_id, item->title);
+        if (rid == NULL || strncmp(rid, "conv:hermes:", 12) != 0)
+            return false;
+        const char *rest = rid + 12;
+        char profile[SESSION_BOT_LEN] = "";
+        const char *handle = rest;
+        if (strncmp(rest, "local:", 6) == 0)
+        {
+            rest += 6;
+            const char *colon = strchr(rest, ':');
+            if (colon == NULL || colon[1] == '\0')
+                return false;
+            size_t plen = (size_t)(colon - rest);
+            if (plen >= sizeof(profile))
+                plen = sizeof(profile) - 1;
+            memcpy(profile, rest, plen);
+            profile[plen] = '\0';
+            handle = colon + 1;
+        }
+        else if (strchr(rest, ':') != NULL)
+        {
+            /* conv:hermes:<deviceId>:<profile>:<handle> = 別台桌面代管的 bot ——
+               這條 conv 路由不到那台,交回 commit 讓電腦自己處理。 */
+            LOG_W("[act] remote-hosted bot row \"%s\" — fall through to commit", item->title);
+            return false;
+        }
+        /* 該 bot 最新的 session:0x20 roster 比 bot 列臉上的 handle 新鮮,能查就用
+           roster 的;roster 還沒到就用 id 裡帶的 handle,標題先掛 bot 名。 */
+        if (profile[0] != '\0' &&
+            session_list_latest_for_bot(s_single_device_id, profile,
+                                        resolved_id, sizeof(resolved_id),
+                                        resolved_title, sizeof(resolved_title)))
+        {
+            /* roster 命中 */
+        }
+        else
+        {
+            snprintf(resolved_id, sizeof(resolved_id), "conv:hermes:%s", handle);
+            if (!session_list_lookup(s_single_device_id, resolved_id,
+                                     resolved_title, sizeof(resolved_title),
+                                     NULL, 0))
+            {
+                strncpy(resolved_title, item->title, sizeof(resolved_title) - 1);
+                resolved_title[sizeof(resolved_title) - 1] = '\0';
+            }
+        }
+        strncpy(resolved_bot, profile, sizeof(resolved_bot) - 1);
+        resolved_bot[sizeof(resolved_bot) - 1] = '\0';
+    }
+    strncpy(s_sd_chat_title, resolved_title, sizeof(s_sd_chat_title) - 1);
     s_sd_chat_title[sizeof(s_sd_chat_title) - 1] = '\0';
-    strncpy(s_sd_chat_id, conv_id, sizeof(s_sd_chat_id) - 1);
+    strncpy(s_sd_chat_id, resolved_id, sizeof(s_sd_chat_id) - 1);
     s_sd_chat_id[sizeof(s_sd_chat_id) - 1] = '\0';
-    LOG_W("[act] single-device session \"%s\" -> chat (%s)", s_sd_chat_title, s_sd_chat_id);
+    strncpy(s_sd_chat_dev, s_single_device_id, sizeof(s_sd_chat_dev) - 1);
+    s_sd_chat_dev[sizeof(s_sd_chat_dev) - 1] = '\0';
+    strncpy(s_sd_chat_bot, resolved_bot, sizeof(s_sd_chat_bot) - 1);
+    s_sd_chat_bot[sizeof(s_sd_chat_bot) - 1] = '\0';
+    LOG_W("[act] single-device session \"%s\" -> chat (%s bot=%s)", s_sd_chat_title,
+          s_sd_chat_id, s_sd_chat_bot);
     extern bool commu_send_conv_open(const char *title, const char *id, uint8_t index);
     commu_send_conv_open(s_sd_chat_title, s_sd_chat_id, 0);
     /* 先收抽屜回觸控板:聊天室 overlay 疊在觸控板上,左緣右滑關聊天室後落回觸控板

@@ -557,6 +557,33 @@ void chat_page_start_voice_input(void)
     chat_mic_toggle();
 }
 
+/* ── 聊天室左右滑切換 session(2026-08-30,滑鼠抽屜 bot 房)──────────────────
+   由開房的人註冊(instruction list 的抽屜流程),chat_page_close 歸零 —— 錶盤
+   '@' 房沒人註冊,行為不變。滑左 = +1(更舊的 session)、滑右 = -1(更新)。
+   左緣右滑仍是返回:native 邊緣偵測物件疊在面板上方,起點在邊緣的手勢根本
+   到不了訊息列表。 */
+static void (*s_swipe_session_cb)(int dir) = NULL;
+
+void chat_page_set_swipe_session_cb(void (*cb)(int dir))
+{
+    s_swipe_session_cb = cb;
+}
+
+static void chat_list_gesture_cb(lv_event_t *e)
+{
+    (void)e;
+    if (s_swipe_session_cb == NULL)
+        return;
+    lv_indev_t *indev = lv_indev_get_act();
+    if (indev == NULL)
+        return;
+    lv_dir_t dir = lv_indev_get_gesture_dir(indev);
+    if (dir == LV_DIR_LEFT)
+        s_swipe_session_cb(1);
+    else if (dir == LV_DIR_RIGHT)
+        s_swipe_session_cb(-1);
+}
+
 void chat_page_open(const char *title, const char *icon_src)
 {
     if (chat_page_is_open())
@@ -669,6 +696,10 @@ void chat_page_open(const char *title, const char *icon_src)
        The big bottom pad also keeps the newest message clear of the floating mic. */
     lv_obj_set_style_pad_top(list, 180, 0);
     lv_obj_set_style_pad_bottom(list, 180, 0);
+    /* 左右滑切 session(抽屜 bot 房才有人註冊)。手勢事件送到按壓當下的 act_obj,
+       所以訊息卡片/氣泡都清掉 CLICKABLE(見 chat_add_hermes_turn 與氣泡建立處),
+       按在訊息上的手勢才會落到這個 list 身上。 */
+    lv_obj_add_event_cb(list, chat_list_gesture_cb, LV_EVENT_GESTURE, NULL);
     s_msg_list = list;
 
     /* "Loading" placeholder, CENTERED on the screen (not in the list, which would push it to the top-
@@ -822,6 +853,7 @@ void chat_page_close(void)
     s_transcript_label = NULL;
     s_transcript_pill = NULL;
     s_input_scrim = NULL;
+    s_swipe_session_cb = NULL; /* 換房重開時由開房的人重新註冊 */
     chat_type_reset();
     if (s_rebuild_defer != NULL)
     {
@@ -1166,6 +1198,9 @@ static lv_obj_t *chat_add_hermes_turn(lv_obj_t *parent, const char *text, bool m
     lv_obj_set_width(card, lv_pct(100));
     lv_obj_set_height(card, LV_SIZE_CONTENT);
     lv_obj_clear_flag(card, LV_OBJ_FLAG_SCROLLABLE);
+    /* 卡片不攔按壓:act_obj 落到 s_msg_list,左右滑切 session 的手勢才收得到
+       (捲動不受影響 —— list 仍是捲動的主人)。 */
+    lv_obj_clear_flag(card, LV_OBJ_FLAG_CLICKABLE);
     if (mine)
     {
         /* 桌面原值是 6%/8%(SkGlassBgSoft/SkGlassEdge),但手錶螢幕小、底是磨砂
@@ -1435,6 +1470,7 @@ void chat_page_apply_pending_state(void)
 
         /* Full-width transparent row → the bubble aligns left (them) / right (me) within it. */
         lv_obj_t *row = lv_obj_create(s_msg_list);
+        lv_obj_clear_flag(row, LV_OBJ_FLAG_CLICKABLE); /* 同 hermes 卡片:讓手勢落到 list */
         lv_obj_set_width(row, lv_pct(100));
         lv_obj_set_height(row, LV_SIZE_CONTENT);
         lv_obj_set_style_bg_opa(row, LV_OPA_TRANSP, 0);
@@ -1457,6 +1493,7 @@ void chat_page_apply_pending_state(void)
         lv_obj_set_style_border_width(bubble, 0, 0);
         lv_obj_set_style_bg_color(bubble, mine ? lv_color_hex(0x5C9CB8) : lv_color_hex(0x2C2C2E), 0);
         lv_obj_clear_flag(bubble, LV_OBJ_FLAG_SCROLLABLE);
+        lv_obj_clear_flag(bubble, LV_OBJ_FLAG_CLICKABLE);
         lv_obj_align(bubble, mine ? LV_ALIGN_TOP_RIGHT : LV_ALIGN_TOP_LEFT, 0, 0);
 
         lv_obj_t *lbl = lv_label_create(bubble);

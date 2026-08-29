@@ -61,6 +61,9 @@ typedef struct
     char title[SESSION_TITLE_LEN];
     char preview[SESSION_PREVIEW_LEN];
     uint32_t ts; /* epoch 秒(牆鐘偽 UTC,同手錶其他 timestamp);0 = 手機沒給 */
+    /* 擁有這個 session 的 Bot(Hermes profile 名)。滑鼠 app 聊天室左右滑
+       只在同 bot 的 session 間切換(founder 2026-08-30)。"" = 舊桌面沒送。 */
+    char bot[SESSION_BOT_LEN];
 } session_meta_t;
 
 typedef struct
@@ -783,6 +786,152 @@ const char *session_list_find_conv_id(const char *device_id, const char *title)
     return NULL;
 }
 
+/* ── 滑鼠抽屜 bot 聊天室查詢(2026-08-30,見 lv_session_pager.h)──────────── */
+
+static const device_sessions_t *sp_device_of(const char *device_id)
+{
+    if (device_id == NULL || device_id[0] == '\0')
+        return NULL;
+    for (int d = 0; d < s_device_count; d++)
+    {
+        if (strncmp(s_devices[d].id, device_id, SESSION_ID_LEN) == 0)
+            return &s_devices[d];
+    }
+    return NULL;
+}
+
+static bool sp_bot_matches(const session_meta_t *s, const char *bot)
+{
+    if (bot == NULL || bot[0] == '\0')
+        return true; /* 不過濾 */
+    return strncmp(s->bot, bot, SESSION_BOT_LEN) == 0;
+}
+
+static void sp_copy_out(const session_meta_t *s,
+                        char *out_id, size_t id_len,
+                        char *out_title, size_t title_len)
+{
+    if (out_id != NULL && id_len > 0)
+    {
+        strncpy(out_id, s->id, id_len - 1);
+        out_id[id_len - 1] = '\0';
+    }
+    if (out_title != NULL && title_len > 0)
+    {
+        strncpy(out_title, s->title, title_len - 1);
+        out_title[title_len - 1] = '\0';
+    }
+}
+
+bool session_list_lookup(const char *device_id, const char *conv_id,
+                         char *out_title, size_t title_len,
+                         char *out_bot, size_t bot_len)
+{
+    const device_sessions_t *dev = sp_device_of(device_id);
+    if (dev == NULL || conv_id == NULL || conv_id[0] == '\0')
+        return false;
+    for (int k = 0; k < dev->count; k++)
+    {
+        const session_meta_t *s = &dev->items[k];
+        if (strncmp(s->id, conv_id, SESSION_ID_LEN) != 0)
+            continue;
+        sp_copy_out(s, NULL, 0, out_title, title_len);
+        if (out_bot != NULL && bot_len > 0)
+        {
+            strncpy(out_bot, s->bot, bot_len - 1);
+            out_bot[bot_len - 1] = '\0';
+        }
+        return true;
+    }
+    return false;
+}
+
+bool session_list_latest_for_bot(const char *device_id, const char *bot,
+                                 char *out_id, size_t id_len,
+                                 char *out_title, size_t title_len)
+{
+    const device_sessions_t *dev = sp_device_of(device_id);
+    if (dev == NULL)
+        return false;
+    const session_meta_t *best = NULL;
+    for (int k = 0; k < dev->count; k++)
+    {
+        const session_meta_t *s = &dev->items[k];
+        if (!sp_bot_matches(s, bot))
+            continue;
+        if (best == NULL || s->ts >= best->ts)
+            best = s;
+    }
+    if (best == NULL)
+        return false;
+    sp_copy_out(best, out_id, id_len, out_title, title_len);
+    return true;
+}
+
+bool session_list_neighbor(const char *device_id, const char *bot,
+                           const char *cur_id, int dir,
+                           char *out_id, size_t id_len,
+                           char *out_title, size_t title_len)
+{
+    const device_sessions_t *dev = sp_device_of(device_id);
+    if (dev == NULL || cur_id == NULL || cur_id[0] == '\0' || dir == 0)
+        return false;
+    /* 同 bot 的列在儲存裡不保證按 ts 排 —— 現挑:dir>0 要「ts 嚴格小於目前那筆
+       之中最大的」(下一個更舊),dir<0 反之。同 ts 的並列用 index 當 tiebreak
+       (穩定、不會左右滑互相跳不回來)。 */
+    int cur_idx = -1;
+    for (int k = 0; k < dev->count; k++)
+    {
+        if (strncmp(dev->items[k].id, cur_id, SESSION_ID_LEN) == 0)
+        {
+            cur_idx = k;
+            break;
+        }
+    }
+    if (cur_idx < 0)
+        return false;
+    const session_meta_t *cur = &dev->items[cur_idx];
+    const session_meta_t *best = NULL;
+    int best_idx = -1;
+    for (int k = 0; k < dev->count; k++)
+    {
+        if (k == cur_idx)
+            continue;
+        const session_meta_t *s = &dev->items[k];
+        if (!sp_bot_matches(s, bot))
+            continue;
+        /* 排序鍵 = (ts, index):dir>0 找「小於 cur」裡最大的;dir<0 找「大於 cur」
+           裡最小的。 */
+        bool after_cur = (s->ts > cur->ts) || (s->ts == cur->ts && k > cur_idx);
+        if (dir > 0)
+        {
+            if (after_cur)
+                continue; /* 比 cur 新,不是「更舊」候選 */
+            if (best == NULL || (s->ts > best->ts) ||
+                (s->ts == best->ts && k > best_idx))
+            {
+                best = s;
+                best_idx = k;
+            }
+        }
+        else
+        {
+            if (!after_cur)
+                continue;
+            if (best == NULL || (s->ts < best->ts) ||
+                (s->ts == best->ts && k < best_idx))
+            {
+                best = s;
+                best_idx = k;
+            }
+        }
+    }
+    if (best == NULL)
+        return false;
+    sp_copy_out(best, out_id, id_len, out_title, title_len);
+    return true;
+}
+
 /** R61(founder:「開新 SESSION 選項先每個設備都出現一個,右邊圖片裡放設備名稱」):
     左頁語音搜尋沒中任何東西時,要為**每一台已知的桌面**各長出一個「開新對話」——
     使用者自己挑要開在哪台,不必猜(先前一律送去「目前控制中的那台」,實測選到的是
@@ -1138,6 +1287,9 @@ void skai_sessions_on_conv_list(const uint8_t *json, uint16_t length)
             cJSON *j_ts = cJSON_GetObjectItem(it, "ts");
             if (cJSON_IsNumber(j_ts) && j_ts->valuedouble > 0)
                 parsed[count].ts = (uint32_t)j_ts->valuedouble;
+            cJSON *j_bot = cJSON_GetObjectItem(it, "bot");
+            if (cJSON_IsString(j_bot))
+                strncpy(parsed[count].bot, j_bot->valuestring, SESSION_BOT_LEN - 1);
             count++;
         }
     }

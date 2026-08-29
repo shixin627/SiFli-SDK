@@ -31,6 +31,11 @@ extern "C"
        AI=平鋪全寬文字);false = iMessage 氣泡(左灰右藍)。 */
     void chat_page_set_style_hermes(bool hermes);
 
+    /* 聊天室內非邊緣的左右滑手勢(2026-08-30,滑鼠抽屜 bot 房用):dir=+1 滑左
+       (切更舊的 session)、-1 滑右(更新)。開房後由開房的人註冊;chat_page_close
+       歸零,沒註冊的房(錶盤 '@' 房)行為不變。LVGL thread。 */
+    void chat_page_set_swipe_session_cb(void (*cb)(int dir));
+
     /* Tear the chat panel down (revealing the @-list underneath). Idempotent. LVGL thread. */
     void chat_page_close(void);
 

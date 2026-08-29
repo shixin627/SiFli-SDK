@@ -41,6 +41,8 @@ extern "C"
 #define SESSION_ID_LEN 64
 #define SESSION_TITLE_LEN 48
 #define SESSION_PREVIEW_LEN 128
+/* Hermes profile(Bot)名 — 0x20 每列選配的 "bot" 欄。 */
+#define SESSION_BOT_LEN 24
 
     /** Build the merged list into [parent] (the watch-face LEFT tile (0,1)). */
     lv_obj_t *lv_session_pager_create(lv_obj_t *parent);
@@ -67,6 +69,24 @@ extern "C"
     /** 對 [device_id] 開新 session 並武裝 walk-in(清單推回來自動進聊天室)。
         滑鼠頁底部 skaibar tap 用;呼叫端負責把畫面切到左頁。 */
     void session_list_open_new_for_device(const char *device_id);
+
+    /* ── 滑鼠抽屜 bot 聊天室(2026-08-30)──
+       都是唯讀查詢,LVGL thread only;id 一律是 "conv:<service>:<sessionId>"。 */
+
+    /** 反查一筆 session:成功時填 title(可 NULL 略過)與 bot(可 NULL)。 */
+    bool session_list_lookup(const char *device_id, const char *conv_id,
+                             char *out_title, size_t title_len,
+                             char *out_bot, size_t bot_len);
+    /** [bot] 最新(ts 最大)的 session;bot=="" 或 NULL = 不過濾。 */
+    bool session_list_latest_for_bot(const char *device_id, const char *bot,
+                                     char *out_id, size_t id_len,
+                                     char *out_title, size_t title_len);
+    /** [cur_id] 在同 bot session(ts 由新到舊排序)中的鄰居。dir>0 = 更舊,
+        dir<0 = 更新。到端點回 false。 */
+    bool session_list_neighbor(const char *device_id, const char *bot,
+                               const char *cur_id, int dir,
+                               char *out_id, size_t id_len,
+                               char *out_title, size_t title_len);
 
     /* ── Voice, mirroring lv_chat_page.h's chat_page_* trio ── */
 
