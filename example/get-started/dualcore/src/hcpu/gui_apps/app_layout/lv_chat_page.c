@@ -687,6 +687,11 @@ void chat_page_switch_session(const char *title)
     s_live_turn = false;
     chat_wait_stop();
     chat_type_reset();
+    /* reset 內含 chat_type_stop(刪 timer)—— 那是給**關房**用的。這裡房間還開著,
+       timer 必須活著,否則之後每一則 live AI 回覆都停在「空 label 等打字」,要到
+       下一次整份重畫才現形(founder 2026-08-30:「再次輸入東西後上個的AI回復就會
+       出現」)。教訓同 2026-08-26:揭露 timer 開房建立、關房刪除、**中間永不停**。 */
+    chat_type_timer_start();
     s_last_rebuild_tick = 0;
     if (s_rebuild_defer != NULL)
     {
@@ -902,6 +907,7 @@ static void chat_hslide_commit_done(lv_anim_t *a)
     s_live_turn = false;
     chat_wait_stop();
     chat_type_reset();
+    chat_type_timer_start(); /* 房間還開著 —— 揭露 timer 中間永不停(見 switch_session) */
     s_last_rebuild_tick = 0;
     if (s_rebuild_defer != NULL)
     {
