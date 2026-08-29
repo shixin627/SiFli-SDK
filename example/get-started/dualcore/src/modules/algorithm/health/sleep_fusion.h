@@ -106,7 +106,14 @@ extern "C"
         /* Diagnostics — useful for logging and tuning. */
         uint32_t last_cole_kripke_score;
         uint8_t  last_hr_baseline_bpm;
-        uint8_t  learned_rhr_bpm;       /* online resting-HR estimate, veto anchor */
+        uint8_t  learned_rhr_bpm;       /* online resting-HR estimate, warm-up only */
+        /* The resting reference the wake-veto actually judges against: the 5th
+           percentile of a 3-day HR histogram, allowed to fall freely but to
+           rise only 1 bpm per SF_RHR_UP_LEAK_MIN. 0 until established.
+           rhr_ref_changed marks the minutes where it moved, so the caller can
+           persist it across the next reboot. */
+        uint8_t  rhr_ref_bpm;
+        bool     rhr_ref_changed;
         bool     hr_wake_veto_active;   /* HR held this minute out of sleep */
     } sleep_fusion_output_t;
 
@@ -118,6 +125,11 @@ extern "C"
     /* Update the resting HR baseline (e.g. from user prefs or learned
        overnight minimum). Safe to call at any time. */
     void sleep_fusion_set_resting_hr(uint8_t resting_hr_bpm);
+
+    /* Restore / read the resting reference so it can outlive a reboot. See
+       sleep_service.c for where it is kept (an RTC backup register). */
+    void    sleep_fusion_set_rhr_reference(uint8_t bpm);
+    uint8_t sleep_fusion_get_rhr_reference(void);
 
     /* Reset daily aggregates. Call at local midnight. Does NOT clear
        the recent history window — the algorithm keeps running across

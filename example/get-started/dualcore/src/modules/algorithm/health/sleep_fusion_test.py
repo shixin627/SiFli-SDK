@@ -33,6 +33,10 @@ SF_RHR_HIST_BINS = 64
 SF_RHR_HIST_BASE = 30
 SF_RHR_HIST_PCT = 5
 SF_RHR_HIST_MIN_N = 60
+# 參考可以快速下修、只能緩慢上修。實測(2026-08-29,真值 03:30-09:45):沒有這個
+# 約束時,重啟後的直方圖視窗裡只有清醒資料,p5 給出 70(真實靜息 50),門檻拉到 82,
+# 三小時 70-92 的清醒心率全部溜過去。「沒有睡眠的視窗」不能拉高靜息心率。
+SF_RHR_UP_LEAK_MIN = 60
 SF_MIN_SESSION_MIN = 30
 SF_ENTER_SLEEP_MIN = 15
 SF_EXIT_SLEEP_MIN = 5
@@ -77,6 +81,8 @@ class State:
     rhr_hist: list = field(default_factory=lambda: [[0]*SF_RHR_HIST_BINS
                                                     for _ in range(SF_RHR_HIST_DAYS)])
     rhr_hist_day: int = 0
+    rhr_ref_bpm: int = 0        # veto 實際比對的參考;0 = 還沒建立
+    rhr_up_acc: int = 0
     session_min: int = 0
     pend: dict = field(default_factory=lambda: dict(total=0, deep=0, rem=0, light=0))
     hr_elev_consec: int = 0
@@ -105,8 +111,8 @@ def rhr_hist_push(state, hr):
         state.rhr_hist[state.rhr_hist_day][b] += 1
 
 
-def rhr_reference(state):
-    """跨日穩定的靜息參考 = 滾動 3 日窗的第 5 百分位。資料太少回 0。
+def rhr_hist_p5(state):
+    """滾動 3 日窗的第 5 百分位 —— 這是「證據」,不是參考。資料太少回 0。
 
     這取代了會漂的 learned_rhr 當 veto 的錨點。實測 2026-08-20..25 六天,
     這個值每天都是 48-51,而 learned_rhr 在同幾天裡從 49(夜)盪到 65(日)
@@ -122,6 +128,30 @@ def rhr_reference(state):
         if seen > want:
             return SF_RHR_HIST_BASE + (b << 1)
     return 0
+
+
+def rhr_ref_step(state):
+    """把這一分鐘的直方圖證據併進參考:下修快、上修慢。回傳有沒有變動。"""
+    p5 = rhr_hist_p5(state)
+    if not p5:
+        return False
+    if state.rhr_ref_bpm == 0 or p5 < state.rhr_ref_bpm:
+        state.rhr_ref_bpm = p5          # 新低永遠是更好的證據
+        state.rhr_up_acc = 0
+        return True
+    if p5 > state.rhr_ref_bpm:
+        state.rhr_up_acc += 1
+        if state.rhr_up_acc >= SF_RHR_UP_LEAK_MIN:
+            state.rhr_ref_bpm += 1
+            state.rhr_up_acc = 0
+            return True
+        return False
+    state.rhr_up_acc = 0
+    return False
+
+
+def rhr_reference(state):
+    return state.rhr_ref_bpm
 
 
 def hr_elevated_and_learn(state, hr):
@@ -215,6 +245,7 @@ def update(state, utc, inp):
             state.hr_hist.pop(0)
         # 每分鐘都餵直方圖(不只 fresh),否則 warm-up 要 7 小時才夠 60 筆
         rhr_hist_push(state, hr_clean)
+        rhr_ref_step(state)
 
     state.ck_score = cole_kripke(state.activity_hist)
     state.hr_baseline = hr_baseline(state.hr_hist, state.resting_hr)
@@ -464,6 +495,19 @@ quiet_awake_day = [
 QUIET_NIGHT_MIN = 120
 
 
+# 12) 沒有睡眠的視窗不能拉高靜息參考 —— 2026-08-29 的主回歸。
+#     先給一夜(參考落到 ~50),再給兩小時純清醒(75 bpm)。舊行為:直方圖 p5
+#     直接跟隨,參考被拉到 70+,醒來門檻變 82,整段清醒判成睡著。
+ref_night_then_awake = [
+    MinuteInput(activity_count=20, hr_mean_bpm=50, hr_std_bpm=1,
+                hr_is_fresh=(i % 10 == 0)) for i in range(180)
+] + [
+    MinuteInput(activity_count=40, hr_mean_bpm=75, hr_std_bpm=2,
+                hr_is_fresh=(i % 10 == 0)) for i in range(120)
+]
+REF_NIGHT_MIN = 180
+
+
 def check(name, cond):
     print(f"  [{'PASS' if cond else 'FAIL'}] {name}")
     if not cond:
@@ -542,6 +586,18 @@ if __name__ == "__main__":
     # The reported bug: phantom pedometer steps on a still wrist must NOT block
     # sleep onset. A bare step count is no longer trusted without accel motion.
     check("phantom steps still fall asleep (total > 0)", s_phantom.total > 0)
+
+    # 沒有睡眠的視窗不能拉高參考。
+    s_ref = State()
+    ref_after_night = 0
+    for i, inp in enumerate(ref_night_then_awake):
+        update(s_ref, (i + 1) * 60, inp)
+        if i == REF_NIGHT_MIN - 1:
+            ref_after_night = s_ref.rhr_ref_bpm
+    check(f"一夜之後參考落在靜息附近 (got {ref_after_night})",
+          48 <= ref_after_night <= 54)
+    drift = s_ref.rhr_ref_bpm - ref_after_night
+    check(f"兩小時純清醒最多把參考推高 2 bpm (got +{drift})", drift <= 2)
 
     # 這一輪的主回歸:安靜的清醒白天不能被記成睡眠。
     s_q = State()

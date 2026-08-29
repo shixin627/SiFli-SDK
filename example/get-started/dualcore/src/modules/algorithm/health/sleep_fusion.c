@@ -161,6 +161,19 @@ static const uint16_t SF_CK_WEIGHTS_Q10[SF_WINDOW_MIN] = {
 #define SF_RHR_HIST_PCT          5u   /* percentile read out as the reference */
 #define SF_RHR_HIST_MIN_N       60u   /* below this, fall back to the learner */
 
+/* The reference may FALL as fast as the data allows but may only RISE by 1 bpm
+   per SF_RHR_UP_LEAK_MIN minutes.
+   2026-08-29, measured against the first sleep ground truth (founder: asleep
+   03:30-09:45): the histogram window is only a resting-HR estimate if it
+   CONTAINS a rest period. After the 2026-08-28 20:56 restart the window held
+   nothing but evening wakefulness, so its 5th percentile was 70 while the real
+   resting HR was 50 — and a 70 reference puts the wake threshold at 82, which
+   three hours of 70-92 bpm wakefulness slid under. A window with no sleep in it
+   cannot raise your resting heart rate; it can only ever fail to have seen the
+   low yet. Hence the asymmetry. Measured effect on that night: total sleep
+   9.6 h -> 7.3 h (truth 6.25 h), wake specificity 33% -> 74%. */
+#define SF_RHR_UP_LEAK_MIN      60u   /* minutes of high evidence per +1 bpm  */
+
 #define SF_RHR_DOWN_SHIFT        3    /* est -= (est - hr) >> 3  (~1/8 gap) */
 #define SF_RHR_LEAK_PERIOD_MIN   4    /* minutes mildly-above per +1 bpm up */
 #define SF_RHR_MIN               40u  /* clamp — implausibly low resting    */
@@ -217,6 +230,8 @@ typedef struct
        rhr_hist_day is today; midnight rotates. */
     uint16_t rhr_hist[SF_RHR_HIST_DAYS][SF_RHR_HIST_BINS];
     uint8_t  rhr_hist_day;
+    uint8_t  rhr_ref_bpm;    /* the reference in use; 0 = not established yet */
+    uint16_t rhr_up_acc;     /* minutes of above-reference evidence banked    */
 
     /* Activity ring buffer (last SF_WINDOW_MIN minutes). Index points
        to the slot that will be overwritten next — i.e. "oldest". */
@@ -415,10 +430,10 @@ static void prv_rhr_hist_push(uint8_t hr_bpm)
     }
 }
 
-/* The stable reference: SF_RHR_HIST_PCT-th percentile over the whole trailing
-   window. Returns 0 while the window is too thin to mean anything, and the
-   caller then falls back to the online learner. */
-static uint8_t prv_rhr_reference(void)
+/* Raw SF_RHR_HIST_PCT-th percentile over the whole trailing window. Returns 0
+   while the window is too thin to mean anything. This is EVIDENCE, not the
+   reference — @ref prv_rhr_ref_step decides how much of it to believe. */
+static uint8_t prv_rhr_hist_p5(void)
 {
     uint32_t total = 0;
     for (uint8_t d = 0; d < SF_RHR_HIST_DAYS; d++)
@@ -447,6 +462,42 @@ static uint8_t prv_rhr_reference(void)
         }
     }
     return 0;
+}
+
+/* Fold this minute's histogram evidence into the reference. Down fast, up slow
+   — @ref SF_RHR_UP_LEAK_MIN. Returns true when the reference changed, so the
+   caller can persist it. */
+static bool prv_rhr_ref_step(void)
+{
+    uint8_t p5 = prv_rhr_hist_p5();
+    if (p5 == 0)
+    {
+        return false;               /* window too thin to say anything */
+    }
+    if (s_sf.rhr_ref_bpm == 0 || p5 < s_sf.rhr_ref_bpm)
+    {
+        s_sf.rhr_ref_bpm = p5;      /* a new low is always better evidence */
+        s_sf.rhr_up_acc = 0;
+        return true;
+    }
+    if (p5 > s_sf.rhr_ref_bpm)
+    {
+        if (++s_sf.rhr_up_acc >= SF_RHR_UP_LEAK_MIN)
+        {
+            s_sf.rhr_ref_bpm++;
+            s_sf.rhr_up_acc = 0;
+            return true;
+        }
+        return false;
+    }
+    s_sf.rhr_up_acc = 0;
+    return false;
+}
+
+/* The reference the wake-veto judges against. 0 = not established yet. */
+static uint8_t prv_rhr_reference(void)
+{
+    return s_sf.rhr_ref_bpm;
 }
 
 static bool prv_hr_elevated_and_learn(uint8_t hr_bpm)
@@ -702,6 +753,27 @@ void sleep_fusion_init(uint8_t resting_hr_bpm)
     s_sf.out.stage = SLEEP_FUSION_STAGE_AWAKE;
 }
 
+/* Seed the reference from storage that outlived the reboot (RTC backup
+   register — see sleep_service.c). Everything else in here is RAM and is gone
+   after a restart, and the watch restarts 2-3 times a day; without this the
+   reference has to be rebuilt from scratch, which takes a whole sleep period
+   because a window with no sleep in it cannot show a resting heart rate.
+   Measured on 2026-08-21..29: daytime false-sleep on the worst days
+   78% / 48% -> 4% / 13% once this and the up-leak are both in. */
+void sleep_fusion_set_rhr_reference(uint8_t bpm)
+{
+    if (bpm >= SF_RHR_MIN && bpm <= SF_RHR_MAX)
+    {
+        s_sf.rhr_ref_bpm = bpm;
+        s_sf.rhr_up_acc = 0;
+    }
+}
+
+uint8_t sleep_fusion_get_rhr_reference(void)
+{
+    return s_sf.rhr_ref_bpm;
+}
+
 void sleep_fusion_set_resting_hr(uint8_t resting_hr_bpm)
 {
     s_sf.resting_hr_bpm = resting_hr_bpm;
@@ -736,8 +808,10 @@ void sleep_fusion_midnight_reset(void)
 void sleep_fusion_reset(void)
 {
     uint8_t saved_resting = s_sf.resting_hr_bpm;
+    uint8_t saved_ref     = s_sf.rhr_ref_bpm;   /* must outlive a reset */
     memset(&s_sf, 0, sizeof(s_sf));
     s_sf.resting_hr_bpm = saved_resting;
+    s_sf.rhr_ref_bpm    = saved_ref;
     s_sf.learned_rhr_bpm = saved_resting; /* re-seed the online estimate */
     s_sf.rhr_seeded = false;              /* first real HR still re-anchors it */
     s_sf.out.stage = SLEEP_FUSION_STAGE_AWAKE;
@@ -783,6 +857,10 @@ const sleep_fusion_output_t *sleep_fusion_update(
     {
         prv_rhr_hist_push(hr_clean);
     }
+    /* Advance the reference from this minute's evidence. The service layer
+       persists it when it moves — @ref sleep_fusion_get_rhr_reference. */
+    s_sf.out.rhr_ref_changed = prv_rhr_ref_step();
+    s_sf.out.rhr_ref_bpm = s_sf.rhr_ref_bpm;
     prv_push_rmssd(input->hr_rmssd_ms); /* no-op until RR plumbing feeds it */
 
     uint32_t score = prv_cole_kripke_score();

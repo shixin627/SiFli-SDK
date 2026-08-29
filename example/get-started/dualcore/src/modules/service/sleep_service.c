@@ -33,6 +33,7 @@
 #include "rtconfig.h"
 
 #include "sleep_fusion.h"
+#include "bf0_hal.h"         /* HAL_Set_backup / HAL_Get_backup — RTC backup */
 #include "watch_sys_service.h"
 #ifdef BSP_USING_HR_SVC
 #include "hr_service.h"      /* hr_service_get_latest_bpm */
@@ -61,6 +62,27 @@
 #define SLEEP_SAMPLE_PERIOD_MS 1000          /* 1 Hz IMU/HR snapshot */
 #define SLEEP_MINUTE_TICKS     60            /* samples per evaluation window */
 #define SLEEP_DEFAULT_RESTING_HR 65          /* fallback if we never see HR */
+
+/* Where the resting-HR reference lives across a reboot.
+ *
+ * Everything inside sleep_fusion is RAM and the watch restarts 2-3 times a day
+ * (2026-08-24 caught two, 2026-08-28 three), so without this the reference is
+ * rebuilt from scratch every time — and rebuilding it takes a whole sleep
+ * period, because a window containing only wakefulness cannot show a resting
+ * heart rate. Measured over 2026-08-21..29, the worst days' daytime false-sleep
+ * went 78% / 48% -> 4% / 13% once the reference survived the restarts.
+ *
+ * An RTC backup register is the cheapest place that survives a warm reset and
+ * needs no linker change: the LCPU scatter has no UNINIT region at all, so the
+ * black box's L2_RET_BSS_SECT trick (log_file_backend.c) is HCPU-only. These
+ * registers are also the SDK's own H/L-CPU shared storage, and HAL_Set_backup
+ * is already linked into and called from the LCPU image (drv_rtc, drv_wdt).
+ * The SDK's RTC_BACKUP enum owns 0-11; 12-31 are unallocated.
+ *
+ * A cold power-on leaves the register as garbage, the magic will not match, and
+ * we correctly start with no history. */
+#define SLEEP_RHR_BKP_IDX     20u
+#define SLEEP_RHR_BKP_MAGIC   0x5A11u   /* in the top half-word */
 
 /* How long to reuse a background PPG-burst HR window. Must span one full sampler
    cycle (BG_HR_PERIOD_MS) plus slack, else the minutes between bursts get no HR
@@ -313,6 +335,27 @@ static uint8_t prv_compute_hr_std(uint32_t sum, uint32_t sum_sq, uint16_t n)
     return (uint8_t)r;
 }
 
+/* Persist the reference. Called only on the minutes it actually moved. */
+static void prv_rhr_bkp_store(uint8_t bpm)
+{
+    HAL_Set_backup((uint8_t)SLEEP_RHR_BKP_IDX,
+                   ((uint32_t)SLEEP_RHR_BKP_MAGIC << 16) | (uint32_t)bpm);
+}
+
+/* 0 when there is nothing trustworthy there (cold boot, or a value outside the
+   plausible resting band — treat a corrupt register as no history, never as a
+   reference, or one bad word poisons the wake-veto until the next reboot). */
+static uint8_t prv_rhr_bkp_load(void)
+{
+    uint32_t v = HAL_Get_backup((uint8_t)SLEEP_RHR_BKP_IDX);
+    if ((v >> 16) != SLEEP_RHR_BKP_MAGIC)
+    {
+        return 0;
+    }
+    uint8_t bpm = (uint8_t)(v & 0xFFu);
+    return (bpm >= 40u && bpm <= 110u) ? bpm : 0;
+}
+
 static uint8_t prv_resting_hr_estimate(void)
 {
     /* For now we just use the configured fallback. A future enhancement
@@ -445,6 +488,10 @@ static void prv_minute_eval(uint32_t utc_now)
     }
 
     const sleep_fusion_output_t *out = sleep_fusion_update(utc_now, &input);
+    if (out->rhr_ref_changed && out->rhr_ref_bpm)
+    {
+        prv_rhr_bkp_store(out->rhr_ref_bpm);   /* outlive the next restart */
+    }
 
     /* Sleep/wake above is accel-only. When in a sleep stage, drive dense PPG
        bursts (two-stage gate) so HR can stage Deep/REM; revert on wake/not-worn.
@@ -582,7 +629,12 @@ static void prv_minute_eval(uint32_t utc_now)
             .hr_std = input.hr_std_bpm,
             .stage  = (uint8_t)out->stage,
             .veto   = (uint8_t)(out->hr_wake_veto_active ? 1 : 0),
-            .rhr    = out->learned_rhr_bpm,
+            /* 2026-08-29: was learned_rhr_bpm, which is only the warm-up
+               fallback — so the column never showed the value the veto was
+               ACTUALLY judging against, and a whole round of analysis could not
+               tell when the histogram took over. Report the real reference and
+               fall back to the learner only before one exists. */
+            .rhr    = out->rhr_ref_bpm ? out->rhr_ref_bpm : out->learned_rhr_bpm,
             .worn   = (uint8_t)(input.is_worn ? 1 : 0),
             .rest   = (uint8_t)(s_env.rest_candidate ? 1 : 0),
             .fresh  = (uint8_t)(input.hr_is_fresh ? 1 : 0),
@@ -664,6 +716,15 @@ int sleep_service_register(void)
     s_env.last_local_day = -1;
 
     sleep_fusion_init(prv_resting_hr_estimate());
+    {
+        uint8_t saved = prv_rhr_bkp_load();
+        if (saved)
+        {
+            sleep_fusion_set_rhr_reference(saved);
+            LOG_I("sleep: resting reference restored from backup = %u bpm",
+                  (unsigned)saved);
+        }
+    }
 
     s_env.timer = rt_timer_create("sleep_fuse", prv_timer_cb, NULL,
                                   rt_tick_from_millisecond(SLEEP_SAMPLE_PERIOD_MS),
