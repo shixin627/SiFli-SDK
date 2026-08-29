@@ -59,7 +59,10 @@ BLE_BATTERY_LEVEL_UUID = "00002a19-0000-1000-8000-00805f9b34fb"
 # sparsely enough that a 12s window missed it five releases in a row,
 # while a 15s scan heard it first try. The cost of the longer window is
 # only paid when the watch really has gone silent.
-BLE_SCAN_SECONDS = 30
+# 180s: the fixture sits around -95 dBm, weak enough that a 30s window
+# missed a watch the scanner could plainly hear when given longer. It is
+# a deadline, not a sleep, so a healthy link still finishes in seconds.
+BLE_SCAN_SECONDS = 180
 BLE_CONNECT_TIMEOUT_SECONDS = 15
 # 30s, not 8: GET answers on UART well before the BLE stack is actually
 # radiating, so a short wait sends the scan looking for a radio that has not
