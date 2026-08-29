@@ -14,6 +14,7 @@
 #define LV_CHAT_PAGE_H
 
 #include <stdbool.h>
+#include <stddef.h>
 #include <stdint.h>
 
 #ifdef __cplusplus
@@ -32,11 +33,17 @@ extern "C"
     void chat_page_set_style_hermes(bool hermes);
 
     /* 聊天室內非邊緣的左右滑(2026-08-30,滑鼠抽屜 bot 房用,tileview 手感):
-       dir=+1 滑左(切更舊的 session)、-1 滑右(更新)。dry_run=true 只回答
-       「這個方向有沒有房」(彈回判定);false 才真的換(送 conv_open + 呼叫
-       chat_page_switch_session)。開房後由開房的人註冊;chat_page_close 歸零,
-       沒註冊的房(錶盤 '@' 房)行為不變。LVGL thread。 */
-    void chat_page_set_session_switcher(bool (*cb)(int dir, bool dry_run));
+       dir=+1 滑左(切更舊的 session)、-1 滑右(更新)。
+       commit=false = 查詢:這個方向有沒有鄰居?有就把 sid/title 填進 out(caller
+       可傳 NULL 略過)—— chat page 用它在拖曳當下把鄰居頁先渲染好,內容跟著滑進來。
+       commit=true = 升格完成:呼叫端更新自己的目前房狀態 + 送 conv_open(視覺已由
+       chat page 處理完,不要再動 UI)。
+       開房後由開房的人註冊;chat_page_close 歸零,沒註冊的房(錶盤 '@' 房)行為不變。
+       LVGL thread。 */
+    typedef bool (*chat_session_switch_cb_t)(int dir, bool commit,
+                                             char *out_sid, size_t sid_len,
+                                             char *out_title, size_t title_len);
+    void chat_page_set_session_switcher(chat_session_switch_cb_t cb);
 
     /* 就地換房:標題/清空泡泡/回「載入中」,不拆面板(滑入滑出動畫由 chat page
        自己駕駛)。switcher cb 的 dry_run=false 分支呼叫。LVGL thread。 */

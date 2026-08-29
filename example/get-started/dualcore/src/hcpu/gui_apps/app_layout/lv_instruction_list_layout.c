@@ -5867,7 +5867,8 @@ static char s_sd_chat_id[96];
 static char s_sd_chat_dev[SESSION_ID_LEN];
 static char s_sd_chat_bot[SESSION_BOT_LEN];
 
-static bool sd_chat_switch_cb(int dir, bool dry_run);
+static bool sd_chat_switch_cb(int dir, bool commit, char *out_sid, size_t sid_len,
+                              char *out_title, size_t title_len);
 
 static void sd_open_chat_async_cb(void *unused)
 {
@@ -5889,9 +5890,11 @@ static void sd_open_chat_async_cb(void *unused)
     chat_page_try_restore(s_sd_chat_id);
 }
 
-/* 聊天室左右滑的資料端:dry_run 只查同 bot(ts 新→舊)有沒有鄰居;真切換時送
-   conv_open + 就地換內容(滑入滑出由 chat page 做,不重建面板)。 */
-static bool sd_chat_switch_cb(int dir, bool dry_run)
+/* 聊天室左右滑的資料端:commit=false 查同 bot(ts 新→舊)的鄰居並回報 sid/title
+   (chat page 用它在拖曳當下先把鄰居頁渲染好);commit=true = chat page 已把鄰居頁
+   升格完成,這裡只更新目前房的狀態 + 送 conv_open,**不碰 UI**。 */
+static bool sd_chat_switch_cb(int dir, bool commit, char *out_sid, size_t sid_len,
+                              char *out_title, size_t title_len)
 {
     if (s_sd_chat_dev[0] == '\0')
         return false;
@@ -5900,12 +5903,24 @@ static bool sd_chat_switch_cb(int dir, bool dry_run)
     if (!session_list_neighbor(s_sd_chat_dev, s_sd_chat_bot, s_sd_chat_id, dir,
                                nid, sizeof(nid), ntitle, sizeof(ntitle)))
     {
-        if (!dry_run)
+        if (commit)
             LOG_W("[sd-chat] switch dir=%d: no neighbor (bot=%s)", dir, s_sd_chat_bot);
         return false;
     }
-    if (dry_run)
+    if (!commit)
+    {
+        if (out_sid != NULL && sid_len > 0)
+        {
+            strncpy(out_sid, nid, sid_len - 1);
+            out_sid[sid_len - 1] = '\0';
+        }
+        if (out_title != NULL && title_len > 0)
+        {
+            strncpy(out_title, ntitle, title_len - 1);
+            out_title[title_len - 1] = '\0';
+        }
         return true;
+    }
     strncpy(s_sd_chat_id, nid, sizeof(s_sd_chat_id) - 1);
     s_sd_chat_id[sizeof(s_sd_chat_id) - 1] = '\0';
     strncpy(s_sd_chat_title, ntitle, sizeof(s_sd_chat_title) - 1);
@@ -5913,9 +5928,6 @@ static bool sd_chat_switch_cb(int dir, bool dry_run)
     LOG_W("[sd-chat] switch dir=%d -> \"%s\" (%s)", dir, s_sd_chat_title, s_sd_chat_id);
     extern bool commu_send_conv_open(const char *title, const char *id, uint8_t index);
     commu_send_conv_open(s_sd_chat_title, s_sd_chat_id, 0);
-    chat_page_switch_session(s_sd_chat_title);
-    /* 快取命中=內容跟著滑進來;沒看過的房才停在「載入中」等桌面。 */
-    chat_page_try_restore(s_sd_chat_id);
     return true;
 }
 

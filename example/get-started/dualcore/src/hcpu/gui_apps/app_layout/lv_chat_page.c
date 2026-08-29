@@ -649,11 +649,12 @@ void chat_page_start_voice_input(void)
    switcher 的房(滑鼠抽屜 bot 房)才現身 —— 錶盤 '@' 房保持原生捲動手感。
    左緣右滑仍是返回:native 邊緣偵測物件疊在 catcher 之上。 */
 static lv_obj_t *s_swipe_catcher = NULL;
-/* dry_run=true 只問「這個方向有沒有房」;false 才真的切(送 conv_open +
-   chat_page_switch_session)。dir=+1 滑左(更舊)、-1 滑右(更新)。 */
-static bool (*s_session_switch_cb)(int dir, bool dry_run) = NULL;
+/* commit=false 只查詢:這個方向有沒有鄰居?有就把 sid/title 填進 out(可 NULL)。
+   commit=true 才真的換(呼叫端更新自己的狀態 + 送 conv_open;視覺已由 chat page
+   處理完)。dir=+1 滑左(更舊)、-1 滑右(更新)。 */
+static chat_session_switch_cb_t s_session_switch_cb = NULL;
 
-void chat_page_set_session_switcher(bool (*cb)(int dir, bool dry_run))
+void chat_page_set_session_switcher(chat_session_switch_cb_t cb)
 {
     s_session_switch_cb = cb;
     if (s_swipe_catcher != NULL && lv_obj_is_valid(s_swipe_catcher))
@@ -728,16 +729,125 @@ static lv_point_t s_hs_last;
 static int s_hs_dx, s_hs_dy;
 static int s_hs_mode;
 static int s_hs_last_vy; /* 慣性:最後一拍的垂直速度 */
-static int s_hs_commit_dir;
 
-/* 內容跟標題一起平移(founder 2026-08-30:「標題也要跟著左右動」)。anim 的 var
-   仍掛 s_msg_list(刪除動畫時好找),exec 統一走這裡。 */
+/* ── 鄰居預建頁(2026-08-30 第二版,founder:「滑動過程中就要看到下一份的內容
+   跟著進來」)──
+   拖曳一判定成 HSWIPE 就把該方向的鄰居 session 用快取**先渲染成第二頁**(標題+
+   轉錄容器,擺在 ±螢幕寬),之後兩頁一起跟手平移 —— 內容在滑動過程中就進來,
+   放開只是把動畫走完、把第二頁升格成現任(舊頁刪除、conv_open 補發)。快取沒有
+   的房間第二頁畫「載入中…」,live conv_state 落地後照常補畫。 */
+static lv_obj_t *s_next_list = NULL;
+static lv_obj_t *s_next_title = NULL;
+static int s_next_dir = 0; /* s_next_* 是哪個方向的鄰居;0 = 沒建 */
+static char s_next_sid[64];
+static char s_next_title_txt[64];
+
+static lv_obj_t *chat_add_hermes_turn(lv_obj_t *parent, const char *text, bool mine);
+
+static void chat_next_page_destroy(void)
+{
+    if (s_next_list != NULL && lv_obj_is_valid(s_next_list))
+        lv_obj_del(s_next_list);
+    if (s_next_title != NULL && lv_obj_is_valid(s_next_title))
+        lv_obj_del(s_next_title);
+    s_next_list = NULL;
+    s_next_title = NULL;
+    s_next_dir = 0;
+}
+
+/* 跟 chat_page_open 的訊息容器同幾何的第二個轉錄容器。 */
+static lv_obj_t *chat_transcript_container(void)
+{
+    lv_obj_t *list = lv_obj_create(s_chat_panel);
+    lv_obj_set_size(list, LV_HOR_RES - 26, LV_VER_RES - 78);
+    lv_obj_align(list, LV_ALIGN_TOP_MID, 0, 66);
+    lv_obj_set_style_bg_opa(list, LV_OPA_TRANSP, 0);
+    lv_obj_set_style_border_width(list, 0, 0);
+    lv_obj_set_scroll_dir(list, LV_DIR_VER);
+    lv_obj_set_scrollbar_mode(list, LV_SCROLLBAR_MODE_OFF);
+    lv_obj_set_flex_flow(list, LV_FLEX_FLOW_COLUMN);
+    lv_obj_set_style_pad_row(list, 6, 0);
+    lv_obj_set_style_pad_hor(list, 2, 0);
+    lv_obj_set_style_pad_top(list, 180, 0);
+    lv_obj_set_style_pad_bottom(list, 180, 0);
+    lv_obj_clear_flag(list, LV_OBJ_FLAG_CLICKABLE); /* catcher 在上面收手勢 */
+    return list;
+}
+
+/* 建 [dir] 方向的鄰居頁;沒有鄰居就不建(拖曳變 rubber-band,放開彈回)。 */
+static void chat_next_page_build(int dir)
+{
+    if (s_next_dir == dir)
+        return;
+    chat_next_page_destroy();
+    if (s_session_switch_cb == NULL)
+        return;
+    char sid[64];
+    char title[64];
+    sid[0] = '\0';
+    title[0] = '\0';
+    if (!s_session_switch_cb(dir, false, sid, sizeof(sid), title, sizeof(title)))
+        return;
+    lv_obj_t *list = chat_transcript_container();
+    chat_cache_entry_t *e = chat_cache_find(sid);
+    if (e != NULL && e->msg_count > 0)
+    {
+        for (int i = 0; i < e->msg_count && i < CHAT_MAX_MSGS; i++)
+        {
+            const chat_msg_t *m = &e->msgs[i];
+            const char *text = (m->off <= CHAT_TEXT_POOL) ? (e->pool + m->off) : "";
+            bool mine = (strcmp(m->role, "user") == 0 || strcmp(m->role, "outgoing") == 0);
+            chat_add_hermes_turn(list, text, mine);
+        }
+        lv_obj_update_layout(list);
+        lv_obj_scroll_to_y(list, LV_COORD_MAX, LV_ANIM_OFF); /* 停在最新一則 */
+        e->used_tick = (uint32_t)rt_tick_get();
+    }
+    else
+    {
+        lv_obj_t *hint = lv_label_create(list);
+        lv_label_set_text(hint, "載入中…");
+        lv_obj_set_style_text_color(hint, lv_color_hex(0x888888), 0);
+    }
+    lv_obj_t *tl = lv_label_create(s_chat_panel);
+    lv_label_set_long_mode(tl, LV_LABEL_LONG_DOT);
+    lv_obj_set_width(tl, LV_HOR_RES - 120);
+    lv_obj_set_style_text_align(tl, LV_TEXT_ALIGN_CENTER, 0);
+    lv_obj_set_style_text_color(tl, lv_color_hex(0xFFFFFF), 0);
+    lv_label_set_text(tl, title[0] ? title : "聊天室");
+    lv_obj_align(tl, LV_ALIGN_TOP_MID, 0, 18);
+    /* z-order:壓回訊息層 —— 剛建的物件在最上面,會蓋住 catcher/麥克風/錄音 UI。 */
+    if (s_msg_list != NULL && lv_obj_is_valid(s_msg_list))
+    {
+        lv_obj_move_to_index(list, (int32_t)lv_obj_get_index(s_msg_list) + 1);
+        lv_obj_move_to_index(tl, (int32_t)lv_obj_get_index(list) + 1);
+    }
+    s_next_list = list;
+    s_next_title = tl;
+    s_next_dir = dir;
+    strncpy(s_next_sid, sid, sizeof(s_next_sid) - 1);
+    s_next_sid[sizeof(s_next_sid) - 1] = '\0';
+    strncpy(s_next_title_txt, title, sizeof(s_next_title_txt) - 1);
+    s_next_title_txt[sizeof(s_next_title_txt) - 1] = '\0';
+    LOG_W("[chat] next page built dir=%d sid=%.24s cached=%d", dir, sid,
+          (int)(e != NULL && e->msg_count > 0));
+}
+
+/* 兩頁一起平移:現任(內容+標題)在 x,鄰居在 x±螢幕寬。 */
 static void chat_hslide_apply(lv_coord_t x)
 {
     if (s_msg_list != NULL && lv_obj_is_valid(s_msg_list))
         lv_obj_set_style_translate_x(s_msg_list, x, 0);
     if (s_title_label != NULL && lv_obj_is_valid(s_title_label))
         lv_obj_set_style_translate_x(s_title_label, x, 0);
+    if (s_next_dir != 0)
+    {
+        lv_coord_t off = (s_next_dir > 0) ? LV_HOR_RES : -LV_HOR_RES;
+        if (s_next_list != NULL && lv_obj_is_valid(s_next_list))
+            lv_obj_set_style_translate_x(s_next_list, x + off, 0);
+        if (s_next_title != NULL && lv_obj_is_valid(s_next_title))
+            lv_obj_set_style_translate_x(s_next_title, x + off, 0);
+    }
 }
 
 static void chat_hslide_exec(void *var, int32_t v)
@@ -746,29 +856,67 @@ static void chat_hslide_exec(void *var, int32_t v)
     chat_hslide_apply((lv_coord_t)v);
 }
 
-static void chat_hslide_in(void)
-{
-    if (s_msg_list == NULL || !lv_obj_is_valid(s_msg_list))
-        return;
-    lv_coord_t from = (s_hs_commit_dir > 0) ? LV_HOR_RES : -LV_HOR_RES;
-    chat_hslide_apply(from);
-    lv_anim_t a;
-    lv_anim_init(&a);
-    lv_anim_set_var(&a, s_msg_list);
-    lv_anim_set_values(&a, from, 0);
-    lv_anim_set_time(&a, 240);
-    lv_anim_set_path_cb(&a, lv_anim_path_ease_out);
-    lv_anim_set_exec_cb(&a, chat_hslide_exec);
-    lv_anim_start(&a);
-}
-
-static void chat_hslide_out_done(lv_anim_t *a)
+/* 動畫走完(現任滑出、鄰居落到 0):鄰居升格成現任。舊頁刪除;pending 換成鄰居的
+   快取內容(遲到的 REFRESH_CHAT 重畫的才是**這間房**的東西);房間狀態(揭露/等待/
+   clarify/回音)全歸零;最後補發 conv_open(commit=true 交給 switcher 的資料端)。 */
+static void chat_hslide_commit_done(lv_anim_t *a)
 {
     (void)a;
-    /* 內容換掉(cb 會呼叫 chat_page_switch_session),再從另一側滑進來。 */
+    int dir = s_next_dir;
+    if (dir == 0 || s_next_list == NULL)
+        return;
+    if (s_msg_list != NULL && lv_obj_is_valid(s_msg_list))
+        lv_obj_del(s_msg_list);
+    if (s_title_label != NULL && lv_obj_is_valid(s_title_label))
+        lv_obj_del(s_title_label);
+    s_msg_list = s_next_list;
+    s_title_label = s_next_title;
+    s_next_list = NULL;
+    s_next_title = NULL;
+    s_next_dir = 0;
+    lv_obj_set_style_translate_x(s_msg_list, 0, 0);
+    if (s_title_label != NULL)
+        lv_obj_set_style_translate_x(s_title_label, 0, 0);
+    /* pending/池 ← 鄰居的快取:內容已經畫在升格的容器裡,這一步只是讓之後任何
+       整份重畫畫出同樣的東西,而不是上一間房的殘影。 */
+    chat_cache_entry_t *e = chat_cache_find(s_next_sid);
+    if (e != NULL && e->msg_count > 0)
+    {
+        memcpy(s_text_pool, e->pool, sizeof(s_text_pool));
+        memcpy(s_pending_msgs, e->msgs, sizeof(s_pending_msgs));
+        s_pool_used = e->pool_used;
+        s_pending_msg_count = e->msg_count;
+        if (s_loading_label != NULL && lv_obj_is_valid(s_loading_label))
+            lv_obj_add_flag(s_loading_label, LV_OBJ_FLAG_HIDDEN);
+    }
+    else
+    {
+        s_pending_msg_count = 0;
+        s_pool_used = 0;
+        /* 房裡只有「載入中…」提示,共用的置中 loading label 不再重複顯示。 */
+    }
+    s_pending_sending = false;
+    s_appr_pending = false;
+    s_local_echo[0] = 0;
+    s_awaiting_reply = false;
+    s_live_turn = false;
+    chat_wait_stop();
+    chat_type_reset();
+    s_last_rebuild_tick = 0;
+    if (s_rebuild_defer != NULL)
+    {
+        lv_timer_del(s_rebuild_defer);
+        s_rebuild_defer = NULL;
+    }
     if (s_session_switch_cb != NULL)
-        s_session_switch_cb(s_hs_commit_dir, false);
-    chat_hslide_in();
+        s_session_switch_cb(dir, true, NULL, 0, NULL, 0);
+}
+
+static void chat_hslide_cancel_done(lv_anim_t *a)
+{
+    (void)a;
+    chat_next_page_destroy();
+    chat_hslide_apply(0);
 }
 
 static void chat_hslide_settle(int from, int to, uint16_t ms, lv_anim_ready_cb_t done)
@@ -822,9 +970,12 @@ static void chat_swipe_catcher_cb(lv_event_t *e)
         s_hs_dy = 0;
         s_hs_last_vy = 0;
         s_hs_mode = CHAT_HS_MODE_IDLE;
-        /* 手指一按住就停掉尚未走完的平移動畫,別跟拖曳打架。 */
+        /* 手指一按住就停掉尚未走完的平移動畫,別跟拖曳打架。動畫被中斷 = 升格/
+           退場的 ready cb 不會跑,把鄰居頁收掉、回到乾淨的 0 位。 */
         if (s_msg_list != NULL)
             lv_anim_del(s_msg_list, chat_hslide_exec);
+        chat_next_page_destroy();
+        chat_hslide_apply(0);
         return;
     }
     if (code == LV_EVENT_PRESSING)
@@ -862,6 +1013,10 @@ static void chat_swipe_catcher_cb(lv_event_t *e)
         else if (s_hs_mode == CHAT_HS_MODE_HSWIPE && s_msg_list != NULL &&
                  lv_obj_is_valid(s_msg_list))
         {
+            /* 鄰居頁跟拖曳方向走:一動就先建好(內容在滑動過程中就看得到),
+               中途反向就換建另一側的。 */
+            if (s_hs_dx != 0)
+                chat_next_page_build((s_hs_dx < 0) ? 1 : -1);
             chat_hslide_apply((lv_coord_t)s_hs_dx);
         }
         return;
@@ -872,19 +1027,18 @@ static void chat_swipe_catcher_cb(lv_event_t *e)
         s_hs_mode = CHAT_HS_MODE_IDLE;
         if (mode == CHAT_HS_MODE_HSWIPE)
         {
-            int dir = (s_hs_dx <= -CHAT_HS_COMMIT_PX) ? 1
-                      : (s_hs_dx >= CHAT_HS_COMMIT_PX) ? -1
-                                                       : 0;
-            if (dir != 0 && s_session_switch_cb != NULL && s_session_switch_cb(dir, true))
+            int dir = (s_hs_dx < 0) ? 1 : -1;
+            bool commit = (LV_ABS(s_hs_dx) >= CHAT_HS_COMMIT_PX) &&
+                          s_next_dir == dir && s_next_list != NULL;
+            if (commit)
             {
-                s_hs_commit_dir = dir;
                 chat_hslide_settle(s_hs_dx, (dir > 0) ? -LV_HOR_RES : LV_HOR_RES, 160,
-                                   chat_hslide_out_done);
+                                   chat_hslide_commit_done);
             }
             else
             {
-                /* 沒過門檻 / 這個方向沒有房了:彈回原位。 */
-                chat_hslide_settle(s_hs_dx, 0, 200, NULL);
+                /* 沒過門檻 / 這個方向沒有房了:彈回原位,鄰居頁退場。 */
+                chat_hslide_settle(s_hs_dx, 0, 200, chat_hslide_cancel_done);
             }
         }
         else if (mode == CHAT_HS_MODE_VSCROLL && s_msg_list != NULL &&
@@ -1196,6 +1350,9 @@ void chat_page_close(void)
     s_transcript_pill = NULL;
     s_input_scrim = NULL;
     s_swipe_catcher = NULL;      /* 隨面板一起被 lv_obj_del 帶走 */
+    s_next_list = NULL;          /* 同上(panel 子物件) */
+    s_next_title = NULL;
+    s_next_dir = 0;
     s_session_switch_cb = NULL;  /* 重開時由開房的人重新註冊 */
     s_hs_mode = CHAT_HS_MODE_IDLE;
     chat_type_reset();
