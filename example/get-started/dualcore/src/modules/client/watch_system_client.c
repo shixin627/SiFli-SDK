@@ -336,7 +336,17 @@ static int watch_sys_service_callback(data_callback_arg_t *arg)
     {
         UNPACK_DATA(arg, watch_sys_service_data_ind_t, data_ind);
         bool status = (bool)data_ind->data;
-        LOG_I("[WATCH_SOFT_ADT] soft detect status:%d", status);
+        /* LOG_W, not LOG_I, on purpose. Worn/not-worn should change about twice
+           a day, so this is not chatty — and it is the ONLY place the wear
+           verdict is observable at all: wear_detect runs on the LCPU whose
+           console is uart4 and is not wired on the bench, and the release log
+           level is Warning. 2026-08-30 was spent unable to answer "is the
+           detector flipping?" on a watch sitting on the desk in front of us,
+           while it was in fact flipping 25-52 times a day. A state change this
+           rare and this load-bearing should be visible without a special
+           build. (The LCPU-side reasoning still needs wear_diag; this line only
+           says what the verdict became.) */
+        LOG_W("[WATCH_SOFT_ADT] soft detect status:%d", status);
         SkaiWatchSys.flag_field.is_wearing = status;
         break;
     }
