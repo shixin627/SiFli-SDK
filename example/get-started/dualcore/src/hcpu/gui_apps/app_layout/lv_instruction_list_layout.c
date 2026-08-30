@@ -5870,6 +5870,76 @@ static char s_sd_chat_bot[SESSION_BOT_LEN];
 static bool sd_chat_switch_cb(int dir, bool commit, char *out_sid, size_t sid_len,
                               char *out_title, size_t title_len);
 
+/* ── 錶盤左頁的 bot 房:跟上面滑鼠抽屜那組同形狀,差別只在「哪一台設備」的來源 ──
+   抽屜那條開房前就知道是哪一台(s_single_device_id);錶盤左頁的清單是跨設備攤平的,
+   點下去手上只有 conv id,所以用 session_list_owner_of() 反查設備與 bot。查不到就
+   不註冊 —— 清單與 pager 儲存不同步(舊列還在畫面上、桌面已刪)時,寧可沒有左右滑,
+   也不要把使用者滑到一間不存在的房。 */
+static char s_wf_chat_id[SESSION_ID_LEN];
+static char s_wf_chat_dev[SESSION_ID_LEN];
+static char s_wf_chat_bot[SESSION_BOT_LEN];
+
+static bool wf_chat_switch_cb(int dir, bool commit, char *out_sid, size_t sid_len,
+                              char *out_title, size_t title_len)
+{
+    if (s_wf_chat_dev[0] == '\0')
+        return false;
+    char nid[SESSION_ID_LEN];
+    char ntitle[SESSION_TITLE_LEN];
+    if (!session_list_neighbor(s_wf_chat_dev, s_wf_chat_bot, s_wf_chat_id, dir,
+                               nid, sizeof(nid), ntitle, sizeof(ntitle)))
+    {
+        if (commit)
+            LOG_W("[wf-chat] switch dir=%d: no neighbor (bot=%s)", dir, s_wf_chat_bot);
+        return false;
+    }
+    if (!commit)
+    {
+        if (out_sid != NULL && sid_len > 0)
+        {
+            strncpy(out_sid, nid, sid_len - 1);
+            out_sid[sid_len - 1] = '\0';
+        }
+        if (out_title != NULL && title_len > 0)
+        {
+            strncpy(out_title, ntitle, title_len - 1);
+            out_title[title_len - 1] = '\0';
+        }
+        return true;
+    }
+    /* commit:chat page 已經把鄰居頁升格完成,這裡只更新狀態 + 告訴桌面,不碰 UI。 */
+    strncpy(s_wf_chat_id, nid, sizeof(s_wf_chat_id) - 1);
+    s_wf_chat_id[sizeof(s_wf_chat_id) - 1] = '\0';
+    commu_send_conv_open(ntitle, nid, 0);
+    LOG_I("[wf-chat] switched dir=%d -> %s", dir, nid);
+    return true;
+}
+
+static void wf_chat_bind_switcher(const char *conv_id, const char *title)
+{
+    (void)title;
+    s_wf_chat_dev[0] = '\0';
+    s_wf_chat_bot[0] = '\0';
+    s_wf_chat_id[0] = '\0';
+    /* 只有 Hermes 的 conv: 房有 bot;其他 '@' 房(WhatsApp/Messenger)不掛。 */
+    if (conv_id == NULL || strncmp(conv_id, "conv:", 5) != 0)
+    {
+        chat_page_set_session_switcher(NULL);
+        return;
+    }
+    if (!session_list_owner_of(conv_id, s_wf_chat_dev, sizeof(s_wf_chat_dev),
+                               s_wf_chat_bot, sizeof(s_wf_chat_bot)))
+    {
+        LOG_W("[wf-chat] no owner for %s — 左右滑不掛", conv_id);
+        chat_page_set_session_switcher(NULL);
+        return;
+    }
+    strncpy(s_wf_chat_id, conv_id, sizeof(s_wf_chat_id) - 1);
+    s_wf_chat_id[sizeof(s_wf_chat_id) - 1] = '\0';
+    chat_page_set_session_switcher(wf_chat_switch_cb);
+    LOG_I("[wf-chat] switcher armed dev=%s bot=%s", s_wf_chat_dev, s_wf_chat_bot);
+}
+
 static void sd_open_chat_async_cb(void *unused)
 {
     (void)unused;
@@ -6122,6 +6192,13 @@ static void list_item_activate(list_item_t *item)
             chat_page_set_style_hermes(strncmp(item->id, "conv:", 5) == 0);
         }
         chat_page_open(item->title, item->icon);
+        /* 左右滑=切同 bot 的上一個/下一個 session,跟滑鼠抽屜的 bot 房同一個手感
+           (founder 2026-08-30:「點的是 bot…也要像滑鼠 app 裡一樣開啟可以左右切換同
+           bot session 的聊天室」)。catcher 與換房動畫都在 chat page,這裡只註冊資料端;
+           chat_page_open 內含的 close 會把 cb 歸零,所以每次開房都要重新註冊。
+           非 Hermes 的 '@' 房(WhatsApp/Messenger)沒有 bot 的概念 → 不註冊,catcher
+           維持 HIDDEN、保留原生捲動手感。 */
+        wf_chat_bind_switcher(item->id, item->title);
         return;
     }
 
@@ -6260,6 +6337,13 @@ static void on_tap(void)
             chat_page_set_style_hermes(strncmp(item->id, "conv:", 5) == 0);
         }
         chat_page_open(item->title, item->icon);
+        /* 左右滑=切同 bot 的上一個/下一個 session,跟滑鼠抽屜的 bot 房同一個手感
+           (founder 2026-08-30:「點的是 bot…也要像滑鼠 app 裡一樣開啟可以左右切換同
+           bot session 的聊天室」)。catcher 與換房動畫都在 chat page,這裡只註冊資料端;
+           chat_page_open 內含的 close 會把 cb 歸零,所以每次開房都要重新註冊。
+           非 Hermes 的 '@' 房(WhatsApp/Messenger)沒有 bot 的概念 → 不註冊,catcher
+           維持 HIDDEN、保留原生捲動手感。 */
+        wf_chat_bind_switcher(item->id, item->title);
         return;
     }
 
@@ -6612,6 +6696,15 @@ void instruction_list_session_inject_end(void)
 static bool search_freeze_active(void)
 {
     return s_text_filter[0] != '\0' && !s_session_inject_bypass;
+}
+
+/* session pager 用它決定 conv 段要列 Bot 還是列 session:平常一列一個 Bot,
+   **搜尋時列 session**。搜尋是拿查詢字比對「列的標題」的,列成 Bot 名的話,搜
+   session 標題會比中一列卻看到 bot 名字,等於搜尋失效(founder 2026-08-24 的
+   「除非我有搜尋 session」也是同一個意思)。 */
+bool instruction_list_filter_active(void)
+{
+    return s_text_filter[0] != '\0';
 }
 
 void clear_custom_instructions(void)

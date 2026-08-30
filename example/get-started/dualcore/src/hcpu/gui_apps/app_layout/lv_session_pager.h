@@ -81,6 +81,11 @@ extern "C"
     bool session_list_lookup(const char *device_id, const char *conv_id,
                              char *out_title, size_t title_len,
                              char *out_bot, size_t bot_len);
+    /** 反查一筆 session 的擁有者:掃過**所有**設備,填 device 與 bot(皆可 NULL)。
+        錶盤左頁的清單跨設備,點下去時只有 conv id,用這支補出另外兩個查詢要的 device。 */
+    bool session_list_owner_of(const char *conv_id,
+                               char *out_device, size_t device_len,
+                               char *out_bot, size_t bot_len);
     /** [bot] 最新(ts 最大)的 session;bot=="" 或 NULL = 不過濾。 */
     bool session_list_latest_for_bot(const char *device_id, const char *bot,
                                      char *out_id, size_t id_len,

@@ -678,6 +678,47 @@ static void sp_inject_sessions_into_actions(void)
     for (int d = 0; d < SESSION_DEVICE_MAX; d++)
         vis_n[d] = (d < s_device_count) ? sp_visible_for_device(d, vis[d], SESSION_VISIBLE_MAX) : 0;
 
+    /* ── 一列一個 BOT(founder 2026-08-30:「改成顯示前幾個最新的 bot」)──────────
+       同一個 Bot 被談過六次就佔掉六列、把別的 Bot 擠出畫面。代表列 = 該 Bot 最新的那個
+       session,所以列上的 id 仍是真的 session key,點下去的路由一個位元都不用改;左右滑
+       切同 Bot 的其他 session 由 chat page 的 switcher 接手(wf_chat_bind_switcher)。
+
+       收斂做在 vis[][] 而不是下面的 order[]:移除迴圈也是拿 vis 判斷「這輪還在不在」,
+       兩邊不同步會留下清不掉的殘列(這份集合是 conv 段的唯一真相,見上面註解)。
+
+       vis 已經是 ts 新→舊,所以每個 bot 取第一次出現 = 最新那筆。bot 為空的(舊桌面沒送
+       profile)不併 —— 它們彼此不是「同一個 Bot」,併起來會憑空少掉幾間房。
+
+       搜尋開著時整段跳過:那時列的是比中的 session,標題也要留 session 的(見
+       instruction_list_filter_active)。 */
+    {
+        extern bool instruction_list_filter_active(void);
+        if (!instruction_list_filter_active())
+        {
+            for (int d = 0; d < s_device_count; d++)
+            {
+                uint8_t kept[SESSION_VISIBLE_MAX];
+                int kn = 0;
+                for (int v = 0; v < vis_n[d]; v++)
+                {
+                    const session_meta_t *s = &s_devices[d].items[vis[d][v]];
+                    bool dup = false;
+                    if (s->bot[0] != '\0')
+                    {
+                        for (int k = 0; k < kn && !dup; k++)
+                            dup = (strncmp(s_devices[d].items[kept[k]].bot, s->bot,
+                                           SESSION_BOT_LEN) == 0);
+                    }
+                    if (!dup)
+                        kept[kn++] = vis[d][v];
+                }
+                for (int k = 0; k < kn; k++)
+                    vis[d][k] = kept[k];
+                vis_n[d] = kn;
+            }
+        }
+    }
+
     /* 移除:清單裡 conv: 開頭、但這一輪沒被挑中的(桌面刪了 session、或落在最新 5 筆
        之外 / 搜尋沒比中)。 */
     for (int i = (int)return_total_list_count() - 1; i >= 0; i--)
@@ -737,7 +778,13 @@ static void sp_inject_sessions_into_actions(void)
         const session_meta_t *s = &s_devices[order[o].slot].items[order[o].idx];
         /* R11(founder):來源設備不併進標題,改由 instruction list 在標題右下角
            畫小字半透明副標(session_list_device_name_for 反查)。 */
-        const char *title = s->title[0] ? s->title : "Session";
+        /* 一列一個 Bot 時列的名字就是 Bot 的名字(2026-08-30);搜尋時列的是 session,
+           標題留 session 的,否則查詢字比中了卻顯示別的字。沒有 bot 的舊資料一律
+           退回 session 標題。 */
+        extern bool instruction_list_filter_active(void);
+        const char *title = (!instruction_list_filter_active() && s->bot[0])
+                                ? s->bot
+                                : (s->title[0] ? s->title : "Session");
         bool same = false;
         uint8_t n = return_total_list_count();
         for (uint8_t i = 0; i < n; i++)
@@ -885,6 +932,39 @@ bool session_list_lookup(const char *device_id, const char *conv_id,
             out_bot[bot_len - 1] = '\0';
         }
         return true;
+    }
+    return false;
+}
+
+/* 錶盤左頁的清單是**跨設備**的(注入進 actions 清單時把每台的可見筆數攤在一起),
+   所以點下一列時手上只有 conv id,沒有它屬於哪台。上面那三支查詢都要具體的
+   device_id —— 這支補上反查:掃過所有設備,回報擁有者與該筆的 bot。
+   同一個 conv id 不會出現在兩台上(id 由手機端加上 device/profile 前綴)。 */
+bool session_list_owner_of(const char *conv_id,
+                           char *out_device, size_t device_len,
+                           char *out_bot, size_t bot_len)
+{
+    if (conv_id == NULL || conv_id[0] == '\0')
+        return false;
+    for (int d = 0; d < s_device_count; d++)
+    {
+        const device_sessions_t *dev = &s_devices[d];
+        for (int k = 0; k < dev->count; k++)
+        {
+            if (strncmp(dev->items[k].id, conv_id, SESSION_ID_LEN) != 0)
+                continue;
+            if (out_device != NULL && device_len > 0)
+            {
+                strncpy(out_device, dev->id, device_len - 1);
+                out_device[device_len - 1] = '\0';
+            }
+            if (out_bot != NULL && bot_len > 0)
+            {
+                strncpy(out_bot, dev->items[k].bot, bot_len - 1);
+                out_bot[bot_len - 1] = '\0';
+            }
+            return true;
+        }
     }
     return false;
 }
