@@ -6,19 +6,30 @@
  *
  *         Principle (matches mainstream wearables): the PULSE is only ever
  *         required to confirm the FIRST wear of a session ("cold entry").
- *         After that, staying worn and re-becoming worn are decided purely
- *         by CONTACT evidence — the PPG DC level measured against a
- *         per-session learned baseline — because deep-sleep perfusion is
- *         too weak to demand a pulse (overnight CSV 2026-06-11: 82% of the
- *         night falsely OFF, 5.5 h stuck, 48 probes all failing the pulse
- *         gate while DC sat solidly in the worn band).
+ *         Staying worn is decided by CONTACT evidence — the PPG DC level
+ *         against a per-session learned baseline. RE-becoming worn needs both
+ *         contact and a minimum pulse.
+ *
+ *         2026-08-30: that last clause is new, and it reverses the reasoning
+ *         below. Warm re-entry used to take DC alone because "deep-sleep
+ *         perfusion is too weak to demand a pulse" (overnight CSV 2026-06-11:
+ *         82% of the night falsely OFF, 5.5 h stuck, 48 probes all failing the
+ *         pulse gate while DC sat in the worn band). That diagnosis was right
+ *         about the symptom and wrong about the cause: the gate was 0.0010
+ *         while a real sleeping wrist's median perfusion is 0.00083. The
+ *         threshold was above its own signal. With it moved to 0.0004 (see
+ *         PI_THD_TO_ON) a pulse is affordable everywhere, and the exemption
+ *         that made a table indistinguishable from a wrist is no longer the
+ *         price of sleeping through the night.
  *
  *         State machine:
  *         - COLD OFF→ON: windowed pulse gate (PI ≥ threshold + variability,
  *           3-of-8 evals). Seeds worn_dc_base = current DC.
- *         - WARM OFF→ON: DC back inside [0.88, 1.15] × worn_dc_base for
- *           3-of-8 evals → ON, no pulse. This is what makes every wrong OFF
- *           cheap (seconds) instead of catastrophic (hours).
+ *         - WARM OFF→ON: DC back inside [0.88, 1.15] × worn_dc_base AND a
+ *           minimum pulse, for 3-of-8 evals → ON. Still what makes a wrong OFF
+ *           cheap (seconds) instead of catastrophic (hours) — 98% of
+ *           genuinely-worn samples clear the pulse floor — while no longer
+ *           re-admitting a desk.
  *         - ON hold: DC above max(0.80 × base, DC_ABS_FLOOR). Baseline EMA
  *           adapts slowly while in-band (per-unit / per-fit calibration —
  *           measured worn DC differs >4k between our two units).
@@ -28,12 +39,15 @@
  *           and freezes the EMA, so a charging cradle can't be learned or
  *           warm-recovered into.
  *
- *         Known accepted trade-off: a surface whose DC coincides with the
- *         learned worn band can warm-recover to a false ON (single green
- *         channel cannot separate skin from such a surface without a pulse;
- *         mainstream solves this with IR-ratio or capacitive hardware we
- *         don't have). Product priority is sleep continuity > table
- *         rejection; sessions are bounded by charging and the settings
+ *         That trade-off used to be accepted and documented here as "a surface
+ *         whose DC coincides with the learned worn band can warm-recover to a
+ *         false ON". It was not theoretical: on the bench unit the detector
+ *         flipped ON/OFF 25-52 times a day (2026-08-29: 52 ON, 50 OFF) with a
+ *         median PI of 0.000387 at every ON, and a watch left on a desk was
+ *         held "worn" for hours while the HR pipeline published ~150 bpm of
+ *         noise into it. For a wearer that is a watch on the nightstand
+ *         inventing a night's sleep. Requiring the pulse here is what ends it.
+ *         Sessions are still bounded by charging and the settings
  *         toggle exists as an escape hatch. See ADR 0015.
  ******************************************************************************
  */
@@ -85,11 +99,32 @@
 #define BASE_EMA_UP_SHIFT       8       /* up:   base += (dc-base)/256 */
 
 /* Perfusion Index threshold (AC_pp / DC_mean) — COLD ENTRY ONLY. A live
- * pulse is required just once per session, to prove the first contact is a
- * wrist and not a table. It is never required to stay ON or to re-enter ON
- * (deep-sleep perfusion cannot deliver it; see file header).
- * Measured: wearing PI spikes > 0.001, table noise tops ~0.0005-0.0008. */
-#define PI_THD_TO_ON            0.0010f
+ * pulse proves the contact is a wrist and not a table. Required for cold
+ * entry AND for warm re-entry (2026-08-30 — see below).
+ *
+ * 2026-08-30: was 0.0010f, which sat ABOVE the signal it was gating. Measured
+ * on wear_diag against two windows whose truth is certain — the wearer's own
+ * reported sleep (2026-08-30 04:00-11:20, 191 samples) and the bench watch
+ * lying on a desk while being reflashed (2026-08-29 15:00 - 08-30 04:00, 325):
+ *
+ *              worn wrist        desk
+ *   DC median     47356         42904     <- 11% apart; the +-12/15% band
+ *                                            cannot separate these at all
+ *   PI median   0.000834      0.000281    <- this can
+ *
+ * A real sleeping wrist's median perfusion is 0.00083. The gate was 0.00100.
+ * So the pulse test passed on only 36% of genuinely-worn samples, and the old
+ * comment's "deep-sleep perfusion cannot deliver it" was true — of that
+ * threshold, not of the signal. Sweeping the threshold against those two
+ * windows: 0.0004 accepts 98% of worn samples and rejects 81% of desk ones
+ * (separation 79%), against 36%/85% (separation 21%) at 0.0010.
+ *
+ * This also explains ADR-0015's "48 probe windows, none cleared PI 0.0010":
+ * not weak physiology, a threshold set above the median of what it measures.
+ *
+ * Because the gate now sits where the signal is, warm re-entry can demand a
+ * pulse too — which is what actually stops a desk from being re-entered. */
+#define PI_THD_TO_ON            0.0004f
 
 /* IMU variance threshold (m/s^2)^2: "the wrist is moving" marker, used to
  * pick the fast OFF hysteresis on take-off-shaped DC drops. */
@@ -641,13 +676,38 @@ static int evaluate_once(uint32_t now)
     }
 
     /* WARM re-entry: this session already proved a wrist once (pulse-seeded
-     * baseline). DC back inside the worn band IS the wrist returning — no
-     * pulse demanded, deep sleep cannot deliver one. Blocked while charging
-     * so a cradle is never warm-recovered into. The DC_ABS_FLOOR clamp keeps
-     * the entry set a subset of the hold set (entry below the hold
-     * threshold would oscillate ON/OFF deterministically). */
+     * baseline), so DC back inside the worn band is evidence the wrist has
+     * returned. Blocked while charging so a cradle is never warm-recovered
+     * into. The DC_ABS_FLOOR clamp keeps the entry set a subset of the hold
+     * set (entry below the hold threshold would oscillate ON/OFF).
+     *
+     * 2026-08-30: a minimum pulse is now demanded here too. This branch used
+     * to take DC alone, and DC alone cannot tell a desk from a wrist — measured
+     * medians are 42904 vs 47356, 11% apart, well inside the +-12/15% band. So
+     * a watch put down on a table kept being re-entered as "worn": on the bench
+     * unit the detector flipped ON/OFF 25-52 times a day (2026-08-29: 52 ON,
+     * 50 OFF), every ON a warm re-entry with a median PI of 0.000387 — far
+     * below any pulse. Meanwhile the genuinely-worn night showed 0.0% false
+     * OFF and not one flip, so the failure this guards against was the
+     * false-POSITIVE, not the false-negative we had assumed.
+     *
+     * Replayed per-sample over those two windows, the two changes are only
+     * useful together — neither alone moves anything:
+     *   shipped (PI 0.0010, no pulse here)   worn 100%   desk 93%   sep  7%
+     *   threshold 0.0004 only                worn 100%   desk 95%   sep  5%
+     *   pulse here only (still 0.0010)       worn  36%   desk 15%   sep 21%
+     *   both                                 worn  98%   desk 19%   sep 79%
+     * The threshold alone does nothing because this branch bypassed the pulse
+     * test entirely; the pulse alone destroys real wear because 0.0010 is
+     * above a sleeping wrist's perfusion.
+     *
+     * ⚠ Caveat on that replay: wear_diag emits SAMPLE at most once a minute
+     * while evaluation runs every EVAL_PERIOD_MS, so this is a per-sample
+     * comparison of the decision function, NOT a full state-machine replay —
+     * the vote windows and hysteresis are not reproduced. */
     if (!plugged && ctx.worn_dc_base > 0.0f &&
         dc_mean >= (float)DC_ABS_FLOOR &&
+        pi >= PI_THD_TO_ON &&
         dc_mean >= ctx.worn_dc_base * WORN_BAND_LO &&
         dc_mean <= ctx.worn_dc_base * WORN_BAND_HI)
     {
