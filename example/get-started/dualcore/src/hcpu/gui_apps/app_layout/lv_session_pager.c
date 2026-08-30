@@ -632,7 +632,13 @@ static int sp_visible_for_device(int slot, uint8_t *out, int max)
         {
             if (taken[k])
                 continue;
-            if (!instruction_list_title_matches_filter(dev->items[k].title))
+            /* 標題**或 bot 名**任一比中就留(founder 2026-08-30:「點下面的麥克風輸入
+               文字要先查看有沒有輸入文字的 bot 或是 session 存在」)。左頁改成列 Bot 之後
+               只比標題就不對了:講一個 Bot 的名字會一個都沒中,於是清單給你「開新對話」——
+               明明那個 Bot 就在上面。比中之後 real_matches>0,合成的「開新對話」列本來
+               就會被丟掉,所以「先查有沒有、有就別開新的」這半自然成立。 */
+            if (!instruction_list_title_matches_filter(dev->items[k].title) &&
+                !instruction_list_title_matches_filter(dev->items[k].bot))
                 continue;
             if (best < 0 || dev->items[k].ts > dev->items[best].ts)
                 best = k;
@@ -693,29 +699,35 @@ static void sp_inject_sessions_into_actions(void)
        instruction_list_filter_active)。 */
     {
         extern bool instruction_list_filter_active(void);
-        if (!instruction_list_filter_active())
+        extern bool instruction_list_title_matches_filter(const char *title);
+        bool searching = instruction_list_filter_active();
+        for (int d = 0; d < s_device_count; d++)
         {
-            for (int d = 0; d < s_device_count; d++)
+            uint8_t kept[SESSION_VISIBLE_MAX];
+            int kn = 0;
+            for (int v = 0; v < vis_n[d]; v++)
             {
-                uint8_t kept[SESSION_VISIBLE_MAX];
-                int kn = 0;
-                for (int v = 0; v < vis_n[d]; v++)
+                const session_meta_t *s = &s_devices[d].items[vis[d][v]];
+                /* 收斂的時機:平常一律收(一列一個 Bot);搜尋時只收「因為 **bot 名**
+                   比中而留下來的」那些 —— 使用者講的是 Bot 的名字,要的是那一個 Bot,
+                   不是它底下五間房各一列(而且那五列的標題都會是同一個 bot 名,根本
+                   分不出來)。因為 **session 標題**比中而留下的照舊一列一間房。 */
+                bool collapse = !searching || (s->bot[0] != '\0' &&
+                                               instruction_list_title_matches_filter(s->bot) &&
+                                               !instruction_list_title_matches_filter(s->title));
+                bool dup = false;
+                if (collapse && s->bot[0] != '\0')
                 {
-                    const session_meta_t *s = &s_devices[d].items[vis[d][v]];
-                    bool dup = false;
-                    if (s->bot[0] != '\0')
-                    {
-                        for (int k = 0; k < kn && !dup; k++)
-                            dup = (strncmp(s_devices[d].items[kept[k]].bot, s->bot,
-                                           SESSION_BOT_LEN) == 0);
-                    }
-                    if (!dup)
-                        kept[kn++] = vis[d][v];
+                    for (int k = 0; k < kn && !dup; k++)
+                        dup = (strncmp(s_devices[d].items[kept[k]].bot, s->bot,
+                                       SESSION_BOT_LEN) == 0);
                 }
-                for (int k = 0; k < kn; k++)
-                    vis[d][k] = kept[k];
-                vis_n[d] = kn;
+                if (!dup)
+                    kept[kn++] = vis[d][v];
             }
+            for (int k = 0; k < kn; k++)
+                vis[d][k] = kept[k];
+            vis_n[d] = kn;
         }
     }
 
@@ -778,11 +790,19 @@ static void sp_inject_sessions_into_actions(void)
         const session_meta_t *s = &s_devices[order[o].slot].items[order[o].idx];
         /* R11(founder):來源設備不併進標題,改由 instruction list 在標題右下角
            畫小字半透明副標(session_list_device_name_for 反查)。 */
-        /* 一列一個 Bot 時列的名字就是 Bot 的名字(2026-08-30);搜尋時列的是 session,
-           標題留 session 的,否則查詢字比中了卻顯示別的字。沒有 bot 的舊資料一律
-           退回 session 標題。 */
+        /* 標題的規則只有一條硬性要求:**注入的標題必須能通過 pack_text_filter 的同一支
+           比對**,否則這一列會在打包階段被再篩掉一次,`real_matches` 歸零、清單改給
+           「開新對話」——明明東西就在上面(那正是上面那段註解警告的「兩邊語意分岔」)。
+
+           於是:session 標題比中就用 session 標題(使用者搜的是那間房);否則用 bot 名
+           (沒搜尋時恆走這條 = 一列一個 Bot;搜尋時走這條的一定是因 bot 名比中而留下的,
+           所以 bot 名必然也比得中)。兩種情況都滿足上面那條要求。
+           沒有 bot 的舊資料一律退回 session 標題。 */
         extern bool instruction_list_filter_active(void);
-        const char *title = (!instruction_list_filter_active() && s->bot[0])
+        extern bool instruction_list_title_matches_filter(const char *t);
+        bool title_hit = instruction_list_filter_active() &&
+                         instruction_list_title_matches_filter(s->title);
+        const char *title = (!title_hit && s->bot[0])
                                 ? s->bot
                                 : (s->title[0] ? s->title : "Session");
         bool same = false;
