@@ -195,22 +195,12 @@ static const uint16_t SF_CK_WEIGHTS_Q10[SF_WINDOW_MIN] = {
    day's total. */
 #define SF_MIN_SESSION_MIN       30u
 
-/* Stage thresholds (when already asleep). Activity is the minute total. */
-#define SF_DEEP_ACTIVITY_MAX     50u
-#define SF_REM_ACTIVITY_MAX      400u
-#define SF_REM_HR_STD_MIN        3u   /* bpm */
-
-/* HR deltas relative to resting HR, in percent. */
-#define SF_DEEP_HR_DROP_PCT      5    /* HR < resting * 0.95 */
-#define SF_REM_HR_NEAR_PCT       8    /* |HR - resting| < 8% */
-
-/* HRV (RMSSD) gate separating Deep from REM. RMSSD rises in deep sleep (vagal
-   tone) and is lower in REM (sympathetic) — the OPPOSITE of hr_std, which
-   tracks REM's erratic HR. Compared against the night's learned RMSSD baseline
-   (prv_rmssd_baseline). Applied ONLY when RR intervals are fed
-   (input.hr_rmssd_ms > 0); otherwise staging is unchanged. Literature starting
-   point (Walch 2019) — tune on real nights. */
-#define SF_DEEP_RMSSD_RISE_PCT  20u   /* Deep: RMSSD >= baseline * 1.20 */
+/* (2026-08-30) The Deep/REM thresholds that used to live here are gone with the
+   classifier — see prv_classify_sleep_stage. They were: activity <= 50 / <= 400,
+   HR 5% below or within 8% of a self-referential baseline, hr_std >= 3, and an
+   RMSSD gate that never ran because RR intervals are never fed. Measured against
+   PSG they scored worse than a constant. Do not reintroduce them without the
+   validation harness in validation/validate_staging.py. */
 
 /* Bounds on returned aggregate counters (clamp at uint16 max). */
 #define SF_MIN_CLAMP(x) ((x) > 0xFFFFu ? 0xFFFFu : (x))
@@ -243,12 +233,6 @@ typedef struct
     uint8_t hr_hist[SF_HR_HISTORY_MIN];
     uint8_t hr_hist_idx;
     uint8_t hr_hist_filled;
-
-    /* RMSSD (HRV) rolling history — same window as HR. Stays empty until RR
-       intervals are fed via input.hr_rmssd_ms (0 = HRV disabled). */
-    uint8_t rmssd_hist[SF_HR_HISTORY_MIN];
-    uint8_t rmssd_hist_idx;
-    uint8_t rmssd_hist_filled;
 
     /* Hysteresis counters. */
     uint8_t consec_sleep_candidate; /* minutes voting sleep in a row */
@@ -364,45 +348,7 @@ static uint8_t prv_hr_baseline(void)
     return tmp[n / 2];
 }
 
-static void prv_push_rmssd(uint8_t rmssd_ms)
-{
-    if (rmssd_ms == 0)
-    {
-        return; /* skip invalid / HRV unavailable this minute */
-    }
-    s_sf.rmssd_hist[s_sf.rmssd_hist_idx] = rmssd_ms;
-    s_sf.rmssd_hist_idx = (uint8_t)((s_sf.rmssd_hist_idx + 1) % SF_HR_HISTORY_MIN);
-    if (s_sf.rmssd_hist_filled < SF_HR_HISTORY_MIN)
-    {
-        s_sf.rmssd_hist_filled++;
-    }
-}
 
-/* Median of recent RMSSD samples — the night's RMSSD baseline. Returns 0 when
-   no RMSSD has been seen yet, which makes the classifier ignore RMSSD entirely
-   (graceful fall-back to HR-std-only staging). Median for the same artefact
-   robustness as prv_hr_baseline. */
-static uint8_t prv_rmssd_baseline(void)
-{
-    if (s_sf.rmssd_hist_filled == 0)
-    {
-        return 0;
-    }
-    uint8_t tmp[SF_HR_HISTORY_MIN];
-    uint8_t n = s_sf.rmssd_hist_filled;
-    for (uint8_t i = 0; i < n; i++)
-    {
-        uint8_t v = s_sf.rmssd_hist[i];
-        uint8_t j = i;
-        while (j > 0 && tmp[j - 1] > v)
-        {
-            tmp[j] = tmp[j - 1];
-            j--;
-        }
-        tmp[j] = v;
-    }
-    return tmp[n / 2];
-}
 
 /* Online resting-HR learner + "is this minute's HR elevated?" test, the core
    of the wake-veto. Returns true when HR is present and sits more than
@@ -577,52 +523,47 @@ static bool prv_hr_elevated_and_learn(uint8_t hr_bpm)
 
 /* Classify the in-sleep stage given current minute's accel + HR features
    and the rolling HR baseline. */
+/* Inside a sleep session, which stage?  ALWAYS LIGHT — we do not measure this.
+ *
+ * 2026-08-30. This used to be three hand-written rules splitting Deep / REM /
+ * Light on HR relative to its own recent median. They were validated for the
+ * first time against PSG (Walch et al. 2019, PhysioNet sleep-accel 1.0.0 — the
+ * dataset this file's header already cited — 31 subjects, 13404 scored minutes,
+ * GroupKFold by subject, harness in validation/validate_staging.py):
+ *
+ *     shipped 4-class rules      acc 43.6%   kappa 0.109
+ *     constant "always LIGHT"    acc 55.0%   kappa 0.000
+ *     oracle sleep/wake + LIGHT  acc 65.9%   kappa 0.315
+ *     Deep: sensitivity 1.4%, precision 2.8%  (878 predictions, 25 correct)
+ *
+ * The rules were WORSE than predicting a constant. That much was fixable —
+ * rewritten rules reach kappa 0.282 (validation/rules_v2_reference.py). What is
+ * not fixable is the ceiling: five independent methods (logistic regression,
+ * random forest, gradient boosting, an HMM-smoothed variant, and hand-written
+ * rules) all land at kappa 0.30 +- 0.03 on these features. Consumer staging
+ * needs 0.4-0.6 to be called usable.
+ *
+ * And the number a user actually reads is one figure per night, where it is
+ * worse still: deep-sleep minutes come out at MAE 31 min against a true mean of
+ * 56.5 (55% error), REM at 48.6 against 90.8 (54%). Reporting those is
+ * inventing a number, and the wearer can check it against any other device.
+ *
+ * Feeding CONTINUOUS heart rate does not help (kappa 0.089), so this is not the
+ * 3-min-in-10 duty cycle. The single strongest feature is hr_std_bpm — within-
+ * burst HR variability — which is exactly the coarse shadow of the HRV that
+ * staging actually needs. Getting Deep/REM back means RR intervals and a
+ * respiration signal, not new thresholds. Until then this returns LIGHT and
+ * deep_min / rem_min stay zero, which is the honest answer.
+ *
+ * What survives, and what this file is now for: sleep vs wake, sleep onset,
+ * wake time, and total sleep time (PSG MAE 28 min / 7%; on the wearer's own
+ * night 2026-08-30 the total was 423 min against a reported 425, and onset,
+ * a mid-sleep awakening and final wake were each within 4 minutes). */
 static sleep_fusion_stage_t prv_classify_sleep_stage(
     const sleep_fusion_minute_input_t *in, uint8_t hr_baseline)
 {
-    /* If no HR signal: best we can do is "Light" — accel alone cannot
-       distinguish Deep / REM reliably. */
-    if (in->hr_mean_bpm == 0 || hr_baseline == 0)
-    {
-        return SLEEP_FUSION_STAGE_LIGHT;
-    }
-
-    /* Compute percent deviation from baseline (signed, in percent).
-       Avoid floating point: pct = (hr - baseline) * 100 / baseline. */
-    int32_t hr_delta_pct =
-        ((int32_t)in->hr_mean_bpm - (int32_t)hr_baseline) * 100 / (int32_t)hr_baseline;
-    int32_t abs_pct = hr_delta_pct < 0 ? -hr_delta_pct : hr_delta_pct;
-
-    /* HRV (RMSSD) evidence — used ONLY when present. RMSSD peaks in deep sleep
-       (vagal tone) and drops in REM, so it CONFIRMS Deep and argues AGAINST
-       REM. Compare to the night's learned RMSSD baseline. When RMSSD is
-       unavailable (rmssd==0 or no baseline yet) both rmssd terms below are
-       neutral and staging is identical to the HR-std-only version. */
-    uint8_t rmssd_base = prv_rmssd_baseline();
-    bool rmssd_ok   = (in->hr_rmssd_ms > 0 && rmssd_base > 0);
-    bool rmssd_high = rmssd_ok &&
-        ((uint32_t)in->hr_rmssd_ms * 100u >=
-         (uint32_t)rmssd_base * (100u + SF_DEEP_RMSSD_RISE_PCT));
-
-    /* Deep: minimal motion + HR meaningfully below baseline + (when HRV is
-       available) RMSSD elevated above the night's baseline. */
-    if (in->activity_count <= SF_DEEP_ACTIVITY_MAX &&
-        hr_delta_pct <= -(int32_t)SF_DEEP_HR_DROP_PCT &&
-        (!rmssd_ok || rmssd_high))
-    {
-        return SLEEP_FUSION_STAGE_DEEP;
-    }
-
-    /* REM: low motion, HR near baseline, HR variability (erratic) elevated,
-       and — when HRV is available — RMSSD NOT in the deep-sleep range. */
-    if (in->activity_count <= SF_REM_ACTIVITY_MAX &&
-        abs_pct <= (int32_t)SF_REM_HR_NEAR_PCT &&
-        in->hr_std_bpm >= SF_REM_HR_STD_MIN &&
-        (!rmssd_ok || !rmssd_high))
-    {
-        return SLEEP_FUSION_STAGE_REM;
-    }
-
+    (void)in;
+    (void)hr_baseline;
     return SLEEP_FUSION_STAGE_LIGHT;
 }
 
@@ -861,7 +802,6 @@ const sleep_fusion_output_t *sleep_fusion_update(
        persists it when it moves — @ref sleep_fusion_get_rhr_reference. */
     s_sf.out.rhr_ref_changed = prv_rhr_ref_step();
     s_sf.out.rhr_ref_bpm = s_sf.rhr_ref_bpm;
-    prv_push_rmssd(input->hr_rmssd_ms); /* no-op until RR plumbing feeds it */
 
     uint32_t score = prv_cole_kripke_score();
     uint8_t baseline = prv_hr_baseline();

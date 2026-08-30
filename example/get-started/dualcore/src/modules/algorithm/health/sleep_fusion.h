@@ -63,11 +63,12 @@ extern "C"
         /* HR std-dev in BPM. Proxy for HRV — elevated during REM. */
         uint8_t hr_std_bpm;
 
-        /* Beat-to-beat RMSSD in ms (true HRV) over the minute, or 0 when no
-           RR intervals were available this minute. Used to separate Deep
-           (high RMSSD) from REM (lower RMSSD). The classifier IGNORES it when
-           0, so it is safe to leave unset until the PPG RR plumbing lands —
-           staging then behaves exactly as the HR-std-only version. */
+        /* Beat-to-beat RMSSD in ms, or 0. NOTHING FEEDS THIS and nothing reads
+           it: the driver computes RR intervals (goodix_hrv_calc -> rri[]) but
+           they are never routed here, and the stage classifier that would have
+           consumed it was removed 2026-08-30 (see sleep_fusion.c). Kept as the
+           documented entry point for the day HRV is actually plumbed through —
+           that is the one change that could make Deep/REM measurable. */
         uint8_t hr_rmssd_ms;
 
         /* True when hr_mean_bpm comes from a NEW PPG burst (or live
@@ -94,6 +95,9 @@ extern "C"
 
         /* Daily aggregates (since last midnight reset). */
         uint16_t total_sleep_min;     /* Light + Deep + REM */
+        /* Always 0 since 2026-08-30 — Deep/REM are not measured. See
+           prv_classify_sleep_stage in the .c for the PSG numbers that settled
+           it. total_sleep_min and light_min carry the whole session. */
         uint16_t deep_min;
         uint16_t rem_min;
         uint16_t light_min;

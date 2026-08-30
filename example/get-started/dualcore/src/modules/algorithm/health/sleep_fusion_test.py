@@ -40,11 +40,6 @@ SF_RHR_UP_LEAK_MIN = 60
 SF_MIN_SESSION_MIN = 30
 SF_ENTER_SLEEP_MIN = 15
 SF_EXIT_SLEEP_MIN = 5
-SF_DEEP_ACTIVITY_MAX = 50
-SF_REM_ACTIVITY_MAX = 400
-SF_REM_HR_STD_MIN = 3
-SF_DEEP_HR_DROP_PCT = 5
-SF_REM_HR_NEAR_PCT = 8
 
 
 class Stage(IntEnum):
@@ -197,15 +192,23 @@ def hr_baseline(hr_hist, resting):
 
 
 def classify(inp, baseline):
-    if inp.hr_mean_bpm == 0 or baseline == 0:
-        return Stage.LIGHT
-    pct = (inp.hr_mean_bpm - baseline) * 100 // baseline
-    if inp.activity_count <= SF_DEEP_ACTIVITY_MAX and pct <= -SF_DEEP_HR_DROP_PCT:
-        return Stage.DEEP
-    if (inp.activity_count <= SF_REM_ACTIVITY_MAX
-            and abs(pct) <= SF_REM_HR_NEAR_PCT
-            and inp.hr_std_bpm >= SF_REM_HR_STD_MIN):
-        return Stage.REM
+    """睡眠期間的階段:永遠是 LIGHT —— 我們沒有在量這個。
+
+    2026-08-30 對 PSG 真值(Walch 2019 PhysioNet sleep-accel,31 人 13404 個計分
+    分鐘,GroupKFold by subject,harness 在 validation/validate_staging.py):
+
+        原本的三行 if     acc 43.6%  kappa 0.109
+        常數 always-LIGHT acc 55.0%  kappa 0.000
+        深睡 敏感度 1.4% / 精確度 2.8%(預測 878 次,命中 25 次)
+
+    規則輸給常數。而且天花板本身就不夠:五種獨立方法(邏輯迴歸/隨機森林/梯度提升/
+    HMM 平滑/手寫規則)全部落在 kappa 0.30 ± 0.03,消費級分期要 0.4-0.6 才叫可用。
+    使用者看的一晚一個數字更糟:深睡分鐘 MAE 31 分(真值均值 56.5),REM 48.6(90.8)。
+
+    餵連續心率不會變好(kappa 0.089),所以不是 3-min-in-10 佔空比的問題。要把
+    Deep/REM 做回來需要 RR 間期與呼吸訊號,不是新的門檻。
+    """
+    del inp, baseline
     return Stage.LIGHT
 
 
@@ -536,7 +539,12 @@ if __name__ == "__main__":
     for i, inp in enumerate(sleep_in, start=1):
         update(s_sleep, i * 60, inp)
     check("fall-asleep still detects sleep (total > 0)", s_sleep.total > 0)
-    check("fall-asleep reaches Deep", s_sleep.deep > 0)
+    # 2026-08-30 起分期被移除:Deep/REM 永遠不會產生,計數恆為 0。
+    # 這是新的契約,不是退步 —— 對 PSG 真值,原本的分期規則輸給常數預測。
+    check("Deep/REM 永遠不產生(分期已移除)",
+          s_sleep.deep == 0 and s_sleep.rem == 0)
+    check("整段睡眠都記在 light + total",
+          s_sleep.light == s_sleep.total and s_sleep.total > 0)
 
     # The fix: a train ride must never be scored as sleep.
     check("train ride stays AWAKE", s_train.stage == Stage.AWAKE)
