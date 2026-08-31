@@ -7010,6 +7010,13 @@ void set_instruction_avatar(const char *id, const char *av)
     if (strcmp(list_items[idx].img_path, path) == 0)
         return; /* 已經指著同一張,別再 stat(每次重推都掃 NAND 會拖慢清單) */
 
+    list_items[idx].img_path[0] = '\0';
+    /* **節流在碰檔案系統之前**(同 instruction_list_bot_avatar_sweep 的理由):注入這條路
+       也會被 actions 重推帶著跑,一輪 17 列都 stat 一次 NAND 就足以拖住 LVGL 執行緒。
+       被擋下的這一輪不做事,輪掃 30 秒後會再來一次;圖落地時另有收檔回呼直接接上路徑。 */
+    if (!bot_avatar_request_due(list_items[idx].av))
+        return;
+
     struct stat st;
     if (stat(path, &st) == 0 && st.st_size > 0)
     {
@@ -7017,12 +7024,8 @@ void set_instruction_avatar(const char *id, const char *av)
         list_items[idx].img_path[sizeof(list_items[idx].img_path) - 1] = '\0';
         return;
     }
-    list_items[idx].img_path[0] = '\0';
-    if (bot_avatar_request_due(list_items[idx].av))
-    {
-        commu_send_conv_avatar_req(list_items[idx].av);
-        LOG_I("[bot-av] requested %s", list_items[idx].av);
-    }
+    commu_send_conv_avatar_req(list_items[idx].av);
+    LOG_I("[bot-av] requested %s", list_items[idx].av);
 }
 
 /* 把還缺圖的 Bot 列再問一次(或補上剛落地的檔)。
@@ -7041,6 +7044,12 @@ void instruction_list_bot_avatar_sweep(void)
     {
         if (list_items[i].av[0] == '\0' || list_items[i].img_path[0] != '\0')
             continue;
+        /* **先問節流,再碰檔案系統**。手機每 1~3 秒重推一次 17 列,無條件 stat 就是每秒
+           幾十次 NAND 讀掛在 LVGL 執行緒上 —— 2026-08-31 真機因此餓死 GUI:BLE 照常
+           收(GATT 全 SUCCESS)、螢幕起不來、console 全靜默。節流在前面,一輪最多 5 次
+           stat / 30 秒。圖真的落地時本來就有收檔回呼會接上路徑,不靠這裡的輪詢。 */
+        if (!bot_avatar_request_due(list_items[i].av))
+            continue;
         char path[64];
         bot_avatar_path(list_items[i].av, path, sizeof(path));
         struct stat st;
@@ -7052,11 +7061,8 @@ void instruction_list_bot_avatar_sweep(void)
             touched = true;
             continue;
         }
-        if (bot_avatar_request_due(list_items[i].av))
-        {
-            commu_send_conv_avatar_req(list_items[i].av);
-            LOG_I("[bot-av] re-requested %s", list_items[i].av);
-        }
+        commu_send_conv_avatar_req(list_items[i].av);
+        LOG_I("[bot-av] re-requested %s", list_items[i].av);
     }
     if (touched)
         refresh_custom_instructions();
