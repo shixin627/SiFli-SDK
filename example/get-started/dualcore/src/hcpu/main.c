@@ -1614,6 +1614,20 @@ int provision_random_public_address(uint8_t mac[6],
     return 0;
 }
 
+#ifdef RT_USING_FINSH
+/* MSH:重新配一組 BLE public address(產測那條 SKAI_PROVISION 走 uart1,但 MSH 也在
+   同一支 uart1 上,console 會先把輸入吃掉 —— 開發桌上唯一叫得動配號的入口就是這裡。
+   跟開發者頁那顆按鈕呼叫的是同一支函式,配完會自己重開機套用。 */
+static void skai_newmac(int argc, char **argv)
+{
+    (void)argc;
+    (void)argv;
+    extern void generate_random_public_address(uint8_t device_id);
+    generate_random_public_address(0);
+}
+MSH_CMD_EXPORT(skai_newmac, provision a new BLE public address and reboot);
+#endif /* RT_USING_FINSH — 發布版沒有 console,這支就不編(否則是個沒人用的 static) */
+
 void generate_random_public_address(uint8_t device_id)
 {
     uint8_t mac[6] = {0};
