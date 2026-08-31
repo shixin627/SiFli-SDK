@@ -65,6 +65,8 @@ typedef struct
     /* 擁有這個 session 的 Bot(Hermes profile 名)。滑鼠 app 聊天室左右滑
        只在同 bot 的 session 間切換(founder 2026-08-30)。"" = 舊桌面沒送。 */
     char bot[SESSION_BOT_LEN];
+    /* 這個 Bot 的頭像鍵(內容雜湊)。空 = 手機沒給(舊手機/沒頭像),右緣照舊畫設備名。 */
+    char av[SESSION_AV_LEN];
 } session_meta_t;
 
 typedef struct
@@ -823,6 +825,13 @@ static void sp_inject_sessions_into_actions(void)
             changed = true;
         }
         set_instruction_category(s->id, '@'); /* 冪等 */
+        /* Bot 頭像(founder 2026-08-31:「右邊的設備名稱改成顯示跟電腦一樣的 bot 頭像」)。
+           這裡只交出鍵,檔案在不在、要不要跟手機要,由 instruction list 那邊決定 —— 它才是
+           畫那個右緣槽位的人。搜尋時列的是 session 不是 Bot,頭像仍屬於同一個 Bot,照給。 */
+        {
+            extern void set_instruction_avatar(const char *id, const char *av);
+            set_instruction_avatar(s->id, s->av);
+        }
     }
 
     /* R27:每次注入都把 conv 段**強制排成上面算好的 ts 舊→新順序**。只靠 upsert 的呼叫
@@ -1474,6 +1483,9 @@ void skai_sessions_on_conv_list(const uint8_t *json, uint16_t length)
             cJSON *j_bot = cJSON_GetObjectItem(it, "bot");
             if (cJSON_IsString(j_bot))
                 strncpy(dst->bot, j_bot->valuestring, SESSION_BOT_LEN - 1);
+            cJSON *j_av = cJSON_GetObjectItem(it, "av");
+            if (cJSON_IsString(j_av))
+                strncpy(dst->av, j_av->valuestring, SESSION_AV_LEN - 1);
             count++;
         }
     }

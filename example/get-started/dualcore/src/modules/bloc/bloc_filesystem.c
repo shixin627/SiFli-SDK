@@ -359,6 +359,13 @@ void received_file_handler(const char *path)
         // rt_thread_mdelay(1000);
         // remove(prev_media_img_path);
     }
+    else if (strstr(path, "/assets/images/bot/") != NULL)
+    {
+        /* Bot 頭像(0x25 要來的那張)。檔名就是內容雜湊鍵,清單那邊照鍵反查是哪幾列。 */
+        extern void instruction_list_on_bot_avatar_file(const char *path);
+        LOG_I("Received bot avatar: %s", path);
+        instruction_list_on_bot_avatar_file(path);
+    }
     else if (pending_instruction_img_count > 0)
     {
         /* Check if received file matches any pending instruction image request

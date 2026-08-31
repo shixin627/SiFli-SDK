@@ -599,6 +599,15 @@ bool commu_send_battery_voltage(uint16_t millivolts)
 }
 bool commu_send_update_instruction(const char *json) { return commu_send_string(NOTIFY_COMMAND_ID, KEY_SKAI_CREATION_INSTRUCTIONS, json); }
 bool commu_send_get_instruction_img(const char *id)  { return commu_send_string(NOTIFY_COMMAND_ID, KEY_SKAI_INSTRUCTION_IMAGE, id); }
+/* 跟手機要一張 Bot 頭像(內容雜湊當鍵);圖走檔案通道回來,這裡不等回覆。 */
+bool commu_send_conv_avatar_req(const char *av)
+{
+    char json[40];
+    if (av == NULL || av[0] == '\0') return false;
+    int n = rt_snprintf(json, sizeof(json), "{\"av\":\"%s\"}", av);
+    if (n <= 0 || n >= (int)sizeof(json)) return false;
+    return commu_send_string(SKAI_LINK_COMMAND_ID, KEY_CONV_AVATAR_REQ, json);
+}
 bool commu_send_skaibar_selected(uint8_t idx)        { return commu_send_status(NOTIFY_COMMAND_ID, KEY_SKAIBAR_SELECTED, idx); }
 bool commu_send_skaibar_committed(uint8_t idx)       { return commu_send_status(NOTIFY_COMMAND_ID, KEY_SKAIBAR_COMMITTED, idx); }
 /* watch→phone (SKAI_LINK): device-list option the user interacted with, BY INDEX

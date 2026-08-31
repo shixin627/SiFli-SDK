@@ -102,6 +102,7 @@ LV_IMG_DECLARE(erth);
 #define APP_ID "instruction_list"
 #include <stdio.h>
 #include <stdint.h>
+#include <sys/stat.h> /* Bot 頭像檔在不在(set_instruction_avatar) */
 
 /*******************************************************************************
  * Unified List Item
@@ -129,6 +130,10 @@ typedef struct
     uint32_t version;      // version from server
     char open_app[32];     // non-empty = tap opens this watch app locally
                            // (offline, no phone relay); see openApp in 0x65/0x6B
+    /* Bot 頭像的內容位址鍵(0x20 每列的 "av",手機算的 12 字 hex)。檔名就是它,所以
+       「圖換了」= 鍵換了 = 另一個檔,不必作廢任何快取。空 = 這列沒有頭像可畫。
+       img_path 是它解析出來的實體路徑(檔案已經在手錶上時才填)。 */
+    char av[16];
     char category;         // '@'=chat / '/'=action / 0=untagged. Drives the
                            // left(@) / right(/) / bottom(all) filtered list
                            // views. Set only via the phone-push "cat" field
@@ -910,9 +915,14 @@ static void create_indicator_dots(lv_obj_t *parent)
         /* R61:「開新對話」列也走同一套 —— 右緣圓框放的是**要開在哪一台**的名字
            (founder:「右邊的圖片裡面就放設備名稱」),兩台設備就是兩列同名選項、
            只有右邊的設備名不同。 */
-        if (strncmp(list_items[i].id, "conv:", 5) == 0 ||
-            strncmp(list_items[i].id, NEW_SESSION_ITEM_ID,
-                    sizeof(NEW_SESSION_ITEM_ID) - 1) == 0)
+        /* 這一列有 Bot 頭像檔在手錶上 → 右緣就畫頭像(跟電腦同一張),不畫設備名。
+           上面的通用分支已經把 dot 的 src 設成 img_path 了,所以這裡只要「不進設備名那段」。 */
+        bool has_bot_avatar = (list_items[i].av[0] != '\0' &&
+                               list_items[i].img_path[0] != '\0');
+        if (!has_bot_avatar &&
+            (strncmp(list_items[i].id, "conv:", 5) == 0 ||
+             strncmp(list_items[i].id, NEW_SESSION_ITEM_ID,
+                     sizeof(NEW_SESSION_ITEM_ID) - 1) == 0))
         {
             extern const char *session_list_device_name_for(const char *conv_id);
             extern const char *session_list_device_name_of(const char *device_id);
@@ -6916,6 +6926,146 @@ void set_instruction_category(const char *id, char cat)
     int idx = find_instruction_by_id(id);
     if (idx >= 0)
         list_items[idx].category = cat;
+}
+
+/* ── Bot 頭像(founder 2026-08-31:「手錶列 Bot 的時候,右邊的設備名稱改成顯示跟電腦上
+   一樣的 bot 頭像,使用者自己上傳的也要」)───────────────────────────────────────────
+   手機把每個 Bot 的頭像(上傳的圖 or 電腦那顆預設臉)畫成 100x100 圓形 ezip RGB565,
+   用**內容雜湊**當檔名推到 /assets/images/bot/<av>.bin —— 跟專輯封面同一條檔案通道。
+   0x20 每列只帶那個鍵(12 字),圖本身一台 Bot 一輩子只傳一次。
+
+   內容位址的兩個好處:換頭像 = 換檔名(舊圖不會被誤用、不必作廢 LVGL 解碼快取),
+   而「手錶有沒有這張圖」單純就是 stat 得到檔案。缺的那些跟手機要(0x25),檔案落地後
+   bloc_filesystem 回頭叫 instruction_list_on_bot_avatar_file() 補上路徑並重畫。 */
+#define BOT_AVATAR_DIR "/assets/images/bot"
+
+static void bot_avatar_path(const char *av, char *out, size_t out_len)
+{
+    rt_snprintf(out, out_len, BOT_AVATAR_DIR "/%s.bin", av);
+}
+
+/* 已經跟手機要過的頭像鍵。手機沒回(離線/舊版)時每 30s 才重問一次 —— 清單每次重推都問
+   一輪的話,五個 Bot × 3 秒輪詢就是一條穩定的無用流量。 */
+#define BOT_AVATAR_REQ_MAX 8
+static struct
+{
+    char av[16];
+    uint32_t tick;
+} s_bot_av_req[BOT_AVATAR_REQ_MAX];
+
+static bool bot_avatar_request_due(const char *av)
+{
+    uint32_t now = rt_tick_get();
+    uint32_t hold = rt_tick_from_millisecond(30000);
+    int free_slot = -1;
+    int oldest = 0;
+    for (int i = 0; i < BOT_AVATAR_REQ_MAX; i++)
+    {
+        if (s_bot_av_req[i].av[0] == '\0')
+        {
+            if (free_slot < 0)
+                free_slot = i;
+            continue;
+        }
+        if (strcmp(s_bot_av_req[i].av, av) == 0)
+        {
+            if ((uint32_t)(now - s_bot_av_req[i].tick) < hold)
+                return false;
+            s_bot_av_req[i].tick = now;
+            return true;
+        }
+        if ((uint32_t)(now - s_bot_av_req[i].tick) >
+            (uint32_t)(now - s_bot_av_req[oldest].tick))
+            oldest = i;
+    }
+    int slot = (free_slot >= 0) ? free_slot : oldest;
+    strncpy(s_bot_av_req[slot].av, av, sizeof(s_bot_av_req[slot].av) - 1);
+    s_bot_av_req[slot].av[sizeof(s_bot_av_req[slot].av) - 1] = '\0';
+    s_bot_av_req[slot].tick = now;
+    return true;
+}
+
+/* 一列的頭像鍵。檔案已經在手錶上就填 img_path(右緣改畫頭像),不在就跟手機要一次、
+   img_path 留空(右緣照舊畫來源設備名 —— 可見的降級,不是空白)。 */
+void set_instruction_avatar(const char *id, const char *av)
+{
+    int idx = find_instruction_by_id(id);
+    if (idx < 0)
+        return;
+    if (av == NULL || av[0] == '\0')
+    {
+        list_items[idx].av[0] = '\0';
+        /* 頭像沒了(桌面換成舊版/Bot 被拿掉頭像)就要把圖也拿掉,否則這一列會一直掛著
+           上一張臉 —— 右緣的設備名永遠回不來。只清我們自己放的那條路徑。 */
+        if (strncmp(list_items[idx].img_path, BOT_AVATAR_DIR "/",
+                    sizeof(BOT_AVATAR_DIR)) == 0)
+            list_items[idx].img_path[0] = '\0';
+        return;
+    }
+    strncpy(list_items[idx].av, av, sizeof(list_items[idx].av) - 1);
+    list_items[idx].av[sizeof(list_items[idx].av) - 1] = '\0';
+
+    char path[64];
+    bot_avatar_path(list_items[idx].av, path, sizeof(path));
+    if (strcmp(list_items[idx].img_path, path) == 0)
+        return; /* 已經指著同一張,別再 stat(每次重推都掃 NAND 會拖慢清單) */
+
+    struct stat st;
+    if (stat(path, &st) == 0 && st.st_size > 0)
+    {
+        strncpy(list_items[idx].img_path, path, sizeof(list_items[idx].img_path) - 1);
+        list_items[idx].img_path[sizeof(list_items[idx].img_path) - 1] = '\0';
+        return;
+    }
+    list_items[idx].img_path[0] = '\0';
+    if (bot_avatar_request_due(list_items[idx].av))
+    {
+        commu_send_conv_avatar_req(list_items[idx].av);
+        LOG_I("[bot-av] requested %s", list_items[idx].av);
+    }
+}
+
+/* 手機把某張頭像傳完了(bloc_filesystem 的收檔回呼)。把每一列指到這張圖的 av 補上
+   路徑並重畫一次。非 LVGL 執行緒進來就 defer —— list_items[] 只有 LVGL 執行緒能寫
+   (見本檔的單一執行緒所有權說明)。 */
+void instruction_list_on_bot_avatar_file(const char *path)
+{
+    if (path == NULL || path[0] == '\0')
+        return;
+    const char *base = strrchr(path, '/');
+    base = base ? base + 1 : path;
+    char av[16];
+    strncpy(av, base, sizeof(av) - 1);
+    av[sizeof(av) - 1] = '\0';
+    char *dot = strchr(av, '.');
+    if (dot)
+        *dot = '\0';
+    if (av[0] == '\0')
+        return;
+
+    if (!is_on_lvgl_thread())
+    {
+        extern void instruction_op_enqueue_avatar(const char *av);
+        instruction_op_enqueue_avatar(av);
+        return;
+    }
+
+    char full[64];
+    bot_avatar_path(av, full, sizeof(full));
+    bool touched = false;
+    for (uint8_t i = 0; i < list_item_count; i++)
+    {
+        if (strcmp(list_items[i].av, av) != 0)
+            continue;
+        strncpy(list_items[i].img_path, full, sizeof(list_items[i].img_path) - 1);
+        list_items[i].img_path[sizeof(list_items[i].img_path) - 1] = '\0';
+        touched = true;
+    }
+    if (!touched)
+        return;
+    lv_img_cache_invalidate_src(full);
+    LOG_I("[bot-av] landed %s", av);
+    refresh_custom_instructions();
 }
 
 /* Apply an @-contact row's service logo to its right-side indicator dot, mirroring

@@ -47,6 +47,9 @@ extern "C"
 #define SESSION_PREVIEW_LEN 128
 /* Hermes profile(Bot)名 — 0x20 每列選配的 "bot" 欄。 */
 #define SESSION_BOT_LEN 24
+/* Bot 頭像的**內容位址**鍵 — 0x20 每列選配的 "av" 欄(手機算的 12 字 hex)。檔名就是它:
+   /assets/images/bot/<av>.bin。內容變了鍵就變,所以永遠不必作廢快取,也不會拿到舊圖。 */
+#define SESSION_AV_LEN 16
 
     /** Build the merged list into [parent] (the watch-face LEFT tile (0,1)). */
     lv_obj_t *lv_session_pager_create(lv_obj_t *parent);

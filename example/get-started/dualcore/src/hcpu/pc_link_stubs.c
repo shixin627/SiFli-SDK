@@ -284,6 +284,8 @@ bool ble_hid_mouse_app_route(void) { return false; }
 /* communicate_task.h */ bool commu_send_skaiapp_voice(const char *app_id, const char *memo_id) { (void)app_id; (void)memo_id; return false; }
 /* ui_handler batch apply — owning TU excluded on PC */ void apply_pending_instruction_batch(void) { }
 /* instruction-op queue — owning TU excluded on PC */ void instruction_op_enqueue_image(const char *id, const char *path) { (void)id; (void)path; }
+/* instruction-op queue — owning TU excluded on PC */ void instruction_op_enqueue_avatar(const char *av) { (void)av; }
+/* communicate_task.h */ bool commu_send_conv_avatar_req(const char *av) { (void)av; return false; }
 /* mic/audio HAL — excluded on PC */ uint16_t mic_get_rms_level(void) { return 0; }
 /* mic/audio HAL — excluded on PC */ bool mic_get_vad_active(void) { return false; }
 /* communicate_task.h */ bool commu_send_conv_list_req(const char *device) { (void)device; return false; }

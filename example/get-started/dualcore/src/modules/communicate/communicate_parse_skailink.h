@@ -257,6 +257,15 @@ extern "C"
            pending state to leak if the desktop never answers.
            Keep in lockstep with WatchProtocol.kt/.swift SKAILINK_KEY_CONV_NEW. */
         KEY_CONV_NEW = 0x24,
+        /* watch→phone (UPLINK): {"av":"<key>"} — 手錶清單上有一列的 Bot 頭像鍵是 <key>,
+           但 /assets/images/bot/<key>.bin 不在手錶上,跟手機要那張圖。
+           <key> 是手機自己算的**內容雜湊**(12 字 hex,隨頭像內容變),所以手機收到後
+           不需要對帳「是哪個 Bot」—— 它照著同一支雜湊反查那張圖,畫成 100x100 圓形
+           ezip RGB565,走既有的檔案通道(0x52/0x53/0x54)推到那個路徑。手錶端收檔後
+           instruction_list_on_bot_avatar_file() 把列的右緣從設備名換成頭像。
+           沒有回覆鍵:圖到了就是回覆,沒到就維持設備名(可見的降級)。
+           Keep in lockstep with WatchProtocol.kt/.swift SKAILINK_KEY_CONV_AVATAR_REQ. */
+        KEY_CONV_AVATAR_REQ = 0x25,
     } SKAI_LINK_KEY;
 
     /* Dispatched from communicate_parse.c for cmd_id == SKAI_LINK_COMMAND_ID.

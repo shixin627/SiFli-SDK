@@ -190,6 +190,7 @@ typedef enum
     INST_OP_SINGLE, /* a = JSON object string — upsert one    */
     INST_OP_REMOVE, /* a = id string          — remove one    */
     INST_OP_IMAGE,  /* a = id string, b = image path          */
+    INST_OP_AVATAR, /* a = bot avatar key (檔案剛落地)        */
 } inst_op_kind_t;
 
 typedef struct
@@ -268,6 +269,18 @@ void instruction_op_enqueue_image(const char *id, const char *path)
     inst_op_enqueue(INST_OP_IMAGE, id_copy, path_copy);
 }
 
+/* 同上,但給 Bot 頭像:檔案在收檔執行緒落地,列的 img_path 只能在 LVGL 執行緒改。 */
+void instruction_op_enqueue_avatar(const char *av)
+{
+    char *av_copy = inst_strdup(av);
+    if (!av_copy)
+    {
+        LOG_E("bot avatar op: alloc failed");
+        return;
+    }
+    inst_op_enqueue(INST_OP_AVATAR, av_copy, RT_NULL);
+}
+
 /* LVGL thread only — dispatched from process_lvgl_message() on
    LVGL_MSG_TYPE_APPLY_INSTRUCTION_BATCH. Drains every queued op (so list_items[]
    is only ever mutated here) then rebuilds the UI once. */
@@ -336,6 +349,13 @@ void apply_pending_instruction_batch(void)
         case INST_OP_IMAGE:
             if (op.a && op.b)
                 update_instruction_image(op.a, op.b);
+            break;
+        case INST_OP_AVATAR:
+            if (op.a)
+            {
+                extern void instruction_list_on_bot_avatar_file(const char *path);
+                instruction_list_on_bot_avatar_file(op.a);
+            }
             break;
         }
         inst_op_free(&op);
