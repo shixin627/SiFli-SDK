@@ -7025,6 +7025,43 @@ void set_instruction_avatar(const char *id, const char *av)
     }
 }
 
+/* 把還缺圖的 Bot 列再問一次(或補上剛落地的檔)。
+
+   為什麼需要它:注入那條路只在**清單有變**時才跑(0x20 的 unchanged 早退是重建迴圈的
+   關門開關),所以「要圖」本來一輩子只發生在清單變動的那一拍。那一拍要是沒人接
+   (手機正在重啟/當掉/還沒連上),之後清單一直沒變 —— 手錶就再也不會開口,右緣永遠
+   停在設備名。2026-08-31 真機就是這樣:手錶問過一次,剛好落在手機 crash loop 那段。
+
+   所以改成每次 0x20 落地都掃一遍(含 unchanged 那條),真正的節流交給 30 秒的 per-key
+   hold。掃的成本是 ≤30 列的字串比對,只有真的缺圖的那幾列才會去 stat。 */
+void instruction_list_bot_avatar_sweep(void)
+{
+    bool touched = false;
+    for (uint8_t i = 0; i < list_item_count; i++)
+    {
+        if (list_items[i].av[0] == '\0' || list_items[i].img_path[0] != '\0')
+            continue;
+        char path[64];
+        bot_avatar_path(list_items[i].av, path, sizeof(path));
+        struct stat st;
+        if (stat(path, &st) == 0 && st.st_size > 0)
+        {
+            /* 檔案在了但沒人把它接上(收檔時這一列還不存在):現在接。 */
+            strncpy(list_items[i].img_path, path, sizeof(list_items[i].img_path) - 1);
+            list_items[i].img_path[sizeof(list_items[i].img_path) - 1] = '\0';
+            touched = true;
+            continue;
+        }
+        if (bot_avatar_request_due(list_items[i].av))
+        {
+            commu_send_conv_avatar_req(list_items[i].av);
+            LOG_I("[bot-av] re-requested %s", list_items[i].av);
+        }
+    }
+    if (touched)
+        refresh_custom_instructions();
+}
+
 /* 手機把某張頭像傳完了(bloc_filesystem 的收檔回呼)。把每一列指到這張圖的 av 補上
    路徑並重畫一次。非 LVGL 執行緒進來就 defer —— list_items[] 只有 LVGL 執行緒能寫
    (見本檔的單一執行緒所有權說明)。 */

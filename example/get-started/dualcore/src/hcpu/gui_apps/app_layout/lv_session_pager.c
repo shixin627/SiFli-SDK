@@ -1632,6 +1632,13 @@ static void sp_apply_list(void)
                              (size_t)count * sizeof(dev->items[0])) == 0);
     if (unchanged)
     {
+        /* 清單沒變不代表**圖**都到了:缺圖的那幾列在這裡再問一次(30 秒 hold 自己節流)。
+           見 instruction_list_bot_avatar_sweep 的說明 —— 沒有這一條,手錶開口要圖的機會
+           一輩子只有清單變動的那一拍。 */
+        {
+            extern void instruction_list_bot_avatar_sweep(void);
+            instruction_list_bot_avatar_sweep();
+        }
         LOG_D("conv_list unchanged (%d sessions) — no rebuild", count);
         return;
     }
