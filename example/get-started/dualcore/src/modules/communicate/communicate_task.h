@@ -47,17 +47,20 @@ bool commu_send_heart_data(int hr);
 /* Background daily HR-curve point: a timestamped ambient HR sample (taken
    ~every 15 min by the LCPU sampler). Phone accumulates these into a daily
    heart-rate curve. Distinct from commu_send_heart_data (live single value). */
-bool commu_send_heart_curve_sample(uint32_t timestamp, uint8_t bpm);
+bool commu_send_heart_curve_sample(uint32_t timestamp, uint8_t bpm,
+                                   uint8_t worn);
 /* Why an HR point was NOT recorded for a 5-min bucket (timestamp + reason code).
    Mirrors commu_send_heart_curve_sample; phone draws it as a coloured gap on
    the HR curve. Reason codes frozen in ADR-0011 D2. */
 bool commu_send_heart_curve_skip(uint32_t timestamp, uint8_t reason);
-/* Wear-detect diagnostic record (KEY_WEAR_DIAG 0x12, 14B LE). Cable-less units
-   have no serial console; the phone appends these to a daily CSV for offline
-   night-time threshold analysis. evt codes 1..8 frozen (watch_sys_service.h). */
+/* Wear-detect diagnostic record (KEY_WEAR_DIAG 0x12, 16B LE — was 14B before
+   2026-08-31, when base_q4 was appended). Cable-less units have no serial
+   console; the phone appends these to a daily CSV for offline night-time
+   threshold analysis. evt codes 1..8 frozen (watch_sys_service.h). */
 bool commu_send_wear_diag(uint32_t ts, uint8_t evt, uint8_t status,
                           uint16_t dc_q4, uint16_t pi_e6,
-                          uint16_t pi_range_e6, uint16_t imu_var_e4);
+                          uint16_t pi_range_e6, uint16_t imu_var_e4,
+                          uint16_t base_q4);
 /* Per-minute sleep-fusion diagnostic (KEY_SLEEP_DIAG 0x13, 14B LE). Phone
    appends to a daily CSV for offline SQI + missed-night analysis. Temporary. */
 bool commu_send_sleep_diag(uint32_t ts, uint16_t score, uint8_t hr,

@@ -18,6 +18,7 @@
 #include "bloc_health.h"
 #include "communicate_task.h" /* commu_send_heart_curve_sample / _skip (replay) */
 #include "watch_global_data.h"
+#include "watch_sys_service.h" /* WATCH_SYS_WORN_* tri-state */
 
 #define DBG_TAG "bloc.health"
 #include "bsp_board.h"
@@ -286,8 +287,11 @@ static void backfill_hr_samples(uint32_t since_ts)
                 else
                 {
                     cJSON *jbpm = cJSON_GetObjectItem(item, "bpm");
+                    /* UNKNOWN, not "worn": the stored JSON has no wear column,
+                       so a replayed point cannot honestly claim either way. */
                     ok = commu_send_heart_curve_sample(
-                        ts, cJSON_IsNumber(jbpm) ? (uint8_t)jbpm->valueint : 0);
+                        ts, cJSON_IsNumber(jbpm) ? (uint8_t)jbpm->valueint : 0,
+                        WATCH_SYS_WORN_UNKNOWN);
                 }
 
                 if (!ok)

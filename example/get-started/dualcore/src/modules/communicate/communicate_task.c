@@ -286,15 +286,23 @@ bool commu_send_heart_data(int hr)
     return commu_send_status(HEALTH_DATA_COMMAND_ID, KEY_HEART_DATA_RETURN, (uint8_t)hr);
 }
 
-bool commu_send_heart_curve_sample(uint32_t timestamp, uint8_t bpm)
+bool commu_send_heart_curve_sample(uint32_t timestamp, uint8_t bpm,
+                                   uint8_t worn)
 {
-    /* Packed 5-byte wire payload {timestamp:u32 LE, bpm:u8} — explicit packing
-       so there is no struct padding on the wire (the dart parser reads 4+1). */
+    /* Packed 6-byte wire payload {timestamp:u32 LE, bpm:u8, worn:u8}.
+       Explicit packing so there is no struct padding on the wire.
+       Was 5 bytes until 2026-08-31; `worn` is appended so an older phone
+       stops after bpm and a newer phone reading older firmware sees a 5-byte
+       frame, which it must treat as UNKNOWN — never as worn.
+       WATCH_SYS_WORN_* : 0 = not worn, 1 = worn, 0xFF = unknown.
+       Backfilled points are always UNKNOWN: /health/hr_*.json has no wear
+       column, so a replay honestly cannot say. */
     struct __attribute__((packed))
     {
         uint32_t timestamp;
         uint8_t bpm;
-    } sample = {.timestamp = timestamp, .bpm = bpm};
+        uint8_t worn;
+    } sample = {.timestamp = timestamp, .bpm = bpm, .worn = worn};
     return commu_send_blob(HEALTH_DATA_COMMAND_ID, KEY_HEART_CURVE_SAMPLE,
                            &sample, (uint16_t)sizeof(sample));
 }
@@ -315,10 +323,11 @@ bool commu_send_heart_curve_skip(uint32_t timestamp, uint8_t reason)
 
 bool commu_send_wear_diag(uint32_t ts, uint8_t evt, uint8_t status,
                           uint16_t dc_q4, uint16_t pi_e6,
-                          uint16_t pi_range_e6, uint16_t imu_var_e4)
+                          uint16_t pi_range_e6, uint16_t imu_var_e4,
+                          uint16_t base_q4)
 {
-    /* Packed 14-byte wire payload — explicit packing so there is no struct
-       padding on the wire (the dart parser reads 4+1+1+2+2+2+2 LE). */
+    /* Packed 16-byte wire payload — explicit packing so there is no struct
+       padding on the wire (4+1+1+2+2+2+2, then the base_q4 tail). */
     struct __attribute__((packed))
     {
         uint32_t ts;
@@ -328,9 +337,19 @@ bool commu_send_wear_diag(uint32_t ts, uint8_t evt, uint8_t status,
         uint16_t pi_e6;
         uint16_t pi_range_e6;
         uint16_t imu_var_e4;
+        /* Appended 2026-08-31 after the frozen 14; an older phone stops at
+           imu_var and a newer one reading older firmware sees no tail.
+           worn_dc_base is the per-session learned DC baseline that EVERY
+           ON/OFF decision is measured against, and it was the one quantity
+           the diagnostics never reported. Without it a whole day was spent
+           unable to tell whether the baseline had been dragged onto a desk —
+           twice a wrong conclusion was drawn from code alone because the data
+           simply could not answer it. Same q4 scaling as dc_q4 so the two are
+           directly comparable. */
+        uint16_t base_q4;
     } rec = {.ts = ts, .evt = evt, .status = status, .dc_q4 = dc_q4,
              .pi_e6 = pi_e6, .pi_range_e6 = pi_range_e6,
-             .imu_var_e4 = imu_var_e4};
+             .imu_var_e4 = imu_var_e4, .base_q4 = base_q4};
     return commu_send_blob(HEALTH_DATA_COMMAND_ID, KEY_WEAR_DIAG,
                            &rec, (uint16_t)sizeof(rec));
 }

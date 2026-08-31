@@ -30,7 +30,7 @@
  *           cheap (seconds) instead of catastrophic (hours) — 98% of
  *           genuinely-worn samples clear the pulse floor — while no longer
  *           re-admitting a desk.
- *         - ON hold: DC above max(0.80 × base, DC_ABS_FLOOR). Baseline EMA
+ *         - ON hold: DC above max(0.85 × base, DC_ABS_FLOOR). Baseline EMA
  *           adapts slowly while in-band (per-unit / per-fit calibration —
  *           measured worn DC differs >4k between our two units).
  *         - ON→OFF: sustained sub-threshold DC — fast (~12 s) when the dip
@@ -91,16 +91,54 @@
  * - OFF_THR: DC below OFF_THR×base (clamped up to DC_ABS_FLOOR) votes OFF. */
 #define WORN_BAND_LO            0.88f
 #define WORN_BAND_HI            1.15f
-#define OFF_THR_FACTOR          0.80f
+/* 2026-08-31: was 0.80f. Measured on the wearer's own watch across three
+ * conditions in one day, with the truth known for each (worn 00:00-09:40,
+ * then on a desk until 11:56, then back on):
+ *
+ *                       n    DC median      vs worn
+ *   on the wrist      247       47144
+ *   desk, PPG in air   34       38122        -19.1%
+ *   desk, PPG on wood  24       39724        -15.7%
+ *
+ * Taking the watch off drops DC by 16-19%. The exit test needed a drop of
+ * more than 20%. It never fired: across 2 h 16 min on a desk the detector
+ * emitted ZERO OFF events and held "worn" for 100% of samples. This is not a
+ * threshold that is slightly off — a 0.80 factor asks for a drop this sensor
+ * does not produce when the watch comes off a wrist.
+ *
+ * Per-sample, over those same three windows:
+ *   DC >= 0.80*base   worn 98%   air 100%   wood 100%   <- cannot separate
+ *   DC >= 0.85*base   worn 98%   air  24%   wood  33%
+ * Worn is unchanged at 98% because a wrist rarely dips near 0.85 (worn p10 is
+ * 45976 = 0.975*base); the 2% that do are brief and cannot outlast the exit
+ * hysteresis. 0.82 through 0.90 all score the same, so this sits on a plateau,
+ * not a tuned point.
+ *
+ * NOT fixed by this: the residual 24-33% is desk samples whose DC spikes into
+ * the worn range (up to 48840, above the wrist's own median). DC alone stops
+ * here. A PI floor was measured too and rejected — see the note below.
+ *
+ * ⚠ One wearer, one watch, one day, two surfaces. */
+#define OFF_THR_FACTOR          0.85f
+
+/* Why there is no PI test in the exit path, having measured one:
+ * the two off-wrist conditions sit on OPPOSITE sides of the worn PI median
+ * (0.001095) — PPG in air reads 0.003216 (3x high, ambient/noise amplified by
+ * the lower DC), PPG on wood reads 0.000352 (3x low). No single-sided PI gate
+ * catches both, and a two-sided band is worse: 29% of genuinely-worn samples
+ * read above 0.0025 (motion artefact), 21% of them pinned at the u16 ceiling,
+ * so an upper bound would reject real wear outright. Adding only the lower
+ * bound (PI >= PI_THD_TO_ON) buys 3-12 points of desk rejection for 4 points
+ * of real wear (98% -> 94%); not worth it against a single constant. */
 /* Asymmetric EMA: learn DOWN (loosening fit) at 1/64 per eval, UP at only
  * 1/256 — a pressed-sensor episode (DC 45k+) must not inflate the base and
  * drag off_thr above the 36.4k sleep-dip floor margin. */
 #define BASE_EMA_SHIFT          6       /* down: base += (dc-base)/64  */
 #define BASE_EMA_UP_SHIFT       8       /* up:   base += (dc-base)/256 */
 
-/* Perfusion Index threshold (AC_pp / DC_mean) — COLD ENTRY ONLY. A live
- * pulse proves the contact is a wrist and not a table. Required for cold
- * entry AND for warm re-entry (2026-08-30 — see below).
+/* Perfusion Index threshold (AC_pp / DC_mean) — ENTRY ONLY (cold and, since
+ * 2026-08-30, warm too). A live pulse proves the contact is a wrist and not a
+ * table. It is deliberately NOT part of the exit test — see OFF_THR_FACTOR.
  *
  * 2026-08-30: was 0.0010f, which sat ABOVE the signal it was gating. Measured
  * on wear_diag against two windows whose truth is certain — the wearer's own
@@ -380,6 +418,9 @@ static void diag_emit(uint8_t evt, float dc, float pi, float pi_range,
     rec.pi_e6 = diag_clamp_u16(pi * 1e6f);
     rec.pi_range_e6 = diag_clamp_u16(pi_range * 1e6f);
     rec.imu_var_e4 = diag_clamp_u16(imu_var * 1e4f);
+    /* The baseline every ON/OFF decision is actually measured against. Same
+       /4 scaling as dc_q4 so a reader can compare them without a conversion. */
+    rec.base_q4 = diag_clamp_u16(ctx.worn_dc_base * 0.25f);
     watch_sys_sync.notify_wear_diag(&rec);
 }
 

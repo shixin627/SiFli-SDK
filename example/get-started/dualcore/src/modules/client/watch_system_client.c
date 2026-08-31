@@ -400,7 +400,8 @@ static int watch_sys_service_callback(data_callback_arg_t *arg)
     {
         UNPACK_DATA(arg, watch_sys_hr_sample_t, data_ind);
         /* Background daily HR-curve point from LCPU -> forward to phone. */
-        commu_send_heart_curve_sample(data_ind->timestamp, data_ind->bpm);
+        commu_send_heart_curve_sample(data_ind->timestamp, data_ind->bpm,
+                                      data_ind->worn);
 #ifdef BSP_USING_BLOC_FILESYSTEM
         /* Persist for store-and-forward (survives BLE disconnect). */
         health_store_hr_async(data_ind->timestamp, data_ind->bpm);
@@ -426,7 +427,8 @@ static int watch_sys_service_callback(data_callback_arg_t *arg)
            BLE is down are acceptable for a diagnostic stream. */
         commu_send_wear_diag(data_ind->ts, data_ind->evt, data_ind->status,
                              data_ind->dc_q4, data_ind->pi_e6,
-                             data_ind->pi_range_e6, data_ind->imu_var_e4);
+                             data_ind->pi_range_e6, data_ind->imu_var_e4,
+                             data_ind->base_q4);
         break;
     }
     case MSG_SERVICE_SLEEP_DIAG_IND:

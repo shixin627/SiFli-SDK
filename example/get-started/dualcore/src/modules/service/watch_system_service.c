@@ -207,6 +207,14 @@ static void notify_hr_sample(uint32_t timestamp, uint8_t bpm)
     watch_sys_hr_sample_t data_ind = {
         .timestamp = timestamp,
         .bpm = bpm,
+#ifdef BSP_USING_WEAR_DETECT
+        /* Sampled here, on the LCPU, in the same breath as the reading — this
+           is the authoritative verdict, not the HCPU mirror. */
+        .worn = wear_detect_is_wearing() ? WATCH_SYS_WORN_YES
+                                         : WATCH_SYS_WORN_NO,
+#else
+        .worn = WATCH_SYS_WORN_UNKNOWN,
+#endif
     };
     push_msg_to_hcpu(MSG_SERVICE_HR_SAMPLE_IND, &data_ind, sizeof(data_ind));
 }

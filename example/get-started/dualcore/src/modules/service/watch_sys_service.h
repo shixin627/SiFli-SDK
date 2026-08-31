@@ -194,7 +194,23 @@ extern "C"
     {
         uint32_t timestamp; /* UTC second of the sample */
         uint8_t  bpm;       /* heart rate; 0 = invalid  */
+        /* What wear detection believed AT THE MOMENT this sample was taken.
+           WATCH_SYS_WORN_* below. Added 2026-08-31: a watch face-down on a
+           desk keeps producing heart rate, and until now nothing downstream
+           could tell those readings apart from a wrist's — 2 h 16 min of desk
+           "heart rate" reached the phone on 2026-08-31 with no marker at all.
+           Read here rather than from the HCPU mirror because that mirror is
+           set true on wrist-raise and never set back to false. */
+        uint8_t  worn;
     } watch_sys_hr_sample_t;
+
+    /* Tri-state, because "we don't know" must not collapse into "worn".
+       UNKNOWN is what a backfilled sample carries: the watch's own
+       /health/hr_*.json has no wear column, so replayed points genuinely
+       cannot say. The phone must render UNKNOWN as ordinary, not as off-wrist. */
+#define WATCH_SYS_WORN_NO       0u
+#define WATCH_SYS_WORN_YES      1u
+#define WATCH_SYS_WORN_UNKNOWN  0xFFu
 
     /* Background HR-curve GAP reason (LCPU -> HCPU). Emitted once per 5-min
        bucket that produced no HR point; HCPU forwards via KEY_HEART_CURVE_SKIP
@@ -231,6 +247,12 @@ extern "C"
         uint16_t pi_e6;        /* PI * 1e6, clamped to 65535               */
         uint16_t pi_range_e6;  /* PI range * 1e6, clamped                  */
         uint16_t imu_var_e4;   /* IMU variance * 1e4, clamped              */
+        /* The per-session learned DC baseline, same /4 scaling as dc_q4 so the
+           two compare directly. Added 2026-08-31: every ON/OFF decision is
+           dc vs a factor of THIS, and it was the one quantity the diagnostics
+           never carried — leaving "has the baseline been dragged onto the
+           surface the watch is resting on?" unanswerable from data. */
+        uint16_t base_q4;
     } watch_sys_wear_diag_t;
 
     /* Per-minute sleep-fusion diagnostic record (LCPU -> HCPU). HCPU forwards
