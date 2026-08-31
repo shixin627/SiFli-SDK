@@ -418,7 +418,16 @@ extern "C"
         uint64_t mouse_press_mode : 1; /* 0: pressure<4700=move & <2800=click; 1: always-move & pressure<4700=click */
         uint64_t wear_detect_off : 1;  /* 1: disable wear detection (force worn unless on charger) — diagnostic override */
         uint64_t hr_continuous : 1;    /* 1: run HR the Exercise-app way (PPG held on, algo never re-inits) instead of bg_hr bursts — diagnostic */
-        uint64_t reserved : 22;
+        /* 1: emit the health DIAGNOSTIC streams — KEY_HR_WINDOW_DUMP (0x16),
+           KEY_HR_WINDOW_RAW (0x17), KEY_HR_BURST_SUMMARY (0x18) and
+           KEY_SLEEP_DIAG (0x13). DEFAULT 0. They cost ~2.2 MB/day on the link
+           and no phone code reads the CSVs they land in (2026-08-31 audit), so
+           they are parked behind a runtime switch rather than deleted: the wire
+           formats and senders all stay, and flipping this bit brings them back
+           with no OTA. Does NOT touch the product stream (0x10 curve sample,
+           0x11 gap marker, 0x03 sleep summary), which is always on. */
+        uint64_t hr_diag : 1;
+        uint64_t reserved : 21;
     } T_FLAG_FIELD;
 
     /*Do not disturb mode configuration */

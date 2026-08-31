@@ -94,6 +94,11 @@ extern "C"
            state lives in LCPU RAM, which is re-loaded and zeroed on every
            reset. */
         SysSeedBatterySoc,
+        /* HCPU -> LCPU: may the HR diagnostic streams emit? body[1] 1 = yes,
+           0 = no, which is also what LCPU boots with. Re-asserted on every
+           periodic tick like WearDetectEnable, so a silent LCPU reboot
+           converges back to the persisted value instead of losing it. */
+        HrDiagCapture,
     } client_msg_t;
 
     typedef struct
@@ -427,6 +432,7 @@ extern "C"
         int (*set_tap_and_hold_mode)(bool enable);
         int (*set_wear_detect_enable)(bool enable);
         int (*set_hr_continuous)(bool enable);
+        int (*set_hr_diag)(bool enable);
 #else
     // lcpu->hcpu notify functions
     void (*notify_battery_voltage)(uint32_t data);

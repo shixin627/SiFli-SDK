@@ -1569,6 +1569,12 @@ static watch_sys_hr_window_t bg_hr_win_dump;
 /* Static, not stack: 272 bytes is more than this callback's frame should carry,
    and it is reused for both chunks of the same window. */
 static watch_sys_hr_raw_t bg_hr_raw_dump;
+/* May the diagnostic dumps emit? Pushed from HCPU (HrDiagCapture) and re-asserted
+   every periodic tick, so an LCPU reboot converges back instead of losing it.
+   Boots false: 0x16+0x17 alone are ~2.2 MB/day and nothing on the phone reads
+   them. Gating, not deleting -- flipping the switch brings them back with no
+   OTA. The product stream (0x10/0x11) is never gated by this. */
+static bool bg_hr_diag_on = false;
 
 /* Integer std-dev from running Σx / Σx². Dividing before squaring keeps this in
    uint32 for any realistic n (Σx² ≤ n·255², so n up to ~66k is safe; a 3-min
@@ -1994,7 +2000,7 @@ static void bg_hr_finish_burst(void)
     /* One summary per burst, purely observational -- nothing above reads it and
        no decision depends on it. Placed after every branch that can set the
        outcome so the reason it reports is the one actually taken. */
-    if (watch_sys_sync.notify_hr_burst)
+    if (bg_hr_diag_on && watch_sys_sync.notify_hr_burst)
     {
         watch_sys_hr_burst_t sum;
         memset(&sum, 0, sizeof(sum));
@@ -2119,7 +2125,8 @@ static void bg_hr_sample_cb(void *param)
        one every 10.24 s -- far below the notify path's rate. On the phone it is
        ~1-2 MB/day of CSV against today's ~100 KB. Temporary, like the rest of
        this capture: it goes when the estimator investigation closes. */
-    if (hr_autocorr_total() >= bg_hr_win_next_total &&
+    if (bg_hr_diag_on &&
+        hr_autocorr_total() >= bg_hr_win_next_total &&
         watch_sys_sync.notify_hr_window)
     {
         uint16_t n = hr_autocorr_last_window(bg_hr_win_dump.win,
@@ -2317,6 +2324,20 @@ static void bg_hr_cont_cb(void *param)
         bg_hr_cont_sum = 0; bg_hr_cont_sum_sq = 0; bg_hr_cont_n = 0;
         bg_hr_cont_flush();
     }
+}
+
+/* Enable/disable the diagnostic dumps from the watch Settings toggle
+   (HCPU -> HrDiagCapture). Nothing else changes: no sensor mode, no sample
+   rate, no subscription -- only whether the already-computed records are
+   handed to the notify callbacks. So it cannot move the HR curve. */
+void hr_service_set_hr_diag(bool enable)
+{
+    if (bg_hr_diag_on == enable) return;
+    bg_hr_diag_on = enable;
+    /* Re-anchor so re-enabling does not immediately fire on a stale target and
+       then chase windows whose samples are long gone. */
+    if (enable) bg_hr_win_next_total = hr_autocorr_total() + HR_AUTOCORR_WIN;
+    LOG_W("[HR] diag capture %s", enable ? "ON" : "OFF");
 }
 
 /* Enable/disable from the watch Settings toggle (HCPU -> HrContinuousMode). */

@@ -398,6 +398,33 @@ static void set_hr_continuous(bool enable)
                                               : "OFF (back to bursts)");
 }
 
+/**
+ * Diagnostic capture: whether the watch streams the raw HR windows (0x16/0x17),
+ * the per-burst summary (0x18) and the per-minute sleep diagnostic (0x13).
+ * Default OFF -- together they are ~2.2 MB/day and no phone code reads the CSVs
+ * they land in. The product stream (0x10 curve sample, 0x11 gap reason, 0x03
+ * sleep summary) is NOT affected and keeps running either way.
+ */
+static void set_hr_diag(bool enable)
+{
+    const bool was = SkaiWatchSys.flag_field.hr_diag ? true : false;
+    SkaiWatchSys.flag_field.hr_diag = enable ? 1 : 0;
+    /* Only touch flash when the value really changed. Nothing re-sends this
+       today, but a prefs write is a flash write, and frequent flash writes have
+       starved the GUI into a watchdog reset in this codebase before. The push to
+       LCPU below stays unconditional -- it only writes RAM, and
+       hr_service_set_hr_diag() returns early when the value already matches. */
+    if (was != enable)
+    {
+        peripheral_provider.save_watch_shared_prefs(WATCH_PREFS_KEY_FLAG_FIELD);
+    }
+    if (watch_sys_sync.set_hr_diag)
+    {
+        watch_sys_sync.set_hr_diag(enable);
+    }
+    LOG_I("[UI]HR diag capture %s", enable ? "ON (~2.2 MB/day)" : "OFF");
+}
+
 /* Language functions --------------------------------------------------------*/
 
 /**
@@ -566,6 +593,7 @@ static int bloc_setting_provider_register(void)
     setting_provider.set_lift_switch_status = set_lift_switch_status;
     setting_provider.set_wear_detect_off = set_wear_detect_off;
     setting_provider.set_hr_continuous = set_hr_continuous;
+    setting_provider.set_hr_diag = set_hr_diag;
     setting_provider.set_brightness = set_brightness;
     setting_provider.set_screen_time = set_screen_time;
     setting_provider.get_power_save_mode = get_power_save_mode;

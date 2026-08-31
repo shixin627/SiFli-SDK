@@ -434,14 +434,22 @@ static int watch_sys_service_callback(data_callback_arg_t *arg)
     case MSG_SERVICE_SLEEP_DIAG_IND:
     {
         UNPACK_DATA(arg, watch_sys_sleep_diag_t, data_ind);
-        commu_send_sleep_diag(data_ind->ts, data_ind->score, data_ind->hr,
-                              data_ind->hr_std, data_ind->stage, data_ind->veto,
-                              data_ind->rhr, data_ind->worn, data_ind->rest,
-                              data_ind->fresh, data_ind->total, data_ind->deep,
-                              data_ind->rem, data_ind->light, data_ind->pi_e3,
-                              data_ind->frame_pct, data_ind->rate_info,
-                              data_ind->own_info, data_ind->rep_pct,
-                              data_ind->accel_act);
+        /* KEY_SLEEP_DIAG (0x13) is a diagnostic side-channel with no consumer
+           on the phone; off unless the switch says otherwise. The sleep/wake
+           computation and the 0x03 summary are a different chain entirely
+           (notify_sleep_state -> MSG_SERVICE_SLEEP_STATE_IND) and are
+           untouched by this guard. */
+        if (SkaiWatchSys.flag_field.hr_diag)
+        {
+            commu_send_sleep_diag(data_ind->ts, data_ind->score, data_ind->hr,
+                                  data_ind->hr_std, data_ind->stage, data_ind->veto,
+                                  data_ind->rhr, data_ind->worn, data_ind->rest,
+                                  data_ind->fresh, data_ind->total, data_ind->deep,
+                                  data_ind->rem, data_ind->light, data_ind->pi_e3,
+                                  data_ind->frame_pct, data_ind->rate_info,
+                                  data_ind->own_info, data_ind->rep_pct,
+                                  data_ind->accel_act);
+        }
         break;
     }
     case MSG_SERVICE_HR_CONT_IND:
@@ -708,6 +716,7 @@ static int set_multi_gesture_mode(bool enable) { return send_sys_cmd_b1(MultiGes
 static int set_tap_and_hold_mode(bool enable)  { return send_sys_cmd_b1(TapAndHoldMode,    enable ? 1 : 0); }
 static int set_wear_detect_enable(bool enable) { return send_sys_cmd_b1(WearDetectEnable,  enable ? 1 : 0); }
 static int set_hr_continuous(bool enable)      { return send_sys_cmd_b1(HrContinuousMode,  enable ? 1 : 0); }
+static int set_hr_diag(bool enable)            { return send_sys_cmd_b1(HrDiagCapture,     enable ? 1 : 0); }
 
 /**
  * @brief Register synchronization functions for the watch system
@@ -741,6 +750,7 @@ static void register_watch_sys_sync_funs(void)
     watch_sys_sync.set_tap_and_hold_mode = set_tap_and_hold_mode;
     watch_sys_sync.set_wear_detect_enable = set_wear_detect_enable;
     watch_sys_sync.set_hr_continuous = set_hr_continuous;
+    watch_sys_sync.set_hr_diag = set_hr_diag;
 }
 
 /**

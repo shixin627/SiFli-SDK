@@ -565,6 +565,15 @@ static int32_t watch_sys_service_msg_handler(datas_handle_t service,
             break;
         }
 
+        case HrDiagCapture:
+        {
+#ifdef BSP_USING_HR_SVC
+            extern void hr_service_set_hr_diag(bool enable);
+            hr_service_set_hr_diag(msg->body[1] == 1);
+#endif
+            break;
+        }
+
         default:
             break;
         }

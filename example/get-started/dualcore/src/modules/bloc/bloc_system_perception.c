@@ -182,6 +182,14 @@ void app_periodic_task(void)
     {
         watch_sys_sync.set_hr_continuous(SkaiWatchSys.flag_field.hr_continuous ? true : false);
     }
+
+    /* Same for the diagnostic capture switch: LCPU boots it false, so without
+       this re-assert an LCPU reboot would silently stop a capture that the user
+       had turned on, and the missing data would look like a watch fault. */
+    if (watch_sys_sync.set_hr_diag)
+    {
+        watch_sys_sync.set_hr_diag(SkaiWatchSys.flag_field.hr_diag ? true : false);
+    }
 #endif
 }
 
