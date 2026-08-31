@@ -17,9 +17,7 @@ limitations under the License.
 #define TENSORFLOW_LITE_MICRO_EXAMPLES_MAGIC_WAND_CONSTANTS_H_
 
 #define kChannelNumber 3
-/* 3 = ax,ay,az(linear accel, m/s^2)。2026-08-28 從 4 降下來,拿掉的是 PPG,
-   理由見 gesture_recognition_task.c 的 get_gesture_data()。 */
-#define kChannelReleaseNumber 3
+#define kChannelReleaseNumber 4
 #define kModelDataType kTfLiteFloat32
 
 // The expected accelerometer data sample frequency
@@ -34,9 +32,6 @@ limitations under the License.
 #define kHoldGesture 2
 #define kTapGesture 1
 #define kNoGesture 0
-/* 模型的第三類 = 「都不是」。注意 kNoGesture(0) 其實是 release 類別的索引,
-   所以「不夠有把握」不能回 0,要回這個。 */
-#define kUnknownGesture 2
 
 // These control the sensitivity of the detection algorithm. If you're seeing
 // too many false positives or not enough true positives, you can try tweaking

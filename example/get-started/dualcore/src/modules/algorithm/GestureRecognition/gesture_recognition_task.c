@@ -93,8 +93,9 @@ extern void app_gesture_receive_imu_data(int16_t (*dataset)[6], int sample_num);
 static rt_thread_t gesture_recognition_thread = RT_NULL;
 
 /* Buffers for sensor data processing */
-static float identifyWindow[TAP_TARGET_SAMPLE_NUM][kChannelReleaseNumber];
-static float release_identifyWindow[RELEASE_TARGET_SAMPLE_NUM][kChannelReleaseNumber];
+static float identifyWindow[TAP_TARGET_SAMPLE_NUM][4];
+static float release_identifyWindow[RELEASE_TARGET_SAMPLE_NUM][4];
+static float ppgidentifyWindow[16][kChannelReleaseNumber];
 
 /**
  * @brief Handle detected gesture by updating gesture index
@@ -112,23 +113,65 @@ static void handle_gesture(int label)
 static void get_gesture_data(gesture_data_t *gesture, int sample_num,
                              uint8_t divide_rate)
 {
-    /* 模型輸入 = 3 通道 linear accel(m/s^2),沒有 PPG。
-       2026-08-28:PPG 這一路被拿掉,有兩個獨立的理由 ——
-       (1) mouse3 論文的消融:PPG 對「點擊」的按放偵測 Δ event-F1 ≤ +0.014、
-           tap 偵測率完全相同(§5.6b),對書寫情境也是 Δ≈0;
-       (2) 本輪留一人交叉驗證直接量:同一個架構,3 通道 recall 0.461 >
-           4 通道(含 PPG)0.442 —— 那一格不只沒用,還在稀釋前三通道。
-       而且手錶這邊的 PPG 本來就有已知的「兩值交替」缺陷(見
-       bloc_motion_tracking.c 的 PPG-DIAG 註解),等於餵雜訊進模型。 */
-    float (*win)[kChannelReleaseNumber] =
-        (sample_num > TAP_TARGET_SAMPLE_NUM) ? release_identifyWindow
-                                             : identifyWindow;
-    for (int i = 0; i < sample_num; i++)
+    if (sample_num > TAP_TARGET_SAMPLE_NUM)
     {
-        int index = i * divide_rate;
-        win[i][0] = gesture->dataset[index].x / INT16_to_G * GRAVITY;
-        win[i][1] = gesture->dataset[index].y / INT16_to_G * GRAVITY;
-        win[i][2] = gesture->dataset[index].z / INT16_to_G * GRAVITY;
+        for (int i = 0; i < sample_num; i++)
+        {
+            int index = i * divide_rate;
+            float acceleration_x =
+                gesture->dataset[index].x / INT16_to_G * GRAVITY;
+            float acceleration_y =
+                gesture->dataset[index].y / INT16_to_G * GRAVITY;
+            float acceleration_z =
+                gesture->dataset[index].z / INT16_to_G * GRAVITY;
+            release_identifyWindow[i][0] = acceleration_x;
+            release_identifyWindow[i][1] = acceleration_y;
+            release_identifyWindow[i][2] = acceleration_z;
+            release_identifyWindow[i][3] = gesture->dataset[index].ppg_data;
+        }
+    }
+    else
+    {
+        for (int i = 0; i < sample_num; i++)
+        {
+            int index = i * divide_rate;
+            float acceleration_x =
+                gesture->dataset[index].x / INT16_to_G * GRAVITY;
+            float acceleration_y =
+                gesture->dataset[index].y / INT16_to_G * GRAVITY;
+            float acceleration_z =
+                gesture->dataset[index].z / INT16_to_G * GRAVITY;
+            identifyWindow[i][0] = acceleration_x;
+            identifyWindow[i][1] = acceleration_y;
+            identifyWindow[i][2] = acceleration_z;
+            identifyWindow[i][3] = gesture->dataset[index].ppg_data;
+        }
+        // PPG min-max normalization to [-1, 1]
+        float ppg_min = identifyWindow[0][3];
+        float ppg_max = identifyWindow[0][3];
+        for (int i = 1; i < sample_num; i++)
+        {
+            if (identifyWindow[i][3] < ppg_min)
+                ppg_min = identifyWindow[i][3];
+            if (identifyWindow[i][3] > ppg_max)
+                ppg_max = identifyWindow[i][3];
+        }
+        float ppg_range = ppg_max - ppg_min;
+        if (ppg_range > 0.0f)
+        {
+            for (int i = 0; i < sample_num; i++)
+            {
+                identifyWindow[i][3] =
+                    2.0f * (identifyWindow[i][3] - ppg_min) / ppg_range - 1.0f;
+            }
+        }
+        else
+        {
+            for (int i = 0; i < sample_num; i++)
+            {
+                identifyWindow[i][3] = 0.0f;
+            }
+        }
     }
 }
 
@@ -279,11 +322,7 @@ static void gesture_recognition_algorithm(gesture_data_t *gesture)
             rt_tick_t tick_time_start = rt_tick_get();
             tap_recognition_score = recognize_gesture_release(identifyWindow);
             last_gesture_recognition_time = rt_tick_get();
-            /* LOG_I → LOG_D(2026-08-28):新 arming 把視窗率從 20 拉到 48 次/分,
-               這行在 release(BSP_DBG_LVL=DBG_INFO)會變成每秒近一行灌進黑盒子的
-               8 KB ring,把真正的當機前情沖掉。判決本身在 dev 有 `gcap log on`
-               的 GST 行可看。 */
-            LOG_D("recognize tap gesture cost_tick:%d, score:%d",
+            LOG_I("recognize tap gesture cost_tick:%d, score:%d",
                   last_gesture_recognition_time - tick_time_start,
                   tap_recognition_score);
             {
@@ -454,7 +493,7 @@ static void gesture_stage2_report(const char *what)
     {
         return;
     }
-    rt_kprintf("GST %s\n", what);   /* 同上:不能被 ULOG 等級吃掉 */
+    LOG_I("GST %s", what);
     #ifdef BSP_USING_COMMUNICATE
     char line[48];
     rt_snprintf(line, sizeof(line), "GST %s", what);
