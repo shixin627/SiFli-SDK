@@ -304,7 +304,25 @@ static void notify_sleep_state(uint8_t mode, uint32_t timestamp_utc)
         data_ind.rem_min               = out->rem_min;
         data_ind.light_min             = out->light_min;
         data_ind.awake_after_onset_min = out->awake_after_onset_min;
-        data_ind.resting_hr            = out->last_hr_baseline_bpm;
+        /* The learned resting reference (5th percentile of a 3-day 2-bpm-bin HR
+           histogram, persisted across reboot in a backup register), NOT
+           last_hr_baseline_bpm. 0 means "not established yet", which is the
+           honest answer and what the phone stores as unknown.
+
+           last_hr_baseline_bpm was wrong here on both counts (founder,
+           2026-08-31: 「沒量到心率應該是要顯示無效數值」). It is a median of the
+           last <=10 minutes carrying ANY heart rate -- recent HR, not resting HR
+           -- and when no HR has been seen since init it falls back to the
+           CONFIGURED SEED, so a watch that has just restarted reports a
+           plausible-looking constant instead of admitting it has nothing. This
+           watch restarts 2-3 times a day, so that constant would have been most
+           of the column. Same swap the 0x13 diagnostic column got on 2026-08-29,
+           for the same reason.
+
+           Safe: last_hr_baseline_bpm has no algorithm consumer -- its only
+           readers are four LOG statements in sleep_service.c and this line. The
+           wake veto judges against learned_rhr_bpm / rhr_ref_bpm, not this. */
+        data_ind.resting_hr            = out->rhr_ref_bpm;
     }
 #ifdef BSP_USING_HR_SVC
     data_ind.current_hr = hr_service_get_latest_bpm();
