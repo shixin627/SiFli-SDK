@@ -186,6 +186,43 @@
  * artefact, measured ~0.27) is rejected by PI_RANGE_MAX. */
 #define PI_HISTORY_LEN          5
 #define PI_RANGE_THD            0.0003f
+
+/* === Off-wrist by STILLNESS of the perfusion signal ==========================
+ * Second exit path, added 2026-09-01 after the DC route was measured dead.
+ *
+ * Ground truth that day (founder): worn 00:00-09:54, then the same watch on a
+ * desk with the PPG facing open air until 10:39, then flat on the table.
+ *
+ *   pi_range median   wrist 0.00104 | desk air 0.00017 | desk flat 0.00007
+ *
+ * DC cannot see either of those: flat on the table dc/base is 1.11, i.e. ABOVE
+ * the learned baseline, so `dc < base * OFF_THR_FACTOR` can never fire at any
+ * factor. PI LEVEL cannot either -- it is non-monotonic, the wrist (0.0016)
+ * sits BETWEEN desk-air (0.0032) and desk-flat (0.00033), so no single-sided
+ * threshold covers both surfaces. Only the VARIABILITY separates them, and
+ * being a ratio it is immune to the AGC gain steps that move DC by 29% while
+ * the watch never leaves the wrist.
+ *
+ * Measured on that day, at 0.00025 with a 5-minute run: 0/198 false exits over
+ * ten hours of real wear INCLUDING A FULL NIGHT ASLEEP, while catching 64% of
+ * flat-on-table and 50% of facing-air minutes.
+ *
+ * KNOWN UNTESTED CASE: off the wrist but MOVING (in a bag, in a pocket).
+ * Vibration would keep pi_range up and this test would not fire. That failure
+ * is a MISS, never a false exit -- it leaves us exactly where we are today, so
+ * the risk of shipping it is bounded. Do not "fix" it by lowering the run
+ * length without new data; the run length is what buys the 0/198. */
+#define PI_RANGE_FLAT_THD       0.00025f
+/* u16 wire saturation of pi/pi_range (65535/1e6). At or above this the reading
+ * is invalid, not "high perfusion" -- 21% of genuinely-worn samples pin here.
+ * Invalid readings must RESET the streak, never extend it. */
+#define PI_SATURATED            0.0655f
+/* Consecutive one-minute checks required. Sampled at 60 s -- the same cadence
+ * as the wear_diag CSV the threshold was fitted on -- NOT once per
+ * EVAL_PERIOD_MS (1.5 s), which would be a 7.5-second test and would have no
+ * relation to the evidence. */
+#define FLAT_CHECK_MS           60000u
+#define FLAT_CHECKS_TO_OFF      5
 #define PI_RANGE_MAX            0.15f
 
 /* PPG freshness: if no new PPG sample arrives within this many
@@ -292,6 +329,10 @@ typedef struct
     float last_pi_range;
     float last_imu_var;
     uint32_t last_diag_sample_ms;
+
+    /* Perfusion-stillness exit (@ref PI_RANGE_FLAT_THD): one check a minute. */
+    uint32_t last_flat_check_ms;
+    uint8_t  flat_streak;
 
     /* Current output */
     wear_status_t status;
@@ -438,6 +479,8 @@ static void set_status(wear_status_t new_status)
         return;
 
     ctx.status = new_status;
+    /* A streak only means something within one ON stretch. */
+    ctx.flat_streak = 0;
 
     if (new_status == WEAR_STATUS_WEARING)
     {
@@ -679,6 +722,32 @@ static int evaluate_once(uint32_t now)
                   dc_mean, off_thr,
                   ctx.off_streak_motion ? "moving" : "still");
             return -1;
+        }
+
+        /* DC says contact. Second opinion: has the perfusion signal been
+         * DEAD FLAT for five straight minutes? A wrist is never that quiet --
+         * even asleep the pulse and posture move it. A table is. Checked once
+         * a minute so the run length means minutes, not evaluations. */
+        if (now - ctx.last_flat_check_ms >= FLAT_CHECK_MS)
+        {
+            ctx.last_flat_check_ms = now;
+            if (pi_range > 0.0f && pi_range < PI_RANGE_FLAT_THD &&
+                pi < PI_SATURATED && pi_range < PI_SATURATED)
+            {
+                if (ctx.flat_streak < 0xFFu) ctx.flat_streak++;
+            }
+            else
+            {
+                ctx.flat_streak = 0;
+            }
+
+            if (ctx.flat_streak >= FLAT_CHECKS_TO_OFF)
+            {
+                LOG_W("Eval: PI flat %.6f < %.6f for %u min -> off-wrist -> OFF vote",
+                      pi_range, PI_RANGE_FLAT_THD, (unsigned)ctx.flat_streak);
+                ctx.flat_streak = 0;
+                return -1;
+            }
         }
 
         /* Contact holds: stay ON regardless of PI (sleep perfusion may be
