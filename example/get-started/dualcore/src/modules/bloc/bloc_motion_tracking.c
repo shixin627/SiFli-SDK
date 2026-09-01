@@ -61,8 +61,15 @@
 
     #define FEEDBACK_ACCEL_SAMPLES_FOR_TAP 9
     #define FEEDBACK_ACCEL_SAMPLES_FOR_RELEASE 10
-    #define RELEASE_START_THRESHOLD 1.0f
-    #define TAP_START_THRESHOLD 0.3f
+    /* The release gesture (all five fingers spread — a distinct gesture, NOT
+       "the finger coming off a pinch") arms off the same difference_accel, so
+       swapping the feature silently rescales this too. There is no FSR ground
+       truth for it, so the goal here is to leave its behaviour ALONE, not to
+       tune it: 1.55 is the ‖Δa‖ value that reproduces the old arming rate of
+       1.0 on |Δ‖a‖| (mouse3 0.083%, April daily 0.597% — measured in the
+       low-rate tail, which is the regime a gesture threshold lives in). */
+    #define RELEASE_START_THRESHOLD 1.55f
+    #define TAP_START_THRESHOLD 0.15f
 
     /* ── Peak-aligned capture (2026-07-29) ────────────────────────────────
        Replaces "threshold crossing starts an exclusive 35-sample collection".
@@ -88,11 +95,36 @@
          new:     15 windows, 41% occupancy, 3/3 taps caught, index [9,9,9]
        Still capture regression-checked: identical window count/occupancy, all
        6 events caught, alignment [9,9,17]/[18,17,17] → [9,9,9]/[9,9,9]. */
+    /* ── Arming feature = ‖Δa‖, not |Δ‖a‖| (2026-09-01) ───────────────────
+       Measured against FSR ground truth in paper_progam/mouse3 — 8 people,
+       158 min, 2522 real pinches (touch_adc gives the press instant, so no
+       hand labelling). The old feature differenced the MAGNITUDE, which is
+       blind to direction change (a wrist rotation at constant |a| is
+       invisible) while still reacting to slow magnitude drift during daily
+       wear. Differencing the VECTOR fixes both at once:
+
+                             stage-1 tap  end-to-end  daily win/min  daily FP
+         |Δ‖a‖| 0.30 / K5          0.412       0.374           12.2      0.12
+         ‖Δa‖   0.15 / K4          0.771       0.721            5.6      0.12
+
+       End-to-end nearly doubles while false triggers are unchanged and
+       inference load halves. Per-person stage-1 recall improved for all 8,
+       most for the weakest: dad 0.17→0.80, willson 0.15→0.46. The old fixed
+       floor of 0.3 sat ABOVE the tap-peak median of 7 of the 8 (0.111-0.317)
+       — that, not the model, is why taps were hard to trigger. The model is
+       untouched here: it already scored 0.91 on the windows it was handed. */
     #define GESTURE_PEAK_SEARCH 10   /* samples of quiet needed to confirm peak */
     #define GESTURE_ARM_TIMEOUT 80   /* give up if no window in 800 ms          */
-    #define GESTURE_ADAPTIVE_K 5.0f  /* thr = max(fixed, median × K)            */
+    #define GESTURE_ADAPTIVE_K 4.0f  /* thr = max(fixed, median × K)            */
     #define GESTURE_ADAPTIVE_MEDIAN_SAMPLES 75
-    #define GESTURE_CONTEXT_WALK_MEDIAN 0.03f /* median above this ≈ walking    */
+    /* ‖Δa‖ runs ~2.3× the old feature, so every constant compared against the
+       running median had to be rescaled with it. Leaving the veto at 0.25
+       would have made it FIRE MORE than today (78.5% of arms discarded on a
+       real active recording vs 68.3% today) — and the veto ignores window
+       content, so it discards real pinches too. 0.55 restores the original
+       selectivity (63.3%) at zero measured cost to tap recall or FP. */
+    #define GESTURE_BACKGROUND_VETO_MEDIAN 0.55f
+    #define GESTURE_CONTEXT_WALK_MEDIAN 0.07f /* median above this ≈ walking    */
 
 // Gesture types
 typedef enum
@@ -207,7 +239,7 @@ static watch_sys_linear_acce_t targetWave_algo[MAX_RAWDATA_TIME_STEP];
 
 static float difference_accel_sliding_window[MAX_GESTURE_SAMPLES] = {0.0f};
 static int difference_accel_count = 0;
-static float prev_linear_accel_resultant = 0.0f;
+static Vector3 prev_linear_acce = {0};
 static bool user_hand_horizontal = false;
 
 // Forward declarations for waveform capture functions
@@ -815,7 +847,7 @@ static void gesture_event_capture_hcpu(uint16_t freq, time_t ts,
            .arm_median. Re-computing here lets a strong gesture veto itself. */
         float median_difference_accel = cap->arm_median;
         bool is_gesture = true;
-        if (median_difference_accel > 0.25f)
+        if (median_difference_accel > GESTURE_BACKGROUND_VETO_MEDIAN)
         {
             is_gesture = false;
             median_lock_trigger_time = current_time;
@@ -1070,11 +1102,15 @@ static void waveform_capture_process(motion_data_t *motion_data, Vector3 *gyro)
         (gravity->y > -0.7 && gravity->z > -0.6) ||
         app_control_get_mouse_mode() || message_media_widget_focused();
 
-    // Calculate linear acceleration difference
-    float linear_accel_resultant = total_acceleration_magnitude(
-        linear_acce->x, linear_acce->y, linear_acce->z);
+    /* Arming feature: ‖Δa‖ — the length of the sample-to-sample CHANGE
+       vector. See GESTURE_ADAPTIVE_K above for the measurement that replaced
+       |Δ‖a‖| here; differencing the magnitude discarded every direction
+       change, which is most of what a pinch actually is. */
+    float dax = linear_acce->x - prev_linear_acce.x;
+    float day = linear_acce->y - prev_linear_acce.y;
+    float daz = linear_acce->z - prev_linear_acce.z;
     waveform_gesture_state.difference_accel =
-        fabsf(linear_accel_resultant - prev_linear_accel_resultant);
+        (float)total_acceleration_magnitude(dax, day, daz);
     difference_accel_sliding_window[difference_accel_count] =
         waveform_gesture_state.difference_accel;
     if (difference_accel_count < MAX_GESTURE_SAMPLES - 1)
@@ -1085,7 +1121,7 @@ static void waveform_capture_process(motion_data_t *motion_data, Vector3 *gyro)
     {
         difference_accel_count = 0;
     }
-    prev_linear_accel_resultant = linear_accel_resultant;
+    prev_linear_acce = *linear_acce;
 
     #ifdef REAL_TIME_IMU_DATA_COLLECTION
     extern bool imu_raw_data_collection;
