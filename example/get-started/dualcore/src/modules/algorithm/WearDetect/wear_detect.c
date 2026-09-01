@@ -223,6 +223,41 @@
  * relation to the evidence. */
 #define FLAT_CHECK_MS           60000u
 #define FLAT_CHECKS_TO_OFF      5
+
+/* Same evidence, opposite direction: warm re-entry must also see the perfusion
+ * signal MOVING. Measured 2026-09-01 (pi_range medians): wrist 0.00104,
+ * desk-in-air 0.00017, desk-flat 0.00007.
+ *
+ * Without this the desk walks straight back in. The 2026-08-30 pulse gate on
+ * this branch (pi >= PI_THD_TO_ON) does not stop it, because PI LEVEL is
+ * non-monotonic: a PPG facing open air reads 0.0032, EIGHT TIMES the 0.0004
+ * gate and higher than a real wrist's 0.0016. Observed on the bench the same
+ * day: exit fired correctly at 12:31:16, and by 12:38 the watch was reporting
+ * worn again while still lying on the desk — dc/base was 1.068, inside the
+ * [0.88, 1.15] band, and pi was 0.0032, so every existing condition passed.
+ *
+ * Set below the worn p5 (0.00019) so a quiet sleeping wrist still gets back in:
+ * this branch re-evaluates every EVAL_PERIOD_MS, so it only needs ONE sample
+ * over the line, not a majority. */
+/* Threshold scan on the labelled day (blocked desk-air / blocked desk-flat /
+ * admitted wrist):  0.00015 -> 50%/96%/98% | 0.00025 -> 88%/96%/89% |
+ * 0.00040 -> 96%/96%/70%.
+ *
+ * A SINGLE sample over the line is not enough: this branch re-evaluates every
+ * EVAL_PERIOD_MS (1.5 s), so even a 4% pass rate lets the desk back in about
+ * every 37 seconds. A threshold cannot beat unlimited retries, so entry demands
+ * a RUN, exactly like the exit does.
+ *
+ * The run is short (3) because entry latency already costs up to 7.5 minutes
+ * (IMU only reaches us during an HR burst, @ref bmi270_driver.c), and a wrist
+ * admitted at 70% per evaluation clears three in a row within seconds.
+ *
+ * The three evaluations are NOT independent: PI history spans 5 samples over
+ * ~7.5 s while evaluation runs every 1.5 s, so consecutive evaluations share
+ * most of their window. Read "3 in a row" as "the range stayed up for ~4.5 s",
+ * NOT as 0.04^3 -- do not quote a probability for it. */
+#define PI_RANGE_ALIVE_THD      0.00040f
+#define ALIVE_EVALS_TO_ON       3
 #define PI_RANGE_MAX            0.15f
 
 /* PPG freshness: if no new PPG sample arrives within this many
@@ -333,6 +368,8 @@ typedef struct
     /* Perfusion-stillness exit (@ref PI_RANGE_FLAT_THD): one check a minute. */
     uint32_t last_flat_check_ms;
     uint8_t  flat_streak;
+    /* Perfusion-movement entry (@ref PI_RANGE_ALIVE_THD): consecutive evals. */
+    uint8_t  alive_streak;
 
     /* Current output */
     wear_status_t status;
@@ -479,8 +516,9 @@ static void set_status(wear_status_t new_status)
         return;
 
     ctx.status = new_status;
-    /* A streak only means something within one ON stretch. */
+    /* A streak only means something within one stretch of a single state. */
     ctx.flat_streak = 0;
+    ctx.alive_streak = 0;
 
     if (new_status == WEAR_STATUS_WEARING)
     {
@@ -785,6 +823,18 @@ static int evaluate_once(uint32_t now)
         return 0;
     }
 
+    /* Track how long the perfusion signal has been MOVING. A saturated reading
+     * IS genuine high variability here, so unlike the exit test it extends the
+     * streak instead of resetting it. */
+    if (pi_range >= PI_RANGE_ALIVE_THD)
+    {
+        if (ctx.alive_streak < 0xFFu) ctx.alive_streak++;
+    }
+    else
+    {
+        ctx.alive_streak = 0;
+    }
+
     /* WARM re-entry: this session already proved a wrist once (pulse-seeded
      * baseline), so DC back inside the worn band is evidence the wrist has
      * returned. Blocked while charging so a cradle is never warm-recovered
@@ -818,12 +868,14 @@ static int evaluate_once(uint32_t now)
     if (!plugged && ctx.worn_dc_base > 0.0f &&
         dc_mean >= (float)DC_ABS_FLOOR &&
         pi >= PI_THD_TO_ON &&
+        ctx.alive_streak >= ALIVE_EVALS_TO_ON &&
         dc_mean >= ctx.worn_dc_base * WORN_BAND_LO &&
         dc_mean <= ctx.worn_dc_base * WORN_BAND_HI)
     {
-        LOG_I("Eval: DC=%.0f in worn band [%.0f..%.0f] -> warm re-entry -> ON",
+        LOG_I("Eval: DC=%.0f in worn band [%.0f..%.0f], pi_range=%.6f alive"
+              " -> warm re-entry -> ON",
               dc_mean, ctx.worn_dc_base * WORN_BAND_LO,
-              ctx.worn_dc_base * WORN_BAND_HI);
+              ctx.worn_dc_base * WORN_BAND_HI, pi_range);
         ctx.last_vote_pulse = false;
         return 1;
     }
