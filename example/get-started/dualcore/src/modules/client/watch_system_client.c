@@ -183,6 +183,7 @@ static void set_battery_voltage(uint16_t voltage, uint16_t percentage)
 
 extern int get_gravity_position(void);
 
+#if SKAI_HEALTH_DIAG
 /* ---- continuous-HR batch backlog ------------------------------------------
    LCPU hands over one 30 s batch at a time and cannot see whether BLE is up, so
    the outage retry has to live here. Without it a disconnected stretch is gone
@@ -229,6 +230,7 @@ static void hr_cont_enqueue(const watch_sys_hr_cont_t *rec)
     s_hr_cont_q[(s_hr_cont_head + s_hr_cont_n) % HR_CONT_BACKLOG] = *rec;
     s_hr_cont_n++;
 }
+#endif /* SKAI_HEALTH_DIAG */
 
 /* Defined below with the other LCPU-bound senders; used from the subscribe
    response handler, which comes first in this file. */
@@ -431,6 +433,7 @@ static int watch_sys_service_callback(data_callback_arg_t *arg)
                              data_ind->base_q4);
         break;
     }
+#if SKAI_HEALTH_DIAG
     case MSG_SERVICE_SLEEP_DIAG_IND:
     {
         UNPACK_DATA(arg, watch_sys_sleep_diag_t, data_ind);
@@ -439,7 +442,6 @@ static int watch_sys_service_callback(data_callback_arg_t *arg)
            computation and the 0x03 summary are a different chain entirely
            (notify_sleep_state -> MSG_SERVICE_SLEEP_STATE_IND) and are
            untouched by this guard. */
-        if (SkaiWatchSys.flag_field.hr_diag)
         {
             commu_send_sleep_diag(data_ind->ts, data_ind->score, data_ind->hr,
                                   data_ind->hr_std, data_ind->stage, data_ind->veto,
@@ -486,6 +488,7 @@ static int watch_sys_service_callback(data_callback_arg_t *arg)
                             data_ind->power_veto);
         break;
     }
+#endif /* SKAI_HEALTH_DIAG */
     case MSG_SERVICE_SLEEP_STATE_IND:
     {
         UNPACK_DATA(arg, watch_sys_sleep_state_t, data_ind);
@@ -715,8 +718,10 @@ static void set_debug_mode(bool enable)
 static int set_multi_gesture_mode(bool enable) { return send_sys_cmd_b1(MultiGestureMode,  enable ? 1 : 0); }
 static int set_tap_and_hold_mode(bool enable)  { return send_sys_cmd_b1(TapAndHoldMode,    enable ? 1 : 0); }
 static int set_wear_detect_enable(bool enable) { return send_sys_cmd_b1(WearDetectEnable,  enable ? 1 : 0); }
+#if SKAI_HEALTH_DIAG
 static int set_hr_continuous(bool enable)      { return send_sys_cmd_b1(HrContinuousMode,  enable ? 1 : 0); }
 static int set_hr_diag(bool enable)            { return send_sys_cmd_b1(HrDiagCapture,     enable ? 1 : 0); }
+#endif
 
 /**
  * @brief Register synchronization functions for the watch system
@@ -749,8 +754,10 @@ static void register_watch_sys_sync_funs(void)
     watch_sys_sync.set_multi_gesture_mode = set_multi_gesture_mode;
     watch_sys_sync.set_tap_and_hold_mode = set_tap_and_hold_mode;
     watch_sys_sync.set_wear_detect_enable = set_wear_detect_enable;
+#if SKAI_HEALTH_DIAG
     watch_sys_sync.set_hr_continuous = set_hr_continuous;
     watch_sys_sync.set_hr_diag = set_hr_diag;
+#endif
 }
 
 /**

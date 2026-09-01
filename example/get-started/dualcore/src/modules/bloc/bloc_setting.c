@@ -373,6 +373,7 @@ static void set_wear_detect_off(bool off)
                                        : "ENABLED");
 }
 
+#if SKAI_HEALTH_DIAG
 /**
  * @brief  Continuous-HR diagnostic (Settings toggle).
  *
@@ -424,6 +425,7 @@ static void set_hr_diag(bool enable)
     }
     LOG_I("[UI]HR diag capture %s", enable ? "ON (~2.2 MB/day)" : "OFF");
 }
+#endif /* SKAI_HEALTH_DIAG */
 
 /* Language functions --------------------------------------------------------*/
 
@@ -592,8 +594,10 @@ static int bloc_setting_provider_register(void)
     setting_provider.set_watch_time = set_watch_time;
     setting_provider.set_lift_switch_status = set_lift_switch_status;
     setting_provider.set_wear_detect_off = set_wear_detect_off;
+#if SKAI_HEALTH_DIAG
     setting_provider.set_hr_continuous = set_hr_continuous;
     setting_provider.set_hr_diag = set_hr_diag;
+#endif
     setting_provider.set_brightness = set_brightness;
     setting_provider.set_screen_time = set_screen_time;
     setting_provider.get_power_save_mode = get_power_save_mode;

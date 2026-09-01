@@ -6,6 +6,29 @@
 #include "bsp_board.h"
 #include "bloc_motor.h"
 
+/* Health DIAGNOSTIC streams — compile-time master switch. 0 = not built at all.
+ *
+ * Covers: KEY_SLEEP_DIAG (0x13), KEY_HR_CONT_DIAG (0x15),
+ *   KEY_HR_WINDOW_DUMP (0x16), KEY_HR_WINDOW_RAW (0x17),
+ *   KEY_HR_BURST_SUMMARY (0x18), and the CONTINUOUS-HR MEASUREMENT MODE itself
+ *   (bg_hr_cont_* / hr_service_set_hr_continuous — a diagnostic regime that
+ *   holds the PPG LED on, not product behaviour).
+ *
+ * Does NOT cover, i.e. always built: 0x10 heart-curve sample, 0x11 gap marker,
+ *   0x03 sleep summary and the sleep/wake decision, 0x12 wear diagnostics and
+ *   the wear-detect algorithm, 0x02 steps, 0x0f live HR for the Exercise app.
+ *
+ * ALWAYS write `#if SKAI_HEALTH_DIAG`, NEVER `#ifdef`. It is defined AS 0, so
+ * `#ifdef` is true and would silently build the whole capture back in — with a
+ * green build and no warning, because armclang here runs without -Wundef.
+ *
+ * It lives in this header because this is the one header BOTH cores already
+ * include. Deliberately not a Kconfig BSP_USING_*: those are set per core in
+ * separate proj.conf files (HR_SVC/SLEEP_FUSION in project/lcpu, WATCH_SYS_CLIENT
+ * in project/hcpu), so the two halves can drift apart — which is exactly the
+ * HCPU-new/LCPU-old split-brain firmware this repo has already shipped once. */
+#define SKAI_HEALTH_DIAG 0
+
 #ifdef __cplusplus
 extern "C"
 {
@@ -260,6 +283,7 @@ extern "C"
         uint16_t base_q4;
     } watch_sys_wear_diag_t;
 
+#if SKAI_HEALTH_DIAG
     /* Per-minute sleep-fusion diagnostic record (LCPU -> HCPU). HCPU forwards
        it via KEY_SLEEP_DIAG; cable-less units have no serial console, so this
        is the only window into why a night was scored the way it was. hr_std is
@@ -404,6 +428,7 @@ extern "C"
            before the algorithm goes wrong?) and for a usable gate. */
         uint16_t pi_e3[WATCH_SYS_HR_CONT_MAX];
     } watch_sys_hr_cont_t;
+#endif /* SKAI_HEALTH_DIAG */
 
     typedef struct
     {
@@ -431,8 +456,10 @@ extern "C"
         int (*set_multi_gesture_mode)(bool enable);
         int (*set_tap_and_hold_mode)(bool enable);
         int (*set_wear_detect_enable)(bool enable);
+#if SKAI_HEALTH_DIAG
         int (*set_hr_continuous)(bool enable);
         int (*set_hr_diag)(bool enable);
+#endif
 #else
     // lcpu->hcpu notify functions
     void (*notify_battery_voltage)(uint32_t data);
@@ -448,6 +475,7 @@ extern "C"
     void (*notify_minute_of_activity)(time_t utc_now, uint8_t steps,
                                       uint8_t orientation, uint16_t vmc);
     void (*notify_debug_log)(char *log);
+#if SKAI_HEALTH_DIAG
     void (*notify_sleep_diag)(const watch_sys_sleep_diag_t *rec);
     /* Fire-and-forget to HCPU. A BLE outage is absorbed by HCPU's backlog ring
        (watch_system_client.c): losing every disconnected minute is worse than
@@ -457,6 +485,7 @@ extern "C"
     void (*notify_hr_window)(const watch_sys_hr_window_t *rec);
     void (*notify_hr_raw)(const watch_sys_hr_raw_t *rec);
     void (*notify_hr_burst)(const watch_sys_hr_burst_t *rec);
+#endif /* SKAI_HEALTH_DIAG */
 #endif
     } watch_sys_sync_t;
 

@@ -110,8 +110,10 @@ static lv_obj_t *time_format_title_label = NULL;
 static lv_obj_t *time_format_badge_label = NULL;
 static lv_obj_t *mouse_press_quick_btn = NULL;
 static lv_obj_t *wear_detect_quick_btn = NULL;
+#if SKAI_HEALTH_DIAG
 static lv_obj_t *hr_continuous_quick_btn = NULL;
 static lv_obj_t *hr_diag_quick_btn = NULL;
+#endif
 
 extern void app_developer_main(void);
 
@@ -546,6 +548,7 @@ static void wear_detect_switch_event_callback(lv_event_t *e)
     }
 }
 
+#if SKAI_HEALTH_DIAG
 /* "連續心率" toggle. Checked = measure HR the Exercise-app way (PPG held on,
  * Goodix algorithm never re-initialised, 1 Hz). Unchecked = the normal bg_hr
  * burst regime. Diagnostic: both regimes open the identical sensor mode, so this
@@ -581,6 +584,7 @@ static void hr_diag_switch_event_callback(lv_event_t *e)
         LOG_I("Diag capture toggled: %s", on ? "ON" : "OFF");
     }
 }
+#endif /* SKAI_HEALTH_DIAG */
 
 static void btn_lang_event_callback(lv_event_t *e)
 {
@@ -1497,6 +1501,7 @@ void app_setting_init(void *param)
     lv_obj_add_event_cb(wear_detect_sw, wear_detect_switch_event_callback,
                         LV_EVENT_VALUE_CHANGED, NULL);
 
+#if SKAI_HEALTH_DIAG
     /* Continuous HR (diagnostic) wide widget — same shape as Wear Detection. */
     const lv_coord_t hr_cont_btn_w = LV_HOR_RES * 80 / 100;
     hr_continuous_quick_btn = lv_obj_create(settings_container);
@@ -1569,13 +1574,23 @@ void app_setting_init(void *param)
     }
     lv_obj_add_event_cb(hr_diag_sw, hr_diag_switch_event_callback,
                         LV_EVENT_VALUE_CHANGED, NULL);
+#endif /* SKAI_HEALTH_DIAG */
 
     /* Capsule list items (same style as the wide widgets above).
      * Items that navigate to another page get a ">" arrow on the right. */
     lv_obj_t *list_btn;
 
+    /* The last wide widget above, which the capsule list anchors to. With the
+       diagnostics compiled out, Wear Detection is the last one; anchoring to the
+       removed button would be a NULL align_to and drop the whole list to 0,0. */
+#if SKAI_HEALTH_DIAG
+    lv_obj_t *last_wide_btn = hr_diag_quick_btn;
+#else
+    lv_obj_t *last_wide_btn = wear_detect_quick_btn;
+#endif
+
     // Gesture (launches gesture app)
-    list_btn = create_capsule_item(settings_container, hr_diag_quick_btn,
+    list_btn = create_capsule_item(settings_container, last_wide_btn,
                                    LV_EXT_IMG_GET(icon_release), LV_EXT_STR_GET_BY_KEY(gesture, "Gesture"),
                                    true);
     lv_obj_add_event_cb(list_btn, btn_gesture_event_callback,

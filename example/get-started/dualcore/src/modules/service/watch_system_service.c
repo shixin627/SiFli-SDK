@@ -240,6 +240,7 @@ static void notify_wear_diag(const watch_sys_wear_diag_t *rec)
     push_msg_to_hcpu(MSG_SERVICE_WEAR_DIAG_IND, rec, sizeof(*rec));
 }
 
+#if SKAI_HEALTH_DIAG
 static void notify_sleep_diag(const watch_sys_sleep_diag_t *rec)
 {
     /* Mirrors notify_wear_diag: forward a per-minute sleep-fusion diagnostic to
@@ -288,6 +289,7 @@ static void notify_hr_burst(const watch_sys_hr_burst_t *rec)
     if (rec == NULL) return;
     push_msg_to_hcpu(MSG_SERVICE_HR_BURST_IND, rec, sizeof(*rec));
 }
+#endif /* SKAI_HEALTH_DIAG */
 
 static void notify_sleep_state(uint8_t mode, uint32_t timestamp_utc)
 {
@@ -574,6 +576,7 @@ static int32_t watch_sys_service_msg_handler(datas_handle_t service,
             break;
         }
 
+#if SKAI_HEALTH_DIAG
         case HrContinuousMode:
         {
 #ifdef BSP_USING_HR_SVC
@@ -591,6 +594,7 @@ static int32_t watch_sys_service_msg_handler(datas_handle_t service,
 #endif
             break;
         }
+#endif /* SKAI_HEALTH_DIAG */
 
         default:
             break;
@@ -636,11 +640,13 @@ static void register_watch_sys_service_funs(void)
     watch_sys_sync.notify_minute_of_activity = notify_minute_of_activity;
     watch_sys_sync.notify_sleep_state = notify_sleep_state;
     watch_sys_sync.notify_debug_log = notify_debug_log;
+#if SKAI_HEALTH_DIAG
     watch_sys_sync.notify_sleep_diag = notify_sleep_diag;
     watch_sys_sync.notify_hr_cont = notify_hr_cont;
     watch_sys_sync.notify_hr_window = notify_hr_window;
     watch_sys_sync.notify_hr_raw = notify_hr_raw;
     watch_sys_sync.notify_hr_burst = notify_hr_burst;
+#endif /* SKAI_HEALTH_DIAG */
 }
 
 static int watch_sys_service_register(void)

@@ -204,6 +204,7 @@ void hr_set_power(uint8_t arg)
         return;
     }
 #ifndef SOC_BF0_HCPU
+#if SKAI_HEALTH_DIAG
     /* Continuous-HR diagnostic owns the sensor for the same reason: its whole
      * point is that the HBA algorithm is never re-initialised. wear_detect calls
      * hr_set_power(1) on off-wrist motion and power-cycles it when PPG goes
@@ -217,6 +218,7 @@ void hr_set_power(uint8_t arg)
         LOG_I("PPG power request (%d) vetoed: continuous HR diag active", arg);
         return;
     }
+#endif /* SKAI_HEALTH_DIAG */
     /* A burst owns the light until it finishes -- see hr_service_bg_burst_active.
      * BOTH directions, and the power-ON half is the one that mattered.
      *
@@ -242,7 +244,9 @@ void hr_set_power(uint8_t arg)
     extern bool hr_service_bg_burst_active(void);
     if (hr_service_bg_burst_active())
     {
+#if SKAI_HEALTH_DIAG
         if (bg_hr_burst_power_veto < 0xFFu) bg_hr_burst_power_veto++;
+#endif
         LOG_I("PPG power request (%d) vetoed: bg_hr burst in flight", arg);
         return;
     }
@@ -1560,6 +1564,7 @@ static uint8_t  bg_hr_vendor_bpm = 0;          /* last vendor read, diagnostic o
    Bounds chosen wide: this is evidence collection, and a capture that never
    fires is worse than one that occasionally grabs a real rate change. */
 static uint8_t  bg_hr_last_published = 0;
+#if SKAI_HEALTH_DIAG
 /* Next value of hr_autocorr_total() at which a window dump is due. Set at burst
    start to "one WHOLE window from now" so the first dump cannot be the stale
    ring left over from the previous burst 10 minutes ago. */
@@ -1575,6 +1580,7 @@ static watch_sys_hr_raw_t bg_hr_raw_dump;
    them. Gating, not deleting -- flipping the switch brings them back with no
    OTA. The product stream (0x10/0x11) is never gated by this. */
 static bool bg_hr_diag_on = false;
+#endif /* SKAI_HEALTH_DIAG */
 
 /* Integer std-dev from running Σx / Σx². Dividing before squaring keeps this in
    uint32 for any realistic n (Σx² ≤ n·255², so n up to ~66k is safe; a 3-min
@@ -1934,7 +1940,9 @@ static void bg_hr_finish_burst(void)
        burst ran (@ref bg_hr_win_next_total). */
 
     bool bghr_curve_refused = false;
+#if SKAI_HEALTH_DIAG
     bool bghr_published = false;
+#endif
     if (bg_hr_burst_best > 0 && watch_sys_sync.notify_hr_sample)
     {
         uint32_t now_s = (uint32_t)time(NULL);
@@ -1942,7 +1950,9 @@ static void bg_hr_finish_burst(void)
         {
             watch_sys_sync.notify_hr_sample(now_s, bg_hr_burst_best);
             bg_hr_last_published = bg_hr_burst_best;  /* baseline for next burst */
+#if SKAI_HEALTH_DIAG
             bghr_published = true;
+#endif
             bg_hr_last_ok_ms = rt_tick_get_millisecond();  /* @ref bg_hr_pulse_recent */
             bg_hr_note(BGHR_OK);
         }
@@ -1997,10 +2007,11 @@ static void bg_hr_finish_burst(void)
         bg_hr_win_tick_ms = rt_tick_get_millisecond();
     }
 
+#if SKAI_HEALTH_DIAG
     /* One summary per burst, purely observational -- nothing above reads it and
        no decision depends on it. Placed after every branch that can set the
        outcome so the reason it reports is the one actually taken. */
-    if (bg_hr_diag_on && watch_sys_sync.notify_hr_burst)
+    if (watch_sys_sync.notify_hr_burst)
     {
         watch_sys_hr_burst_t sum;
         memset(&sum, 0, sizeof(sum));
@@ -2022,6 +2033,7 @@ static void bg_hr_finish_burst(void)
                          : BGHR_WIRE_OTHER));
         watch_sys_sync.notify_hr_burst(&sum);
     }
+#endif /* SKAI_HEALTH_DIAG */
 
     if (bg_hr_sample_timer) rt_timer_stop(bg_hr_sample_timer);
     {
@@ -2098,6 +2110,7 @@ static void bg_hr_sample_cb(void *param)
           (unsigned)own_bpm, (unsigned)own_conf,
           (unsigned)hr_autocorr_accel_act(), (unsigned)bg_hr_vendor_bpm);
 
+#if SKAI_HEALTH_DIAG
     /* Stream EVERY whole window of the burst, live, as it completes.
        This used to keep exactly ONE window per burst -- the suspect one if there
        was one, else the last accepted one -- which turned out to be the wrong
@@ -2125,8 +2138,7 @@ static void bg_hr_sample_cb(void *param)
        one every 10.24 s -- far below the notify path's rate. On the phone it is
        ~1-2 MB/day of CSV against today's ~100 KB. Temporary, like the rest of
        this capture: it goes when the estimator investigation closes. */
-    if (bg_hr_diag_on &&
-        hr_autocorr_total() >= bg_hr_win_next_total &&
+    if (hr_autocorr_total() >= bg_hr_win_next_total &&
         watch_sys_sync.notify_hr_window)
     {
         uint16_t n = hr_autocorr_last_window(bg_hr_win_dump.win,
@@ -2177,6 +2189,7 @@ static void bg_hr_sample_cb(void *param)
            to catch up on windows whose samples are long gone. */
         bg_hr_win_next_total = hr_autocorr_total() + HR_AUTOCORR_WIN;
     }
+#endif /* SKAI_HEALTH_DIAG */
 
     if (own_bpm > 0 && own_conf >= BG_HR_OWN_MIN_CONF)
     {
@@ -2208,6 +2221,7 @@ static void bg_hr_sample_cb(void *param)
     }
 }
 
+#if SKAI_HEALTH_DIAG
 /* ===== Continuous-HR diagnostic ====================================
    Founder experiment (2026-08-02). The Exercise app and bg_hr open the IDENTICAL
    sensor mode -- both go hr_control_mode(RT_SENSOR_POWER_HIGH) ->
@@ -2386,13 +2400,16 @@ void hr_service_set_hr_continuous(bool enable)
         LOG_I("bg_hr: CONTINUOUS HR diag OFF -> back to bursts");
     }
 }
+#endif /* SKAI_HEALTH_DIAG */
 
 static void bg_hr_period_cb(void *param)
 {
     (void)param;
+#if SKAI_HEALTH_DIAG
     /* Continuous diag owns the sensor; its timer is stopped on enable, but a tick
        already queued when the toggle flipped would still land here. */
     if (bg_hr_cont_enabled) return;
+#endif
 
     /* Roll the wall-clock 5-min bucket BEFORE any early-return below, so every
        tick is attributed and a rollover is never missed. NOTE the tick (10 min)
@@ -2474,8 +2491,10 @@ static void bg_hr_period_cb(void *param)
     bg_hr_burst_qscore_max = 0;
     bg_hr_burst_own_conf_max = 0;
     bg_hr_vendor_bpm = 0;
+#if SKAI_HEALTH_DIAG
     bg_hr_win_next_total = hr_autocorr_total() + HR_AUTOCORR_WIN;
     bg_hr_burst_power_veto = 0;
+#endif
     bg_hr_burst_confi_max = 0;
     bg_hr_burst_snr_max = 0;
     bg_hr_burst_qlevel = 0;
@@ -2484,10 +2503,12 @@ static void bg_hr_period_cb(void *param)
     uint32_t bg_now_ms = rt_tick_get_millisecond();
     bg_hr_burst_start_seq = gh3018_get_hr_update_seq();  /* warm-up baseline: accept once the algo emits a NEW locked value past this */
     bg_hr_burst_start_frames = gh3018_get_ppg_frame_count(); /* frame-accounting baseline (see decl) */
+#if SKAI_HEALTH_DIAG
     /* Same idea one layer down: start_frames counts what the CHIP produced,
        this counts what reached OUR ring. A burst where the two disagree is a
        feed that died mid-burst, which is invisible in every other number. */
     bg_hr_burst_total0 = hr_autocorr_total();
+#endif
     bg_hr_burst_deadline_ms = bg_now_ms + bg_hr_burst_ms;
     /* Open in HR mode (GH30X_FUNCTION_HR), the same path the foreground HR
        subscribe uses; hr_set_power(1) would open NORMAL = HRV, which never
@@ -2513,10 +2534,12 @@ static void bg_hr_init(void)
         "bghr_s", bg_hr_sample_cb, RT_NULL,
         rt_tick_from_millisecond(BG_HR_SAMPLE_MS),
         RT_TIMER_FLAG_PERIODIC | RT_TIMER_FLAG_SOFT_TIMER);
+#if SKAI_HEALTH_DIAG
     bg_hr_cont_timer = rt_timer_create(
         "bghr_c", bg_hr_cont_cb, RT_NULL,
         rt_tick_from_millisecond(BG_HR_SAMPLE_MS),
         RT_TIMER_FLAG_PERIODIC | RT_TIMER_FLAG_SOFT_TIMER);
+#endif
     if (bg_hr_period_timer) rt_timer_start(bg_hr_period_timer);
 }
 #endif /* !SOC_BF0_HCPU */

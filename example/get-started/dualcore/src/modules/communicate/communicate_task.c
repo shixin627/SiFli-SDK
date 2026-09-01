@@ -354,6 +354,7 @@ bool commu_send_wear_diag(uint32_t ts, uint8_t evt, uint8_t status,
                            &rec, (uint16_t)sizeof(rec));
 }
 
+#if SKAI_HEALTH_DIAG
 bool commu_send_sleep_diag(uint32_t ts, uint16_t score, uint8_t hr,
                            uint8_t hr_std, uint8_t stage, uint8_t veto,
                            uint8_t rhr, uint8_t worn, uint8_t rest,
@@ -557,6 +558,7 @@ bool commu_send_hr_burst(uint32_t ts, uint32_t dur_ms, uint32_t samples,
     buf[n++] = power_veto;
     return commu_send_blob(HEALTH_DATA_COMMAND_ID, KEY_HR_BURST_SUMMARY, buf, n);
 }
+#endif /* SKAI_HEALTH_DIAG */
 
 bool commu_send_sleep_data(void)
 {

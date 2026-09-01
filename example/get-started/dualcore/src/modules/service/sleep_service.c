@@ -578,6 +578,7 @@ static void prv_minute_eval(uint32_t utc_now)
     }
 #endif
 
+#if SKAI_HEALTH_DIAG
     /* Per-minute sleep diagnostic to phone (KEY_SLEEP_DIAG) — nightly CSV for
        offline SQI-threshold + missed-night attribution. hr_std = SQI candidate.
        Not gated by SLEEP_ACCEL_DIAG: this is the load-bearing collection path. */
@@ -651,6 +652,7 @@ static void prv_minute_eval(uint32_t utc_now)
         };
         watch_sys_sync.notify_sleep_diag(&drec);
     }
+#endif /* SKAI_HEALTH_DIAG */
 
     prv_emit_stage(out, utc_now);
 
