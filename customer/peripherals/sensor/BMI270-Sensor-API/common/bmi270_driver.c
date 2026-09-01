@@ -1034,6 +1034,22 @@ static void bmi270_acc_gyro_evt_handler()
     #ifdef BSP_USING_GESTURE_DETECT
                 feed_health_accel_only(&watch_sensor.imu_data.acce);
     #endif
+    #ifdef BSP_USING_WEAR_DETECT
+                /* wear_detect needs motion too, and this early return used to
+                 * starve it completely: handle_imu_data() below is the ONLY
+                 * caller of wear_detect_feed_imu(), so with the screen off it
+                 * saw nothing at all. That matters because motion is the only
+                 * thing that opens the PPG probe window, and the probe is the
+                 * only way to get back from NOT_WEARING to WEARING -- i.e. put
+                 * the watch on while it is asleep and it could never notice
+                 * (observed 2026-09-01). The sample is already fetched; this
+                 * is one sqrtf and a ring store, and try_evaluate() inside it
+                 * self-throttles to EVAL_PERIOD_MS, so it does not reintroduce
+                 * the gesture-pipeline cost this early return exists to avoid. */
+                extern void wear_detect_feed_imu(Vector3 *acce, float sample_rate);
+                wear_detect_feed_imu(&watch_sensor.imu_data.acce,
+                                     watch_sensor.imu_data.sample_rate);
+    #endif
             }
             return;
         }
