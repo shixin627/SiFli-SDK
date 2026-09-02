@@ -606,13 +606,39 @@ static void sp_append_actions(lv_obj_t *view)
    黑底、文字置中、右緣圓形圖標輪播、底部麥克風)。session 以 '@' item 塞進那份
    清單,點了走既有 '@' 路徑(conv_open + chat_page);這裡的自有列表/聊天層退役成
    隱藏備援。upsert/移除都有變動才 refresh,避免 refresh→hook→inject 迴圈。 */
+/* 這一列該不該併進「同一個 Bot 已經有代表列」裡 —— sp_visible_for_device 與注入迴圈
+   共用同一條判準。
+
+   平常一律併(一列一個 Bot)。搜尋開著時只併「因為 **bot 名**比中而留下來的」那些 ——
+   使用者講的是 Bot 的名字,要的是那一個 Bot,不是它底下五間房各一列(而且那五列的標題
+   都會是同一個 bot 名,根本分不出來)。因為 **session 標題**比中而留下的照舊一列一間房。 */
+static bool sp_row_collapses_by_bot(const session_meta_t *s)
+{
+    extern bool instruction_list_filter_active(void);
+    extern bool instruction_list_title_matches_filter(const char *title);
+    if (s->bot[0] == '\0')
+        return false; /* 舊桌面沒送 profile:彼此不是「同一個 Bot」,併起來會憑空少房 */
+    if (!instruction_list_filter_active())
+        return true;
+    return instruction_list_title_matches_filter(s->bot) &&
+           !instruction_list_title_matches_filter(s->title);
+}
+
 /* 每台桌面在清單上要露出哪幾筆 —— founder 2026-08-24:「每個設備只會有最新的 5 個
    session,除非我有搜尋 session,才改成每個設備搜尋到的最新 5 個」。
 
    為什麼是挑、不是少存:搜尋字是在**手錶本地**比對標題的(instruction list 的
    pack_text_filter),池子只有露出來的那幾筆的話,搜尋永遠只能命中畫面上已經看得到的
-   東西 —— 那就不叫搜尋了。所以儲存維持 SESSION_PAGER_MAX(8)筆/台,這裡只決定哪
+   東西 —— 那就不叫搜尋了。所以儲存維持 SESSION_PAGER_MAX 筆/台,這裡只決定哪
    幾筆變成清單列;搜尋開著時同一支函式改用「比中查詢的最新 5 筆」。
+
+   ── 名額是給 BOT 的,不是給 SESSION 的(founder 2026-09-02) ──────────────────
+   收斂**必須在取前 N 筆之前**做。原本的順序是先挑「這台最新的 5 個 session」、注入時
+   才併成 Bot 列:一個 Bot 被連續談過五次就把五個名額全吃光,收斂完只剩它一列,同一台
+   桌面上的其他 Bot 一個都進不來。真機:手機送了 1234 五間 + default 五間,1234 的五間
+   都比較新 → 手錶只看得到 1234,default 從頭到尾沒出現過。
+   這個順序在 8/24 是對的(那時左頁列的是 session);8/30 改成「一列一個 Bot」之後,
+   cap 就套錯層了 —— 要的是「最新 5 個 **Bot**」。
 
    out[] 收 items[] 的 index,ts 由新到舊(同 ts / 都沒 ts 時取陣列在前者 —— 手機推
    來的順序本來就是新→舊)。回傳筆數。 */
@@ -630,6 +656,7 @@ static int sp_visible_for_device(int slot, uint8_t *out, int max)
     while (n < max)
     {
         int best = -1;
+        bool dup = false;
         for (int k = 0; k < dev->count && k < SESSION_PAGER_MAX; k++)
         {
             if (taken[k])
@@ -648,6 +675,16 @@ static int sp_visible_for_device(int slot, uint8_t *out, int max)
         if (best < 0)
             break;
         taken[best] = true;
+        /* 已經有同 Bot 的代表列了就跳過,而且**不佔名額** —— 這一行就是「名額給 Bot」。
+           標成 taken 後繼續掃,所以它底下更舊的那幾間也不會反覆被挑到。 */
+        if (sp_row_collapses_by_bot(&dev->items[best]))
+        {
+            for (int j = 0; j < n && !dup; j++)
+                dup = (strncmp(dev->items[out[j]].bot, dev->items[best].bot,
+                               SESSION_BOT_LEN) == 0);
+        }
+        if (dup)
+            continue;
         out[n++] = (uint8_t)best;
     }
     return n;
@@ -691,47 +728,11 @@ static void sp_inject_sessions_into_actions(void)
        session,所以列上的 id 仍是真的 session key,點下去的路由一個位元都不用改;左右滑
        切同 Bot 的其他 session 由 chat page 的 switcher 接手(wf_chat_bind_switcher)。
 
-       收斂做在 vis[][] 而不是下面的 order[]:移除迴圈也是拿 vis 判斷「這輪還在不在」,
-       兩邊不同步會留下清不掉的殘列(這份集合是 conv 段的唯一真相,見上面註解)。
-
-       vis 已經是 ts 新→舊,所以每個 bot 取第一次出現 = 最新那筆。bot 為空的(舊桌面沒送
-       profile)不併 —— 它們彼此不是「同一個 Bot」,併起來會憑空少掉幾間房。
-
-       搜尋開著時整段跳過:那時列的是比中的 session,標題也要留 session 的(見
-       instruction_list_filter_active)。 */
-    {
-        extern bool instruction_list_filter_active(void);
-        extern bool instruction_list_title_matches_filter(const char *title);
-        bool searching = instruction_list_filter_active();
-        for (int d = 0; d < s_device_count; d++)
-        {
-            uint8_t kept[SESSION_VISIBLE_MAX];
-            int kn = 0;
-            for (int v = 0; v < vis_n[d]; v++)
-            {
-                const session_meta_t *s = &s_devices[d].items[vis[d][v]];
-                /* 收斂的時機:平常一律收(一列一個 Bot);搜尋時只收「因為 **bot 名**
-                   比中而留下來的」那些 —— 使用者講的是 Bot 的名字,要的是那一個 Bot,
-                   不是它底下五間房各一列(而且那五列的標題都會是同一個 bot 名,根本
-                   分不出來)。因為 **session 標題**比中而留下的照舊一列一間房。 */
-                bool collapse = !searching || (s->bot[0] != '\0' &&
-                                               instruction_list_title_matches_filter(s->bot) &&
-                                               !instruction_list_title_matches_filter(s->title));
-                bool dup = false;
-                if (collapse && s->bot[0] != '\0')
-                {
-                    for (int k = 0; k < kn && !dup; k++)
-                        dup = (strncmp(s_devices[d].items[kept[k]].bot, s->bot,
-                                       SESSION_BOT_LEN) == 0);
-                }
-                if (!dup)
-                    kept[kn++] = vis[d][v];
-            }
-            for (int k = 0; k < kn; k++)
-                vis[d][k] = kept[k];
-            vis_n[d] = kn;
-        }
-    }
+       收斂本身已經做在 sp_visible_for_device 裡(2026-09-02 移進去的):在那裡做,五個
+       名額才是給 BOT 的。留在這裡做等於先讓最吵的 Bot 吃光名額、再把它自己收成一列,
+       同一台桌面的其他 Bot 就永遠進不來(真機:1234 五間都比 default 新 → 手錶只
+       看得到 1234)。vis[][] 因此已經是「每台最新 N 個 Bot 的代表列」,下面的移除迴圈
+       拿它判斷「這輪還在不在」也還是同一份真相。 */
 
     /* 移除:清單裡 conv: 開頭、但這一輪沒被挑中的(桌面刪了 session、或落在最新 5 筆
        之外 / 搜尋沒比中)。 */
