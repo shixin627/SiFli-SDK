@@ -265,12 +265,19 @@
  * longer than that. Demanding 6 of the last 10 (~15 s) outlasts the transient,
  * while a wrist admitted at 70% per eval expects 7/10 and clears it. */
 #define ALIVE_WINDOW_EVALS      10
-#define ALIVE_EVALS_TO_ON       6
-/* After an OFF verdict, warm re-entry is refused for this long. The OFF verdict
- * asks hr_set_power(0), but that is VETOED while a bg_hr burst is in flight, so
- * the PPG keeps feeding us and the very next evals can re-enter on the post-
- * verdict transient. Cold entry (motion -> probe) is NOT affected by this, so a
- * real re-wear still comes back promptly. */
+/* 7, not 6 (2026-09-02 review): a DC step sits in the 3 s sample ring for two
+ * evals and the 5-deep PI history then keeps pi_range up for SIX consecutive
+ * evals, so one step alone met a 6-of-10 bar. Steps large enough to look like
+ * a pulse burst are also excluded from the alive bit by PI_RANGE_MAX. A wrist
+ * at ~70% alive per eval clears 7-of-10 within a burst (120 evals). */
+#define ALIVE_EVALS_TO_ON       7
+/* After an OFF verdict, BOTH re-entry branches are refused for this long. The
+ * OFF verdict asks hr_set_power(0), but that is VETOED while a bg_hr burst is
+ * in flight, so the PPG keeps feeding us and the very next evals would re-enter
+ * on the post-verdict transient (2026-09-02 09:55:26 OFF -> 09:56:02 ON). A
+ * genuine re-wear costs at most this long extra: the motion probe window
+ * (PROBE_WINDOW_MS, 3 min) outlives the cooldown, so no second motion is
+ * needed, and the no-motion fallback probe is deferred until it has expired. */
 #define WARM_REENTRY_COOLDOWN_MS 60000u
 #define PI_RANGE_MAX            0.15f
 
@@ -300,13 +307,17 @@
 #define PROBE_WINDOW_MS         (3 * 60 * 1000)
 
 /* While OFF with no motion, still open a probe at this interval so a
- * wrongly-voted OFF on a resting wrist can warm re-enter (see the fallback
+ * wrongly-voted OFF on a resting wrist can re-enter (see the fallback
  * comment in evaluate_imu_only). The fallback window is much shorter than
- * the motion one: settle (6s) + a few evals is enough to warm re-enter a
- * still wrist, and a watch resting on a desk must not strobe its LED 30% of
- * the time (3min/10min) forever. */
+ * the motion one: settle (6s) + the 10-eval alive run is enough for a still
+ * wrist, and a watch resting on a desk must not strobe its LED 30% of the
+ * time (3min/10min) forever. The first fallback after an OFF verdict waits
+ * out WARM_REENTRY_COOLDOWN_MS, otherwise its 30 s window would sit entirely
+ * inside the cooldown, expire unused, and push the next chance 10 min out. */
 #define PROBE_FALLBACK_MS       (10 * 60 * 1000)
-#define PROBE_FALLBACK_WINDOW_MS (30 * 1000)
+/* 45 s (was 30): settle 6 s + 10 ring evals + 3 votes needs ~24.5 s of
+ * PPG data, and every second of sensor start-up ate the slack 1:1. */
+#define PROBE_FALLBACK_WINDOW_MS (45 * 1000)
 
 /* Detection-disabled bypass: hold "on charger" for this long after the
  * charge IC last reported charging. A topping-off battery cycles
@@ -347,6 +358,7 @@ typedef struct
     /* PPG settle: timestamp when PPG resumed after a stale gap */
     uint32_t ppg_restart_ms;
     bool ppg_settling;          /* true during settle period after restart */
+    bool stale_while_off;       /* PPG went stale while OFF: arm settle when it returns */
 
     /* Timestamp (0 = not tracking) when PPG first went stale while worn.
      * Reset the instant a fresh PPG sample arrives; if it grows past
@@ -582,10 +594,15 @@ static int evaluate_imu_only(void)
      * threshold. Without this, only the sleep/wake path's forced power-up
      * ever recovers. Blocked while plugged: a charging watch is off-wrist by
      * contract, don't waste LED current probing the cradle. */
+    uint32_t tnow = rt_tick_get_millisecond();
     bool fallback_probe =
         !s_probe_active &&
         !battery_get_charge_state()->is_plugged &&
-        (rt_tick_get_millisecond() - s_last_probe_open_ms >= PROBE_FALLBACK_MS);
+        (tnow - s_last_probe_open_ms >= PROBE_FALLBACK_MS) &&
+        /* Not inside the post-OFF cooldown: the entry gates would refuse the
+         * whole 30 s window and the fallback would be burnt for 10 min. */
+        (ctx.last_off_verdict_ms == 0u ||
+         tnow - ctx.last_off_verdict_ms >= WARM_REENTRY_COOLDOWN_MS);
 
     if (imu_var >= IMU_RETRIGGER_THD || fallback_probe)
     {
@@ -656,6 +673,7 @@ static int evaluate_once(uint32_t now)
          * never produced data), power PPG back down here too. */
         if (ctx.status == WEAR_STATUS_NOT_WEARING)
         {
+            ctx.stale_while_off = true;
             if (s_probe_active && now >= s_probe_until_ms)
             {
                 hr_set_power(0);
@@ -693,6 +711,28 @@ static int evaluate_once(uint32_t now)
         return 0;
     }
 
+    /* PPG came back while OFF without a probe having armed the settle gate:
+     * that is a bg_hr burst start (bursts are not gated on wear). The ring
+     * still holds 75 samples from the previous burst, so the first evals would
+     * compute pi across the old/new DC discontinuity plus the driver warm-up
+     * spikes, the exact fake pulse PPG_SETTLE_MS exists for. Settle completion
+     * clears ppg_buf / pi_history / on_vote_window. */
+    if (ctx.stale_while_off)
+    {
+        ctx.stale_while_off = false;
+        /* A settle left armed by an earlier OFF verdict / expired probe is
+         * minutes old and would complete on this very eval without having
+         * filtered anything; restart it. A live probe settle (< 6 s old) is
+         * left alone. */
+        if (ctx.status == WEAR_STATUS_NOT_WEARING &&
+            (!ctx.ppg_settling || (now - ctx.ppg_restart_ms) >= PPG_SETTLE_MS))
+        {
+            ctx.ppg_settling = true;
+            ctx.ppg_restart_ms = now;
+            LOG_I("Wear: PPG back while off-wrist -> settling %ums", PPG_SETTLE_MS);
+        }
+    }
+
     /* --- Check PPG settle period after sensor restart --- */
     if (ctx.ppg_settling)
     {
@@ -703,12 +743,16 @@ static int evaluate_once(uint32_t now)
             return 0; /* don't vote during settle */
         }
         ctx.ppg_settling = false;
-        /* Clear PPG buffer and PI history to use only post-settle data */
+        /* Clear PPG buffer, PI history AND the alive ring so only post-settle
+         * data counts: bits carried over from the previous burst's tail (an
+         * AGC step in its last seconds) used to satisfy the run on their own. */
         ctx.ppg_count = 0;
         ctx.ppg_idx = 0;
         ctx.pi_hist_count = 0;
         ctx.pi_hist_idx = 0;
         ctx.on_vote_window = 0;
+        ctx.alive_ring = 0;
+        ctx.alive_ring_n = 0;
         LOG_I("PPG settle complete, cleared buffers");
         return 0; /* wait for fresh data next eval */
     }
@@ -806,20 +850,29 @@ static int evaluate_once(uint32_t now)
             else if (pi_range > 0.0f && pi_range < PI_RANGE_FLAT_THD)
             {
                 if (ctx.flat_streak < 0xFFu) ctx.flat_streak++;
+                if (ctx.flat_streak == FLAT_CHECKS_TO_OFF)
+                    LOG_W("Eval: PI flat %.6f < %.6f for %u min -> off-wrist -> OFF votes",
+                          pi_range, PI_RANGE_FLAT_THD, (unsigned)ctx.flat_streak);
             }
             else
             {
                 ctx.flat_streak = 0;
             }
-
-            if (ctx.flat_streak >= FLAT_CHECKS_TO_OFF)
-            {
-                LOG_W("Eval: PI flat %.6f < %.6f for %u min -> off-wrist -> OFF vote",
-                      pi_range, PI_RANGE_FLAT_THD, (unsigned)ctx.flat_streak);
-                ctx.flat_streak = 0;
-                return -1;
-            }
         }
+
+        /* Once the streak is complete, vote OFF on EVERY eval. try_evaluate
+         * needs OFF_EVALS_STILL (20) consecutive OFF votes for a still exit,
+         * so with continuous PPG the verdict lands 30 s after the 5th flat
+         * minute-check, deterministically; only a stale/settle gap (vote 0,
+         * off_counter decays) can stretch that. The streak is cleared by
+         * set_status() on the transition, or by a later minute-check seeing
+         * pi_range >= PI_RANGE_FLAT_THD. The old code cast ONE -1, zeroed the
+         * streak and let the next "contact held" +1 wipe the counter, so this
+         * exit could never land (2026-09-02 10:36-10:43: eight flat minutes
+         * on the release watch, no OFF; the rule had never fired since it was
+         * introduced). */
+        if (ctx.flat_streak >= FLAT_CHECKS_TO_OFF)
+            return -1;
 
         /* Contact holds: stay ON regardless of PI (sleep perfusion may be
          * flat). Adapt the baseline slowly, but ONLY while this ON stretch
@@ -856,16 +909,22 @@ static int evaluate_once(uint32_t now)
         return 0;
     }
 
-    /* Track how long the perfusion signal has been MOVING. A saturated reading
-     * IS genuine high variability here, so unlike the exit test it extends the
-     * streak instead of resetting it. */
-    ctx.alive_ring = (uint16_t)((ctx.alive_ring << 1) |
-                                (pi_range >= PI_RANGE_ALIVE_THD ? 1u : 0u));
+    /* Track how long the perfusion signal has been MOVING like a pulse: above
+     * the alive floor but below PI_RANGE_MAX. An AGC gain step is "moving" too
+     * and used to count; it is not a pulse. PI_RANGE_MAX excludes steps of
+     * >= ~17.65% of DC (the 09:55 hunt was +21.7%/-17.9%); smaller steps still
+     * count for 5-6 evals, which is why ALIVE_EVALS_TO_ON is 7 -- and why two
+     * such steps within ~18 s remain the one known way a desk facing air can
+     * still pass (sized on-bench via dc_q4 pairs, not pi_range: the wire clamps
+     * it at 0.0655). */
+    bool alive_now = (pi_range >= PI_RANGE_ALIVE_THD) && (pi_range <= PI_RANGE_MAX);
+    ctx.alive_ring = (uint16_t)((ctx.alive_ring << 1) | (alive_now ? 1u : 0u));
     ctx.alive_ring &= (uint16_t)((1u << ALIVE_WINDOW_EVALS) - 1u);
     if (ctx.alive_ring_n < ALIVE_WINDOW_EVALS) ctx.alive_ring_n++;
     uint8_t alive_count = 0;
     for (uint16_t b = ctx.alive_ring; b; b &= (uint16_t)(b - 1u)) alive_count++;
-    bool warm_cooldown = (now - ctx.last_off_verdict_ms) < WARM_REENTRY_COOLDOWN_MS;
+    bool warm_cooldown = (ctx.last_off_verdict_ms != 0u) &&
+                         (now - ctx.last_off_verdict_ms) < WARM_REENTRY_COOLDOWN_MS;
 
     /* WARM re-entry: this session already proved a wrist once (pulse-seeded
      * baseline), so DC back inside the worn band is evidence the wrist has
@@ -899,7 +958,7 @@ static int evaluate_once(uint32_t now)
      * the vote windows and hysteresis are not reproduced. */
     if (!plugged && ctx.worn_dc_base > 0.0f &&
         dc_mean >= (float)DC_ABS_FLOOR &&
-        pi >= PI_THD_TO_ON &&
+        pi >= PI_THD_TO_ON && pi_range <= PI_RANGE_MAX &&
         !warm_cooldown &&
         ctx.alive_ring_n >= ALIVE_WINDOW_EVALS &&
         alive_count >= ALIVE_EVALS_TO_ON &&
@@ -915,10 +974,31 @@ static int evaluate_once(uint32_t now)
     }
 
     /* COLD entry: no session evidence (or DC outside the learned band) —
-     * require a live pulse so a table is never confirmed as a wrist. */
-    if (dc_mean >= (float)DC_ABS_FLOOR &&
+     * require a live pulse so a table is never confirmed as a wrist.
+     *
+     * Two gates added 2026-09-02, once the stillness exit actually started to
+     * land and exposed what came after it:
+     *  - the post-OFF cooldown (as warm re-entry): set_status(OFF) arms a 6 s
+     *    settle whose completion zeroes pi_hist_count, and the "< PI_HISTORY_LEN"
+     *    waiver below then let four evals through on pi alone; on a desk with the
+     *    PPG facing air (pi ~0.003) that was ON 36 s after the OFF (09:55:26 ->
+     *    09:56:02).
+     *  - the sustained alive run (as warm re-entry): pi_range is a 5-deep
+     *    max-min over evals 1.5 s apart while a DC step sits in the 3 s sample
+     *    ring for two of them, so ONE AGC excursion on a desk yields SIX
+     *    consecutive evals with pi_range >= PI_RANGE_THD, enough for 3-of-8 on
+     *    its own, about every 1-2 min while the PPG is on. Demanding
+     *    ALIVE_EVALS_TO_ON (7) of the last 10 pulse-sized (<= PI_RANGE_MAX)
+     *    alive evals outlasts a single excursion. Without this the freshly
+     *    working exit becomes a ~7-9 min ON/OFF cycle.
+     *  - the "< PI_HISTORY_LEN" waiver is gone: it re-opened for four evals
+     *    after every settle and let a desk vote ON with zero range evidence. */
+    if (!warm_cooldown &&
+        ctx.alive_ring_n >= ALIVE_WINDOW_EVALS &&
+        alive_count >= ALIVE_EVALS_TO_ON &&
+        dc_mean >= (float)DC_ABS_FLOOR &&
         pi >= PI_THD_TO_ON && pi_range <= PI_RANGE_MAX &&
-        (ctx.pi_hist_count < PI_HISTORY_LEN || pi_range >= PI_RANGE_THD))
+        pi_range >= PI_RANGE_THD)
     {
         LOG_I("Eval: DC=%.0f, AC_pp=%.0f, PI=%.5f, range=%.5f -> live wrist -> ON",
               dc_mean, ac_pp, pi, pi_range);
@@ -1095,8 +1175,20 @@ void wear_detect_feed_ppg(uint32_t ppg_raw, uint32_t ppg_raw2)
     if (!ctx.initialized)
         return;
 
+    /* First sample after a stale gap while OFF: the sensor was (re)started
+     * under us -- a bg_hr burst, which is not gated on wear. Flag it HERE, from
+     * the feed, because with the screen off no IMU-driven eval ever runs and
+     * the stale branch in evaluate_once() is never reached; without this the
+     * burst's warm-up spikes went straight into the alive ring. */
+    uint32_t fnow = rt_tick_get_millisecond();
+    if (ctx.status == WEAR_STATUS_NOT_WEARING && ctx.ppg_ever_received &&
+        (fnow - ctx.last_ppg_ms) > PPG_STALE_MS)
+    {
+        ctx.stale_while_off = true;
+    }
+
     /* Update PPG freshness timestamp */
-    ctx.last_ppg_ms = rt_tick_get_millisecond();
+    ctx.last_ppg_ms = fnow;
     ctx.ppg_ever_received = true;
     ctx.on_stale_since_ms = 0;
 
@@ -1128,5 +1220,9 @@ void wear_detect_set_enabled(bool enabled)
     ctx.on_vote_window = 0;
     ctx.off_counter = 0;
     ctx.off_streak_motion = false;
+    ctx.flat_streak = 0;   /* a streak frozen under bypass would otherwise resume -1 on every eval */
+    ctx.alive_ring = 0;
+    ctx.alive_ring_n = 0;
+    ctx.stale_while_off = false;
     ctx.last_eval_ms = 0;
 }
