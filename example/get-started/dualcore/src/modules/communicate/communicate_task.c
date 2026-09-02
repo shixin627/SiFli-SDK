@@ -599,6 +599,26 @@ bool commu_send_battery_voltage(uint16_t millivolts)
     buf[L2_FIRST_VALUE_POS + 1] = (uint8_t)(millivolts & 0xFF);
     return skaiwatch_ble_notify(buf, sizeof(buf));
 }
+/* Answer to KEY_REQUEST_BATTERY / the CCCD-subscribe intro: push what we hold
+   right now, no change gate. Level 0 is skipped because battery_level_value is
+   a live mirror of the LCPU report and reads 0 for the first seconds after boot
+   (see watch_global_data.c) — sending it would paint a fresh "0%" on the phone.
+   Three small notifies is the same burst shape as the ordinary poll tick. */
+bool commu_send_battery_snapshot(void)
+{
+    if (!commu_can_send()) return false;
+    uint8_t level = (uint8_t)SkaiWatchSys.battery_level_value;
+    bool ok = true;
+    if (level >= 1 && level <= 100) ok = commu_send_battery_level(level) && ok;
+    ok = commu_send_charge_status() && ok;
+    if (SkaiWatchSys.battery_vol_value != 0)
+        ok = commu_send_battery_voltage(SkaiWatchSys.battery_vol_value) && ok;
+    /* Two args max: this logger silently drops the whole call when the
+       argument count grows (memory: watch LOG_W arg-count trap). */
+    LOG_I("battery snapshot lvl=%u ok=%d", (unsigned)level, (int)ok);
+    return ok;
+}
+
 bool commu_send_update_instruction(const char *json) { return commu_send_string(NOTIFY_COMMAND_ID, KEY_SKAI_CREATION_INSTRUCTIONS, json); }
 bool commu_send_get_instruction_img(const char *id)  { return commu_send_string(NOTIFY_COMMAND_ID, KEY_SKAI_INSTRUCTION_IMAGE, id); }
 /* 跟手機要一張 Bot 頭像(內容雜湊當鍵);圖走檔案通道回來,這裡不等回覆。 */

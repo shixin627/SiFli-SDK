@@ -122,6 +122,15 @@ extern "C"
 		   cannot tell "answered" from "nothing happened": the accept button used
 		   to close the screen either way while the phone kept ringing. */
 		KEY_CALL_ACTION_RESULT = 0X6E,
+		/* phone -> watch: empty payload, "tell me the battery NOW". The watch
+		   answers with KEY_BATTERY_LEVEL + KEY_BATTERY_CHARGE_STATUS +
+		   KEY_BATTERY_VOLTAGE (commu_send_battery_snapshot). Needed because the
+		   watch->phone battery path is edge-triggered: bloc_notify_battery_level
+		   keeps a firmware-lifetime static and returns early unless the percentage
+		   actually moved, so a phone that (re)attached mid-plateau saw nothing for
+		   up to an hour and rendered "-" (founder 2026-09-02). The phone's own key
+		   has always been named _RETURN; this is the request it never had. */
+		KEY_REQUEST_BATTERY = 0X6F,
 	} NOTIFY_KEY;
 
 	void resolve_Notify_command(uint8_t key, uint8_t *pValue, uint16_t length);

@@ -135,6 +135,11 @@ bool commu_send_battery_level(uint8_t level);
  * standard BAS level notify so the phone-side dev tooling can log the analog
  * value at receive time. */
 bool commu_send_battery_voltage(uint16_t millivolts);
+/* Unconditional level + charge-status + voltage burst. Bypasses the
+ * change-only gate in bloc_notify_battery_level, which is what makes the
+ * ordinary path invisible to a phone that attached mid-plateau. Called on
+ * KEY_REQUEST_BATTERY and once per CCCD-subscribe (the "reborn intro"). */
+bool commu_send_battery_snapshot(void);
 bool commu_send_update_instruction(const char *json);
 bool commu_send_get_instruction_img(const char *id);
 bool commu_send_skaibar_selected(uint8_t idx);

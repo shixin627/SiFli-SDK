@@ -690,6 +690,13 @@ void resolve_Notify_command(uint8_t key, uint8_t *pValue, uint16_t length)
     //// OTA (end) ////
 
     //// Watch System Request (start) ////
+    case KEY_REQUEST_BATTERY:
+    {
+        /* Phone asked for the current battery. Empty payload; answer whatever
+           we hold, unconditionally (see commu_send_battery_snapshot). */
+        commu_send_battery_snapshot();
+        break;
+    }
     case KEY_WATCH_SYS_REQUEST:
     {
         if (length == 0x00)

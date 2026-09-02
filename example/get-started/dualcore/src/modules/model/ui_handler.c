@@ -835,6 +835,13 @@ static void process_lvgl_message(lvgl_msg_t *msg)
            BLE 送出路徑的 mutex。 */
         extern bool commu_send_device_info(void);
         commu_send_device_info();
+        /* 電量也一起自我介紹。watch->phone 的電量是 edge-triggered
+           (bloc_notify_battery_level 的 static last_level 活過整個韌體生命週期,
+           沒跳格就不送),所以「無縫」重連的手機會等到下一次掉 1% 才拿得到值,
+           中間一路顯示 "-"。CCCD 訂閱是我們唯一看得到的「對方在聽了」事件,
+           在這裡補一發等於把 pull 的主動權放在知道對方剛接上的一端。 */
+        extern bool commu_send_battery_snapshot(void);
+        commu_send_battery_snapshot();
         break;
     }
 
