@@ -257,7 +257,21 @@
  * most of their window. Read "3 in a row" as "the range stayed up for ~4.5 s",
  * NOT as 0.04^3 -- do not quote a probability for it. */
 #define PI_RANGE_ALIVE_THD      0.00040f
-#define ALIVE_EVALS_TO_ON       3
+/* N-of-M, not N-consecutive. 2026-09-02 on the release watch, flat on a desk:
+ * exit fired correctly at 09:55:26, and 36 s later a warm re-entry took it
+ * straight back — pi_range had spiked to 0.0014 for a few evals while the AGC
+ * hunted between gain steps (dc 40412 -> 49184 -> 40380, pi/pi_range pinned at
+ * the u16 ceiling). Three consecutive evals span ~4.5 s; an AGC hunt lasts
+ * longer than that. Demanding 6 of the last 10 (~15 s) outlasts the transient,
+ * while a wrist admitted at 70% per eval expects 7/10 and clears it. */
+#define ALIVE_WINDOW_EVALS      10
+#define ALIVE_EVALS_TO_ON       6
+/* After an OFF verdict, warm re-entry is refused for this long. The OFF verdict
+ * asks hr_set_power(0), but that is VETOED while a bg_hr burst is in flight, so
+ * the PPG keeps feeding us and the very next evals can re-enter on the post-
+ * verdict transient. Cold entry (motion -> probe) is NOT affected by this, so a
+ * real re-wear still comes back promptly. */
+#define WARM_REENTRY_COOLDOWN_MS 60000u
 #define PI_RANGE_MAX            0.15f
 
 /* PPG freshness: if no new PPG sample arrives within this many
@@ -368,8 +382,10 @@ typedef struct
     /* Perfusion-stillness exit (@ref PI_RANGE_FLAT_THD): one check a minute. */
     uint32_t last_flat_check_ms;
     uint8_t  flat_streak;
-    /* Perfusion-movement entry (@ref PI_RANGE_ALIVE_THD): consecutive evals. */
-    uint8_t  alive_streak;
+    /* Perfusion-movement entry (@ref PI_RANGE_ALIVE_THD): N-of-M ring. */
+    uint16_t alive_ring;         /* bit i = eval i (of last ALIVE_WINDOW_EVALS) was alive */
+    uint8_t  alive_ring_n;
+    uint32_t last_off_verdict_ms;
 
     /* Current output */
     wear_status_t status;
@@ -518,7 +534,8 @@ static void set_status(wear_status_t new_status)
     ctx.status = new_status;
     /* A streak only means something within one stretch of a single state. */
     ctx.flat_streak = 0;
-    ctx.alive_streak = 0;
+    ctx.alive_ring = 0;
+    ctx.alive_ring_n = 0;
 
     if (new_status == WEAR_STATUS_WEARING)
     {
@@ -530,6 +547,14 @@ static void set_status(wear_status_t new_status)
     else
     {
         LOG_I("Wear detected: OFF WRIST");
+        ctx.last_off_verdict_ms = rt_tick_get_millisecond();
+        /* The PPG may keep running past this verdict (power-down is vetoed
+         * mid-burst), and when it does cycle it warms up again. Either way the
+         * next PPG_SETTLE_MS of readings must not be trusted for re-entry — the
+         * settle gate was only ever armed on the probe paths, which left this
+         * transition unguarded. */
+        ctx.ppg_settling = true;
+        ctx.ppg_restart_ms = ctx.last_off_verdict_ms;
         notify_wear_status(false);
         diag_emit_last(WEAR_DIAG_EVT_OFF);
     }
@@ -769,8 +794,16 @@ static int evaluate_once(uint32_t now)
         if (now - ctx.last_flat_check_ms >= FLAT_CHECK_MS)
         {
             ctx.last_flat_check_ms = now;
-            if (pi_range > 0.0f && pi_range < PI_RANGE_FLAT_THD &&
-                pi < PI_SATURATED && pi_range < PI_SATURATED)
+            if (pi >= PI_SATURATED || pi_range >= PI_SATURATED)
+            {
+                /* HOLD, do not reset. A saturated read is an AGC gain step, and
+                 * on a desk those come often enough that resetting here meant the
+                 * exit streak never completed (2026-09-02: six flat minutes wiped
+                 * by one saturated sample at 10:04:52). Two nights of real wear
+                 * (n=460, 25% saturated) never reached a streak of 4 under this
+                 * policy either, so holding costs nothing on the wrist. */
+            }
+            else if (pi_range > 0.0f && pi_range < PI_RANGE_FLAT_THD)
             {
                 if (ctx.flat_streak < 0xFFu) ctx.flat_streak++;
             }
@@ -826,14 +859,13 @@ static int evaluate_once(uint32_t now)
     /* Track how long the perfusion signal has been MOVING. A saturated reading
      * IS genuine high variability here, so unlike the exit test it extends the
      * streak instead of resetting it. */
-    if (pi_range >= PI_RANGE_ALIVE_THD)
-    {
-        if (ctx.alive_streak < 0xFFu) ctx.alive_streak++;
-    }
-    else
-    {
-        ctx.alive_streak = 0;
-    }
+    ctx.alive_ring = (uint16_t)((ctx.alive_ring << 1) |
+                                (pi_range >= PI_RANGE_ALIVE_THD ? 1u : 0u));
+    ctx.alive_ring &= (uint16_t)((1u << ALIVE_WINDOW_EVALS) - 1u);
+    if (ctx.alive_ring_n < ALIVE_WINDOW_EVALS) ctx.alive_ring_n++;
+    uint8_t alive_count = 0;
+    for (uint16_t b = ctx.alive_ring; b; b &= (uint16_t)(b - 1u)) alive_count++;
+    bool warm_cooldown = (now - ctx.last_off_verdict_ms) < WARM_REENTRY_COOLDOWN_MS;
 
     /* WARM re-entry: this session already proved a wrist once (pulse-seeded
      * baseline), so DC back inside the worn band is evidence the wrist has
@@ -868,7 +900,9 @@ static int evaluate_once(uint32_t now)
     if (!plugged && ctx.worn_dc_base > 0.0f &&
         dc_mean >= (float)DC_ABS_FLOOR &&
         pi >= PI_THD_TO_ON &&
-        ctx.alive_streak >= ALIVE_EVALS_TO_ON &&
+        !warm_cooldown &&
+        ctx.alive_ring_n >= ALIVE_WINDOW_EVALS &&
+        alive_count >= ALIVE_EVALS_TO_ON &&
         dc_mean >= ctx.worn_dc_base * WORN_BAND_LO &&
         dc_mean <= ctx.worn_dc_base * WORN_BAND_HI)
     {
