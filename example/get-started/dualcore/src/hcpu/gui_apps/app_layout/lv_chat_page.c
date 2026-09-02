@@ -6,10 +6,12 @@
  */
 
 #include "lvgl.h"
+#include "lv_ext_resource_manager.h"
 #include "app_mem.h" /* app_cache_alloc(IMAGE_CACHE_PSRAM) — per-session 轉錄快取 */
 #include "lv_chat_page.h"
 #include "communicate_task.h"
 #include "ui_handler.h"
+#include "ui_helper.h"
 #include "bloc_v2t.h"
 #include <cJSON.h>
 #include <string.h>
@@ -340,6 +342,7 @@ void chat_page_seed_local_message(const char *text)
 
 static lv_obj_t *s_mic_btn = NULL; /* the clickable mic glyph (== s_mic_img) */
 static lv_obj_t *s_mic_img = NULL;
+static lv_obj_t *s_mic_backplate = NULL; /* separates the floating glyph from transcript text */
 static lv_obj_t *s_send_btn = NULL;         /* the send glyph shown in the mic's place while recording */
 static lv_obj_t *s_transcript_box = NULL;   /* live V2T transcript input box, shown while recording */
 static lv_obj_t *s_transcript_label = NULL;
@@ -357,6 +360,13 @@ static void chat_set_mic_visual(bool recording)
             lv_obj_add_flag(s_mic_btn, LV_OBJ_FLAG_HIDDEN);
         else
             lv_obj_clear_flag(s_mic_btn, LV_OBJ_FLAG_HIDDEN);
+    }
+    if (s_mic_backplate != NULL && lv_obj_is_valid(s_mic_backplate))
+    {
+        if (recording)
+            lv_obj_add_flag(s_mic_backplate, LV_OBJ_FLAG_HIDDEN);
+        else
+            lv_obj_clear_flag(s_mic_backplate, LV_OBJ_FLAG_HIDDEN);
     }
     if (s_send_btn != NULL && lv_obj_is_valid(s_send_btn))
     {
@@ -441,6 +451,8 @@ static void chat_box_grow_cb(void *var, int32_t f)
     lv_obj_set_style_radius(s_transcript_box, CBOX_R0 + (CBOX_R1 - CBOX_R0) * f / 255, 0);
     if (s_mic_btn != NULL && lv_obj_is_valid(s_mic_btn))
         lv_obj_set_style_img_opa(s_mic_btn, (lv_opa_t)(255 - f), 0);
+    if (s_mic_backplate != NULL && lv_obj_is_valid(s_mic_backplate))
+        lv_obj_set_style_opa(s_mic_backplate, (lv_opa_t)(255 - f), 0);
 }
 
 /* Phase 2 (open): the box finished growing → hide the now-faded mic, then fade the pill frame +
@@ -453,6 +465,8 @@ static void chat_open_reveal_cb(lv_anim_t *a)
     chat_box_grow_cb(NULL, 255); /* pin exact open geometry */
     if (s_mic_btn != NULL && lv_obj_is_valid(s_mic_btn))
         lv_obj_add_flag(s_mic_btn, LV_OBJ_FLAG_HIDDEN);
+    if (s_mic_backplate != NULL && lv_obj_is_valid(s_mic_backplate))
+        lv_obj_add_flag(s_mic_backplate, LV_OBJ_FLAG_HIDDEN);
     if (s_transcript_label != NULL && lv_obj_is_valid(s_transcript_label))
         lv_obj_set_style_text_opa(s_transcript_label, LV_OPA_80, 0);
     if (s_send_btn != NULL && lv_obj_is_valid(s_send_btn))
@@ -496,6 +510,11 @@ static void chat_play_open_morph(void)
         lv_obj_clear_flag(s_mic_btn, LV_OBJ_FLAG_HIDDEN);
         lv_obj_set_style_img_opa(s_mic_btn, LV_OPA_COVER, 0);
     }
+    if (s_mic_backplate != NULL && lv_obj_is_valid(s_mic_backplate))
+    {
+        lv_obj_clear_flag(s_mic_backplate, LV_OBJ_FLAG_HIDDEN);
+        lv_obj_set_style_opa(s_mic_backplate, LV_OPA_COVER, 0);
+    }
     if (s_send_btn != NULL && lv_obj_is_valid(s_send_btn))
         lv_obj_add_flag(s_send_btn, LV_OBJ_FLAG_HIDDEN);
     lv_anim_del(s_transcript_box, chat_box_grow_cb);
@@ -518,6 +537,8 @@ static void chat_close_done_cb(lv_anim_t *a)
         lv_obj_add_flag(s_transcript_box, LV_OBJ_FLAG_HIDDEN);
     if (s_mic_btn != NULL && lv_obj_is_valid(s_mic_btn))
         lv_obj_set_style_img_opa(s_mic_btn, LV_OPA_COVER, 0); /* mic fully back */
+    if (s_mic_backplate != NULL && lv_obj_is_valid(s_mic_backplate))
+        lv_obj_set_style_opa(s_mic_backplate, LV_OPA_COVER, 0);
 }
 
 /* Reverse the open morph: drop the content, shrink the backdrop back to the mic while the mic fades in,
@@ -541,6 +562,8 @@ static void chat_play_close_morph(void)
         lv_obj_add_flag(s_input_scrim, LV_OBJ_FLAG_HIDDEN);
     if (s_mic_btn != NULL && lv_obj_is_valid(s_mic_btn))
         lv_obj_clear_flag(s_mic_btn, LV_OBJ_FLAG_HIDDEN); /* fades IN via the grow cb (f:255→0) */
+    if (s_mic_backplate != NULL && lv_obj_is_valid(s_mic_backplate))
+        lv_obj_clear_flag(s_mic_backplate, LV_OBJ_FLAG_HIDDEN);
     lv_anim_del(s_transcript_box, chat_box_grow_cb);
     lv_anim_t g;
     lv_anim_init(&g);
@@ -812,12 +835,14 @@ static void chat_next_page_build(int dir)
     {
         lv_obj_t *hint = lv_label_create(list);
         lv_label_set_text(hint, "載入中…");
+        lv_obj_set_style_text_font(hint, LV_EXT_FONT_GET(get_system_font_size(-1)), 0);
         lv_obj_set_style_text_color(hint, lv_color_hex(0x888888), 0);
     }
     lv_obj_t *tl = lv_label_create(s_chat_panel);
     lv_label_set_long_mode(tl, LV_LABEL_LONG_DOT);
     lv_obj_set_width(tl, LV_HOR_RES - 120);
     lv_obj_set_style_text_align(tl, LV_TEXT_ALIGN_CENTER, 0);
+    lv_obj_set_style_text_font(tl, LV_EXT_FONT_GET(get_system_font_size(1)), 0);
     lv_obj_set_style_text_color(tl, lv_color_hex(0xFFFFFF), 0);
     lv_label_set_text(tl, title[0] ? title : "聊天室");
     lv_obj_align(tl, LV_ALIGN_TOP_MID, 0, 18);
@@ -1137,6 +1162,7 @@ void chat_page_open(const char *title, const char *icon_src)
 
     lv_obj_t *title_lbl = lv_label_create(header);
     lv_label_set_long_mode(title_lbl, LV_LABEL_LONG_DOT);
+    lv_obj_set_style_text_font(title_lbl, LV_EXT_FONT_GET(get_system_font_size(1)), 0);
     lv_obj_set_style_text_color(title_lbl, lv_color_hex(0xFFFFFF), 0);
     {
         /* Content-sized so the icon hugs the name, but capped so a long name truncates (…) instead of
@@ -1208,6 +1234,7 @@ void chat_page_open(const char *title, const char *icon_src)
        cold room (founder 2026-06-29). Toggled by chat_page_apply_pending_state. */
     lv_obj_t *loading = lv_label_create(panel);
     lv_label_set_text(loading, "載入中…");
+    lv_obj_set_style_text_font(loading, LV_EXT_FONT_GET(get_system_font_size(-1)), 0);
     lv_obj_set_style_text_color(loading, lv_color_hex(0x888888), 0);
     lv_obj_align(loading, LV_ALIGN_CENTER, 0, 0);
     s_loading_label = loading;
@@ -1216,6 +1243,22 @@ void chat_page_open(const char *title, const char *icon_src)
        with NO button background so it doesn't block the chat behind it (founder 2026-06-29). Tap to
        record, tap again to send (chat_mic_btn_cb); recording tints it red. ext_click_area widens the
        tap target around the glyph. The left-edge swipe-back is unaffected (it's at x≈0). */
+    /* Dark-blue glass backplate keeps the mic legible when a long transcript scrolls behind it. */
+    lv_obj_t *mic_plate = lv_obj_create(panel);
+    lv_obj_remove_style_all(mic_plate);
+    lv_obj_set_size(mic_plate, 68, 68);
+    lv_obj_align(mic_plate, LV_ALIGN_BOTTOM_MID, 0, -1);
+    lv_obj_set_style_radius(mic_plate, LV_RADIUS_CIRCLE, 0);
+    lv_obj_set_style_bg_color(mic_plate, lv_color_hex(0x071923), 0);
+    lv_obj_set_style_bg_grad_color(mic_plate, lv_color_hex(0x174A61), 0);
+    lv_obj_set_style_bg_grad_dir(mic_plate, LV_GRAD_DIR_VER, 0);
+    lv_obj_set_style_bg_opa(mic_plate, 220, 0);
+    lv_obj_set_style_border_width(mic_plate, 1, 0);
+    lv_obj_set_style_border_color(mic_plate, lv_color_hex(0x8DDCF5), 0);
+    lv_obj_set_style_border_opa(mic_plate, 90, 0);
+    lv_obj_clear_flag(mic_plate, LV_OBJ_FLAG_CLICKABLE | LV_OBJ_FLAG_SCROLLABLE);
+    s_mic_backplate = mic_plate;
+
     lv_obj_t *mic = lv_img_create(panel);
     lv_img_set_src(mic, &micro_icon);
     /* Half-size the mic glyph (founder 2026-06-29): zoom 128 (50%) with a CENTRE pivot +
@@ -1256,9 +1299,7 @@ void chat_page_open(const char *title, const char *icon_src)
     lv_obj_remove_style_all(tbox);
     lv_obj_set_size(tbox, 442, 252);
     lv_obj_align(tbox, LV_ALIGN_BOTTOM_MID, 0, 75);
-    /* Opaque fill BEHIND the pill frame so scrolled-up chat bubbles don't show through the box (founder
-       2026-06-29). radius 80 = message_widget_bg's actual corner radius (device_pager SKAIB_RADIUS),
-       so the fill matches the frame image exactly. */
+    /* Opaque fill behind the pill frame so scrolled-up chat bubbles do not show through it. */
     lv_obj_set_style_bg_color(tbox, lv_color_hex(0x1C1C1E), 0);
     lv_obj_set_style_bg_opa(tbox, LV_OPA_COVER, 0);
     lv_obj_set_style_radius(tbox, 80, 0);
@@ -1276,6 +1317,7 @@ void chat_page_open(const char *title, const char *icon_src)
     lv_obj_t *tlbl = lv_label_create(tbox);
     lv_label_set_long_mode(tlbl, LV_LABEL_LONG_WRAP);
     lv_obj_set_width(tlbl, 360);
+    lv_obj_set_style_text_font(tlbl, LV_EXT_FONT_GET(get_system_font_size(0)), 0);
     lv_obj_set_style_text_color(tlbl, lv_color_white(), 0);
     lv_obj_set_style_text_opa(tlbl, LV_OPA_80, 0);
     lv_obj_set_style_text_align(tlbl, LV_TEXT_ALIGN_CENTER, 0);
@@ -1350,6 +1392,7 @@ void chat_page_close(void)
     s_loading_label = NULL;
     s_mic_btn = NULL;
     s_mic_img = NULL;
+    s_mic_backplate = NULL;
     s_send_btn = NULL;
     s_transcript_box = NULL;
     s_transcript_label = NULL;
@@ -1716,6 +1759,37 @@ static void chat_type_timer_start(void)
 
 /* Hermes 卡片/平鋪的共用塗裝。mine=true → 玻璃卡;false → 平鋪文字。 */
 /* 回傳裡面的 label(逐字揭露要拿它) —— card 可從 lv_obj_get_parent() 取得。 */
+/* The display ultimately quantizes the glass gradient to RGB565, so LVGL's one-pixel ordered
+   dithering is nearly invisible on the panel.  Add a deliberately sparse, very-low-opacity
+   dashed weave between the card background and its label.  The staggered rows break up broad
+   horizontal colour bands without reading as stripes or reducing text contrast. */
+static void chat_user_card_texture_cb(lv_event_t *e)
+{
+    if (lv_event_get_code(e) != LV_EVENT_DRAW_MAIN_END)
+        return;
+
+    lv_obj_t *card = lv_event_get_target(e);
+    lv_draw_ctx_t *draw_ctx = lv_event_get_draw_ctx(e);
+    lv_area_t a;
+    lv_obj_get_coords(card, &a);
+
+    lv_draw_line_dsc_t dsc;
+    lv_draw_line_dsc_init(&dsc);
+    dsc.color = lv_color_hex(0x8DDCF5);
+    dsc.width = 1;
+    dsc.opa = 28;
+    dsc.dash_width = 2;
+    dsc.dash_gap = 5;
+
+    uint16_t row = 0;
+    for (lv_coord_t y = a.y1 + 7; y <= a.y2 - 7; y += 4, ++row)
+    {
+        lv_point_t p1 = {a.x1 + 8 + (row & 1 ? 3 : 0), y};
+        lv_point_t p2 = {a.x2 - 8, y};
+        lv_draw_line(draw_ctx, &dsc, &p1, &p2);
+    }
+}
+
 static lv_obj_t *chat_add_hermes_turn(lv_obj_t *parent, const char *text, bool mine)
 {
     lv_obj_t *card = lv_obj_create(parent);
@@ -1727,17 +1801,19 @@ static lv_obj_t *chat_add_hermes_turn(lv_obj_t *parent, const char *text, bool m
     lv_obj_clear_flag(card, LV_OBJ_FLAG_CLICKABLE);
     if (mine)
     {
-        /* 桌面原值是 6%/8%(SkGlassBgSoft/SkGlassEdge),但手錶螢幕小、底是磨砂
-           深色,6% 的卡片跟平鋪的 AI 文字分不出來(founder 2026-08-15)——手錶
-           surface 的玻璃填色要加倍才讀得出「這是一張卡」:填 12%、hairline 18%。 */
-        lv_obj_set_style_bg_color(card, lv_color_white(), 0);
-        lv_obj_set_style_bg_opa(card, 31, 0);  /* white @12% */
+        /* Match the floating mic backplate exactly: deep-blue glass with a cool edge highlight. */
+        lv_obj_set_style_bg_color(card, lv_color_hex(0x071923), 0);
+        lv_obj_set_style_bg_grad_color(card, lv_color_hex(0x174A61), 0);
+        lv_obj_set_style_bg_grad_dir(card, LV_GRAD_DIR_VER, 0);
+        lv_obj_set_style_bg_dither_mode(card, LV_DITHER_ORDERED, 0);
+        lv_obj_set_style_bg_opa(card, 220, 0);
         lv_obj_set_style_border_width(card, 1, 0);
-        lv_obj_set_style_border_color(card, lv_color_white(), 0);
-        lv_obj_set_style_border_opa(card, 46, 0); /* white @18% hairline */
+        lv_obj_set_style_border_color(card, lv_color_hex(0x8DDCF5), 0);
+        lv_obj_set_style_border_opa(card, 90, 0);
         lv_obj_set_style_radius(card, 18, 0);
         lv_obj_set_style_pad_hor(card, 12, 0);
         lv_obj_set_style_pad_ver(card, 8, 0);
+        lv_obj_add_event_cb(card, chat_user_card_texture_cb, LV_EVENT_DRAW_MAIN_END, NULL);
     }
     else
     {
@@ -1749,6 +1825,8 @@ static lv_obj_t *chat_add_hermes_turn(lv_obj_t *parent, const char *text, bool m
     lv_obj_t *lbl = lv_label_create(card);
     lv_label_set_long_mode(lbl, LV_LABEL_LONG_WRAP);
     lv_obj_set_width(lbl, lv_pct(100));
+    lv_obj_set_style_text_font(lbl, LV_EXT_FONT_GET(get_system_font_size(0)), 0);
+    lv_obj_set_style_text_align(lbl, mine ? LV_TEXT_ALIGN_RIGHT : LV_TEXT_ALIGN_LEFT, 0);
     lv_label_set_text(lbl, text);
     lv_obj_set_style_text_color(lbl, lv_color_hex(0xFFFFFF), 0);
     return lbl;
@@ -1841,6 +1919,7 @@ static void chat_render_pending_approval(void)
         lv_obj_t *lbl = lv_label_create(chip);
         lv_label_set_long_mode(lbl, LV_LABEL_LONG_WRAP);
         lv_obj_set_width(lbl, lv_pct(100));
+        lv_obj_set_style_text_font(lbl, LV_EXT_FONT_GET(get_system_font_size(0)), 0);
         lv_obj_set_style_text_align(lbl, LV_TEXT_ALIGN_CENTER, 0);
         lv_label_set_text(lbl, s_appr_opts[i].label[0] != '\0'
                           ? s_appr_opts[i].label : "讓 Agent 自行決定");
@@ -2022,6 +2101,7 @@ void chat_page_apply_pending_state(void)
 
         lv_obj_t *lbl = lv_label_create(bubble);
         lv_label_set_long_mode(lbl, LV_LABEL_LONG_WRAP);
+        lv_obj_set_style_text_font(lbl, LV_EXT_FONT_GET(get_system_font_size(0)), 0);
         /* Content-sized bubble: hug short text, but WRAP (not clip) once it would exceed ~72% of the
            screen. LVGL's max_width on a SIZE_CONTENT label CLIPS instead of re-wrapping (founder
            2026-06-29: long messages were cut off) — so measure the text's natural width and pin the

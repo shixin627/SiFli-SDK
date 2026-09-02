@@ -6951,7 +6951,40 @@ static struct
 {
     char av[16];
     uint32_t tick;
+    bool ready; /* this content-addressed file is known to exist on the watch */
 } s_bot_av_req[BOT_AVATAR_REQ_MAX];
+
+static bool bot_avatar_known_ready(const char *av)
+{
+    for (int i = 0; i < BOT_AVATAR_REQ_MAX; i++)
+        if (s_bot_av_req[i].ready && strcmp(s_bot_av_req[i].av, av) == 0)
+            return true;
+    return false;
+}
+
+static void bot_avatar_mark_ready(const char *av)
+{
+    int free_slot = -1;
+    int oldest = 0;
+    for (int i = 0; i < BOT_AVATAR_REQ_MAX; i++)
+    {
+        if (strcmp(s_bot_av_req[i].av, av) == 0)
+        {
+            s_bot_av_req[i].ready = true;
+            return;
+        }
+        if (s_bot_av_req[i].av[0] == '\0' && free_slot < 0)
+            free_slot = i;
+        if ((uint32_t)(rt_tick_get() - s_bot_av_req[i].tick) >
+            (uint32_t)(rt_tick_get() - s_bot_av_req[oldest].tick))
+            oldest = i;
+    }
+    int slot = (free_slot >= 0) ? free_slot : oldest;
+    strncpy(s_bot_av_req[slot].av, av, sizeof(s_bot_av_req[slot].av) - 1);
+    s_bot_av_req[slot].av[sizeof(s_bot_av_req[slot].av) - 1] = '\0';
+    s_bot_av_req[slot].tick = rt_tick_get();
+    s_bot_av_req[slot].ready = true;
+}
 
 static bool bot_avatar_request_due(const char *av)
 {
@@ -6982,6 +7015,7 @@ static bool bot_avatar_request_due(const char *av)
     strncpy(s_bot_av_req[slot].av, av, sizeof(s_bot_av_req[slot].av) - 1);
     s_bot_av_req[slot].av[sizeof(s_bot_av_req[slot].av) - 1] = '\0';
     s_bot_av_req[slot].tick = now;
+    s_bot_av_req[slot].ready = false;
     return true;
 }
 
@@ -7010,6 +7044,16 @@ void set_instruction_avatar(const char *id, const char *av)
     if (strcmp(list_items[idx].img_path, path) == 0)
         return; /* 已經指著同一張,別再 stat(每次重推都掃 NAND 會拖慢清單) */
 
+    /* Batch replace rebuilds list_items from scratch. Once a content-addressed avatar has landed,
+       remember that fact outside the rows so a rebuild can restore the path immediately instead of
+       being left blank behind the 30-second request/stat throttle. */
+    if (bot_avatar_known_ready(list_items[idx].av))
+    {
+        strncpy(list_items[idx].img_path, path, sizeof(list_items[idx].img_path) - 1);
+        list_items[idx].img_path[sizeof(list_items[idx].img_path) - 1] = '\0';
+        return;
+    }
+
     list_items[idx].img_path[0] = '\0';
     /* **節流在碰檔案系統之前**(同 instruction_list_bot_avatar_sweep 的理由):注入這條路
        也會被 actions 重推帶著跑,一輪 17 列都 stat 一次 NAND 就足以拖住 LVGL 執行緒。
@@ -7022,6 +7066,7 @@ void set_instruction_avatar(const char *id, const char *av)
     {
         strncpy(list_items[idx].img_path, path, sizeof(list_items[idx].img_path) - 1);
         list_items[idx].img_path[sizeof(list_items[idx].img_path) - 1] = '\0';
+        bot_avatar_mark_ready(list_items[idx].av);
         return;
     }
     commu_send_conv_avatar_req(list_items[idx].av);
@@ -7058,6 +7103,7 @@ void instruction_list_bot_avatar_sweep(void)
             /* 檔案在了但沒人把它接上(收檔時這一列還不存在):現在接。 */
             strncpy(list_items[i].img_path, path, sizeof(list_items[i].img_path) - 1);
             list_items[i].img_path[sizeof(list_items[i].img_path) - 1] = '\0';
+            bot_avatar_mark_ready(list_items[i].av);
             touched = true;
             continue;
         }
@@ -7095,6 +7141,7 @@ void instruction_list_on_bot_avatar_file(const char *path)
 
     char full[64];
     bot_avatar_path(av, full, sizeof(full));
+    bot_avatar_mark_ready(av);
     bool touched = false;
     for (uint8_t i = 0; i < list_item_count; i++)
     {
