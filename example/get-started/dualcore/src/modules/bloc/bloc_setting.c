@@ -631,7 +631,13 @@ void bloc_setting_load_watch_system(void)
     {
         SkaiWatchSys.font_size = LVSF_FONT_TITLE;
     }
-    SkaiWatchSys.flag_field.is_wearing = 1; /* Default wearing status */
+    /* Boot default NOT worn: the LCPU detector boots OFF and pulse-confirms a
+     * wrist; until its verdict arrives (re-pushed on subscribe and every
+     * perception tick) every consumer -- gesture gates, motion tracking,
+     * skai_health_worn -- should see the same answer the LCPU would give.
+     * The old default of 1 kept the face at WORN whenever the boot
+     * broadcast was lost. */
+    SkaiWatchSys.flag_field.is_wearing = 0;
 }
 
 /* Export the setting provider registration function */

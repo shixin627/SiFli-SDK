@@ -720,10 +720,11 @@ static int evaluate_once(uint32_t now)
     if (ctx.stale_while_off)
     {
         ctx.stale_while_off = false;
-        /* A settle left armed by an earlier OFF verdict / expired probe is
-         * minutes old and would complete on this very eval without having
-         * filtered anything; restart it. A live probe settle (< 6 s old) is
-         * left alone. */
+        /* Only reachable for a restart that bypassed wear_detect_on_ppg_restart()
+         * (which clears the flag): a settle left armed by an earlier OFF verdict
+         * or expired probe is minutes old and would complete on this very eval
+         * without having filtered anything; restart it. A settle armed moments
+         * ago (< 6 s) is left alone. */
         if (ctx.status == WEAR_STATUS_NOT_WEARING &&
             (!ctx.ppg_settling || (now - ctx.ppg_restart_ms) >= PPG_SETTLE_MS))
         {
@@ -835,7 +836,14 @@ static int evaluate_once(uint32_t now)
          * DEAD FLAT for five straight minutes? A wrist is never that quiet --
          * even asleep the pulse and posture move it. A table is. Checked once
          * a minute so the run length means minutes, not evaluations. */
-        if (now - ctx.last_flat_check_ms >= FLAT_CHECK_MS)
+        /* Deferred, not consumed, while the PI history is short: right after
+         * a settle (every PPG (re)open, i.e. every bg_hr burst start) pi_range
+         * is 0 for lack of data, and the old code took that as "not flat" and
+         * ZEROED the streak. On a desk with the screen off the PPG runs 3 min
+         * in every 10, so the five flat minutes could never carry across
+         * bursts and the exit never completed there. */
+        if (now - ctx.last_flat_check_ms >= FLAT_CHECK_MS &&
+            ctx.pi_hist_count >= PI_HISTORY_LEN)
         {
             ctx.last_flat_check_ms = now;
             if (pi >= PI_SATURATED || pi_range >= PI_SATURATED)
@@ -1207,11 +1215,51 @@ bool wear_detect_is_wearing(void)
     return ctx.status == WEAR_STATUS_WEARING;
 }
 
+void wear_detect_on_ppg_restart(void)
+{
+    if (!ctx.initialized)
+        return;
+    uint32_t now = rt_tick_get_millisecond();
+    /* Every real (re)open is a full gh30x module stop/start, so the settle
+     * restarts from NOW on each one: the put-on sequence opens twice inside
+     * one 6 s window (LCPU motion probe, then the lift-wake hr_set_power(1))
+     * and the second warm-up used to land with 1-2 s of settle left. Only
+     * a same-instant duplicate (< 300 ms) is ignored. */
+    if (!ctx.ppg_settling || (now - ctx.ppg_restart_ms) >= 300u)
+    {
+        ctx.ppg_settling = true;
+        ctx.ppg_restart_ms = now;
+        LOG_I("Wear: PPG (re)opened -> settling %ums", PPG_SETTLE_MS);
+    }
+    ctx.stale_while_off = false; /* consumed: this IS the restart it flags */
+}
+
 void wear_detect_set_enabled(bool enabled)
 {
     if (s_detect_enabled == enabled)
         return;
     s_detect_enabled = enabled;
+    /* Coming back from the bypass: a WEARING that was forced, not measured,
+     * must not outlive the override. Drop to OFF and open a probe window; a
+     * real wrist re-enters through the normal pulse-confirmed path after the
+     * 60 s post-OFF cooldown plus the 7-of-10 alive run (~65-80 s). If the
+     * hr_set_power(1) below is vetoed mid bg_hr burst, the PPG goes dark at
+     * burst end and the window (3 min) has to expire before motion reopens
+     * it -- bounded, diagnostic-toggle-only path. */
+    if (enabled && ctx.status == WEAR_STATUS_WEARING)
+    {
+        set_status(WEAR_STATUS_NOT_WEARING); /* asks hr_set_power(0) */
+        /* ...then open a probe window at once, or a still wrist would wait
+         * for motion / the 10-min fallback with the PPG dark. */
+        uint32_t tnow = rt_tick_get_millisecond();
+        hr_set_power(1);
+        ctx.ppg_settling = true;
+        ctx.ppg_restart_ms = tnow;
+        s_last_probe_open_ms = tnow;
+        s_probe_active = true;
+        s_probe_until_ms = tnow + PROBE_WINDOW_MS;
+        LOG_I("Wear: detection re-enabled -> OFF + probe window");
+    }
     LOG_I("Wear detection %s", enabled ? "ENABLED (normal)"
                                        : "DISABLED (force worn unless charging)");
     /* Votes/counters frozen during bypass are stale evidence — clear them

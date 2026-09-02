@@ -60,6 +60,16 @@ extern "C"
      */
     void wear_detect_set_enabled(bool enabled);
 
+    /**
+     * @brief Tell the detector the PPG sensor was just (re)opened or changed
+     *        mode (hr_service power/mode paths). Arms the warm-up settle so the
+     *        driver's start-up spikes and the old/new DC discontinuity in the
+     *        sample ring are never scored as a pulse. Restarts the settle on every
+     *        call (each open is a full sensor re-init); only a duplicate call
+     *        within 300 ms is ignored.
+     */
+    void wear_detect_on_ppg_restart(void);
+
 #ifdef __cplusplus
 }
 #endif

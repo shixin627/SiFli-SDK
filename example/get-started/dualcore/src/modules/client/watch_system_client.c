@@ -324,7 +324,11 @@ static int watch_sys_service_callback(data_callback_arg_t *arg)
         else if (status == 2) // 正常抬腕
         {
             // watch_hcpu_resume_with_reason(WAKEUP_REASON_OTHER);
-            SkaiWatchSys.flag_field.is_wearing = true;
+            /* (removed) is_wearing = true. A wrist-wake INT is not a wear verdict:
+             * with the pose gate bypassed any nudge on a desk fires it, the LCPU
+             * detector never sees it and only sends a correction on a real
+             * transition -- one lift left the face saying WORN for good.
+             * is_wearing is written by MSG_SERVICE_SOFT_ADT_IND only. */
             watch_system_wakeup();
         }
         else if (status == 3) // 往內旋解鎖
@@ -348,7 +352,20 @@ static int watch_sys_service_callback(data_callback_arg_t *arg)
            rare and this load-bearing should be visible without a special
            build. (The LCPU-side reasoning still needs wear_diag; this line only
            says what the verdict became.) */
-        LOG_W("[WATCH_SOFT_ADT] soft detect status:%d", status);
+        /* The LCPU now re-pushes the verdict once a minute (perception tick) so a
+         * dropped boot broadcast heals; log only when the value actually changes. */
+        {
+            static bool seeded = false;
+            if (!seeded)
+            {
+                seeded = true;
+                LOG_W("[WATCH_SOFT_ADT] seeded status:%d", status); /* first IND after boot */
+            }
+            else if (SkaiWatchSys.flag_field.is_wearing != status)
+            {
+                LOG_W("[WATCH_SOFT_ADT] soft detect status:%d", status);
+            }
+        }
         SkaiWatchSys.flag_field.is_wearing = status;
         break;
     }

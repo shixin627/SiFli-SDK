@@ -264,6 +264,13 @@ void hr_set_power(uint8_t arg)
     else
     {
         LOG_I("Set PPG sensor power mode %d", power_mode);
+        #ifdef BSP_USING_WEAR_DETECT
+        if (arg > 0)
+        {
+            extern void wear_detect_on_ppg_restart(void);
+            wear_detect_on_ppg_restart(); /* arm the warm-up settle on every (re)open */
+        }
+        #endif
     }
 
 #ifdef RT_USING_PM
@@ -276,6 +283,19 @@ static void hr_control_mode(rt_uint32_t power)
     if (hr_service_env.device)
     {
         rt_device_control(hr_service_env.device, RT_SENSOR_CTRL_SET_POWER, (void *)power);
+        #ifdef BSP_USING_WEAR_DETECT
+        /* The driver has no same-mode guard: every SET_POWER that is not a
+         * power-down re-inits the sensor (bg_hr burst start, subscriber mode
+         * re-apply, HRV<->HR switches). Tell the detector, or the warm-up spikes
+         * and the old/new DC discontinuity in its 3 s ring score as a pulse --
+         * the frame gap is shorter than PPG_STALE_MS so it cannot infer the
+         * restart itself. */
+        if (power != RT_SENSOR_POWER_DOWN)
+        {
+            extern void wear_detect_on_ppg_restart(void);
+            wear_detect_on_ppg_restart();
+        }
+        #endif
     }
 }
 

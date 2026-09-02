@@ -395,6 +395,16 @@ static int32_t watch_sys_service_msg_handler(datas_handle_t service,
     {
     case MSG_SERVICE_SUBSCRIBE_REQ:
     {
+#ifdef BSP_USING_WEAR_DETECT
+        /* Seed the HCPU's wear mirror. The detector's one-shot boot broadcast
+         * leaves the LCPU ~4 s after boot, before the HCPU has subscribed, and
+         * a push with no client is silently dropped; the HCPU then keeps its
+         * boot default until the next real transition -- on a desk, forever
+         * (2026-09-02: face said WORN all day on a watch the LCPU held OFF).
+         * The perception tick below re-pushes it every minute as well, in case
+         * this one races the client-list insert. */
+        push_uint32_ind(MSG_SERVICE_SOFT_ADT_IND, wear_detect_is_wearing() ? 1u : 0u);
+#endif
         break;
     }
     case MSG_SERVICE_UNSUBSCRIBE_REQ:
@@ -572,6 +582,11 @@ static int32_t watch_sys_service_msg_handler(datas_handle_t service,
         {
 #ifdef BSP_USING_WEAR_DETECT
             wear_detect_set_enabled(msg->body[1] == 1);
+            /* Idempotent verdict refresh, once a minute from the perception
+             * tick: heals the HCPU mirror after a dropped IND (e.g. the boot
+             * race) without a new message id. (An HCPU-only reset is NOT
+             * covered: max_client_num is 1 and the HCPU never re-subscribes.) */
+            push_uint32_ind(MSG_SERVICE_SOFT_ADT_IND, wear_detect_is_wearing() ? 1u : 0u);
 #endif
             break;
         }
