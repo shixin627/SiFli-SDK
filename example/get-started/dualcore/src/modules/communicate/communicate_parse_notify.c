@@ -437,9 +437,25 @@ void resolve_Notify_command(uint8_t key, uint8_t *pValue, uint16_t length)
         if (length >= 1)
         {
             uint8_t msg_notify_type = pValue[0];
-            char msg_buf[240];
+            /* Static, not on the stack: the BLE parse thread's stack cannot
+               afford 1KB, and this switch already keeps its big payloads
+               static (see `payload` above). Only ever touched from this one
+               RX thread. */
+            static char msg_buf[1024];
+            uint16_t json_len = length - 1;
+            /* A truncated JSON body is NOT recoverable, and feeding it to
+               handle_notification() used to replay the PREVIOUS notification
+               (parse_notification bails, temp_notification keeps its old
+               contents) — during a call that meant a phantom incoming-call
+               screen. The old 240-byte buffer overflowed on any ordinary long
+               title, so drop loudly instead of guessing. */
+            if (json_len >= sizeof(msg_buf))
+            {
+                LOG_E("notify JSON too long: %u", json_len);
+                break;
+            }
             ble_payload_to_cstr(msg_buf, sizeof(msg_buf),
-                                pValue + 1, length - 1);
+                                pValue + 1, json_len);
             handle_notification(msg_notify_type, msg_buf);
         }
         break;

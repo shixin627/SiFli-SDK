@@ -312,14 +312,20 @@ static void update_notification(notification_t newNotification)
  * @brief Parse notification data from JSON string
  * @param json_str JSON string containing notification data
  * @param notification Pointer to notification structure to populate
+ * @return true when `notification` was populated; false leaves it untouched.
+ *
+ * The return value is load-bearing: `handle_notification` parses into a static
+ * struct, so a caller that ignores a failure re-sends whatever the PREVIOUS
+ * notification was. If that one was a call card, the watch replays the
+ * incoming-call screen for an unrelated notification.
  */
-static void parse_notification(const char *json_str,
+static bool parse_notification(const char *json_str,
                                notification_t *notification)
 {
     if (!json_str || !notification)
     {
         LOG_E("parse_notification: invalid parameters");
-        return;
+        return false;
     }
 
     LOG_D("parse notification:%s", json_str);
@@ -328,7 +334,7 @@ static void parse_notification(const char *json_str,
     if (!root)
     {
         LOG_E("parse_notification: JSON parsing failed");
-        return;
+        return false;
     }
 
     cJSON *id_json      = cJSON_GetObjectItem(root, "id");
@@ -362,6 +368,7 @@ static void parse_notification(const char *json_str,
     LOG_D("reply:%d", notification->can_reply);
 
     cJSON_Delete(root);
+    return true;
 }
 
 /* Notification id <-> app-name table. The order of `notify_name_map` is
@@ -631,7 +638,16 @@ void handle_notification(uint8_t notify_id, char *json_string)
 {
     LOG_D("handle_notification, notify_id:%d, msgData:%s", notify_id,
           json_string);
-    parse_notification(json_string, &temp_notification);
+    /* Clear BEFORE parsing, and bail on failure. `temp_notification` is static:
+       reusing its stale contents replays the previous notification — with
+       `calling` still set, an unparseable YouTube notification arriving during
+       a LINE call popped a phantom incoming-call screen. */
+    rt_memset(&temp_notification, 0, sizeof(temp_notification));
+    if (!parse_notification(json_string, &temp_notification))
+    {
+        LOG_E("handle_notification: dropped unparseable notification");
+        return;
+    }
 
     temp_notification.sec_time = SkaiWatchSys.SecondCountRTC;
     temp_notification.type = notify_id;
