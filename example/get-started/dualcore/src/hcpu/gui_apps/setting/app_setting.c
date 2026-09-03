@@ -1493,8 +1493,8 @@ void app_setting_init(void *param)
     lv_obj_set_style_bg_color(wear_detect_sw, lv_color_hex(0x333333), LV_PART_MAIN);
     lv_obj_set_style_bg_color(wear_detect_sw, lv_color_hex(0x0078D7),
                               LV_PART_INDICATOR | LV_STATE_CHECKED);
-    /* Checked = detection ON. wear_detect_off==1 means the user disabled it. */
-    if (!SkaiWatchSys.flag_field.wear_detect_off)
+    /* Checked = detection ON (wear_detect_on==1). Default is OFF. */
+    if (SkaiWatchSys.flag_field.wear_detect_on)
     {
         lv_obj_add_state(wear_detect_sw, LV_STATE_CHECKED);
     }

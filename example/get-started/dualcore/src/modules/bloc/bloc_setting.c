@@ -363,7 +363,7 @@ static void set_lift_switch_status(bool status)
  */
 static void set_wear_detect_off(bool off)
 {
-    SkaiWatchSys.flag_field.wear_detect_off = off ? 1 : 0;
+    SkaiWatchSys.flag_field.wear_detect_on = off ? 0 : 1;
     peripheral_provider.save_watch_shared_prefs(WATCH_PREFS_KEY_FLAG_FIELD);
     if (watch_sys_sync.set_wear_detect_enable)
     {
@@ -383,7 +383,7 @@ static void set_wear_detect_off(bool off)
  * identical sensor mode, so the toggle isolates continuity alone — the last
  * untested explanation for the nightly 2x readings.
  *
- * Persists like wear_detect_off so an overnight run survives a reboot, and pushes
+ * Persists like wear_detect_on so an overnight run survives a reboot, and pushes
  * the live state to LCPU immediately. Costs a lot of battery: the LED never turns
  * off while it is on.
  */

@@ -169,11 +169,11 @@ void app_periodic_task(void)
     watch_sys_sync.request_battery_voltage();
     /* Re-assert the wear-detection override to LCPU every tick. The flag lives
        in HCPU prefs; a silent LCPU reboot would otherwise reset it to the
-       default (detection on) and silently re-break an overnight diagnostic
+       default (detection OFF since 2026-09-03) and silently diverge from the
        session. Idempotent — converges LCPU within one period after any reboot. */
     if (watch_sys_sync.set_wear_detect_enable)
     {
-        watch_sys_sync.set_wear_detect_enable(!SkaiWatchSys.flag_field.wear_detect_off);
+        watch_sys_sync.set_wear_detect_enable(SkaiWatchSys.flag_field.wear_detect_on ? true : false);
     }
 #if SKAI_HEALTH_DIAG
     /* Same reasoning for the continuous-HR diagnostic: it is meant to run a whole
