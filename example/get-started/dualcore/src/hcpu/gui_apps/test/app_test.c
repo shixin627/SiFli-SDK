@@ -114,6 +114,8 @@ static bool system_stress_finalized;
 static void start_interactive_test(lv_obj_t *parent);
 static void finish_interactive_test(bool cancelled);
 static void start_system_stress_test(lv_obj_t *parent);
+static void start_wake_cycle_test(lv_obj_t *parent);
+static void wake_cycle_stop(void);
 
 static lv_obj_t *create_button(lv_obj_t *parent, const char *text,
                                lv_coord_t width, lv_coord_t height,
@@ -1392,6 +1394,507 @@ static void system_stress_start_event(lv_event_t *event)
     }
 }
 
+/* ---------------------------------------------------------------------------
+ * SLEEP / WAKE LOOP
+ *
+ * Reproduces, on demand and forever, the wake the watch performs when a
+ * notification lands while the screen is off: watch_system_sleep() ->
+ * (period) -> watch_system_wakeup() -> notification haptic. Two modes, live
+ * switchable from the running page:
+ *
+ *   MODE SLEEP+BUZZ  sleep, wait, wake, buzz, stay awake a few seconds, repeat.
+ *   MODE BUZZ ONLY   never sleep, just buzz every period (founder 2026-09-03).
+ *
+ * The loop runs on its own RT thread, not an lv_timer: LVGL timers are stopped
+ * across GUI_PM_EVT_SUSPEND (see watch_demo.c), so a timer-driven loop would
+ * put the watch to sleep and never get another tick to wake it. Driving
+ * sleep/wake off the GUI thread is the established pattern -- notification wake
+ * (bloc_notification.c) and KEY_SLEEP / KEY_WAKEUP (communicate_parse_control.c)
+ * both call these from the BLE RX thread.
+ * ------------------------------------------------------------------------- */
+
+#define WAKE_CYCLE_AWAKE_MS 5000
+
+/* Selectable period: how long the watch stays asleep (SLEEP+BUZZ) or how long
+   between buzzes (BUZZ ONLY). */
+static const uint32_t wake_cycle_periods_ms[] = {
+    2000U, 3000U, 5000U, 10000U, 15000U, 20000U, 30000U, 60000U,
+};
+#define WAKE_CYCLE_PERIOD_COUNT \
+    (sizeof(wake_cycle_periods_ms) / sizeof(wake_cycle_periods_ms[0]))
+#define WAKE_CYCLE_PERIOD_DEFAULT 1 /* 3 s -- see the note in on_stop():
+                                       a sleep of 5 s or more sends the UI
+                                       back to the watch face, unmounting
+                                       this page. */
+
+/* armcc / clang under __STRICT_ANSI__ omits localtime_r from <time.h>; the
+   toolchain replacement is declared the same way in alarm_manager_service.c. */
+extern time_t time(time_t *raw_time);
+struct tm *_localtime_r(const time_t *t, struct tm *r);
+
+/* Stop on its own after this many wakes so a loop left running (the watch face
+   reset below unmounts our page, and the worker survives that) cannot buzz the
+   wrist forever. */
+#define WAKE_CYCLE_MAX_CYCLES 200
+
+static volatile bool wake_cycle_active;
+static volatile bool wake_cycle_stop_requested;
+static volatile bool wake_cycle_sleep_enabled = true;
+static volatile bool wake_cycle_asleep;
+static volatile bool wake_cycle_motor_muted;
+static volatile uint8_t wake_cycle_period_index = WAKE_CYCLE_PERIOD_DEFAULT;
+static volatile uint32_t wake_cycle_wakes;
+static volatile uint32_t wake_cycle_buzzes;
+static rt_uint32_t wake_cycle_started;
+static volatile bool wake_cycle_alarm_wake;
+static rt_thread_t wake_cycle_worker;
+static rt_sem_t wake_cycle_sem;
+static lv_timer_t *wake_cycle_ui_timer;
+static lv_obj_t *wake_cycle_mode_button;
+static lv_obj_t *wake_cycle_mode_label;
+static lv_obj_t *wake_cycle_period_label;
+static lv_obj_t *wake_cycle_run_button;
+static lv_obj_t *wake_cycle_run_label;
+
+static uint32_t wake_cycle_period_ms(void)
+{
+    uint8_t index = wake_cycle_period_index;
+    if (index >= WAKE_CYCLE_PERIOD_COUNT)
+    {
+        index = WAKE_CYCLE_PERIOD_DEFAULT;
+    }
+    return wake_cycle_periods_ms[index];
+}
+
+/* Sleep in 100 ms slices so STOP / app exit is felt within a tick instead of
+   after a whole 60 s period. Returns false when the loop should end. */
+static bool wake_cycle_wait(uint32_t milliseconds)
+{
+    uint32_t waited = 0;
+    while (waited < milliseconds)
+    {
+        uint32_t slice = (milliseconds - waited > 100U) ?
+                         100U : (milliseconds - waited);
+        if (wake_cycle_stop_requested)
+        {
+            return false;
+        }
+        rt_thread_mdelay(slice);
+        waited += slice;
+    }
+    return !wake_cycle_stop_requested;
+}
+
+static void wake_cycle_alarm_cb(rt_alarm_t alarm, time_t timestamp)
+{
+    (void)alarm;
+    (void)timestamp;
+    /* Runs on the soft-RTC thread -- do nothing but hand off, exactly like
+       alarm_manager_service's hw_alarm_callback. */
+    if (wake_cycle_sem != RT_NULL)
+    {
+        rt_sem_release(wake_cycle_sem);
+    }
+}
+
+/* Stay asleep for `seconds`, then come back.
+ *
+ * rt_thread_mdelay cannot do this job. gui_suspend() calls
+ * pm_scenario_stop(PM_SCENARIO_UI), which lets the HCPU drop below IDLE --
+ * the core stops, the RT-Thread tick stops with it, and a sleeping thread is
+ * simply never rescheduled. That is why the first version of this test slept
+ * once and never woke up.
+ *
+ * The wake source has to be something the AON domain can fire: a hardware RTC
+ * alarm. That is exactly how the alarm clock rings from a sleeping watch
+ * (alarm_manager_service.c -> rt_alarm -> semaphore -> bloc_alarm_on_fire), so
+ * this borrows the same mechanism. If the alarm cannot be created we fall back
+ * to pinning the HCPU at IDLE, where our own timer still ticks -- a lighter
+ * sleep than the real thing, but better than a watch that never comes back. */
+static bool wake_cycle_sleep_for(uint32_t seconds)
+{
+    struct rt_alarm_setup setup;
+    rt_alarm_t alarm;
+    time_t when;
+    struct tm at;
+    bool completed;
+
+    if (seconds < 2U)
+    {
+        seconds = 2U;
+    }
+    when = time(RT_NULL) + (time_t)seconds;
+    _localtime_r(&when, &at);
+
+    /* Date fields come from the computed wake time, not RT_ALARM_TM_NOW: a
+       period that crosses midnight would otherwise be stamped with today's
+       date, land in the past, and never fire. */
+    setup.flag = RT_ALARM_ONESHOT;
+    setup.wktime.tm_year = at.tm_year;
+    setup.wktime.tm_mon = at.tm_mon;
+    setup.wktime.tm_mday = at.tm_mday;
+    setup.wktime.tm_hour = at.tm_hour;
+    setup.wktime.tm_min = at.tm_min;
+    setup.wktime.tm_sec = at.tm_sec;
+
+    alarm = rt_alarm_create(wake_cycle_alarm_cb, &setup);
+    if (alarm != RT_NULL && rt_alarm_start(alarm) == RT_EOK)
+    {
+        wake_cycle_alarm_wake = true;
+        /* The timeout is only a net for a watch that is awake anyway (STOP
+           releases the semaphore too); the alarm is what gets us out of a
+           real sleep. */
+        rt_sem_take(wake_cycle_sem,
+                    rt_tick_from_millisecond((seconds + 5U) * 1000U));
+        rt_alarm_stop(alarm);
+        rt_alarm_delete(alarm);
+        return !wake_cycle_stop_requested;
+    }
+    if (alarm != RT_NULL)
+    {
+        rt_alarm_delete(alarm);
+    }
+
+    wake_cycle_alarm_wake = false;
+    rt_pm_request(PM_SLEEP_MODE_IDLE);
+    completed = wake_cycle_wait(seconds * 1000U);
+    rt_pm_release(PM_SLEEP_MODE_IDLE);
+    return completed;
+}
+
+static void wake_cycle_buzz(void)
+{
+    /* Same haptic as motor_pattern_notification() -- 50 ms x 2 at 51% duty --
+       but called straight through so the test is deterministic: that helper
+       drops any buzz within 2 s of the previous one (ANCS reconnect burst
+       guard), which would silently swallow the 2 s / 3 s periods here. The
+       global motor switch is still honoured; DND is not, since the whole point
+       of the test is the motor. */
+    extern bool get_motor_switch_state(void);
+    motor_params_t motor = {
+        .duty_cycle = 51,
+        .period = 50000,
+        .repeat_times = 2,
+    };
+
+    if (!get_motor_switch_state())
+    {
+        wake_cycle_motor_muted = true;
+        return;
+    }
+    wake_cycle_motor_muted = false;
+    if (peripheral_provider.control_motor != RT_NULL)
+    {
+        peripheral_provider.control_motor(true, &motor);
+        wake_cycle_buzzes++;
+    }
+}
+
+static void wake_cycle_worker_entry(void *parameter)
+{
+    extern void watch_system_sleep(void);
+    extern void watch_system_wakeup(void);
+    (void)parameter;
+
+    while (!wake_cycle_stop_requested)
+    {
+        if (wake_cycle_sleep_enabled)
+        {
+            /* on_resume() parks the app in power-save-off (never sleep), and
+               that is the first gate in watch_system_sleep(). Re-arm it every
+               cycle -- it is one global with no refcount and anything else on
+               the watch may have written it since. */
+            setting_provider.set_power_save_mode(1);
+            watch_system_sleep();
+            wake_cycle_asleep = true;
+            if (!wake_cycle_sleep_for(wake_cycle_period_ms() / 1000U))
+            {
+                break;
+            }
+
+            watch_system_wakeup();
+            /* The peripheral rails -- motor PWM included -- are down while the
+               watch sleeps, so a buzz issued straight after the wake is
+               swallowed silently. alarm_client.c's bloc_alarm_on_fire() waits
+               500 ms after hcpu_resume before vibrating for the same reason. */
+            rt_thread_mdelay(500);
+            wake_cycle_asleep = false;
+            wake_cycle_wakes++;
+            wake_cycle_buzz();
+            if (wake_cycle_wakes >= WAKE_CYCLE_MAX_CYCLES)
+            {
+                break;
+            }
+            if (!wake_cycle_wait(WAKE_CYCLE_AWAKE_MS))
+            {
+                break;
+            }
+        }
+        else
+        {
+            /* Buzz only: hold the watch awake the way the app normally does
+               and just keep tapping the wrist. */
+            setting_provider.set_power_save_mode(0);
+            wake_cycle_asleep = false;
+            wake_cycle_wakes++;
+            wake_cycle_buzz();
+            if (wake_cycle_wakes >= WAKE_CYCLE_MAX_CYCLES)
+            {
+                break;
+            }
+            if (!wake_cycle_wait(wake_cycle_period_ms()))
+            {
+                break;
+            }
+        }
+    }
+
+    /* Always hand the watch back awake, and put power save back where the
+       app's own lifecycle would have it: off while this page is on screen
+       (on_resume), on once we are gone -- otherwise stopping the loop from a
+       back-swipe would leave the whole watch unable to auto-sleep. */
+    watch_system_wakeup();
+    setting_provider.set_power_save_mode(app_visible ? 0 : 1);
+    wake_cycle_asleep = false;
+    wake_cycle_worker = RT_NULL;
+    wake_cycle_active = false;
+}
+
+static void wake_cycle_refresh_labels(void)
+{
+    char text[48];
+
+    if (wake_cycle_mode_label != RT_NULL &&
+        lv_obj_is_valid(wake_cycle_mode_label))
+    {
+        lv_label_set_text(
+            wake_cycle_mode_label,
+            wake_cycle_sleep_enabled ? "MODE: SLEEP + BUZZ" :
+            "MODE: BUZZ ONLY");
+    }
+    if (wake_cycle_mode_button != RT_NULL &&
+        lv_obj_is_valid(wake_cycle_mode_button))
+    {
+        lv_obj_set_style_bg_color(
+            wake_cycle_mode_button,
+            lv_palette_main(wake_cycle_sleep_enabled ? LV_PALETTE_PURPLE :
+                            LV_PALETTE_TEAL),
+            0);
+    }
+    if (wake_cycle_period_label != RT_NULL &&
+        lv_obj_is_valid(wake_cycle_period_label))
+    {
+        rt_snprintf(text, sizeof(text), "%s\n%lus",
+                    wake_cycle_sleep_enabled ? "SLEEP" : "EVERY",
+                    (unsigned long)(wake_cycle_period_ms() / 1000U));
+        lv_label_set_text(wake_cycle_period_label, text);
+    }
+    if (wake_cycle_run_label != RT_NULL &&
+        lv_obj_is_valid(wake_cycle_run_label))
+    {
+        lv_label_set_text(wake_cycle_run_label,
+                          wake_cycle_active ? "STOP" : "START");
+    }
+    if (wake_cycle_run_button != RT_NULL &&
+        lv_obj_is_valid(wake_cycle_run_button))
+    {
+        lv_obj_set_style_bg_color(
+            wake_cycle_run_button,
+            lv_palette_main(wake_cycle_active ? LV_PALETTE_RED :
+                            LV_PALETTE_GREEN),
+            0);
+    }
+}
+
+static void wake_cycle_ui_timer_cb(lv_timer_t *timer)
+{
+    char text[192];
+    rt_uint32_t elapsed;
+    (void)timer;
+
+    elapsed = wake_cycle_active ?
+              (rt_tick_get_millisecond() - wake_cycle_started) : 0;
+    rt_snprintf(text, sizeof(text),
+                "%s\nwakes=%lu  buzzes=%lu\nelapsed=%lus%s",
+                wake_cycle_active ?
+                (wake_cycle_sleep_enabled ? "RUNNING (sleep loop)" :
+                 "RUNNING (buzz only)") :
+                "IDLE",
+                (unsigned long)wake_cycle_wakes,
+                (unsigned long)wake_cycle_buzzes,
+                (unsigned long)(elapsed / 1000U),
+                wake_cycle_motor_muted ? "\nMOTOR SWITCH IS OFF" : "");
+    set_status(text);
+    wake_cycle_refresh_labels();
+}
+
+static void wake_cycle_stop(void)
+{
+    if (wake_cycle_worker == RT_NULL && !wake_cycle_active)
+    {
+        return;
+    }
+    wake_cycle_stop_requested = true;
+    /* The worker may be parked on the wake alarm's semaphore -- release it so
+       STOP lands now instead of at the end of the sleep window. */
+    if (wake_cycle_sem != RT_NULL)
+    {
+        rt_sem_release(wake_cycle_sem);
+    }
+}
+
+static void wake_cycle_start(void)
+{
+    if (wake_cycle_active || wake_cycle_worker != RT_NULL)
+    {
+        return;
+    }
+    if (wake_cycle_sem == RT_NULL)
+    {
+        wake_cycle_sem = rt_sem_create("wake_cyc", 0, RT_IPC_FLAG_FIFO);
+        if (wake_cycle_sem == RT_NULL)
+        {
+            set_status("SLEEP/WAKE LOOP FAILED\nsemaphore create failed");
+            return;
+        }
+    }
+    wake_cycle_stop_requested = false;
+    wake_cycle_motor_muted = false;
+    wake_cycle_wakes = 0;
+    wake_cycle_buzzes = 0;
+    wake_cycle_started = rt_tick_get_millisecond();
+    wake_cycle_active = true;
+    wake_cycle_worker = rt_thread_create(
+        "wake_cycle", wake_cycle_worker_entry, RT_NULL, 4096, 25, 10);
+    if (wake_cycle_worker == RT_NULL ||
+        rt_thread_startup(wake_cycle_worker) != RT_EOK)
+    {
+        if (wake_cycle_worker != RT_NULL)
+        {
+            rt_thread_delete(wake_cycle_worker);
+            wake_cycle_worker = RT_NULL;
+        }
+        wake_cycle_active = false;
+        set_status("SLEEP/WAKE LOOP FAILED\nthread create failed");
+    }
+    wake_cycle_refresh_labels();
+}
+
+static void wake_cycle_run_event(lv_event_t *event)
+{
+    if (lv_event_get_code(event) != LV_EVENT_CLICKED)
+    {
+        return;
+    }
+    if (wake_cycle_active)
+    {
+        wake_cycle_stop();
+    }
+    else
+    {
+        wake_cycle_start();
+    }
+    wake_cycle_refresh_labels();
+}
+
+static void wake_cycle_mode_event(lv_event_t *event)
+{
+    if (lv_event_get_code(event) != LV_EVENT_CLICKED)
+    {
+        return;
+    }
+    /* Live switch: the worker reads this at the top of every iteration, so a
+       running loop changes behaviour from the next cycle without a restart. */
+    wake_cycle_sleep_enabled = !wake_cycle_sleep_enabled;
+    wake_cycle_refresh_labels();
+}
+
+static void wake_cycle_period_event(lv_event_t *event)
+{
+    int delta = (int)(intptr_t)lv_event_get_user_data(event);
+    int index = (int)wake_cycle_period_index + delta;
+
+    if (lv_event_get_code(event) != LV_EVENT_CLICKED)
+    {
+        return;
+    }
+    if (index < 0)
+    {
+        index = 0;
+    }
+    if (index >= (int)WAKE_CYCLE_PERIOD_COUNT)
+    {
+        index = (int)WAKE_CYCLE_PERIOD_COUNT - 1;
+    }
+    wake_cycle_period_index = (uint8_t)index;
+    wake_cycle_refresh_labels();
+}
+
+static void start_wake_cycle_test(lv_obj_t *parent)
+{
+    lv_obj_t *button;
+
+    if (menu_container != RT_NULL && lv_obj_is_valid(menu_container))
+    {
+        lv_obj_add_flag(menu_container, LV_OBJ_FLAG_HIDDEN);
+    }
+    lv_obj_set_style_bg_color(parent, lv_color_black(), 0);
+
+    /* Explicit white on every plain label: the default theme text colour is
+       dark, so a label dropped on this black background is invisible (the
+       board-screening page sets its own colour for the same reason). Labels
+       inside buttons are fine -- the theme gives those a contrasting colour. */
+    title_label = lv_label_create(parent);
+    lv_label_set_text(title_label, "SLEEP / WAKE LOOP");
+    lv_obj_set_style_text_color(title_label, lv_color_white(), 0);
+    lv_obj_align(title_label, LV_ALIGN_TOP_MID, 0, 20);
+
+    wake_cycle_mode_button = create_button(
+        parent, "", 270, 58, wake_cycle_mode_event, RT_NULL);
+    wake_cycle_mode_label = lv_obj_get_child(wake_cycle_mode_button, 0);
+    lv_obj_align(wake_cycle_mode_button, LV_ALIGN_CENTER, 0, -108);
+
+    button = create_button(
+        parent, "-", 62, 62, wake_cycle_period_event, (void *)(intptr_t) - 1);
+    lv_obj_align(button, LV_ALIGN_CENTER, -100, -38);
+    button = create_button(
+        parent, "+", 62, 62, wake_cycle_period_event, (void *)(intptr_t)1);
+    lv_obj_align(button, LV_ALIGN_CENTER, 100, -38);
+    wake_cycle_period_label = lv_label_create(parent);
+    lv_obj_set_style_text_color(
+        wake_cycle_period_label, lv_color_white(), 0);
+    lv_obj_set_style_text_align(
+        wake_cycle_period_label, LV_TEXT_ALIGN_CENTER, 0);
+    lv_obj_align(wake_cycle_period_label, LV_ALIGN_CENTER, 0, -38);
+
+    wake_cycle_run_button = create_button(
+        parent, "", 270, 60, wake_cycle_run_event, RT_NULL);
+    wake_cycle_run_label = lv_obj_get_child(wake_cycle_run_button, 0);
+    lv_obj_align(wake_cycle_run_button, LV_ALIGN_CENTER, 0, 32);
+
+    status_label = lv_label_create(parent);
+    lv_obj_set_width(status_label, LV_PCT(90));
+    lv_obj_set_style_text_color(status_label, lv_color_white(), 0);
+    lv_obj_set_style_text_align(status_label, LV_TEXT_ALIGN_CENTER, 0);
+    lv_obj_align(status_label, LV_ALIGN_CENTER, 0, 118);
+
+    wake_cycle_refresh_labels();
+    if (!wake_cycle_active)
+    {
+        set_status("IDLE");
+    }
+    wake_cycle_ui_timer = lv_timer_create(
+        wake_cycle_ui_timer_cb, 500, RT_NULL);
+}
+
+static void wake_cycle_start_event(lv_event_t *event)
+{
+    if (lv_event_get_code(event) == LV_EVENT_CLICKED)
+    {
+        start_wake_cycle_test(lv_scr_act());
+    }
+}
+
 static void retry_async(void *user_data)
 {
     (void)user_data;
@@ -1772,6 +2275,11 @@ static void screen_event_handler(lv_event_t *event)
                 system_stress_stop_requested = true;
                 gui_app_self_exit();
             }
+            else if (wake_cycle_active || wake_cycle_worker != RT_NULL)
+            {
+                wake_cycle_stop();
+                gui_app_self_exit();
+            }
             else if (screening_active)
             {
                 screen_cancel_requested = true;
@@ -1791,6 +2299,7 @@ static lv_obj_t *on_start(lv_obj_t *parent)
     lv_obj_t *title;
     lv_obj_t *interactive;
     lv_obj_t *stress;
+    lv_obj_t *wake_cycle;
     lv_obj_t *random;
 
     screen_request_pending = false;
@@ -1800,6 +2309,13 @@ static lv_obj_t *on_start(lv_obj_t *parent)
     if (remote_screening)
     {
         start_board_screening_ui(parent);
+        return parent;
+    }
+    if (wake_cycle_active)
+    {
+        /* A loop that outlived its page (post-sleep watch-face reset) -- come
+           straight back to it so STOP is one tap away. */
+        start_wake_cycle_test(parent);
         return parent;
     }
 
@@ -1817,25 +2333,32 @@ static lv_obj_t *on_start(lv_obj_t *parent)
     lv_obj_align(title, LV_ALIGN_TOP_MID, 0, 25);
 
     interactive = create_button(
-        menu_container, "INTERACTIVE TEST", 300, 82,
+        menu_container, "INTERACTIVE TEST", 300, 64,
         interactive_start_event, RT_NULL);
     lv_obj_set_style_bg_color(
         interactive, lv_palette_main(LV_PALETTE_GREEN), 0);
-    lv_obj_align(interactive, LV_ALIGN_CENTER, 0, -105);
+    lv_obj_align(interactive, LV_ALIGN_CENTER, 0, -108);
 
     stress = create_button(
-        menu_container, "SYSTEM STRESS TEST", 300, 82,
+        menu_container, "SYSTEM STRESS TEST", 300, 64,
         system_stress_start_event, RT_NULL);
     lv_obj_set_style_bg_color(
         stress, lv_palette_main(LV_PALETTE_ORANGE), 0);
-    lv_obj_align(stress, LV_ALIGN_CENTER, 0, 0);
+    lv_obj_align(stress, LV_ALIGN_CENTER, 0, -36);
+
+    wake_cycle = create_button(
+        menu_container, "SLEEP / WAKE LOOP", 300, 64,
+        wake_cycle_start_event, RT_NULL);
+    lv_obj_set_style_bg_color(
+        wake_cycle, lv_palette_main(LV_PALETTE_PURPLE), 0);
+    lv_obj_align(wake_cycle, LV_ALIGN_CENTER, 0, 36);
 
     random = create_button(
-        menu_container, "GENERATE RANDOM\nADDRESS", 300, 82,
+        menu_container, "GENERATE RANDOM\nADDRESS", 300, 64,
         random_address_event, RT_NULL);
     lv_obj_set_style_bg_color(
         random, lv_palette_main(LV_PALETTE_BLUE), 0);
-    lv_obj_align(random, LV_ALIGN_CENTER, 0, 105);
+    lv_obj_align(random, LV_ALIGN_CENTER, 0, 108);
     return parent;
 }
 
@@ -1875,6 +2398,26 @@ static void on_stop(void)
         system_stress_finalized = true;
     }
     delete_system_stress_tiles();
+    if (wake_cycle_ui_timer != RT_NULL)
+    {
+        lv_timer_del(wake_cycle_ui_timer);
+        wake_cycle_ui_timer = RT_NULL;
+    }
+    /* Deliberately NOT stopping the loop here. watch_demo.c resets the UI to
+       the watch face after any sleep of SLEEP_RESET_TO_HOME_MS (5 s) or more,
+       which gui_app_goback()s this app off the stack -- so a stop-on-ONSTOP
+       would kill the loop on its own first cycle at any period >= 5 s. The
+       loop keeps running headless; re-opening the factory test re-attaches to
+       it with a live STOP button (see on_start), the back-swipe handler stops
+       it explicitly, and WAKE_CYCLE_MAX_CYCLES stops it eventually regardless.
+       Only the UI handles are dropped: the screen is torn down after ONSTOP,
+       and the worker reaches the widgets solely through the timer deleted
+       above. */
+    wake_cycle_mode_button = RT_NULL;
+    wake_cycle_mode_label = RT_NULL;
+    wake_cycle_period_label = RT_NULL;
+    wake_cycle_run_button = RT_NULL;
+    wake_cycle_run_label = RT_NULL;
     if (screening_active)
     {
         screen_cancel_requested = true;
