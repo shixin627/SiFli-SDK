@@ -55,7 +55,7 @@ extern "C"
      * @brief Enable/disable the wear-detection algorithm (diagnostic override).
      *        When disabled, the watch is forced WORN unless it is on the
      *        charger — lets HR/sleep run regardless of the contact algorithm
-     *        while per-unit thresholds are being diagnosed. Default: enabled.
+     *        while per-unit thresholds are being diagnosed. Default: DISABLED (bypass) since 2026-09-03; the HCPU pushes the persisted setting.
      * @param enabled true = normal detection, false = force worn (unless charging)
      */
     void wear_detect_set_enabled(bool enabled);

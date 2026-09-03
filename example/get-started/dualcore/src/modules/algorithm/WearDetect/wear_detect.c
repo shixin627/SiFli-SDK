@@ -223,6 +223,40 @@
  * relation to the evidence. */
 #define FLAT_CHECK_MS           60000u
 #define FLAT_CHECKS_TO_OFF      5
+/* A flat minute only counts when the accelerometer is dead still too. A
+ * sleeping wrist breathes and micro-moves: two worn nights on the daily watch
+ * (2026-09-02/03, n=389 minutes) read imu_var p5 = 0.0004, p50 = 0.0008; the
+ * five flat minutes behind the 05:10:46 false OFF read 0.0005-0.0010. A desk
+ * reads 0.0000 (p75 0.0001-0.00025; 71-80% of minutes under 0.0003). This is
+ * a margin, not a separation: 4% of worn minutes DO read < 0.0003, in still
+ * epochs of >= 2 min, and in those epochs pi_range sat only 0.4-25% above
+ * PI_RANGE_FLAT_THD. The joint condition was unobserved in 389 minutes, and
+ * 0.0004 costs nothing on either night: the lowest worn flat minute sits
+ * exactly on the 0.0004 wire quantum (2026-09-02 04:46:53, true value in
+ * [0.0004, 0.0005)) and is a HOLD only because the compare is a strict '<';
+ * one quantum of margin, not more. imu_var is
+ * compute_imu_variance() over the 75-sample accel ring (m/s^2 squared;
+ * 0.0004 = sigma 0.02 m/s^2 = 2 mg; the BMI270 noise floor at 25 Hz is
+ * ~0.00002). Units: the bench unit's desk p75 is 0.0001. */
+#define IMU_FLAT_THD            0.0004f
+/* The accel ring is NOT always live: bmi270_set_hr_accel_stream(1) only
+ * routes DRDY when the LCPU is already in sleep mode, and a screen-off during
+ * a burst un-routes it for the rest of the burst; imu_count never decreases,
+ * so a frozen ring looks full. Bit-identical imu_var on consecutive minutes
+ * is that freeze: 14-28% of consecutive within-burst pairs are identical on
+ * 2026-09-02/03, of which 5-6 per night are unambiguous (non-trivial values
+ * like 5.3219 or 2.3411 repeated; the rest sit in the 0.0000-0.0008 band
+ * where the 1e-4 wire quantum makes coincidence likely). A ring older than
+ * this is treated as no data -> HOLD. */
+#define IMU_STALE_MS            5000u
+/* A partial streak that has not gained a counted minute for two burst cycles
+ * (plus slack: a burst whose only count is its first check, followed by a
+ * fully frozen burst, puts the next count exactly 1200 s later) is stale: on
+ * a desk counts arrive >= 3 per 3-min burst (gaps <= ~10 min), on a wrist a
+ * still epoch tonight must not be completed by one hours later. Completed
+ * streaks are exempt so their pending OFF votes can still land in the next
+ * burst. */
+#define FLAT_STREAK_TTL_MS      (25u * 60u * 1000u)
 
 /* Same evidence, opposite direction: warm re-entry must also see the perfusion
  * signal MOVING. Measured 2026-09-01 (pi_range medians): wrist 0.00104,
@@ -393,6 +427,8 @@ typedef struct
 
     /* Perfusion-stillness exit (@ref PI_RANGE_FLAT_THD): one check a minute. */
     uint32_t last_flat_check_ms;
+    uint32_t last_flat_count_ms; /* tick of the last COUNTED flat minute (TTL) */
+    uint32_t last_imu_ms;        /* tick of the last accel sample (ring freshness) */
     uint8_t  flat_streak;
     /* Perfusion-movement entry (@ref PI_RANGE_ALIVE_THD): N-of-M ring. */
     uint16_t alive_ring;         /* bit i = eval i (of last ALIVE_WINDOW_EVALS) was alive */
@@ -415,7 +451,9 @@ static uint32_t s_last_probe_open_ms = 0;
 
 /* Diagnostic override (settings toggle "佩戴偵測"): when false, the contact
  * algorithm is bypassed and the watch is forced WORN unless on the charger. */
-static bool s_detect_enabled = true;
+/* Default OFF (bypass) since 2026-09-03, matching the HCPU's persisted
+ * default; the HCPU re-pushes the setting on subscribe / every minute. */
+static bool s_detect_enabled = false;
 
 /* -------------------- Helpers -------------------- */
 
@@ -432,17 +470,28 @@ static uint8_t on_votes_in_window(uint8_t w)
 
 static float compute_imu_variance(const float *buf, uint16_t len)
 {
+    /* Two-pass on purpose. The one-pass E[x^2]-mean^2 form in float32 on
+     * |a| ~ 9.8 m/s^2 (squares ~96, ulp 7.6e-6) leaves rounding noise of
+     * ~1e-4 whose SIGN depends on the exact gravity reading -- larger than a
+     * dead-still desk's true variance (1e-6..3e-5). The flat-check gate at
+     * IMU_FLAT_THD lives in exactly that range, so with the old form a still
+     * desk on one unit read "-0.0001" and on another "+0.0001" (review,
+     * 2026-09-03). Summing squared deviations from the mean keeps the
+     * cancellation out; 75 extra subtractions cost nothing here. */
+    if (len == 0)
+        return 0.0f;
     float sum = 0.0f;
-    float sum_sq = 0.0f;
-
+    for (uint16_t i = 0; i < len; i++)
+        sum += buf[i];
+    float mean = sum / (float)len;
+    float ss = 0.0f;
     for (uint16_t i = 0; i < len; i++)
     {
-        sum += buf[i];
-        sum_sq += buf[i] * buf[i];
+        float d = buf[i] - mean;
+        ss += d * d;
     }
-
-    float mean = sum / (float)len;
-    return (sum_sq / (float)len) - (mean * mean);
+    float var = ss / (float)len;
+    return (var < 0.0f) ? 0.0f : var;
 }
 
 /**
@@ -846,6 +895,12 @@ static int evaluate_once(uint32_t now)
             ctx.pi_hist_count >= PI_HISTORY_LEN)
         {
             ctx.last_flat_check_ms = now;
+            /* Streak TTL (see FLAT_STREAK_TTL_MS). */
+            if (ctx.flat_streak > 0 && ctx.flat_streak < FLAT_CHECKS_TO_OFF &&
+                (now - ctx.last_flat_count_ms) > FLAT_STREAK_TTL_MS)
+            {
+                ctx.flat_streak = 0;
+            }
             if (pi >= PI_SATURATED || pi_range >= PI_SATURATED)
             {
                 /* HOLD, do not reset. A saturated read is an AGC gain step, and
@@ -857,10 +912,31 @@ static int evaluate_once(uint32_t now)
             }
             else if (pi_range > 0.0f && pi_range < PI_RANGE_FLAT_THD)
             {
-                if (ctx.flat_streak < 0xFFu) ctx.flat_streak++;
-                if (ctx.flat_streak == FLAT_CHECKS_TO_OFF)
-                    LOG_W("Eval: PI flat %.6f < %.6f for %u min -> off-wrist -> OFF votes",
-                          pi_range, PI_RANGE_FLAT_THD, (unsigned)ctx.flat_streak);
+                /* Perfusion is flat. Count the minute only if the body is
+                 * absent too: a still desk reads imu_var ~0, a sleeping wrist
+                 * almost never does (see IMU_FLAT_THD for the margins). Flat
+                 * perfusion WITH micro-motion is a sleeping wrist -> HOLD
+                 * (neither count nor reset, like a saturated read). No accel
+                 * data, or a ring that has not received a sample for
+                 * IMU_STALE_MS (frozen DRDY routing), -> HOLD as well: an exit
+                 * must never ride on a missing or frozen sensor. */
+                uint16_t imu_len = (ctx.imu_count < IMU_WINDOW_SIZE)
+                                       ? ctx.imu_count : IMU_WINDOW_SIZE;
+                bool imu_fresh = (imu_len > 0) &&
+                                 ((now - ctx.last_imu_ms) <= IMU_STALE_MS);
+                float imu_var = imu_fresh
+                                    ? compute_imu_variance(ctx.acce_mag, imu_len) : 0.0f;
+                if (imu_fresh)
+                    ctx.last_imu_var = imu_var;
+                if (imu_fresh && imu_var < IMU_FLAT_THD)
+                {
+                    if (ctx.flat_streak < 0xFFu) ctx.flat_streak++;
+                    ctx.last_flat_count_ms = now;
+                    if (ctx.flat_streak == FLAT_CHECKS_TO_OFF)
+                        LOG_W("Eval: PI flat + still for %u min -> off-wrist -> OFF votes",
+                              (unsigned)ctx.flat_streak);
+                }
+                /* else: HOLD (micro-motion, or no fresh accel data) */
             }
             else
             {
@@ -874,7 +950,8 @@ static int evaluate_once(uint32_t now)
          * minute-check, deterministically; only a stale/settle gap (vote 0,
          * off_counter decays) can stretch that. The streak is cleared by
          * set_status() on the transition, or by a later minute-check seeing
-         * pi_range >= PI_RANGE_FLAT_THD. The old code cast ONE -1, zeroed the
+         * pi_range >= PI_RANGE_FLAT_THD; a flat minute with micro-motion or
+         * without accel data holds it. The old code cast ONE -1, zeroed the
          * streak and let the next "contact held" +1 wipe the counter, so this
          * exit could never land (2026-09-02 10:36-10:43: eight flat minutes
          * on the release watch, no OFF; the rule had never fired since it was
@@ -1173,6 +1250,7 @@ void wear_detect_feed_imu(Vector3 *acce, float sample_rate)
     ctx.imu_idx = (ctx.imu_idx + 1) % IMU_WINDOW_SIZE;
     if (ctx.imu_count < IMU_WINDOW_SIZE)
         ctx.imu_count++;
+    ctx.last_imu_ms = rt_tick_get_millisecond();
 
     /* Try periodic evaluation */
     try_evaluate();

@@ -416,7 +416,11 @@ extern "C"
         uint64_t countdown_popopen : 1;
         uint64_t debug_mode : 1;
         uint64_t mouse_press_mode : 1; /* 0: pressure<4700=move & <2800=click; 1: always-move & pressure<4700=click */
-        uint64_t wear_detect_off : 1;  /* 1: disable wear detection (force worn unless on charger) — diagnostic override */
+        /* 1: run the wear-detection (contact) algorithm. 0 = bypass: forced worn
+         * unless on the charger. 0 is the DEFAULT (founder decision 2026-09-03)
+         * and, because this bit replaced wear_detect_off at the same position,
+         * every blob saved before that date reads as OFF as well. */
+        uint64_t wear_detect_on : 1;
         uint64_t hr_continuous : 1;    /* 1: run HR the Exercise-app way (PPG held on, algo never re-inits) instead of bg_hr bursts — diagnostic */
         /* 1: emit the health DIAGNOSTIC streams — KEY_HR_WINDOW_DUMP (0x16),
            KEY_HR_WINDOW_RAW (0x17), KEY_HR_BURST_SUMMARY (0x18) and
