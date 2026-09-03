@@ -227,7 +227,9 @@
  * sleeping wrist breathes and micro-moves: two worn nights on the daily watch
  * (2026-09-02/03, n=389 minutes) read imu_var p5 = 0.0004, p50 = 0.0008; the
  * five flat minutes behind the 05:10:46 false OFF read 0.0005-0.0010. A desk
- * reads 0.0000 (p75 0.0001-0.00025; 71-80% of minutes under 0.0003). This is
+ * reads 0.0000 (71-80% of minutes under 0.0003; the p75 of 0.0001-0.00025
+ * seen in the CSVs was the old one-pass variance's +1e-4 rounding bias --
+ * with the two-pass form below a still desk reads 0.0000). This is
  * a margin, not a separation: 4% of worn minutes DO read < 0.0003, in still
  * epochs of >= 2 min, and in those epochs pi_range sat only 0.4-25% above
  * PI_RANGE_FLAT_THD. The joint condition was unobserved in 389 minutes, and
