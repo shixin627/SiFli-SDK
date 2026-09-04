@@ -998,12 +998,21 @@ bool power_opt_mode(void)
  */
 static volatile int s_hr_accel_stream = 0;
 
+int bmi270_hr_accel_stream_active(void)
+{
+    return s_hr_accel_stream;
+}
+
 int bmi270_set_hr_accel_stream(int en)
 {
     if (s_hr_accel_stream == (en ? 1 : 0)) return 0;
     s_hr_accel_stream = en ? 1 : 0;
     /* Only touch the routing while asleep. Awake, DRDY is already routed for
-       the normal path and un-routing it here would kill gesture detection. */
+       the normal path and un-routing it here would kill gesture detection.
+       Note this is also the ONLY place the routing is dropped for a sleeping
+       watch once a claim exists: on_lcpu_sleep_mode_changed skips its own
+       un-route while the claim is held, so releasing the claim here is what
+       finally puts DRDY back down. */
     if (is_sleep_mode())
         return bmi270_set_drdy_int_routing(en ? 1 : 0);
     return 0;

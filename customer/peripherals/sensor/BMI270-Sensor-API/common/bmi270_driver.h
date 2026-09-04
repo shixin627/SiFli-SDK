@@ -185,6 +185,15 @@ int bmi270_set_fifo_wm_int(int en, uint16_t wm_bytes);
    enable with a disable. */
 int bmi270_set_hr_accel_stream(int en);
 
+/**
+ * @brief Is the screen-off accelerometer stream currently claimed?
+ *        Sleep entry must not un-route DRDY while it is: the claimant (a bg_hr
+ *        burst, or wear_detect's wrist-wake probe) has no way to notice the
+ *        revocation and bmi270_set_hr_accel_stream(1) is idempotent, so the
+ *        stream would be dead for the rest of its life.
+ */
+int bmi270_hr_accel_stream_active(void);
+
 /* Read everything currently sitting in the BMI270 FIFO, replay every
    accel+gyro pair through redirect_sensor_data() + imu_data_fetch() +
    handle_imu_data() so the AHRS sees the same stream it would have seen
