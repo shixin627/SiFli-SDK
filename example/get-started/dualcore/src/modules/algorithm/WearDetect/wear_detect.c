@@ -327,7 +327,15 @@
  * evals, so one step alone met a 6-of-10 bar. Steps large enough to look like
  * a pulse burst are also excluded from the alive bit by PI_RANGE_MAX. A wrist
  * at ~70% alive per eval clears 7-of-10 within a burst (120 evals). */
-#define ALIVE_EVALS_TO_ON       5
+/* 7, and do NOT lower it again. A single AGC micro-step lifts pi_range for
+ * five to six consecutive evals (the step sits in the 3 s sample ring for
+ * two evals and the 5-deep PI history carries it), so any N <= 6 is met by
+ * ONE excursion on a desk. This was established on 2026-09-02, relaxed to 5
+ * on 2026-09-04 to speed up put-on, and the desk walked straight back in
+ * 90 seconds after an OTA (17:15:41, pi 0.00179, ratio 0.25). The ratio leg
+ * above rejects a STEADY bright surface; this count is what rejects a
+ * TRANSIENT one. Both are needed. */
+#define ALIVE_EVALS_TO_ON       7
 
 /* Perfusion variability as a FRACTION of perfusion level. This is the leg that
  * finally separates a watch lying with its PPG facing air from a wrist, and it
@@ -995,7 +1003,13 @@ static int evaluate_once(uint32_t now)
                 /* Two more legs, both required. The accelerometer used to sit
                  * here and was removed: a desk somebody works at reads the same
                  * imu_var as a sleeping wrist (see DC_STABLE_THD). */
-                bool no_pulse = (pi < PI_THD_TO_ON);
+                /* "No pulse" must be asked with the RATIO, not the level. A
+                 * watch lying with its PPG facing air reads pi ~0.002 -- three
+                 * times PI_THD_TO_ON -- so the level says "pulse" and the exit
+                 * never counted a single minute (observed 2026-09-04 17:30
+                 * onward). Its ratio is 0.037 against a worn median of 0.262. */
+                bool no_pulse = (pi < PI_THD_TO_ON) ||
+                                (pi > 0.0f && (pi_range / pi) < PI_AC_RATIO_THD);
                 bool dc_steady = false;
                 if (ctx.last_flat_check_dc > 0.0f && dc_mean > 0.0f)
                 {
@@ -1052,7 +1066,12 @@ static int evaluate_once(uint32_t now)
              * pi 0.00028-0.00047 there; a worn wrist clears PI_THD_TO_ON on ~90%
              * of minutes (p10 0.00072), and the EMA is slow enough that skipping
              * the flattest minutes costs it nothing. */
+            /* Same question, same test: only a real pulse may teach the
+             * baseline. Level alone let a suspended desk (pi ~0.002) walk the
+             * baseline down 47140 -> 45252 in one minute on 2026-09-04, which
+             * kills the DC-collapse exit exactly as the face-down desk did. */
             pi >= PI_THD_TO_ON &&
+            (pi > 0.0f && (pi_range / pi) >= PI_AC_RATIO_THD) &&
             dc_mean >= ctx.worn_dc_base * WORN_BAND_LO &&
             dc_mean <= ctx.worn_dc_base * WORN_BAND_HI)
         {
