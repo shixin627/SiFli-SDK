@@ -327,7 +327,19 @@
  * evals, so one step alone met a 6-of-10 bar. Steps large enough to look like
  * a pulse burst are also excluded from the alive bit by PI_RANGE_MAX. A wrist
  * at ~70% alive per eval clears 7-of-10 within a burst (120 evals). */
-#define ALIVE_EVALS_TO_ON       7
+#define ALIVE_EVALS_TO_ON       5
+
+/* Perfusion variability as a FRACTION of perfusion level. This is the leg that
+ * finally separates a watch lying with its PPG facing air from a wrist, and it
+ * is the only one that works for BOTH desk poses. A pulse modulates the AC with
+ * every beat and with respiration; a static reflection does not, however bright
+ * it is. Facing air reads pi ~0.0024 -- four times PI_THD_TO_ON -- so level
+ * alone lets a desk straight in (observed 2026-09-04 15:53:44: OFF at 15:52:41,
+ * back ON 63 s later on pi 0.0024, imu 0.0007). Measured medians of
+ * pi_range/pi: worn night 0.262, deep sleep 0.266, suspended desk 0.067 and
+ * 0.035, desk face-down 0.165. Per-eval pass rate with this leg at 0.15:
+ * worn 53%, deep sleep 48%, and 0% / 12% / 0% / 0% across the four desk sets. */
+#define PI_AC_RATIO_THD         0.15f
 /* After an OFF verdict, BOTH re-entry branches are refused for this long. The
  * OFF verdict asks hr_set_power(0), but that is VETOED while a bg_hr burst is
  * in flight, so the PPG keeps feeding us and the very next evals would re-enter
@@ -1097,6 +1109,7 @@ static int evaluate_once(uint32_t now)
         ctx.last_imu_var = alive_imu_var;
     bool alive_now = (pi >= PI_THD_TO_ON) &&
                      (pi_range <= PI_RANGE_MAX) &&
+                     (pi > 0.0f && (pi_range / pi) >= PI_AC_RATIO_THD) &&
                      alive_imu_fresh && (alive_imu_var >= IMU_FLAT_THD);
     ctx.alive_ring = (uint16_t)((ctx.alive_ring << 1) | (alive_now ? 1u : 0u));
     ctx.alive_ring &= (uint16_t)((1u << ALIVE_WINDOW_EVALS) - 1u);
