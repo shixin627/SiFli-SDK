@@ -266,6 +266,14 @@ extern "C"
            沒有回覆鍵:圖到了就是回覆,沒到就維持設備名(可見的降級)。
            Keep in lockstep with WatchProtocol.kt/.swift SKAILINK_KEY_CONV_AVATAR_REQ. */
         KEY_CONV_AVATAR_REQ = 0x25,
+        /* watch→phone (UPLINK): {"p":<permille>,"to":"<device_id>"} — 底部設備藥丸拖曳中的
+           進度。p 是位移/螢幕寬的千分比,負=往下一台(同手機 dragX 的正負),0=靜止或彈回,
+           ±1000=落地;to 是正拖向那台的 registry id(橡皮筋/沒有鄰居時為空)。
+           手機在畫面投到外接螢幕時,把首頁的名稱列與外接舞台一起跟著這條走(founder
+           2026-09-04:我拖多少他動多少);落地時仍由 KEY_ACTIVE_SELECT 真正換台,這條只是
+           視覺。手錶端 ~25Hz 節流,端點一定送。沒有回覆鍵。
+           Keep in lockstep with WatchProtocol.kt/.swift SKAILINK_KEY_DEVICE_DRAG. */
+        KEY_DEVICE_DRAG = 0x26,
     } SKAI_LINK_KEY;
 
     /* Dispatched from communicate_parse.c for cmd_id == SKAI_LINK_COMMAND_ID.
