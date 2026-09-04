@@ -107,6 +107,7 @@
   "handwrite_enter": "輸入",
   "handwrite_exit": "退出",
   "connected_phone": "手機",
+  "no_device": "沒有設備",
   "device_offline": "斷線",
   "handwrite_clear": "清空",
   "handwrite_delete": "刪除",

@@ -336,8 +336,12 @@ static bool dev_active_offline(void); /* 定義在 overlay sync 旁 */
 static lv_obj_t *s_dev_left_arrow = NULL;    // 設備名左側「上一台」箭頭（循環）
 static lv_obj_t *s_dev_right_arrow = NULL;   // 設備名右側「下一台」箭頭（循環）
 static void update_ctrl_dev_label(void); // 依 s_dev_active_id 更新頂部控制中設備名 + 箭頭可見性
+static void devbar_update_name(void);    // 底部設備 bar 的名稱(定義在下方 devbar 段)
+static bool devbar_consume_click(void);  // 這一次按壓是拖曳換設備 → 吃掉隨後的 CLICKED
+static bool devbar_drag_active(void);    // 正在拖曳換設備(long-press 要讓開)
 LV_IMG_DECLARE(device_btn);  // 設備鈕藥丸圖（與舊 device-change bar 共用同一資源）
-LV_IMG_DECLARE(skaibar_img); // 底部 skaibar bar 靜態外觀（176x31，與錶盤底部那條共用）
+/* skaibar_img(176x31 的靜態圖)2026-09-04 退役:底部那條改成自己畫的藥丸 + 設備名,
+   才有辦法在拖曳時把寬度收成一顆球(圖片縮放會變形)。見下方 devbar 段。 */
 
 // === HID 模式切換（上方 label 左右拖動切換）===
 typedef enum
@@ -10798,6 +10802,10 @@ static bool s_logo_lp_consumed = false;
 static void bottom_logo_long_press_cb(lv_event_t *e)
 {
     (void)e;
+    /* 拖曳換設備進行中:LVGL 仍會在 400ms 到點時補一顆 LONG_PRESSED,不能讓它把
+       語音站叫起來蓋掉正在跑的切換手勢。 */
+    if (devbar_drag_active())
+        return;
     if (dev_active_offline())
         return;
     if (current_hid_mode == HID_MODE_KEYBOARD)
@@ -10815,6 +10823,10 @@ static void bottom_logo_cb(lv_event_t *e)
        mic_hit,見 lv_instruction_list_layout.c 的 mic_hit_follow_bar)。 */
     LOG_W("[logo] tap offline=%d mode=%d lp=%d", (int)dev_active_offline(),
           (int)current_hid_mode, (int)s_logo_lp_consumed);
+    /* 這一次按壓是左右拖曳(換設備)→ 放開時 LVGL 照樣補一顆 CLICKED,不能當成 tap
+       去開抽屜(founder 2026-09-04 的拖曳手勢與既有的 tap 共用同一個物件)。 */
+    if (devbar_consume_click())
+        return;
     if (dev_active_offline())
         return;
     if (current_hid_mode == HID_MODE_KEYBOARD)
@@ -11162,6 +11174,7 @@ static void set_active_device_by_index(int idx)
     strncpy(s_dev_active_id, id, sizeof(s_dev_active_id) - 1);
     s_dev_active_id[sizeof(s_dev_active_id) - 1] = '\0';
     update_ctrl_dev_label();
+    devbar_update_name(); /* 底部設備 bar 跟著換名 */
     /* Switched target: reset the media title to the placeholder until this
        device's now-playing arrives (the phone re-pushes 0x19 on active-select),
        so the previous device's title doesn't linger as if it were this one's. */
@@ -11409,6 +11422,398 @@ static void update_ctrl_dev_label(void)
     }
 }
 
+/* === 底部設備 bar:一條藥丸,中間是「控制中設備」名稱 ==========================
+   founder 2026-09-04:「滑鼠 app 內底下的 skaibar_img 換成像手機 app 中間下面的 bar
+   一樣,只是中間顯示的是設備名稱(點他後做的事情一樣),左右拖動也要像手機拖動下面
+   bar 一樣的切換設備效果(動畫也要一樣)」。
+
+   tap/長按行為一個字都沒動(bottom_logo_cb / bottom_logo_long_press_cb):換的是外觀
+   與「拖曳=換設備」這條新手勢。
+
+   動畫是手機 BottomNavBar 那條 Safari 網址列換分頁的複刻,四個門檻逐一對齊
+   SkaiLink android-native `ui/home/HomeNav.kt`(BAR_NEIGHBOUR_REVEAL / _WIDEN_AT /
+   BAR_SWIPE_SHRINK_BY / barContentAlpha 的 0.6~0.95):
+     - 出去的藥丸**縮成一顆球**再淡出,中心緩到 slot 邊緣 —— 不是跟著手指走出畫面被
+       裁成直邊(那在手機上被判定成 rendering fault,這裡同理)。
+     - 進來的先是一顆球,等出去的走遠了(0.5)才開始變寬,alpha 隨到位程度浮現。
+     - 兩條的**內容**(名稱)在寬度不夠時才淡出/淡入,不是硬切;名稱維持整條的寬度置中
+       被裁切,所以字不會隨著藥丸變窄而重新排版。
+   跟手機不同的只有一點:手機進來的那條刻意不寫設備名(它上面有頂部設備列會講),手錶
+   這裡沒有別的地方能講,所以進來的球長大後顯示的就是**要切過去那台**的名字。 */
+
+#define DEVBAR_W 200            /* 藥丸本體寬(舊 skaibar_img 是 176x31) */
+#define DEVBAR_H 38             /* 高 = 進來/出去那顆「球」的直徑 */
+/* 字級:**固定 FONT_SMALL(20px)**,不跟系統字級走(founder 2026-09-04:「框框裡的字
+   有點太大了」)。原本寫 get_system_font_size(0) —— 那是使用者設定的 0..6 索引,
+   預設會換算成 FONT_NORMAL(24px),在 38px 高的藥丸裡幾乎頂滿。這條 bar 是 chrome、
+   不是內文,跟著系統字級放大只會撐爆自己。20px 是 FT 註冊的最小級,再小會沒有字型。 */
+#define DEVBAR_FONT_PX FONT_SMALL
+/* 貼底的距離。**不能沿用舊圖的 -12** —— 螢幕是 466 直徑的圓,越靠底邊可用的弦寬
+   縮得越快,藥丸的左右兩顆圓角會被切掉(founder 2026-09-04:「線在左右腳有點被切掉」)。
+   算式:藥丸是個 stadium,離螢幕中心最遠的點 = 圓角的圓心 + 圓角半徑,
+     圓角圓心離中心 = sqrt((W/2 - H/2)^2 + dy^2),dy = 藥丸中心到螢幕中心的垂直距離
+   要 sqrt(81^2 + dy^2) + 19 <= 233 → dy <= 191。
+   -12 時 dy=202 → 最遠點 236.6,**超出半徑 233 約 4px**(就是被切的那一段);
+   -26 時 dy=188 → 最遠點 223.7,離邊還有 9px。 */
+#define DEVBAR_Y (-26)
+#define DEVBAR_REVEAL_AT  0.30f /* 進來的球在這個行程之後出現(手機 BAR_NEIGHBOUR_REVEAL) */
+#define DEVBAR_WIDEN_AT   0.50f /* …在這之後才開始變寬(BAR_NEIGHBOUR_WIDEN_AT) */
+#define DEVBAR_SHRINK_AT  0.70f /* 出去的在這段行程內從整條縮成一顆球(BAR_SWIPE_SHRINK_BY) */
+#define DEVBAR_CONTENT_HIDDEN_AT 0.60f /* 內容淡出/淡入的填滿率門檻(barContentAlpha) */
+#define DEVBAR_CONTENT_FULL_AT   0.95f
+/* 行程換算:手機的 progress = 手指位移 / 頁寬,所以這裡用整個螢幕寬當 1.0,
+   門檻同樣是頁寬的 0.20(DEVICE_SWIPE_THRESHOLD_FRACTION)。 */
+#define DEVBAR_TRAVEL_PX  (LV_HOR_RES_MAX)
+#define DEVBAR_COMMIT_PX  (LV_HOR_RES_MAX / 5)
+#define DEVBAR_EDGE_PX    14    /* 沒有別台可切時的橡皮筋上限(DEVICE_SWIPE_EDGE_TRAVEL_PX) */
+#define DEVBAR_EDGE_DAMP  0.18f
+#define DEVBAR_SLOP_PX    6     /* 超過這個位移才算拖曳(以下仍是 tap) */
+#define DEVBAR_SETTLE_MS  220   /* 放開後的落地/彈回時間 */
+
+static lv_obj_t *s_devbar_label = NULL;    /* s_top_logo(=出去的那條)裡的名稱 */
+static lv_obj_t *s_devbar_in = NULL;       /* 進來的那條,只在拖曳中出現 */
+static lv_obj_t *s_devbar_in_label = NULL;
+static int32_t s_devbar_drag_px = 0;       /* 目前的視覺位移(左負右正) */
+static int32_t s_devbar_travel = 0;        /* 這一次按壓累積的手指位移 */
+static bool s_devbar_dragging = false;     /* 已過 slop = 這一次按壓是拖曳不是 tap */
+static bool s_devbar_landing = false;      /* 放開後的落地動畫進行中 */
+static int  s_devbar_dir = 0;              /* +1=下一台(往左拖) / -1=上一台 / 0=沒有可切的 */
+static int  s_devbar_pending = 0;          /* 落地動畫跑完要換到哪個方向(0=這次不換,只是彈回) */
+
+static float devbar_clamp01(float v)
+{
+    return (v < 0.f) ? 0.f : ((v > 1.f) ? 1.f : v);
+}
+
+/* 內容(名稱)的可見度:寬度還夠就全滿,快被藥丸壓到時隨移動淡掉。與手機
+   barContentAlpha 同式。 */
+static lv_opa_t devbar_content_opa(float w)
+{
+    float fill = w / (float)DEVBAR_W;
+    float a = devbar_clamp01((fill - DEVBAR_CONTENT_HIDDEN_AT) /
+                             (DEVBAR_CONTENT_FULL_AT - DEVBAR_CONTENT_HIDDEN_AT));
+    return (lv_opa_t)(a * 255.f);
+}
+
+/* registry 第 idx 台的名字;超出範圍/沒名字回 NULL。 */
+static const char *devbar_name_at(int idx)
+{
+    uint8_t n = SkaiWatchSys.device_registry.count;
+    if (n > MAX_SYNCED_DEVICES)
+        n = MAX_SYNCED_DEVICES;
+    if (idx < 0 || idx >= (int)n)
+        return NULL;
+    const char *nm = (const char *)SkaiWatchSys.device_name[idx];
+    return (nm && nm[0]) ? nm : NULL;
+}
+
+/* 往 dir 方向的鄰居 index(循環,跟 switch_active_device 同一套算法);不足兩台回 -1。 */
+static int devbar_neighbour_index(int dir)
+{
+    uint8_t n = SkaiWatchSys.device_registry.count;
+    if (n > MAX_SYNCED_DEVICES)
+        n = MAX_SYNCED_DEVICES;
+    if (n < 2 || dir == 0)
+        return -1;
+    int cur = active_device_index();
+    if (cur < 0)
+        cur = 0;
+    return (cur + dir + (int)n) % (int)n;
+}
+
+/* 靜止時 bar 上的字:控制中那台的名字,沒有目標就講「沒有設備」。只在真的變了才寫,
+   所以 40ms poll 每拍呼叫也不會讓 label 一直重排。 */
+static void devbar_update_name(void)
+{
+    if (!s_devbar_label || !lv_obj_is_valid(s_devbar_label))
+        return;
+    const char *name = active_device_name();
+    if (!name || !name[0])
+    {
+        /* 沒有遠端目標 = 控制目標就是**連著的那支手機**(ble_hid_mouse_set_app_route(false)),
+           所以講「手機」,跟媒體欄第 0 欄的表頭同一套說法(app_clock_status_bar.c 的
+           media_col_headers_refresh)。
+           founder 2026-09-04 回報「在 DESKTOP 那頁拉出媒體頁後 bar 內的設備名稱會變成 -」:
+           拉媒體頁**本來就會換控制目標** —— media_col_bind() 依落點那一欄綁,落在第一欄
+           (手機)時直接 hid_mouse_clear_active_device()。以前滑鼠頁沒有任何地方顯示控制
+           目標,所以這件事一直是隱形的;現在 bar 會講,就不能在那個狀態下變空白。 */
+        name = LV_EXT_STR_GET_BY_KEY(connected_phone, "Phone");
+    }
+    const char *cur = lv_label_get_text(s_devbar_label);
+    if (cur && strcmp(cur, name) == 0)
+        return;
+    lv_label_set_text(s_devbar_label, name);
+}
+
+/* 進來的那條寫上**要切過去那台**的名字。手機刻意留白(它上面還有一條頂部設備列會
+   講是哪台),手錶沒有那條列,所以名字就得由進來的球長大後自己講。 */
+static void devbar_set_incoming_name(int dir)
+{
+    if (!s_devbar_in_label || !lv_obj_is_valid(s_devbar_in_label))
+        return;
+    const char *name = devbar_name_at(devbar_neighbour_index(dir));
+    if (!name)
+        name = LV_EXT_STR_GET_BY_KEY(no_device, "No device");
+    const char *cur = lv_label_get_text(s_devbar_in_label);
+    if (cur && strcmp(cur, name) == 0)
+        return;
+    lv_label_set_text(s_devbar_in_label, name);
+}
+
+/* 依目前位移擺好兩條藥丸。drag_px 由手指(PRESSING)或落地動畫餵進來,是唯一的輸入 ——
+   跟手機一樣「一個 dragX、三個表面讀它」,不讓兩條各自算各自的。 */
+static void devbar_apply(int32_t drag_px)
+{
+    if (!s_top_logo || !lv_obj_is_valid(s_top_logo))
+        return;
+
+    const float W = (float)DEVBAR_W;
+    const float H = (float)DEVBAR_H;
+    float prog = (float)drag_px / (float)DEVBAR_TRAVEL_PX;
+    if (prog > 1.f)  prog = 1.f;
+    if (prog < -1.f) prog = -1.f;
+    float trav = (prog < 0.f) ? -prog : prog;
+    float sign = (prog > 0.f) ? 1.f : -1.f;
+    bool swiping = (s_devbar_dir != 0) && (drag_px != 0);
+
+    /* 出去的:縮成球(0→0.7)、中心緩到 slot 邊緣、之後(0.7→1)淡出 */
+    float out_shrink = devbar_clamp01(trav / DEVBAR_SHRINK_AT);
+    float out_w = W + (H - W) * out_shrink;
+    float out_rest = W * 0.5f;
+    float out_exit = (sign > 0.f) ? (W - H * 0.5f) : (H * 0.5f);
+    float out_c = out_rest + (out_exit - out_rest) * out_shrink;
+    float out_a = 1.f - devbar_clamp01((trav - DEVBAR_SHRINK_AT) /
+                                       (1.f - DEVBAR_SHRINK_AT));
+    if (!swiping)
+    {
+        out_w = W;
+        out_c = out_rest;
+        out_a = 1.f;
+    }
+
+    lv_obj_set_width(s_top_logo, (lv_coord_t)(out_w + 0.5f));
+    lv_obj_set_style_translate_x(s_top_logo, (lv_coord_t)(out_c - out_rest), 0);
+    lv_obj_set_style_opa(s_top_logo, (lv_opa_t)(out_a * 255.f), 0);
+    if (s_devbar_label && lv_obj_is_valid(s_devbar_label))
+        lv_obj_set_style_text_opa(s_devbar_label,
+                                  swiping ? devbar_content_opa(out_w) : LV_OPA_90, 0);
+
+    if (!s_devbar_in || !lv_obj_is_valid(s_devbar_in))
+        return;
+
+    /* 進來的:0.3 之後以一顆球現身,0.5 之後才變寬(太早變寬會蓋到還沒走的那條) */
+    float arrival = devbar_clamp01((trav - DEVBAR_REVEAL_AT) /
+                                   (1.f - DEVBAR_REVEAL_AT));
+    if (!swiping || arrival <= 0.f)
+    {
+        lv_obj_add_flag(s_devbar_in, LV_OBJ_FLAG_HIDDEN);
+        return;
+    }
+    float in_grow = devbar_clamp01((trav - DEVBAR_WIDEN_AT) /
+                                   (1.f - DEVBAR_WIDEN_AT));
+    float in_w = H + (W - H) * in_grow;
+    float in_entry = (sign > 0.f) ? (H * 0.5f) : (W - H * 0.5f);
+    float in_c = in_entry + (W * 0.5f - in_entry) * arrival;
+    float in_a = arrival * 2.5f;
+    if (in_a > 1.f) in_a = 1.f;
+
+    lv_obj_set_width(s_devbar_in, (lv_coord_t)(in_w + 0.5f));
+    lv_obj_set_style_translate_x(s_devbar_in, (lv_coord_t)(in_c - W * 0.5f), 0);
+    lv_obj_set_style_opa(s_devbar_in, (lv_opa_t)(in_a * 255.f), 0);
+    if (s_devbar_in_label && lv_obj_is_valid(s_devbar_in_label))
+        lv_obj_set_style_text_opa(s_devbar_in_label, devbar_content_opa(in_w), 0);
+    lv_obj_clear_flag(s_devbar_in, LV_OBJ_FLAG_HIDDEN);
+}
+
+/* 拖曳結束/取消後回到靜止:位移歸零、進來的那條收掉、名字重取(可能剛換過台)。 */
+static void devbar_rest(void)
+{
+    s_devbar_drag_px = 0;
+    s_devbar_dir = 0;
+    s_devbar_landing = false;
+    devbar_update_name();
+    devbar_apply(0);
+}
+
+static void devbar_anim_exec_cb(void *var, int32_t v)
+{
+    (void)var;
+    s_devbar_drag_px = v;
+    devbar_apply(v);
+}
+
+/* 落地動畫結束 = 真的換台。切換**在這裡**才發生(手機也是:先把動畫跑完才換資料,
+   先換資料會露出「新的那條畫在舊的位置」那一格)。
+   也給「動畫還在跑就又按下去」那條路用 —— 那一顆按壓會把動畫殺掉,欠的那次切換要
+   在這裡先還掉,不然手勢做完了設備卻沒換。 */
+static void devbar_commit_pending(void)
+{
+    int dir = s_devbar_pending;
+    s_devbar_pending = 0;
+    s_devbar_dir = 0;
+    s_devbar_landing = false;
+    s_devbar_drag_px = 0;
+    if (dir != 0)
+        switch_active_device(dir);   /* 內含 commu_send_active_device + 名稱刷新 */
+    devbar_rest();
+}
+
+static void devbar_settle_done_cb(lv_anim_t *a)
+{
+    (void)a;
+    devbar_commit_pending();
+}
+
+static void devbar_animate_to(int32_t to)
+{
+    lv_anim_t a;
+    lv_anim_init(&a);
+    lv_anim_set_var(&a, &s_devbar_drag_px);
+    lv_anim_set_exec_cb(&a, devbar_anim_exec_cb);
+    lv_anim_set_values(&a, s_devbar_drag_px, to);
+    lv_anim_set_time(&a, DEVBAR_SETTLE_MS);
+    lv_anim_set_path_cb(&a, lv_anim_path_ease_out);
+    lv_anim_set_ready_cb(&a, devbar_settle_done_cb);
+    lv_anim_start(&a);
+}
+
+/* 手指在 bar 上的左右拖曳 = 換設備。tap 完全不受影響:沒過 slop 就沒有任何事發生,
+   而過了 slop 的那一次按壓會把隨後那顆 CLICKED 吃掉(s_devbar_dragging)。 */
+static void devbar_press_cb(lv_event_t *e)
+{
+    lv_event_code_t code = lv_event_get_code(e);
+
+    if (code == LV_EVENT_PRESSED)
+    {
+        lv_anim_del(&s_devbar_drag_px, devbar_anim_exec_cb);
+        /* 上一次的落地動畫被這顆按壓殺掉了 → 欠的那次切換先還掉(不然快速連拖兩次,
+           第一次會靜靜消失)。 */
+        if (s_devbar_landing)
+            devbar_commit_pending();
+        s_devbar_travel = 0;
+        s_devbar_dragging = false;
+        s_devbar_landing = false;
+        s_devbar_dir = 0;
+        s_devbar_drag_px = 0;
+        return;
+    }
+
+    if (code == LV_EVENT_PRESSING)
+    {
+        if (s_devbar_landing)
+            return;
+        lv_indev_t *indev = lv_indev_get_act();
+        if (!indev)
+            return;
+        lv_point_t v;
+        lv_indev_get_vect(indev, &v);
+        s_devbar_travel += v.x;
+        if (!s_devbar_dragging)
+        {
+            int32_t ax = (s_devbar_travel < 0) ? -s_devbar_travel : s_devbar_travel;
+            if (ax < DEVBAR_SLOP_PX)
+                return;
+            s_devbar_dragging = true;
+        }
+        int dir = (s_devbar_travel < 0) ? +1 : -1;   /* 往左拖=下一台,同手機 */
+        bool toward_end = (devbar_neighbour_index(dir) < 0);
+        if (!toward_end && dir != s_devbar_dir)
+            devbar_set_incoming_name(dir); /* 中途改變方向也要換成另一邊那台 */
+        s_devbar_dir = toward_end ? 0 : dir;
+        int32_t visual = s_devbar_travel;
+        if (toward_end)
+        {
+            /* 沒有別台可切:給一點感覺、但不承諾(手機的 rubber-band) */
+            visual = (int32_t)((float)s_devbar_travel * DEVBAR_EDGE_DAMP);
+            if (visual >  DEVBAR_EDGE_PX) visual =  DEVBAR_EDGE_PX;
+            if (visual < -DEVBAR_EDGE_PX) visual = -DEVBAR_EDGE_PX;
+        }
+        s_devbar_drag_px = visual;
+        devbar_apply(visual);
+        return;
+    }
+
+    if (code == LV_EVENT_RELEASED || code == LV_EVENT_PRESS_LOST)
+    {
+        if (!s_devbar_dragging)
+            return;                      /* 純 tap:交給 bottom_logo_cb */
+        int32_t ax = (s_devbar_travel < 0) ? -s_devbar_travel : s_devbar_travel;
+        bool commit = (s_devbar_dir != 0) && (ax >= DEVBAR_COMMIT_PX);
+        s_devbar_landing = true;
+        s_devbar_pending = commit ? s_devbar_dir : 0;
+        /* commit:跑完整段行程 —— 出去的走光、進來的到位,然後資料才換手。
+           否則:彈回 0,什麼都沒換。 */
+        devbar_animate_to(commit ? (-s_devbar_dir * DEVBAR_TRAVEL_PX) : 0);
+        return;
+    }
+}
+
+static bool devbar_drag_active(void)
+{
+    return s_devbar_dragging;
+}
+
+/* 拖曳過的那一次按壓,LVGL 放開時還會補一顆 CLICKED —— 讓 bottom_logo_cb 認得它。
+   同 s_logo_lp_consumed 的 pattern。 */
+static bool devbar_consume_click(void)
+{
+    if (!s_devbar_dragging)
+        return false;
+    s_devbar_dragging = false;
+    return true;
+}
+
+/* 建底部設備 bar:進來的那條先建(z 在下),出去的那條就是 s_top_logo(z 在上、掛事件)。
+   兩條都置中對齊 BOTTOM_MID,水平位移一律走 translate_x,所以寬度變化不會改變它們的
+   對齊基準。 */
+static void devbar_style_capsule(lv_obj_t *o)
+{
+    lv_obj_remove_style_all(o);
+    lv_obj_set_size(o, DEVBAR_W, DEVBAR_H);
+    lv_obj_align(o, LV_ALIGN_BOTTOM_MID, 0, DEVBAR_Y);
+    lv_obj_set_style_radius(o, LV_RADIUS_CIRCLE, 0);
+    /* 顏色照抄手機的 liquidGlassChrome(ui/components/GlassBlur.kt):
+         backdrop blur → SkaiBackdrop(#0B0F16) @52% → GlassChromeTint(白 @10%)
+         → rim GlassChromeRim(白 @18%,1dp)
+       手錶沒有 backdrop blur,所以把前兩層先合成成**一層**:
+         合成 alpha = 1 - 0.48*0.90 = 0.568  → opa 145
+         合成顏色  = (0.10*255 + 0.90*0.52*#0B0F16) / 0.568 ≈ #36393F
+       之前寫純黑 @60% 是我自己配的,偏黑偏悶,跟手機那條偏藍灰的玻璃不是同一個東西
+       (founder 2026-09-04:「框框的顏色 ui 好像跟手機上的不太一樣」)。 */
+    lv_obj_set_style_bg_color(o, lv_color_hex(0x36393F), 0);
+    lv_obj_set_style_bg_opa(o, 145, 0);
+    lv_obj_set_style_border_width(o, 1, 0);
+    lv_obj_set_style_border_color(o, lv_color_hex(0xFFFFFF), 0);
+    lv_obj_set_style_border_opa(o, 46, 0);   /* 白 @18% = 手機的 GlassChromeRim */
+    lv_obj_clear_flag(o, LV_OBJ_FLAG_SCROLLABLE);
+}
+
+static lv_obj_t *devbar_make_label(lv_obj_t *parent)
+{
+    lv_obj_t *l = lv_label_create(parent);
+    /* 寬度固定 = 整條的內寬並置中:藥丸變窄時字是**被裁切**的,不是重新排版
+       (手機那邊是 requiredWidth(slotWidth) + clipToBounds,同一招)。 */
+    const lv_font_t *f = LV_EXT_FONT_GET(DEVBAR_FONT_PX);
+    lv_obj_set_style_text_font(l, f, 0);
+    /* **高度鎖成一行**。LVGL 的 LV_LABEL_LONG_DOT 是「維持物件大小,把文字斷行,在
+       最後一行寫點點」—— 它看的是物件的**高度**,而不是「永遠只有一行」。高度留
+       LV_SIZE_CONTENT 的話,長名字(DESKTOP-DU738D5)會先斷成兩行、然後物件長高把兩行
+       都顯示出來,一個點都不會出現(founder 2026-09-04:「整段文字上下排了」)。
+       固定成一行的行高之後,第二行沒有位置可長,LONG_DOT 才會在第一行結尾補「...」。
+       為什麼一開始看起來是對的、拉完媒體頁才壞:名字只在**變動時**重設(手機↔DESKTOP
+       來回一趟就是一次重設),重設才會重新斷行。 */
+    lv_coord_t line_h = f ? (lv_coord_t)lv_font_get_line_height(f) : 24;
+    lv_obj_set_size(l, DEVBAR_W - 24, line_h);
+    lv_label_set_long_mode(l, LV_LABEL_LONG_DOT);
+    lv_obj_set_style_text_align(l, LV_TEXT_ALIGN_CENTER, 0);
+    lv_obj_set_style_text_color(l, lv_color_hex(0xFFFFFF), 0);
+    lv_obj_set_style_text_opa(l, LV_OPA_90, 0);
+    lv_obj_align(l, LV_ALIGN_CENTER, 0, 0);
+    lv_obj_clear_flag(l, LV_OBJ_FLAG_CLICKABLE);
+    return l;
+}
+
+
 /* device_pager_refresh(跑在每次手機 E7 同步)會把 active 清成 ""；滑鼠介面開著且已選
    設備時，它擁有 active relay 目標、不該被清掉。device_pager 用此 gate。
    2026-08-15 真機抓到:hosted 滑鼠(錶盤頂部面板 hid_mouse_build_ui,APP_ID_MOUSE 非
@@ -11535,6 +11940,9 @@ static void bar_ai_sync_timer_cb(lv_timer_t *t)
        名存實亡、而我連追五輪都打在 mic_bar / trackpad_mic_btn 這些沒有圖的東西上的原因。
        浮層 bar 一現(engaged)就跟立起面板同待遇:底部這張圖讓位。 */
     lift_chrome_set_hidden(lift || engaged || tap_grace);
+    /* 底部設備 bar 的名字:registry / 設備名是手機晚一步同步進來的(E7),進 app 當下
+       常常還是空的。只在字真的變了才寫,所以擺在這支 40ms poll 上不花什麼。 */
+    devbar_update_name();
     /* 抽屜/語音站期間強制壓住共用清單那條舊 mic pill —— 它的顯藏有六個寫入點,而開抽屜
        進場鏈的最後一棒(reveal_drag_begin → refresh_home_bar)本身就是專門叫它出來的。
        在這支每拍都跑的 poll 上收尾,任何路徑最多只能讓它閃一幀(founder 連三輪回報)。 */
@@ -11728,34 +12136,39 @@ void lv_create_mouse_screen(lv_obj_t *scr)
        不再吃 tap，手勢不打架。建在 bottom_swipe_area 之後 = z-order 在它之上，
        所以圖上的 tap 歸自己、圖以外的那條 280×50 仍舊是 skaibar 的 tap/長按。
        zoom 180 = 手寫頁頂部同款(64×64 原圖，渲染 ~45px)。 */
-    s_top_logo = lv_img_create(bg);
-    /* founder 2026-08-11 R7:hosted(錶盤媒體欄進來的)滑鼠頁,底部鍵盤圖換成
-       skaibar_img,tap = 開「目前控制那台」的新 session(bottom_logo_cb 分流)。
-       standalone APP_ID_MOUSE 保持鍵盤圖 = 進輸入。skaibar_img 176x31 原尺寸
-       就是設計大小,不套鍵盤圖的 zoom。 */
-    if (s_pulldown_cb != NULL)
-    {
-        lv_img_set_src(s_top_logo, &skaibar_img);
-        lv_img_set_zoom(s_top_logo, 256);
-    }
-    else
-    {
-        lv_img_set_src(s_top_logo, &keyboard_icon);
-        lv_img_set_zoom(s_top_logo, 180);
-    }
-    lv_obj_align(s_top_logo, LV_ALIGN_BOTTOM_MID, 0, -12);
+    /* 底部這條(founder 2026-09-04):外觀改成手機 app 底部那條藥丸,中間是**控制中設備
+       的名字**;tap/長按做的事跟舊的 skaibar_img 一模一樣(開 session/搜尋抽屜、長按進
+       語音),多出來的是「左右拖動 = 換設備」,動畫比照手機。細節見上方 devbar 段。
+       先建**進來的**那條 → z 在下,拖曳時它從後面長出來,不會蓋到還沒走完的那條
+       (手機那邊也是先畫 incoming 再畫 outgoing)。 */
+    s_devbar_in = lv_obj_create(bg);
+    devbar_style_capsule(s_devbar_in);
+    s_devbar_in_label = devbar_make_label(s_devbar_in);
+    lv_obj_add_flag(s_devbar_in, LV_OBJ_FLAG_HIDDEN);
+    lv_obj_clear_flag(s_devbar_in, LV_OBJ_FLAG_CLICKABLE); /* 純畫面,手指永遠在真的那條上 */
+
+    s_top_logo = lv_obj_create(bg);
+    devbar_style_capsule(s_top_logo);
+    s_devbar_label = devbar_make_label(s_top_logo);
+    devbar_update_name();
     lv_obj_add_flag(s_top_logo, LV_OBJ_FLAG_CLICKABLE);
-    /* 圖本身渲染約 45px,太小不好按(founder 2026-08-07:能按到的範圍要比可視範圍大)。
-       ext_click_area 從 12 放大到 34 → 可按範圍約 113px,四周各多出一圈。 */
-    lv_obj_set_ext_click_area(s_top_logo, 34);
-    /* 但這圈放大後是 x≈177..289 / y≈375..466 —— 英文空白鍵(y 369..418)只剩最上面
-       6px 露在外面、中文空白鍵(下移到 y 401..451)整顆被埋掉,手感就是「最下排按不到,
-       偶爾才中一次」(founder 2026-08-07 實測 [geo])。鍵盤露出時放行給底下的鍵。 */
+    /* 能按到的範圍要比可視範圍大(founder 2026-08-07)。藥丸本身已比舊圖大一圈,
+       外圈相應收到 24。 */
+    lv_obj_set_ext_click_area(s_top_logo, 24);
+    /* 這圈放大後會壓到鍵盤最下排(英文空白鍵 y 369..418、中文的下移到 y 401..451),
+       症狀是「最下排按不到,偶爾才中一次」(founder 2026-08-07 實測 [geo])。
+       鍵盤露出時 hit-test 放行給底下的鍵。 */
     lv_obj_add_flag(s_top_logo, LV_OBJ_FLAG_ADV_HITTEST);
     lv_obj_add_event_cb(s_top_logo, chrome_hit_test_cb, LV_EVENT_HIT_TEST, NULL);
     lv_obj_add_event_cb(s_top_logo, bottom_logo_cb, LV_EVENT_CLICKED, NULL);
     /* 長按=無聚焦輸入框時直接進語音搜尋(2026-08-15);其 CLICKED 由 s_logo_lp_consumed 吃掉 */
     lv_obj_add_event_cb(s_top_logo, bottom_logo_long_press_cb, LV_EVENT_LONG_PRESSED, NULL);
+    /* 左右拖動換設備:PRESSED/PRESSING/RELEASED 三顆自己收 —— tap 沒過 slop 就完全
+       沒有副作用,過了 slop 的那一次按壓由 devbar_consume_click 把 CLICKED 吃掉。 */
+    lv_obj_add_event_cb(s_top_logo, devbar_press_cb, LV_EVENT_PRESSED, NULL);
+    lv_obj_add_event_cb(s_top_logo, devbar_press_cb, LV_EVENT_PRESSING, NULL);
+    lv_obj_add_event_cb(s_top_logo, devbar_press_cb, LV_EVENT_RELEASED, NULL);
+    lv_obj_add_event_cb(s_top_logo, devbar_press_cb, LV_EVENT_PRESS_LOST, NULL);
 
     /* === APP 內建的媒體中心下拉層:整個退役 ==========================================
        2026-08-06 已先對「面板 host 模式」停建(founder:「APP 內上方的媒體中心可以不
@@ -12034,7 +12447,18 @@ void hid_mouse_destroy(void)
     media_center_title_label = NULL;
     media_center_play_img = NULL;
     status_bar_area_up = NULL;
+    /* 底部設備 bar:落地動畫可能還在跑,exec cb 會碰這些物件 → 先殺 anim 再歸零 */
+    lv_anim_del(&s_devbar_drag_px, devbar_anim_exec_cb);
     s_top_logo = NULL;
+    s_devbar_label = NULL;
+    s_devbar_in = NULL;
+    s_devbar_in_label = NULL;
+    s_devbar_drag_px = 0;
+    s_devbar_travel = 0;
+    s_devbar_dragging = false;
+    s_devbar_landing = false;
+    s_devbar_dir = 0;
+    s_devbar_pending = 0;
     s_top_hw_pull = false;
     // 頂部按住進的飛鼠模式：app 被拆時可能收不到 RELEASED，static 殘留
     // true 會讓下次進 app 直接是飛鼠 → 拆除時一律歸位
