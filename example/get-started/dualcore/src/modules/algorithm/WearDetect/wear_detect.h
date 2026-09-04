@@ -70,6 +70,18 @@ extern "C"
      */
     void wear_detect_on_ppg_restart(void);
 
+    /**
+     * @brief A hardware wrist-wake / motion interrupt fired while the LCPU was
+     *        asleep. If the watch is currently NOT worn, open a PPG probe so a
+     *        wrist that was just put on is confirmed in seconds instead of
+     *        waiting for the next bg_hr burst (up to 10 minutes).
+     *
+     *        Safe to call from the bmi270 interrupt thread: it only validates
+     *        the preconditions and starts a one-shot soft timer, which powers
+     *        the PPG from the timer thread. Rate-limited internally.
+     */
+    void wear_detect_on_motion_wake(void);
+
 #ifdef __cplusplus
 }
 #endif

@@ -151,6 +151,21 @@ void main_send_hand_lift_event(void)
 extern void hand_tracking_lift_callback(uint8_t lift);
 void bmi270_on_wrist_wake_detected(void)
 {
+#ifdef BSP_USING_WEAR_DETECT
+    /* Ask the wear detector to look, BEFORE the viewing-pose gate below.
+       That gate decides whether to light the screen, which is a different
+       question from 'is this on a wrist'. In standby the accelerometer
+       reaches wear_detect only while the bg_hr burst accel stream is up
+       (bmi270_driver.c, s_hr_accel_stream && is_sleep_mode), i.e. 3 min in
+       every 10, so its motion probe -- the thing that powers a sleeping PPG
+       back up -- could only ever fire while the PPG was already on. This
+       interrupt is the one motion signal that survives standby at zero
+       streaming cost. The call only validates and starts a one-shot soft
+       timer (we are on the 1280-byte bmi270 stack holding its api_lock);
+       the PPG is powered from the timer thread. Rate-limited inside. */
+    extern void wear_detect_on_motion_wake(void);
+    wear_detect_on_motion_wake();
+#endif
 #ifdef BSP_USING_GESTURE_DETECT
     /* Read ONE fresh accel sample at the firing instant. The chip-side
        wrist-wake feature only fires after ~1 s of stable focus posture, so
@@ -350,7 +365,17 @@ void on_lcpu_sleep_mode_changed(bool sleep)
 #if USE_BMI270_ANY_MOTION_WAKE
         bmi270_any_motion_enable(1); /* fast additional trigger, pose-gated */
 #endif
-        bmi270_set_drdy_int_routing(0);
+        /* ...unless somebody has claimed the screen-off accel stream. A bg_hr
+           burst (hr_service bmi270_set_hr_accel_stream(1)) or wear_detect's
+           wrist-wake probe needs 25 Hz accel for the length of its window, and
+           neither can notice a revocation: s_hr_accel_stream stays 1, so their
+           own re-enable is an idempotent no-op and the stream never comes back.
+           The wear probe is opened BY a wrist-wake interrupt, which also lights
+           the screen, so the display timeout landed here every single time and
+           blinded the probe it had just opened. Each claimant pairs its own
+           disable, which re-runs this un-route. */
+        if (!bmi270_hr_accel_stream_active())
+            bmi270_set_drdy_int_routing(0);
         /* Gyro off for the whole DARK window -- nothing reads it. */
         bmi270_set_gyro_suspend(1);
         /* Make sure the legacy FIFO-drain wake source stays disarmed. */

@@ -352,6 +352,14 @@
  * confirms within the window, PPG is powered back down until next motion. */
 #define PROBE_WINDOW_MS         (3 * 60 * 1000)
 
+/* A hardware wrist-wake interrupt while OFF opens a probe (see
+ * wear_detect_on_motion_wake). Rate-limited to this: the interrupt fires on any
+ * nudge once the pose gate is bypassed, and each probe costs LED current, so a
+ * watch rattling in a bag must not hold the LED on. 3 min with a
+ * PROBE_FALLBACK_WINDOW_MS window bounds the duty at ~25% in that worst case,
+ * while a wrist put on and raised to look confirms within ~25 s. */
+#define MOTION_WAKE_PROBE_MIN_MS (3u * 60u * 1000u)
+
 /* While OFF with no motion, still open a probe at this interval so a
  * wrongly-voted OFF on a resting wrist can re-enter (see the fallback
  * comment in evaluate_imu_only). The fallback window is much shorter than
@@ -460,6 +468,23 @@ extern void hr_set_power(uint8_t arg);
 static bool s_probe_active = false;
 static uint32_t s_probe_until_ms = 0;
 static uint32_t s_last_probe_open_ms = 0;
+
+/* One-shot SOFT timer used to open a probe from a safe context after a
+ * hardware wrist-wake interrupt (see wear_detect_on_motion_wake). Static
+ * storage: the heap on this build peaks near exhaustion, so nothing here
+ * allocates. */
+static struct rt_timer s_motion_probe_timer;
+static bool s_motion_probe_timer_ready = false;
+static void motion_probe_kick_cb(void *arg);   /* defined with the public API below */
+static void motion_probe_release_accel(void); /* likewise */
+/* True while a wrist-wake probe owns the screen-off accelerometer stream. In
+ * standby DRDY is un-routed, so a probe that only powers the PPG is blind: the
+ * alive test needs fresh accel data and would never pass. Paired release on
+ * every path that closes the probe. */
+static bool s_probe_owns_accel = false;
+extern int bmi270_set_hr_accel_stream(int en);
+extern bool hr_service_bg_burst_active(void);
+static uint32_t s_last_motion_wake_ms = 0;
 
 /* Diagnostic override (settings toggle "佩戴偵測"): when false, the contact
  * algorithm is bypassed and the watch is forced WORN unless on the charger. */
@@ -613,6 +638,7 @@ static void set_status(wear_status_t new_status)
     if (new_status == WEAR_STATUS_WEARING)
     {
         s_probe_active = false; /* probe confirmed a wrist; hand PPG to hr_service/bg_hr */
+        motion_probe_release_accel();
         LOG_I("Wear detected: ON WRIST");
         notify_wear_status(true);
         diag_emit_last(WEAR_DIAG_EVT_ON);
@@ -739,6 +765,7 @@ static int evaluate_once(uint32_t now)
             {
                 hr_set_power(0);
                 s_probe_active = false;
+                motion_probe_release_accel();
                 ctx.on_vote_window = 0;
                 LOG_I("Wear: probe expired (no PPG data) -> close PPG, wait for motion");
                 diag_emit_last(WEAR_DIAG_EVT_PROBE_EXPIRE);
@@ -998,6 +1025,7 @@ static int evaluate_once(uint32_t now)
     {
         hr_set_power(0);
         s_probe_active = false;
+        motion_probe_release_accel();
         ctx.ppg_count = 0;
         ctx.ppg_idx = 0;
         ctx.on_vote_window = 0;
@@ -1262,6 +1290,12 @@ static void try_evaluate(void)
 void wear_detect_init(void)
 {
     memset(&ctx, 0, sizeof(ctx));
+    if (!s_motion_probe_timer_ready)
+    {
+        rt_timer_init(&s_motion_probe_timer, "wdprobe", motion_probe_kick_cb,
+                      RT_NULL, 1, RT_TIMER_FLAG_ONE_SHOT | RT_TIMER_FLAG_SOFT_TIMER);
+        s_motion_probe_timer_ready = true;
+    }
     ctx.status = WEAR_STATUS_NOT_WEARING; /* start OFF (cold): the first wear of a session must be pulse-confirmed, so booting/resting on a table is never latched as worn */
     ctx.last_eval_ms = rt_tick_get_millisecond();
     ctx.initialized = true;
@@ -1322,6 +1356,88 @@ void wear_detect_feed_ppg(uint32_t ppg_raw, uint32_t ppg_raw2)
 bool wear_detect_is_wearing(void)
 {
     return ctx.status == WEAR_STATUS_WEARING;
+}
+
+/* Release the accel stream if this probe took it. Never touches it while a
+ * bg_hr burst is running -- the burst owns it then and pairs its own release. */
+static void motion_probe_release_accel(void)
+{
+    if (!s_probe_owns_accel)
+        return;
+    s_probe_owns_accel = false;
+    if (!hr_service_bg_burst_active())
+        (void)bmi270_set_hr_accel_stream(0);
+}
+
+/* Timer-thread half of wear_detect_on_motion_wake(). Opens the probe window
+ * exactly as the motion branch of evaluate_imu_only() does. Re-checks the
+ * preconditions because up to a tick has passed since the interrupt. */
+static void motion_probe_kick_cb(void *arg)
+{
+    (void)arg;
+    if (!ctx.initialized || !s_detect_enabled)
+        return;
+    if (ctx.status == WEAR_STATUS_WEARING || s_probe_active)
+        return;
+    if (battery_get_charge_state()->is_plugged)
+        return;
+    /* A burst already has PPG and accel up; hr_set_power(1) would be vetoed and
+     * our expiry would wipe the burst's evidence mid-burst. Leave it alone. */
+    if (hr_service_bg_burst_active())
+        return;
+
+    uint32_t now = rt_tick_get_millisecond();
+    /* Route DRDY back FIRST: without it the alive test never sees fresh accel
+     * data and this probe could not confirm a wrist no matter how good the
+     * pulse is. Released in motion_probe_release_accel(). */
+    (void)bmi270_set_hr_accel_stream(1);
+    s_probe_owns_accel = true;
+    hr_set_power(1);
+    ctx.ppg_settling = true;
+    ctx.ppg_restart_ms = now;
+    s_last_probe_open_ms = now;
+    s_probe_active = true;
+    s_probe_until_ms = now + PROBE_FALLBACK_WINDOW_MS;
+    LOG_I("Wear: wrist-wake INT while off-wrist -> open PPG probe window");
+    diag_emit_last(WEAR_DIAG_EVT_PROBE_OPEN);
+}
+
+void wear_detect_on_motion_wake(void)
+{
+    if (!ctx.initialized || !s_motion_probe_timer_ready || !s_detect_enabled)
+        return;
+    if (ctx.status == WEAR_STATUS_WEARING)
+        return;
+    uint32_t now = rt_tick_get_millisecond();
+    /* Self-heal a latched probe: s_probe_active is only ever cleared inside
+     * try_evaluate, which runs only from a PPG or IMU feed. A probe that
+     * produced neither (hr_set_power vetoed or the sensor refused) would leave
+     * the flag set for good and block every future probe. */
+    if (s_probe_active && (int32_t)(now - s_probe_until_ms) > 0)
+    {
+        s_probe_active = false;
+        motion_probe_release_accel();
+        LOG_I("Wear: stale probe flag cleared (window expired with no data)");
+    }
+    /* Already burning LED current for a probe or a burst: nothing to add. */
+    if (s_probe_active || hr_service_bg_burst_active())
+        return;
+    /* On the charger the watch is off-wrist by contract; don't probe a cradle. */
+    if (battery_get_charge_state()->is_plugged)
+        return;
+    /* Inside the post-OFF cooldown both entry gates refuse, so the window would
+     * be spent for nothing and the rate limit below would block the next one.
+     * Same reasoning as the fallback probe's guard. */
+    if (ctx.last_off_verdict_ms != 0u &&
+        (now - ctx.last_off_verdict_ms) < WARM_REENTRY_COOLDOWN_MS)
+        return;
+    if (s_last_motion_wake_ms != 0u &&
+        (now - s_last_motion_wake_ms) < MOTION_WAKE_PROBE_MIN_MS)
+        return;
+    s_last_motion_wake_ms = now;
+    /* Defer: the caller is the bmi270 thread (1280-byte stack) holding the
+     * IMU's api_lock. Powering the PPG belongs in the timer thread. */
+    rt_timer_start(&s_motion_probe_timer);
 }
 
 void wear_detect_on_ppg_restart(void)
