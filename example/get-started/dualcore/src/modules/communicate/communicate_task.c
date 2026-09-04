@@ -845,6 +845,19 @@ bool commu_send_dial_dir(const char *phase, int dir, int mag)
     if (n <= 0 || n >= (int)sizeof(json)) return false;
     return commu_send_string(SKAI_LINK_COMMAND_ID, KEY_DIAL_DIR, json);
 }
+/* watch→phone (SKAI_LINK): 底部設備藥丸的拖曳進度 (see KEY_DEVICE_DRAG contract)。
+   千分比 + 正拖向那台的 id;節流由 caller (hid_mouse devbar) 做,無 per-frame log,
+   同 mouse move / dial 防洗版。 */
+bool commu_send_device_drag(int permille, const char *to_device_id)
+{
+    if (permille > 1000) permille = 1000;
+    if (permille < -1000) permille = -1000;
+    if (to_device_id == NULL) to_device_id = "";
+    char json[24 + SYNCED_DEVICE_ID_LEN]; /* {"p":-1000,"to":"<uuid>"} */
+    int n = rt_snprintf(json, sizeof(json), "{\"p\":%d,\"to\":\"%s\"}", permille, to_device_id);
+    if (n <= 0 || n >= (int)sizeof(json)) return false;
+    return commu_send_string(SKAI_LINK_COMMAND_ID, KEY_DEVICE_DRAG, json);
+}
 /* watch→phone (SKAI_LINK): 側立手寫 ink 串流 (see KEY_HANDWRITE contract)。點批次是
    變長度陣列,固定欄位 builder 不合用 — caller (bloc_motion_tracking / hid_mouse) 自組
    JSON。上傳由 caller 節流(~25Hz);無 per-frame log,同 mouse move / dial 防洗版。 */

@@ -11521,6 +11521,39 @@ static int devbar_neighbour_index(int dir)
     return (cur + dir + (int)n) % (int)n;
 }
 
+/* 上行給手機的拖曳進度(KEY_DEVICE_DRAG 0x26):手機把外接螢幕上的舞台跟首頁名稱列一起
+   跟著這條藥丸走(founder 2026-09-04:我拖多少他動多少)。千分比,負=往下一台(同手機
+   dragX 的正負);to=正拖向那台的 registry id,手機用它決定往哪邊滑(兩邊的清單順序不
+   保證一樣)。~25Hz 節流;端點(0/±1000)一定送,不然手機會停在半路。真正換台仍是落地後
+   的 KEY_ACTIVE_SELECT,這條只是視覺。 */
+static int32_t  s_devbar_sent_pm = 0;
+static uint32_t s_devbar_sent_ms = 0;
+static void devbar_report_progress(float prog, int dir)
+{
+    int32_t pm = (int32_t)(prog * 1000.f + (prog >= 0.f ? 0.5f : -0.5f));
+    if (pm > 1000)  pm = 1000;
+    if (pm < -1000) pm = -1000;
+    if (pm == s_devbar_sent_pm)
+        return;
+    bool endpoint = (pm == 0 || pm == 1000 || pm == -1000);
+    uint32_t now = (uint32_t)rt_tick_get_millisecond();
+    if (!endpoint && (now - s_devbar_sent_ms) < 40)
+        return;
+    const char *to = "";
+    if (pm != 0 && dir != 0)
+    {
+        int idx = devbar_neighbour_index(dir);
+        uint8_t n = SkaiWatchSys.device_registry.count;
+        if (n > MAX_SYNCED_DEVICES)
+            n = MAX_SYNCED_DEVICES;
+        if (idx >= 0 && idx < (int)n)
+            to = (const char *)SkaiWatchSys.device_registry.devices[idx].id;
+    }
+    s_devbar_sent_pm = pm;
+    s_devbar_sent_ms = now;
+    commu_send_device_drag((int)pm, to);
+}
+
 /* 靜止時 bar 上的字:控制中那台的名字,沒有目標就講「沒有設備」。只在真的變了才寫,
    所以 40ms poll 每拍呼叫也不會讓 label 一直重排。 */
 static void devbar_update_name(void)
@@ -11575,6 +11608,8 @@ static void devbar_apply(int32_t drag_px)
     float trav = (prog < 0.f) ? -prog : prog;
     float sign = (prog > 0.f) ? 1.f : -1.f;
     bool swiping = (s_devbar_dir != 0) && (drag_px != 0);
+    /* 手機那邊同一份位移(見 devbar_report_progress);橡皮筋(dir=0)對手機是 0。 */
+    devbar_report_progress(swiping ? prog : 0.f, s_devbar_dir);
 
     /* 出去的:縮成球(0→0.7)、中心緩到 slot 邊緣、之後(0.7→1)淡出 */
     float out_shrink = devbar_clamp01(trav / DEVBAR_SHRINK_AT);
