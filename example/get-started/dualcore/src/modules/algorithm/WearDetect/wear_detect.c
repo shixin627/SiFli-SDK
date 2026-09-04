@@ -245,6 +245,17 @@
  * 0.0004 = sigma 0.02 m/s^2 = 2 mg; the BMI270 noise floor at 25 Hz is
  * ~0.00002). Units: the bench unit's desk p75 is 0.0001. */
 #define IMU_FLAT_THD            0.0004f
+
+/* Contact stability: the relative DC step between two consecutive minute
+ * checks. A wrist's DC breathes -- respiration, posture, blood volume -- even
+ * with the arm completely still; a table's does not. Measured 2026-09-04 on the
+ * founder's own data: worn night median 0.00163 (p25 0.00058), deep-sleep
+ * low-perfusion median 0.00134, watch face-down on a desk median 0.00009
+ * (p90 0.00057). This is the leg that finally separates a working desk from a
+ * sleeping wrist -- the accelerometer does not: that same desk read imu_var
+ * 0.0006-0.0008, identical to the worn-night median of 0.0008, because somebody
+ * was working at it. */
+#define DC_STABLE_THD           0.0006f
 /* The accel ring is NOT always live: bmi270_set_hr_accel_stream(1) only
  * routes DRDY when the LCPU is already in sleep mode, and a screen-off during
  * a burst un-routes it for the rest of the burst; imu_count never decreases,
@@ -447,6 +458,7 @@ typedef struct
 
     /* Perfusion-stillness exit (@ref PI_RANGE_FLAT_THD): one check a minute. */
     uint32_t last_flat_check_ms;
+    float    last_flat_check_dc;  /* DC at the previous check, for DC_STABLE_THD */
     uint32_t last_flat_count_ms; /* tick of the last COUNTED flat minute (TTL) */
     uint32_t last_imu_ms;        /* tick of the last accel sample (ring freshness) */
     uint8_t  flat_streak;
@@ -632,6 +644,7 @@ static void set_status(wear_status_t new_status)
     ctx.status = new_status;
     /* A streak only means something within one stretch of a single state. */
     ctx.flat_streak = 0;
+    ctx.last_flat_check_dc = 0.0f;
     ctx.alive_ring = 0;
     ctx.alive_ring_n = 0;
 
@@ -949,7 +962,15 @@ static int evaluate_once(uint32_t now)
                  * (n=460, 25% saturated) never reached a streak of 4 under this
                  * policy either, so holding costs nothing on the wrist. */
             }
-            else if (pi_range > 0.0f && pi_range < PI_RANGE_FLAT_THD)
+            /* pi_range == 0 counts as flat: it is the flattest reading there
+             * is. The old `> 0.0f` guard meant to reject an empty history,
+             * but the block is already gated on pi_hist_count >=
+             * PI_HISTORY_LEN, so all it did was reset the run on the very
+             * minutes that proved stillness. On a watch lying face-down
+             * about half the checks read exactly 0 (2026-09-04 12:59-13:39),
+             * so the five-minute run could never complete and the watch
+             * stayed WORN indefinitely. */
+            else if (pi_range < PI_RANGE_FLAT_THD)
             {
                 /* Perfusion is flat. Count the minute only if the body is
                  * absent too: a still desk reads imu_var ~0, a sleeping wrist
@@ -959,20 +980,24 @@ static int evaluate_once(uint32_t now)
                  * data, or a ring that has not received a sample for
                  * IMU_STALE_MS (frozen DRDY routing), -> HOLD as well: an exit
                  * must never ride on a missing or frozen sensor. */
-                uint16_t imu_len = (ctx.imu_count < IMU_WINDOW_SIZE)
-                                       ? ctx.imu_count : IMU_WINDOW_SIZE;
-                bool imu_fresh = (imu_len > 0) &&
-                                 ((now - ctx.last_imu_ms) <= IMU_STALE_MS);
-                float imu_var = imu_fresh
-                                    ? compute_imu_variance(ctx.acce_mag, imu_len) : 0.0f;
-                if (imu_fresh)
-                    ctx.last_imu_var = imu_var;
-                if (imu_fresh && imu_var < IMU_FLAT_THD)
+                /* Two more legs, both required. The accelerometer used to sit
+                 * here and was removed: a desk somebody works at reads the same
+                 * imu_var as a sleeping wrist (see DC_STABLE_THD). */
+                bool no_pulse = (pi < PI_THD_TO_ON);
+                bool dc_steady = false;
+                if (ctx.last_flat_check_dc > 0.0f && dc_mean > 0.0f)
+                {
+                    float rel = dc_mean - ctx.last_flat_check_dc;
+                    if (rel < 0.0f) rel = -rel;
+                    dc_steady = (rel / dc_mean) < DC_STABLE_THD;
+                }
+                ctx.last_flat_check_dc = dc_mean;
+                if (no_pulse && dc_steady)
                 {
                     if (ctx.flat_streak < 0xFFu) ctx.flat_streak++;
                     ctx.last_flat_count_ms = now;
                     if (ctx.flat_streak == FLAT_CHECKS_TO_OFF)
-                        LOG_W("Eval: PI flat + still for %u min -> off-wrist -> OFF votes",
+                        LOG_W("Eval: no pulse + contact steady for %u checks -> off-wrist -> OFF votes",
                               (unsigned)ctx.flat_streak);
                 }
                 /* else: HOLD (micro-motion, or no fresh accel data) */
@@ -1005,6 +1030,17 @@ static int evaluate_once(uint32_t now)
          * surface (review finding: morning table walked base 43.5k→39.1k).
          * Frozen while charging (charger couples noise into the ADC). */
         if (!plugged && ctx.on_anchor_pulse && ctx.worn_dc_base > 0.0f &&
+            /* ...and only while there is live pulse evidence. This EMA exists to
+             * track a strap loosening on a wrist; without this gate it also
+             * learns a TABLE. A watch lying face-down reads only ~10% below the
+             * worn baseline (2026-09-04: 42140 vs 47072 = 0.895), inside
+             * WORN_BAND_LO, so the baseline walked 47072 -> 42324 over ~30 min
+             * until dc/base was 1.00 and the DC-collapse exit could never fire
+             * again -- the watch sat WORN on a desk for 40 minutes. The desk read
+             * pi 0.00028-0.00047 there; a worn wrist clears PI_THD_TO_ON on ~90%
+             * of minutes (p10 0.00072), and the EMA is slow enough that skipping
+             * the flattest minutes costs it nothing. */
+            pi >= PI_THD_TO_ON &&
             dc_mean >= ctx.worn_dc_base * WORN_BAND_LO &&
             dc_mean <= ctx.worn_dc_base * WORN_BAND_HI)
         {
