@@ -162,7 +162,11 @@
  *
  * Because the gate now sits where the signal is, warm re-entry can demand a
  * pulse too — which is what actually stops a desk from being re-entered. */
-#define PI_THD_TO_ON            0.0004f
+/* Minimum perfusion INDEX (AC/DC) to call something a wrist. 0.0006 clears
+ * 92.7% of the founder's genuinely-worn minutes and 11.7% of desk minutes;
+ * the desk survivors are the PPG-facing-air pose, which the accelerometer
+ * leg of the alive test then rejects. */
+#define PI_THD_TO_ON            0.0006f
 
 /* IMU variance threshold (m/s^2)^2: "the wrist is moving" marker, used to
  * pick the fast OFF hysteresis on take-off-shaped DC drops. */
@@ -292,6 +296,12 @@
  * ~7.5 s while evaluation runs every 1.5 s, so consecutive evaluations share
  * most of their window. Read "3 in a row" as "the range stayed up for ~4.5 s",
  * NOT as 0.04^3 -- do not quote a probability for it. */
+/* RETIRED as the alive test (2026-09-04). It asked whether perfusion was
+ * VARYING; a resting wrist's pulse is steady, so it passed only 43.5% of
+ * genuinely-worn evals and a 7-of-10 run essentially never completed --
+ * the founder's watch sat NOT_WEARING for whole days after any OFF. The
+ * alive bit now asks for perfusion LEVEL plus body movement; see
+ * alive_now in evaluate_once(). Kept only for the diag comparison below. */
 #define PI_RANGE_ALIVE_THD      0.00040f
 /* N-of-M, not N-consecutive. 2026-09-02 on the release watch, flat on a desk:
  * exit fired correctly at 09:55:26, and 36 s later a warm re-entry took it
@@ -996,15 +1006,34 @@ static int evaluate_once(uint32_t now)
         return 0;
     }
 
-    /* Track how long the perfusion signal has been MOVING like a pulse: above
-     * the alive floor but below PI_RANGE_MAX. An AGC gain step is "moving" too
-     * and used to count; it is not a pulse. PI_RANGE_MAX excludes steps of
-     * >= ~17.65% of DC (the 09:55 hunt was +21.7%/-17.9%); smaller steps still
-     * count for 5-6 evals, which is why ALIVE_EVALS_TO_ON is 7 -- and why two
-     * such steps within ~18 s remain the one known way a desk facing air can
-     * still pass (sized on-bench via dc_q4 pairs, not pi_range: the wire clamps
-     * it at 0.0655). */
-    bool alive_now = (pi_range >= PI_RANGE_ALIVE_THD) && (pi_range <= PI_RANGE_MAX);
+    /* Is a BODY wearing this? Two independent legs, both required:
+     *   - perfusion LEVEL >= PI_THD_TO_ON: there is a pulse. (The old test used
+     *     perfusion VARIABILITY, which a resting wrist does not have: it passed
+     *     43.5% of worn evals vs 92.7% for the level, and a 7-of-10 run then
+     *     essentially never completed. That is why the watch could not get back
+     *     to WORN after any OFF.)
+     *   - accelerometer >= IMU_FLAT_THD: something alive is moving it. This is
+     *     the same threshold the stillness exit uses for "dead still", so entry
+     *     and exit are complements rather than two tests on one variable.
+     *     It is what rejects the PPG-facing-air desk pose, where pi alone looks
+     *     like a pulse (desk 11.7% on pi alone, 5.8% with both).
+     * pi_range <= PI_RANGE_MAX still rejects an AGC gain step masquerading as
+     * a pulse. Stale/absent accel data counts as not-alive: entry must never
+     * ride on a sensor that is not reporting.
+     * Measured per eval on the founder's data: worn 88.7% (deep sleep 85.8%),
+     * desk 5.8% and 1.1% -> 7-of-10 lands 0.98 on a wrist, 0.004 on a desk. */
+    uint16_t alive_imu_len = (ctx.imu_count < IMU_WINDOW_SIZE)
+                                 ? ctx.imu_count : IMU_WINDOW_SIZE;
+    bool alive_imu_fresh = (alive_imu_len > 0) &&
+                           ((now - ctx.last_imu_ms) <= IMU_STALE_MS);
+    float alive_imu_var = alive_imu_fresh
+                              ? compute_imu_variance(ctx.acce_mag, alive_imu_len)
+                              : 0.0f;
+    if (alive_imu_fresh)
+        ctx.last_imu_var = alive_imu_var;
+    bool alive_now = (pi >= PI_THD_TO_ON) &&
+                     (pi_range <= PI_RANGE_MAX) &&
+                     alive_imu_fresh && (alive_imu_var >= IMU_FLAT_THD);
     ctx.alive_ring = (uint16_t)((ctx.alive_ring << 1) | (alive_now ? 1u : 0u));
     ctx.alive_ring &= (uint16_t)((1u << ALIVE_WINDOW_EVALS) - 1u);
     if (ctx.alive_ring_n < ALIVE_WINDOW_EVALS) ctx.alive_ring_n++;
@@ -1070,22 +1099,22 @@ static int evaluate_once(uint32_t now)
      *    waiver below then let four evals through on pi alone; on a desk with the
      *    PPG facing air (pi ~0.003) that was ON 36 s after the OFF (09:55:26 ->
      *    09:56:02).
-     *  - the sustained alive run (as warm re-entry): pi_range is a 5-deep
-     *    max-min over evals 1.5 s apart while a DC step sits in the 3 s sample
-     *    ring for two of them, so ONE AGC excursion on a desk yields SIX
-     *    consecutive evals with pi_range >= PI_RANGE_THD, enough for 3-of-8 on
-     *    its own, about every 1-2 min while the PPG is on. Demanding
-     *    ALIVE_EVALS_TO_ON (7) of the last 10 pulse-sized (<= PI_RANGE_MAX)
-     *    alive evals outlasts a single excursion. Without this the freshly
-     *    working exit becomes a ~7-9 min ON/OFF cycle.
+     *  - the sustained alive run (as warm re-entry): ALIVE_EVALS_TO_ON (7) of
+     *    the last 10 evals must show a pulse AND body movement (see alive_now).
+     *    A single AGC excursion cannot fake that, and neither can a desk.
      *  - the "< PI_HISTORY_LEN" waiver is gone: it re-opened for four evals
-     *    after every settle and let a desk vote ON with zero range evidence. */
+     *    after every settle and let a desk vote ON with zero evidence.
+     * 2026-09-04: the extra "pi_range >= PI_RANGE_THD" floor that used to sit
+     * here is gone too. Together with the old variability-based alive test it
+     * refused a genuinely worn wrist on 55% of evals (7-of-10 completed with
+     * probability 0.10 overnight), which is why the founder's watch stayed
+     * NOT_WEARING for whole days after a reset. The alive run above now carries
+     * the pulse evidence, and PI_RANGE_MAX still rejects AGC steps. */
     if (!warm_cooldown &&
         ctx.alive_ring_n >= ALIVE_WINDOW_EVALS &&
         alive_count >= ALIVE_EVALS_TO_ON &&
         dc_mean >= (float)DC_ABS_FLOOR &&
-        pi >= PI_THD_TO_ON && pi_range <= PI_RANGE_MAX &&
-        pi_range >= PI_RANGE_THD)
+        pi >= PI_THD_TO_ON && pi_range <= PI_RANGE_MAX)
     {
         LOG_I("Eval: DC=%.0f, AC_pp=%.0f, PI=%.5f, range=%.5f -> live wrist -> ON",
               dc_mean, ac_pp, pi, pi_range);
