@@ -84,35 +84,17 @@ LV_IMG_DECLARE(img_right_arrow);
 static lv_obj_t *app_clock_main_status_bar;
 static lv_obj_t *app_clock_main_status_bar_down;
 
-/* ADR-0020 右側「一台設備一欄」的**媒體中心**（founder 2026-08-11 拍板，取代
-   之前的 per-device session 列表）:
-     欄 2       = 手機自己的媒體中心（控制目標 = 手機,active device 清空）
-     欄 2+1+i   = 第 i 台桌面設備的媒體中心（registry 順序）
-   每一欄**正下方** (col,2) 是「滑鼠入口停車位」:從媒體頁往上拉、settle 在那裡
-   = 進入該台的滑鼠模式（lv_top_panel_mouse_enter,控制目標在 settle 時已由
-   media_col_bind 選好）。founder 2026-08-11 R2:「我是要從下往上拉出滑鼠頁面」
-   —— 第一版放在上方,改到下方。退出 = 滑鼠頁頂部下拉
-   (clock_main_mouse_pulldown_reveal),落回同一台的媒體頁。
-   合併後的 session 列表搬到左側 (0,1),見 lv_session_pager.c。 */
-#define MEDIA_COL_FIRST 2 /* 錶盤是欄 1;右邊從欄 2 開始 */
-static lv_obj_t *s_media_tile[MAX_SYNCED_DEVICES];      /* (2+c,1) 媒體欄 */
-static lv_obj_t *s_media_page[MAX_SYNCED_DEVICES];      /* hid_mouse_media_page_create */
-static lv_obj_t *s_mouse_park_tile[MAX_SYNCED_DEVICES]; /* (2+c,2) 滑鼠入口 */
-/* 每欄頂部的設備列(founder R2:「像之前那樣上面顯示設備名稱跟左右箭頭」——
-   復刻舊頂部面板那組:圓點 + 名稱 + 兩顆箭頭)。每欄自帶一份,建在 tile 裡,
-   內容由 media_col_headers_refresh 依 registry / 連線狀態刷新。 */
-static lv_obj_t *s_media_dot[MAX_SYNCED_DEVICES];
-static lv_obj_t *s_media_name[MAX_SYNCED_DEVICES];
-static lv_obj_t *s_media_arr_l[MAX_SYNCED_DEVICES];
-static lv_obj_t *s_media_arr_r[MAX_SYNCED_DEVICES];
-static lv_obj_t *s_park_icon[MAX_SYNCED_DEVICES]; /* (2+c,2) 停車位預覽圖示 */
-/* heap 輪(2026-08-16):媒體欄內容不再開機常駐 —— 進媒體區才建、回錶盤/進滑鼠
-   模式就放。8 欄 × (媒體頁+設備列+停車圖示) 的常駐帳就是 hosted 滑鼠 heap 見底
-   的最大單一來源(boot heap log)。tile 格子本身仍開機建滿(tileview 不能事後
-   抽換格),lazy 的只有格子**內容**。 */
-static bool s_media_content_built = false;
-void clock_main_media_cols_content_ensure(void);
-void clock_main_media_cols_content_release(void);
+/* R47(founder 2026-09-05 大改):
+     右側 (2,1) = 控制中心 + App List(從下方 (1,2) 搬過來)
+     下方 (1,2) = **滑鼠入口停車位**:從錶盤往上拉、settle 在那裡 = 直接進滑鼠
+                  模式(lv_top_panel_mouse_enter),控制目標 = 上次控制的那台,
+                  沒有就自動挑一台(hid_mouse_ensure_active_device)——「手機」
+                  不再是一個可選欄。
+   退出 = 滑鼠頁頂部下拉(clock_main_mouse_pulldown_reveal)落回錶盤。
+   ADR-0020 的「一台設備一欄」媒體欄整組退役:正在播放的媒體改成掛在滑鼠頁
+   頂部的 header(hid_mouse 自建),點它開那台的媒體控制頁,不能左右翻台。 */
+static lv_obj_t *s_mouse_park_tile = NULL; /* (1,2) 滑鼠入口 */
+static lv_obj_t *s_park_icon = NULL;       /* 停車位預覽圖示 */
 void control_center_applist_ensure(void);
 void control_center_applist_release(void);
 static lv_obj_t *app_clock_ai_status_bar;
@@ -174,7 +156,6 @@ static void notification_status_bar_cb(lv_event_t *event)
         lv_obj_add_flag(app_clock_main_status_bar, LV_OBJ_FLAG_HIDDEN);
         lv_obj_add_flag(gaus_dial_bg, LV_OBJ_FLAG_HIDDEN);
         /* 邊緣點一下沒拖 = 取消:剛 ensure 的懶建內容放回去(沒建過就 no-op)。 */
-        clock_main_media_cols_content_release();
         control_center_applist_release();
     }
     else if (LV_EVENT_PRESSED == event->code)
@@ -200,15 +181,10 @@ static void notification_status_bar_cb(lv_event_t *event)
             }
             else if (area_id == STATUS_BAR_AREA_RIGHT)
             {
-                /* 右緣 = 媒體欄 (2,1):內容懶建(heap 輪),進場前建好。 */
-                clock_main_media_cols_content_ensure();
-            }
-            else if (area_id == STATUS_BAR_AREA_DOWN)
-            {
-                /* 下緣往上拉 = 控制中心+App List:App List 網格懶建。 */
-                extern void control_center_applist_ensure(void);
+                /* 右緣 = 控制中心 + App List (2,1):網格懶建(heap 輪)。 */
                 control_center_applist_ensure();
             }
+            /* 下緣往上拉 = 滑鼠入口停車位 (1,2):只有一張圖示,沒有懶建內容。 */
             lv_obj_set_tile_id(app_clock_main_status_bar, 1, 1, false);
             lv_obj_clear_flag(app_clock_main_status_bar, LV_OBJ_FLAG_HIDDEN);
             lv_obj_clear_flag(gaus_dial_bg, LV_OBJ_FLAG_HIDDEN);
@@ -217,16 +193,16 @@ static void notification_status_bar_cb(lv_event_t *event)
     }
 }
 
-/* ---- 右側媒體欄 finger-follow（錶面全螢幕 catcher 的向左滑 route）---------- *
- * 舊名 applist_follow(當時欄 2 是 App List)。往左滑把欄 2(手機媒體中心)拉進來,
+/* ---- 右側 App List finger-follow（錶面全螢幕 catcher 的向左滑 route）------- *
+ * 往左滑把欄 2(控制中心 + App List)拉進來,
  * catcher 擁有 press,所以 scroll 由我們自己餵(唯一 writer → 不抖),放開用
  * set_tile_id commit / abort;settle 再收尾。 */
 void clock_main_applist_follow_begin(void)
 {
     if (!app_clock_main_status_bar || !lv_obj_is_valid(app_clock_main_status_bar))
         return;
-    /* 媒體欄內容懶建:跟手把欄 2 拉進來之前先建好,拖曳中不能是空格。 */
-    clock_main_media_cols_content_ensure();
+    /* App List 網格懶建:跟手把欄 2 拉進來之前先建好,拖曳中不能是空格。 */
+    control_center_applist_ensure();
     lv_obj_set_tile_id(app_clock_main_status_bar, 1, 1, false); /* snap HOME, no anim */
     lv_obj_clear_flag(app_clock_main_status_bar, LV_OBJ_FLAG_HIDDEN);
     if (gaus_dial_bg && lv_obj_is_valid(gaus_dial_bg))
@@ -290,248 +266,11 @@ void clock_main_leftpage_follow_end(lv_coord_t dx, lv_coord_t vx)
     lv_obj_set_tile_id(app_clock_main_status_bar, open_it ? 0 : 1, 1, true);
 }
 
-/* ---- 媒體欄數 / 方向旗標 ---------------------------------------------------- *
- * 欄數 = 1(手機) + 桌面設備數,夾在 [1, MAX_SYNCED_DEVICES]。格子開機建滿,能不能
- * 滑到由 tile->dir 決定;設備數變動時重算並**當場**重設 scroll_dir(lv_tileview 在
- * 發 VALUE_CHANGED 前就複製了 dir,慢一拍等於這次 settle 無效 —— 2026-08-11 踩過)。 */
-extern int hid_mouse_device_count(void);
-extern int hid_mouse_active_device_index(void);
-
-static int media_col_count(void)
-{
-    int n = 1 + hid_mouse_device_count(); /* 手機恆佔第一欄 */
-    if (n < 1) n = 1;
-    if (n > MAX_SYNCED_DEVICES) n = MAX_SYNCED_DEVICES;
-    return n;
-}
-
-static void media_cols_apply_dirs(int col_count)
-{
-    for (int c = 0; c < MAX_SYNCED_DEVICES; c++)
-    {
-        /* LEFT = 回錶盤方向;BOTTOM = 往上拉出下方的滑鼠入口(founder R2)。 */
-        lv_dir_t d = LV_DIR_LEFT | LV_DIR_BOTTOM;
-        if (c + 1 < col_count)
-            d |= LV_DIR_RIGHT;
-        if (s_media_tile[c] && lv_obj_is_valid(s_media_tile[c]))
-            ((lv_tileview_tile_t *)s_media_tile[c])->dir = d;
-        /* 停車位只准往上收回媒體頁(settle 在這裡本來就立刻切進滑鼠圖層)。 */
-        if (s_mouse_park_tile[c] && lv_obj_is_valid(s_mouse_park_tile[c]))
-            ((lv_tileview_tile_t *)s_mouse_park_tile[c])->dir = LV_DIR_TOP;
-    }
-}
-
-/* ── 媒體欄頂部設備列(復刻舊頂部面板那組,座標同 DEV_DOT_Y/DEV_LABEL_Y/
-   DEV_ARROW_DX/DEV_ARROW_Y = 26/40/117/42)── */
-extern const char *hid_mouse_device_name(int idx);
-extern bool hid_mouse_device_online(int idx);
-
-static void media_col_headers_refresh(void)
-{
-    int count = media_col_count();
-    for (int c = 0; c < MAX_SYNCED_DEVICES; c++)
-    {
-        if (s_media_name[c] == NULL || !lv_obj_is_valid(s_media_name[c]))
-            continue;
-        const char *name;
-        bool online;
-        if (c == 0)
-        {
-            name = LV_EXT_STR_GET_BY_KEY(connected_phone, "Phone");
-            online = get_bluetooth_connection_status();
-        }
-        else
-        {
-            name = hid_mouse_device_name(c - 1);
-            online = hid_mouse_device_online(c - 1);
-        }
-        lv_label_set_text(s_media_name[c], (name && name[0]) ? name : "");
-        if (s_media_dot[c] && lv_obj_is_valid(s_media_dot[c]))
-            lv_obj_set_style_bg_color(s_media_dot[c],
-                                      online ? lv_color_hex(0x4CAF50)
-                                             : lv_color_hex(0xFF3B30),
-                                      0);
-        /* 不循環(沿用舊面板規則):到底那一側的箭頭消失。左端(欄 2 = 手機)
-           左箭頭也收掉 —— 回錶盤走原生左滑,不用箭頭。 */
-        if (s_media_arr_l[c] && lv_obj_is_valid(s_media_arr_l[c]))
-        {
-            if (c > 0) lv_obj_clear_flag(s_media_arr_l[c], LV_OBJ_FLAG_HIDDEN);
-            else lv_obj_add_flag(s_media_arr_l[c], LV_OBJ_FLAG_HIDDEN);
-        }
-        if (s_media_arr_r[c] && lv_obj_is_valid(s_media_arr_r[c]))
-        {
-            if (c + 1 < count) lv_obj_clear_flag(s_media_arr_r[c], LV_OBJ_FLAG_HIDDEN);
-            else lv_obj_add_flag(s_media_arr_r[c], LV_OBJ_FLAG_HIDDEN);
-        }
-    }
-}
-
-/* 箭頭 = 走一格到隔壁欄(原生動畫換頁,settle 自己收尾)。user_data = 目標欄。 */
-static void media_arrow_cb(lv_event_t *e)
-{
-    int target_col = (int)(intptr_t)lv_event_get_user_data(e);
-    int count = media_col_count();
-    if (target_col < MEDIA_COL_FIRST || target_col >= MEDIA_COL_FIRST + count)
-        return;
-    if (app_clock_main_status_bar && lv_obj_is_valid(app_clock_main_status_bar))
-        lv_obj_set_tile_id(app_clock_main_status_bar, (uint8_t)target_col, 1, true);
-}
-
-static void media_col_header_build(int c)
-{
-    lv_obj_t *tile = s_media_tile[c];
-    if (tile == NULL || !lv_obj_is_valid(tile))
-        return;
-
-    s_media_dot[c] = lv_obj_create(tile);
-    lv_obj_remove_style_all(s_media_dot[c]);
-    lv_obj_set_size(s_media_dot[c], 10, 10);
-    lv_obj_align(s_media_dot[c], LV_ALIGN_TOP_MID, 0, 26);
-    lv_obj_set_style_radius(s_media_dot[c], LV_RADIUS_CIRCLE, 0);
-    lv_obj_set_style_bg_opa(s_media_dot[c], LV_OPA_COVER, 0);
-    lv_obj_set_style_bg_color(s_media_dot[c], lv_color_hex(0x4CAF50), 0);
-    lv_obj_clear_flag(s_media_dot[c], LV_OBJ_FLAG_CLICKABLE);
-
-    s_media_name[c] = lv_label_create(tile);
-    lv_obj_set_width(s_media_name[c], 200);
-    lv_label_set_long_mode(s_media_name[c], LV_LABEL_LONG_DOT);
-    lv_obj_set_style_text_align(s_media_name[c], LV_TEXT_ALIGN_CENTER, 0);
-    lv_obj_set_style_text_color(s_media_name[c], lv_color_hex(0xFFFFFF), 0);
-    lv_obj_set_style_text_opa(s_media_name[c], LV_OPA_80, 0);
-    lv_label_set_text(s_media_name[c], "");
-    lv_obj_align(s_media_name[c], LV_ALIGN_TOP_MID, 0, 40);
-    lv_obj_clear_flag(s_media_name[c], LV_OBJ_FLAG_CLICKABLE);
-
-    s_media_arr_l[c] = lv_img_create(tile);
-    lv_img_set_src(s_media_arr_l[c], &img_left_arrow);
-    lv_obj_align(s_media_arr_l[c], LV_ALIGN_TOP_MID, -117, 42);
-    lv_obj_add_flag(s_media_arr_l[c], LV_OBJ_FLAG_CLICKABLE);
-    lv_obj_set_ext_click_area(s_media_arr_l[c], 24);
-    lv_obj_add_event_cb(s_media_arr_l[c], media_arrow_cb, LV_EVENT_CLICKED,
-                        (void *)(intptr_t)(MEDIA_COL_FIRST + c - 1));
-    lv_obj_add_flag(s_media_arr_l[c], LV_OBJ_FLAG_HIDDEN);
-
-    s_media_arr_r[c] = lv_img_create(tile);
-    lv_img_set_src(s_media_arr_r[c], &img_right_arrow);
-    lv_obj_align(s_media_arr_r[c], LV_ALIGN_TOP_MID, 117, 42);
-    lv_obj_add_flag(s_media_arr_r[c], LV_OBJ_FLAG_CLICKABLE);
-    lv_obj_set_ext_click_area(s_media_arr_r[c], 24);
-    lv_obj_add_event_cb(s_media_arr_r[c], media_arrow_cb, LV_EVENT_CLICKED,
-                        (void *)(intptr_t)(MEDIA_COL_FIRST + c + 1));
-    lv_obj_add_flag(s_media_arr_r[c], LV_OBJ_FLAG_HIDDEN);
-}
-
-/* ── 媒體欄內容 lazy build/release(heap 輪 2026-08-16)──────────────────────
-   進媒體區(右緣拉/錶面左滑跟手/滑鼠下拉 reveal)前 ensure;settle 回錶盤、
-   進 hosted 滑鼠模式時 release。釋放安全性:media_page 掛在 LV_EVENT_DELETE 的
-   media_page_del_cb 會清 media_center_title_label/play_img 綁定(0x19/0x46 的
-   曲名寫入全都 NULL/validity guard);media_col_headers_refresh / media_col_bind
-   對 NULL 欄位本來就跳過。 */
-void clock_main_heap_log(const char *tag);
-extern lv_obj_t *hid_mouse_media_page_create(lv_obj_t *parent, bool is_phone_column);
-
-static void media_col_content_release_one(int c)
-{
-    if (s_media_page[c] && lv_obj_is_valid(s_media_page[c]))
-        lv_obj_del(s_media_page[c]);
-    s_media_page[c] = NULL;
-    if (s_media_dot[c] && lv_obj_is_valid(s_media_dot[c]))
-        lv_obj_del(s_media_dot[c]);
-    s_media_dot[c] = NULL;
-    if (s_media_name[c] && lv_obj_is_valid(s_media_name[c]))
-        lv_obj_del(s_media_name[c]);
-    s_media_name[c] = NULL;
-    if (s_media_arr_l[c] && lv_obj_is_valid(s_media_arr_l[c]))
-        lv_obj_del(s_media_arr_l[c]);
-    s_media_arr_l[c] = NULL;
-    if (s_media_arr_r[c] && lv_obj_is_valid(s_media_arr_r[c]))
-        lv_obj_del(s_media_arr_r[c]);
-    s_media_arr_r[c] = NULL;
-    if (s_park_icon[c] && lv_obj_is_valid(s_park_icon[c]))
-        lv_obj_del(s_park_icon[c]);
-    s_park_icon[c] = NULL;
-}
-
-static void media_col_content_build_one(int c)
-{
-    if (s_media_tile[c] == NULL || !lv_obj_is_valid(s_media_tile[c]))
-        return;
-    /* 欄 0 = 手機(見 media_col_bind);它的音量條要用快取的手機音量當初值,
-       其餘欄是電腦,站佔位等 0x19 校準。 */
-    s_media_page[c] = hid_mouse_media_page_create(s_media_tile[c], c == 0);
-    media_col_header_build(c);
-    if (s_mouse_park_tile[c] && lv_obj_is_valid(s_mouse_park_tile[c]))
-    {
-        lv_obj_t *icon = lv_img_create(s_mouse_park_tile[c]);
-        lv_img_set_src(icon, &mouse_mode_icon);
-        lv_obj_center(icon);
-        lv_obj_clear_flag(icon, LV_OBJ_FLAG_CLICKABLE);
-        s_park_icon[c] = icon;
-    }
-}
-
-/** 進媒體區前呼叫:可達的欄建好內容,不可達的欄順手放掉(設備數縮了)。
-    冪等,已建欄 no-op。 */
-void clock_main_media_cols_content_ensure(void)
-{
-    int count = media_col_count();
-    bool changed = false;
-    for (int c = 0; c < MAX_SYNCED_DEVICES; c++)
-    {
-        bool have = (s_media_page[c] != NULL && lv_obj_is_valid(s_media_page[c]));
-        if (c < count && !have)
-        {
-            media_col_content_build_one(c);
-            changed = true;
-        }
-        else if (c >= count && have)
-        {
-            media_col_content_release_one(c);
-            changed = true;
-        }
-    }
-    s_media_content_built = true;
-    if (changed)
-    {
-        media_col_headers_refresh();
-        clock_main_heap_log("media-cols-ensure");
-    }
-}
-
-/** 離開媒體區(settle 回錶盤 / 進 hosted 滑鼠模式)時呼叫:內容全放。 */
-void clock_main_media_cols_content_release(void)
-{
-    if (!s_media_content_built)
-        return;
-    for (int c = 0; c < MAX_SYNCED_DEVICES; c++)
-        media_col_content_release_one(c);
-    s_media_content_built = false;
-    clock_main_heap_log("media-cols-released");
-}
-
-/** 設備清單有變時呼叫:右側可滑的媒體欄數跟著設備數走。 */
+/* 舊 ADR-0020 的「一台設備一欄」媒體欄已退役(R47)。這個入口還有外部呼叫端
+   (device_pager 的 E7 同步、lv_session_pager 的 registry 更新),留成 no-op 讓
+   呼叫端零改動 —— 右側現在是固定一格的控制中心 + App List,設備數不影響它。 */
 void clock_main_media_cols_refresh(void)
 {
-    int col_count = media_col_count();
-    static int s_last_logged = -1;
-    if (col_count != s_last_logged)
-    {
-        s_last_logged = col_count;
-        LOG_W("[media-col] reachable columns = %d (devices=%d)", col_count,
-              hid_mouse_device_count());
-    }
-    /* 人在媒體區時設備數變了(上下線/配對):讓內容跟上新欄數。 */
-    if (s_media_content_built)
-        clock_main_media_cols_content_ensure();
-    media_cols_apply_dirs(col_count);
-    media_col_headers_refresh();
-    if (app_clock_main_status_bar && lv_obj_is_valid(app_clock_main_status_bar))
-    {
-        lv_obj_t *act = lv_tileview_get_tile_act(app_clock_main_status_bar);
-        if (act != NULL && lv_obj_is_valid(act))
-            lv_obj_set_scroll_dir(app_clock_main_status_bar,
-                                  ((lv_tileview_tile_t *)act)->dir);
-    }
 }
 
 /* 滑鼠模式頂部下拉(founder 2026-08-11 R2/R4:「抓著上面往下把滑鼠頁面拉掉,顯示
@@ -539,11 +278,15 @@ void clock_main_media_cols_refresh(void)
    R3 的做法(async 退出+吞 press)在真機仍會拉出通知面板:destroy 讓 indev reset,
    把 wait_release 也清掉,殘餘拖曳照樣被 tileview 用舊的四向 scroll_dir 接走。
    改用**跟舊面板 reveal 完全同一套交棒機制**(該機制在真機驗證過):下拉判定當下
-   **不拆滑鼠**,只把主 tileview 亮在該欄的滑鼠停車格 (col,2) —— hid_mouse 的頂
-   部帶沒有 PRESS_LOCK,press 下一 tick 自然轉給 tileview,往下拖就是停車格→媒體
-   頁的**原生跟手**。settle 落在媒體頁(row 1)才真正退出滑鼠模式;落回停車格 =
-   取消,tileview 收回、滑鼠模式原樣繼續。 */
+   **不拆滑鼠**,只把主 tileview 亮在滑鼠停車格 (1,2) —— hid_mouse 的頂部帶沒有
+   PRESS_LOCK,press 下一 tick 自然轉給 tileview,往下拖就是停車格→錶盤的**原生
+   跟手**。settle 落在錶盤(1,1)才真正退出滑鼠模式;落回停車格 = 取消,tileview
+   收回、滑鼠模式原樣繼續。 */
 static bool s_mouse_pull_reveal = false; /* reveal 的 snap settle 與取消 settle 區分用 */
+/* 下拉退出流程進行中 —— 只有它立著時,settle 回錶盤才算「退出滑鼠」。進滑鼠模式
+   當下自己也會 set_tile_id(1,1)(把 tileview 收回錶盤格再藏起來),那一發同步
+   settle 若被當成退出,滑鼠頁會一進去就被拆掉。 */
+static bool s_mouse_pull_active = false;
 
 /* R36 診斷:滑鼠頁進出一直撞 `sys memory is full!`,但 founder 指出「以前頁面更多卻
    不會死」—— 所以要先量出**峰值到底發生在哪一步、差多少**,不要再靠猜砍東西。在每個
@@ -561,13 +304,13 @@ void clock_main_mouse_pulldown_reveal(void)
     if (!app_clock_main_status_bar || !lv_obj_is_valid(app_clock_main_status_bar))
         return;
     clock_main_heap_log("reveal-enter");
-    int dev = hid_mouse_active_device_index();
-    int col = MEDIA_COL_FIRST + ((dev >= 0) ? dev + 1 : 0);
-    if (col >= MEDIA_COL_FIRST + media_col_count())
-        col = MEDIA_COL_FIRST;
-    /* 媒體欄內容懶建:滑鼠模式進場時已釋放,下拉 reveal 要先建回來。 */
-    clock_main_media_cols_content_ensure();
+    lv_top_panel_mouse_layer_set_offset_y(0); /* 起點:滑鼠頁在原位 */
+    /* 停車格那張滑鼠圖示是「從錶盤往上拉」時的預覽;下拉退出途中 tileview 在滑鼠
+       圖層**之上**,不藏起來就會有一張圖示浮在正在下移的滑鼠頁上面。 */
+    if (s_park_icon && lv_obj_is_valid(s_park_icon))
+        lv_obj_add_flag(s_park_icon, LV_OBJ_FLAG_HIDDEN);
     s_mouse_pull_reveal = true; /* set_tile_id 會同步發 settle,先立旗 */
+    s_mouse_pull_active = true;
     /* R34:這一刻是全機記憶體峰值 —— 滑鼠圖層還在,又要把 tileview/媒體頁亮出來給
        手指接手,實測就是在這裡 `sys memory is full!` 然後 EPIC render list 掛掉。
        全螢幕的模糊底圖(gaus_dial_bg / gaus_dial_img)此時**完全被滑鼠圖層蓋住、看
@@ -576,10 +319,9 @@ void clock_main_mouse_pulldown_reveal(void)
     if (gaus_dial_bg && lv_obj_is_valid(gaus_dial_bg))
         lv_obj_add_flag(gaus_dial_bg, LV_OBJ_FLAG_HIDDEN);
     set_clock_main_status_opa(LV_OPA_TRANSP, false);
-    lv_obj_set_tile_id(app_clock_main_status_bar, (uint8_t)col, 2, false);
+    lv_obj_set_tile_id(app_clock_main_status_bar, 1, 2, false);
     lv_obj_clear_flag(app_clock_main_status_bar, LV_OBJ_FLAG_HIDDEN);
-    clock_main_media_cols_refresh(); /* 當場套上停車格的 LV_DIR_TOP */
-    LOG_W("[media-col] mouse pulldown reveal at col %d", col);
+    LOG_W("[mouse] pulldown reveal at park tile (1,2)");
     clock_main_heap_log("reveal-done");
 }
 
@@ -592,35 +334,6 @@ static int media_scroll_col(lv_obj_t *tv)
 static int media_scroll_row(lv_obj_t *tv)
 {
     return (int)((lv_obj_get_scroll_y(tv) + LV_VER_RES / 2) / LV_VER_RES);
-}
-
-/* settle 在欄 col:曲名路由綁到那一欄的媒體頁,控制目標換成那一台。
-   欄 2 = 手機:清掉 active device(控制目標回到手機,媒體資訊走手機自己那份)。 */
-static void media_col_bind(int col)
-{
-    int c = col - MEDIA_COL_FIRST;
-    if (c < 0 || c >= MAX_SYNCED_DEVICES)
-        return;
-    if (s_media_page[c] == NULL || !lv_obj_is_valid(s_media_page[c]))
-        return;
-    extern void hid_mouse_media_page_bind(lv_obj_t *page);
-    extern void hid_mouse_media_page_reset_title(lv_obj_t *page);
-    extern void hid_mouse_clear_active_device(void);
-    extern void hid_mouse_set_active_device_index(int idx);
-    hid_mouse_media_page_bind(s_media_page[c]);
-    if (c == 0)
-    {
-        if (hid_mouse_active_device_index() >= 0)
-        {
-            hid_mouse_media_page_reset_title(s_media_page[c]);
-            hid_mouse_clear_active_device();
-        }
-    }
-    else if (hid_mouse_active_device_index() != c - 1)
-    {
-        hid_mouse_media_page_reset_title(s_media_page[c]);
-        hid_mouse_set_active_device_index(c - 1);
-    }
 }
 
 /* ---- Notification / control+applist finger-follow --------------------------- *
@@ -798,10 +511,10 @@ static void app_clock_main_status_bar_event_cb(lv_event_t *event)
     {
     case LV_EVENT_SCROLL:
     {
-        /* ADR-0020 之後的視覺狀態機,單一 owner:
-             sx > HOME  → 右側媒體區(欄 2+):模糊底圖跟手漸入,時間/電量不顯示
+        /* 視覺狀態機,單一 owner:
+             sx > HOME  → 右頁(控制中心 + App List):模糊底圖跟手漸入,時間/電量不顯示
              sx < HOME  → 左頁(合併 session + actions):同樣的模糊漸入
-             sx == HOME → 垂直軸(上=通知面板 / 下=控制+App List)
+             sx == HOME → 垂直軸(上=通知面板 / 下=滑鼠入口)
            gaus_dial_bg 濃度只在這裡與 settle 寫,別的路徑不要碰(2026-08-11 之前
            有 7 條路徑共寫,靠執行順序決勝負,下拉看不到模糊的 bug 就活在那裡)。 */
         lv_coord_t sx = lv_obj_get_scroll_x(obj);
@@ -809,14 +522,13 @@ static void app_clock_main_status_bar_event_cb(lv_event_t *event)
 
         if (sx > LV_HOR_RES)
         {
-            /* 右側媒體區。founder 2026-08-11:右側整區不顯示頂部時間。 */
-            /* 內容懶建兜底:原生捲動進媒體區(不經 catcher 鉤子)第一幀就建好。
-               冪等,已建時只是 8 個指標檢查。 */
-            clock_main_media_cols_content_ensure();
+            /* 右頁(控制中心 + App List)。右側整區不顯示頂部時間。
+               網格懶建兜底:原生捲動進來(不經 catcher 鉤子)第一幀就建好,冪等。 */
+            control_center_applist_ensure();
             set_instruction_list_time_opa(LV_OPA_TRANSP);
             set_instruction_list_battery_opa(LV_OPA_TRANSP);
             lv_coord_t pull = sx - LV_HOR_RES;
-            if (pull > LV_HOR_RES) pull = LV_HOR_RES; /* 欄與欄之間保持滿值 */
+            if (pull > LV_HOR_RES) pull = LV_HOR_RES;
             lv_coord_t opa = pull * 255 / 350;
             if (opa > 255) opa = 255;
             if (gaus_dial_bg && lv_obj_is_valid(gaus_dial_bg))
@@ -847,15 +559,27 @@ static void app_clock_main_status_bar_event_cb(lv_event_t *event)
         /* sx == HOME:垂直軸。 */
         {
             lv_coord_t up = LV_VER_RES - sy; /* >0 = 往面板;<0 = 往控制頁 */
-            /* App List 懶建兜底:原生往上拉進控制頁(不經 catcher 鉤子)。 */
-            if (up < 0)
-                control_center_applist_ensure();
             /* 滑鼠模式下拉面板的黑底跟手漸黑(錶盤路徑由 gaus_dial_bg 負責,
                那層在滑鼠圖層底下看不到)。 */
             lv_coord_t upc = up;
             if (upc < 0) upc = 0;
             if (upc > LV_VER_RES) upc = LV_VER_RES;
             lv_top_panel_set_backdrop_opa((uint8_t)((int32_t)upc * 204 / 466));
+            /* R49:下拉退出滑鼠頁時,滑鼠圖層整層跟著手指往下走(錶盤在上面那一格
+               同步露出來)。停車格 sy=932 → y=0(滑鼠頁原位);錶盤 sy=466 → y=466
+               (整頁推出畫面下緣)。
+               **只在下拉退出流程進行中才動**(R49a,founder:「拉出滑鼠頁面他會自己
+               又消失」):進滑鼠模式的收尾自己會 set_tile_id(1,1) 把 tileview 收回
+               錶盤格,那一發同步發出 sy=466 的 SCROLL —— 沒有這個閘門就等於「剛建好
+               的滑鼠頁立刻被推出畫面下緣」,看起來就是一拉出來就不見。 */
+            if (s_mouse_pull_active)
+            {
+                lv_coord_t mouse_y = 2 * LV_VER_RES - sy;
+                if (mouse_y < 0) mouse_y = 0;
+                if (mouse_y > LV_VER_RES) mouse_y = LV_VER_RES;
+                extern void lv_top_panel_mouse_layer_set_offset_y(lv_coord_t y);
+                lv_top_panel_mouse_layer_set_offset_y(mouse_y);
+            }
 
             lv_coord_t mag = LV_ABS(up);
             if (mag > 0)
@@ -898,31 +622,33 @@ static void app_clock_main_status_bar_event_cb(lv_event_t *event)
                否則之後所有觸控都被它吃掉(歷史 bug,見 git log)。 */
             extern void clock_main_face_swipe_catcher_foreground(void);
             clock_main_face_swipe_catcher_foreground();
+            /* 回錶盤 = 下拉退出/取消都結束了,停車格的預覽圖示恢復。 */
+            if (s_park_icon && lv_obj_is_valid(s_park_icon))
+                lv_obj_clear_flag(s_park_icon, LV_OBJ_FLAG_HIDDEN);
             if (gaus_dial_bg && lv_obj_is_valid(gaus_dial_bg))
                 lv_obj_add_flag(gaus_dial_bg, LV_OBJ_FLAG_HIDDEN);
-            /* 回到錶盤 = 離開媒體區/控制頁:懶建內容放掉(沒建過就 no-op)。
-               控制頁的 release 這裡兜底 —— 拉一半取消的話 on_pause 不會跑。 */
-            clock_main_media_cols_content_release();
+            /* 回到錶盤 = 離開控制頁:懶建內容放掉(沒建過就 no-op)。這裡兜底 ——
+               拉一半取消的話 on_pause 不會跑。 */
             control_center_applist_release();
         }
 
         int col_now = media_scroll_col(obj);
         int row_now = media_scroll_row(obj);
-        bool on_media_col = (row_now == 1 && col_now >= MEDIA_COL_FIRST);
-        bool on_mouse_park = (row_now == 2 && col_now >= MEDIA_COL_FIRST);
+        bool on_home_tile = (row_now == 1 && col_now == 1);
+        bool on_mouse_park = (row_now == 2 && col_now == 1);
 
-        /* 護欄:媒體欄的 row 0 沒有格子(停車位在 row 2)。stale scroll_dir 之類的
-           殘餘拖曳若把捲動帶到那裡,settle 會吸去別的欄 —— 直接彈回該欄媒體頁。 */
-        if (row_now == 0 && col_now >= MEDIA_COL_FIRST)
+        /* 護欄:右頁那一欄只有 row 1 有格子。stale scroll_dir 之類的殘餘拖曳若把
+           捲動帶到別列,settle 會吸去奇怪的地方 —— 直接彈回該欄的那一格。 */
+        if (row_now != 1 && col_now != 1)
         {
             lv_obj_set_tile_id(obj, (uint8_t)col_now, 1, true);
             break;
         }
 
-        /* ADR-0020 R2:媒體欄**往上拉** settle 在下方停車位 = 進入該欄那台的滑鼠
-           模式。R4:已在滑鼠模式時,停車位的 settle 是「下拉退出」流程的一部分 ——
-           reveal 的 snap settle(保持顯示,等 press 交棒給 tileview 跟手)或使用者
-           取消(收回 tileview,滑鼠模式原樣繼續),都不能再走進入路徑。 */
+        /* R47:錶盤**往上拉** settle 在下方停車位 (1,2) = 進滑鼠模式(目標 = 上次
+           控制的那台)。已在滑鼠模式時,停車位的 settle 是「下拉退出」流程的一部分
+           —— reveal 的 snap settle(保持顯示,等 press 交棒給 tileview 跟手)或
+           使用者取消(收回 tileview,滑鼠模式原樣繼續),都不能再走進入路徑。 */
         if (on_mouse_park)
         {
             if (lv_top_panel_mouse_mode())
@@ -934,18 +660,28 @@ static void app_clock_main_status_bar_event_cb(lv_event_t *event)
                 }
                 else
                 {
-                    /* 下拉不到門檻放開 = 取消:收回 tileview,繼續滑鼠模式。 */
+                    /* 下拉不到門檻放開 = 取消:收回 tileview,繼續滑鼠模式。
+                       **旗標要在 set_tile_id 之前放下** —— 那一發會同步發出「settle
+                       在錶盤格」的事件,旗標還立著就會被下面的退出分支當成 commit,
+                       取消反而把滑鼠頁拆了。 */
+                    s_mouse_pull_active = false;
+                    lv_top_panel_mouse_layer_set_offset_y(0); /* 位移還原 */
                     middle_layer_tileview_index = 255;
                     lv_obj_set_tile_id(obj, 1, 1, false);
                     lv_obj_add_flag(app_clock_main_status_bar, LV_OBJ_FLAG_HIDDEN);
                     if (gaus_dial_bg && lv_obj_is_valid(gaus_dial_bg))
                         lv_obj_add_flag(gaus_dial_bg, LV_OBJ_FLAG_HIDDEN);
-                    LOG_W("[media-col] mouse pulldown cancelled");
+                    LOG_W("[mouse] pulldown cancelled");
                 }
                 check_main_page();
                 break;
             }
-            media_col_bind(col_now);
+            /* 控制目標:上次控制的那台還在 registry 就接回,否則自動挑一台
+               (主要 → 第一個在線 → 清單第一個)。registry 全空才留 BLE 直連手機。 */
+            {
+                extern void hid_mouse_ensure_active_device(void);
+                hid_mouse_ensure_active_device();
+            }
             /* R30:進 hosted 滑鼠模式**一定要先停掉 conv 輪詢**。這條分支提早 break,
                不會走到下面那段左頁進出的 poll on/off,所以 R25 的 5s 輪詢會活著跟進
                滑鼠模式;之後回來的 0x20 觸發 refresh_custom_instructions 去重建指令
@@ -962,9 +698,8 @@ static void app_clock_main_status_bar_event_cb(lv_event_t *event)
                 extern void instruction_list_release_ui(void);
                 instruction_list_release_ui();
             }
-            /* heap 輪:媒體欄內容也在滑鼠圖層建起來**之前**放掉(bind 已把控制目標
-               記走,UI 綁定由 media_page_del_cb 清,下拉 reveal 會 ensure 回來)。 */
-            clock_main_media_cols_content_release();
+            /* heap 輪:控制頁的 App List 網格也在滑鼠圖層建起來**之前**放掉。 */
+            control_center_applist_release();
             clock_main_heap_log("mouse-enter-list-freed");
             /* R38:量出來的事實 —— 開機建完所有頁面是 used 220K/free 103K,但實際使用
                時 free 只剩 ~49K,執行期多吃的 ~54K 最大宗就是這張**全螢幕模糊錶盤圖**
@@ -976,6 +711,8 @@ static void app_clock_main_status_bar_event_cb(lv_event_t *event)
             lv_img_cache_invalidate_src(GAUS_CLOCK1_BG);
             clock_main_heap_log("mouse-enter-blur-dropped");
             lv_top_panel_mouse_enter();
+            /* 進場一律歸零位移(上一輪下拉的殘留 / 任何漏網的 SCROLL)。 */
+            lv_top_panel_mouse_layer_set_offset_y(0);
             clock_main_heap_log("mouse-enter-after");
             middle_layer_tileview_index = 255; /* 下次 settle 一定重跑收尾 */
             lv_obj_set_tile_id(obj, 1, 1, false);
@@ -986,14 +723,17 @@ static void app_clock_main_status_bar_event_cb(lv_event_t *event)
             break;
         }
 
-        /* R4:settle 在媒體頁而滑鼠模式還開著 = 下拉退出 commit —— 現在才真正拆
-           滑鼠圖層(press 早已交棒給 tileview,hid_mouse 不在事件鏈上,可安全拆)。 */
-        if (on_media_col && lv_top_panel_mouse_mode())
+        /* R47:settle 在錶盤格而滑鼠模式還開著 = 下拉退出 commit —— 現在才真正拆
+           滑鼠圖層(press 早已交棒給 tileview,hid_mouse 不在事件鏈上,可安全拆)。
+           **一定要 s_mouse_pull_active 把關**:進滑鼠模式那一發自己也會
+           set_tile_id(1,1),同步 settle 會走到這裡,沒閘門就一進去馬上被拆。 */
+        if (on_home_tile && s_mouse_pull_active && lv_top_panel_mouse_mode())
         {
             extern void lv_top_panel_mouse_exit(void);
             s_mouse_pull_reveal = false;
+            s_mouse_pull_active = false;
             lv_top_panel_mouse_exit();
-            LOG_W("[media-col] mouse exit -> col %d", col_now);
+            LOG_W("[mouse] exit -> watch face");
         }
 
         if (middle_layer_tileview_index == active_pos)
@@ -1058,13 +798,10 @@ static void app_clock_main_status_bar_event_cb(lv_event_t *event)
             lv_top_panel_set_backdrop_opa(on_panel ? 204 : 0);
         }
 
-        /* 媒體欄 settle:曲名路由 + 控制目標跟著欄走(欄 2 = 手機)。
-           內容懶建的兜底 ensure:正常都在進場鉤子建好了,這裡冪等。 */
-        if (on_media_col)
-        {
-            clock_main_media_cols_content_ensure();
-            media_col_bind(col_now);
-        }
+        /* 右頁(控制中心 + App List)settle:網格懶建的兜底 ensure(正常都在進場
+           鉤子建好了,這裡冪等)。 */
+        if (active_pos == CONTROL_CENTER_PAGE_INDEX)
+            control_center_applist_ensure();
 
         /* 離開左頁時把它的 AI 輸入框收掉(它只在自己頁面上自我關閉)。 */
         {
@@ -2042,9 +1779,10 @@ void app_clock_main_status_bar_init(lv_obj_t *par)
                tile (col 2 = MAIN_PAGE_TYPE_LEFT) swipes in from the right edge.
                HOME still scrolls TOP to the message list. The left edge stays the
                mixed-list reveal overlay (no LV_DIR_LEFT). */
-            /* ADR-0020 (2026-08-11):HOME 四向全開 —
-               TOP = 通知面板 (1,0)、BOTTOM = 控制中心+App List (1,2)、
-               LEFT = 合併 session+actions 頁 (0,1)、RIGHT = 媒體欄 (2,1)。 */
+            /* R47 (2026-09-05):HOME 四向全開 —
+               TOP = 通知面板 (1,0)、BOTTOM = 滑鼠入口停車位 (1,2)、
+               LEFT = 合併 session+actions 頁 (0,1)、
+               RIGHT = 控制中心 + App List (2,1)。 */
             pages[i] = lv_tileview_add_tile(
                 app_clock_main_status_bar, 1, i,
                 LV_DIR_TOP | LV_DIR_BOTTOM | LV_DIR_LEFT | LV_DIR_RIGHT);
@@ -2071,19 +1809,21 @@ void app_clock_main_status_bar_init(lv_obj_t *par)
         {
             if (i == MAIN_PAGE_TYPE_DOWN)
             {
+                /* R47:(1,2) 從「控制中心 + App List」改成**滑鼠入口停車位**。
+                   只准往上收回錶盤 —— settle 在這裡就直接進滑鼠模式。 */
                 pages[i] = lv_tileview_add_tile(app_clock_main_status_bar, 1, 2,
-                                                LV_DIR_VER);
+                                                LV_DIR_TOP);
+                s_mouse_park_tile = pages[i];
             }
             else if (i == MAIN_PAGE_TYPE_LEFT)
             {
                 /* L/R swap: the (unreachable) instruction_list placeholder moves
                    to the RIGHT (2,1). The Action list reveals from the right edge
                    as a floating overlay now, not via this tile. */
-                /* LV_DIR_HOR，不再只有 LEFT：左邊回錶盤，右邊是下一台設備的 session
-                   欄（founder 2026-08-10：再往左滑就進到第二台）。垂直仍然不開 —— 這一
-                   欄的下拉由 session tile 自己的 catcher 手動驅動。 */
+                /* R47:這一格 (2,1) 現在是**控制中心 + App List**(從 (1,2) 搬來)。
+                   右邊沒有下一欄了(媒體欄退役),只留 LV_DIR_LEFT 回錶盤;垂直不開。 */
                 pages[i] = lv_tileview_add_tile(app_clock_main_status_bar, 2, 1,
-                                                LV_DIR_HOR);
+                                                LV_DIR_LEFT);
             }
             else if (i == MAIN_PAGE_TYPE_UP)
             {
@@ -2135,36 +1875,15 @@ void app_clock_main_status_bar_init(lv_obj_t *par)
             lv_obj_set_scrollbar_mode(pages[i], LV_SCROLLBAR_MODE_OFF);
         }
     }
-    /* ADR-0020:右側媒體欄 (2+c,1) 與各自的滑鼠入口停車位 (2+c,0)。欄 2 的 tile
-       就是迴圈裡建好的那格 (2,1);欄 3.. 在這裡補。全部先建滿 MAX_SYNCED_DEVICES ——
-       tileview 的格子不能事後抽換,設備數是執行期才知道的;多出來的欄由
-       media_cols_apply_dirs 用 tile->dir 鎖住。 */
-    s_media_tile[0] = pages[INSTRUCTION_LIST_PAGE_INDEX];
-    for (int c = 0; c < MAX_SYNCED_DEVICES; c++)
+    /* 停車位的預覽圖示:往上拉時看到的就是滑鼠圖示,放手 settle 就進滑鼠模式。
+       單一小圖,不值得懶建。 */
+    if (s_mouse_park_tile && lv_obj_is_valid(s_mouse_park_tile))
     {
-        uint8_t col = (uint8_t)(MEDIA_COL_FIRST + c);
-        if (c > 0)
-        {
-            s_media_tile[c] =
-                lv_tileview_add_tile(app_clock_main_status_bar, col, 1, LV_DIR_HOR);
-            lv_obj_set_size(s_media_tile[c], LV_HOR_RES_MAX, LV_VER_RES_MAX);
-            lv_obj_set_style_bg_opa(s_media_tile[c], LV_OPA_TRANSP, 0);
-            lv_obj_set_scrollbar_mode(s_media_tile[c], LV_SCROLLBAR_MODE_OFF);
-        }
-        /* 滑鼠入口停車位在**下方** (col,2) —— founder R2:從媒體頁往上拉出滑鼠。 */
-        s_mouse_park_tile[c] =
-            lv_tileview_add_tile(app_clock_main_status_bar, col, 2, LV_DIR_TOP);
-        lv_obj_set_size(s_mouse_park_tile[c], LV_HOR_RES_MAX, LV_VER_RES_MAX);
-        lv_obj_set_style_bg_opa(s_mouse_park_tile[c], LV_OPA_TRANSP, 0);
-        lv_obj_set_scrollbar_mode(s_mouse_park_tile[c], LV_SCROLLBAR_MODE_OFF);
-
-        /* heap 輪(2026-08-16):媒體頁/設備列/停車圖示不再開機常駐 —— 進媒體區
-           前由 clock_main_media_cols_content_ensure() 懶建(右緣拉/錶面左滑/
-           下拉 reveal/settle 兜底四個鉤子),離場 release。 */
+        s_park_icon = lv_img_create(s_mouse_park_tile);
+        lv_img_set_src(s_park_icon, &mouse_mode_icon);
+        lv_obj_center(s_park_icon);
+        lv_obj_clear_flag(s_park_icon, LV_OBJ_FLAG_CLICKABLE);
     }
-
-    clock_main_media_cols_refresh(); /* 開機先鎖住多餘的欄(設備到齊後會再刷) */
-    clock_main_heap_log("boot:media-cols-built");
 
     lv_obj_set_tile_id(app_clock_main_status_bar, 1, 1, false);
     lv_obj_add_flag(app_clock_main_status_bar, LV_OBJ_FLAG_HIDDEN);
@@ -2189,9 +1908,9 @@ void app_clock_main_status_bar_init(lv_obj_t *par)
     LOG_I("clock_status_bar: after top_panel_create");
     clock_main_heap_log("boot:top-panel");
 
-    /* 下 tile (1,2) = 控制中心(亮度/QR/勿擾/找手機,dev 加 gesture)當頭部 +
-       App List 網格(ADR-0020:合併為一頁,從錶盤往上拉進入)。 */
-    control_center_layout_create(pages[MAIN_PAGE_TYPE_DOWN]);
+    /* 右 tile (2,1) = 控制中心(亮度/QR/勿擾/找手機,dev 加 gesture)當頭部 +
+       App List 網格(合併為一頁,R47 起從錶盤往**右**拉進入)。 */
+    control_center_layout_create(pages[MAIN_PAGE_TYPE_LEFT]);
     clock_main_heap_log("boot:control+applist");
 
     LOG_D("tileview set tile id to 1,1");

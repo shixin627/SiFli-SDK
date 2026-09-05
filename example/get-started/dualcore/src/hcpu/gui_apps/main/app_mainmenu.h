@@ -24,19 +24,20 @@
 
 #define ENABLE_NOTIFICATION_CENTER
 
-#define CONTROL_CENTER_PAGE_INDEX MAIN_PAGE_TYPE_DOWN 
+#define CONTROL_CENTER_PAGE_INDEX MAIN_PAGE_TYPE_LEFT
 #define HOME_PAGE_INDEX MAIN_PAGE_TYPE_HOME
-#define INSTRUCTION_LIST_PAGE_INDEX MAIN_PAGE_TYPE_LEFT
+#define INSTRUCTION_LIST_PAGE_INDEX MAIN_PAGE_TYPE_RIGHT
 #define MESSAGE_PAGE_INDEX MAIN_PAGE_TYPE_UP
 #define AI_PAGE_INDEX MAIN_PAGE_TYPE_RIGHT
 // #define ENABLE_INSTRUCTION_LIST
 
 /* NOTE: these names are LOGICAL page ids (= tile add-order index used as
-   active_pos), NOT physical screen sides. After the L/R entry swap the
-   _RIGHT page (device_pager / trackpad) physically sits on the LEFT tile
-   (0,1) and the _LEFT placeholder on the RIGHT (2,1) — see the tileview
-   build in app_clock_status_bar.c. Renaming would ripple everywhere, so the
-   ids stay; trust the comments at each tile. */
+   active_pos), NOT physical screen sides. _RIGHT physically sits on the LEFT
+   tile (0,1) = merged session + actions page; _LEFT physically sits on the
+   RIGHT tile (2,1) = control centre + App List (R47 2026-09-05, moved there
+   from the bottom tile); _DOWN (1,2) is the mouse-mode entry parking tile —
+   see the tileview build in app_clock_status_bar.c. Renaming would ripple
+   everywhere, so the ids stay; trust the comments at each tile. */
 typedef enum
 {
     MAIN_PAGE_TYPE_DOWN = 0,

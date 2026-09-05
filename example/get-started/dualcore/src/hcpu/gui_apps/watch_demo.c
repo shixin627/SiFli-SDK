@@ -178,6 +178,19 @@ static void handle_back_event(bool is_button)
             return;
         }
     }
+    /* R51:滑鼠頁的媒體控制頁(hid_mouse 的 sheet,從頂部 header 展開)也是一層
+       overlay —— 它開著時的返回 = 收合它,不要往下掉到「離開 app / 回錶盤」。
+       跟聊天室同一個位置處理,只是它在聊天室之下(聊天室能疊在它上面)。 */
+    {
+        extern bool hid_mouse_media_sheet_is_open(void);
+        extern void hid_mouse_media_sheet_close(void);
+        if (hid_mouse_media_sheet_is_open())
+        {
+            hid_mouse_media_sheet_close();
+            LOG_I("ESC in media sheet => collapse back to mouse page");
+            return;
+        }
+    }
     if (gui_app_is_actived(APP_ID_MESSAGE))
     {
         LOG_D("ESC => trigger_back_event in speech app");
