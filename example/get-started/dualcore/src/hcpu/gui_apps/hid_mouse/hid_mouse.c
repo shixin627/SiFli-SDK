@@ -388,18 +388,17 @@ static void start_kbd_to_trackpad_collapse_anim(int32_t from_progress,
                                                 bool commit);
 
 // media center 前置宣告
-static void create_media_center_panel(lv_obj_t *parent);
+static void create_media_sheet(lv_obj_t *parent);
 // 設備切換箭頭 cb(定義在後段;媒體頁頂部設備名區用)
 static void dev_arrow_prev_cb(lv_event_t *e);
 static void dev_arrow_next_cb(lv_event_t *e);
-static void media_center_set_open(bool open, bool animate);
+static void media_sheet_set_open(bool open);
 static void media_center_update_play_icon(bool playing);
 static void media_center_play_btn_cb(lv_event_t *e);
 static void media_center_prev_btn_cb(lv_event_t *e);
 static void media_center_next_btn_cb(lv_event_t *e);
 static void media_center_vol_hold_cb(lv_event_t *e);
 static void status_bar_area_up_cb(lv_event_t *e);
-static void media_tileview_event_cb(lv_event_t *e);
 static void hid_mode_toggle(void);
 
 // 左右滾動弧的「觸發帶」厚度(px,貼外緣往內算)。原 50(比 UI 弧 30px 寬),
@@ -707,14 +706,50 @@ static lv_obj_t *status_bar_area_up = NULL;
 static lv_obj_t *s_top_logo = NULL; /* 頂部滑鼠圖(左拉進手寫時跟手位移;宣告提前
                                        到此=手寫段 hw_open_commit 也要歸位它) */
 static void top_logo_tx_anim_exec(void *obj, int32_t v); /* 定義在 status_bar 段 */
-static lv_obj_t *media_tileview = NULL;
-static lv_obj_t *media_home_tile = NULL;
-static lv_obj_t *media_tile = NULL;
+static lv_obj_t *s_devbar_in;       /* 拖曳換設備時從後面長出來的那條(定義見 devbar 段) */
+/* R48(founder 2026-09-05):媒體控制頁不再是「從上面滑下來的 tileview」,而是
+   **頂部那條 header 自己長大**成整頁(展開/收合動畫)。tileview / media_tile /
+   media_home_tile 整組退役。 */
+static lv_obj_t *s_media_sheet = NULL;         /* 展開後的媒體頁本體(從 header 長出) */
+static lv_obj_t *s_media_sheet_content = NULL; /* 頁內容(展開途中隱藏) */
+static bool s_media_sheet_open = false;
 static lv_obj_t *media_center_title_label = NULL;
 /* 頂部下拉去處覆寫（面板 host 時指向 lv_top_panel 的 reveal），NULL = 自有媒體層 */
 static void (*s_pulldown_cb)(void) = NULL;
 static lv_obj_t *media_center_play_img = NULL;
 static bool media_center_play_state = false;
+
+/* === R47(founder 2026-09-05):滑鼠頁頂部的「正在播放」header ==================
+   錶盤下方拉出來的就是滑鼠頁,所以滑鼠頁自己要有錶盤那條音樂 header:控制中的那台
+   有東西在播就浮出來,點它開**那一台**的媒體控制頁(不能左右翻台)。
+   曲名快取是必要的 —— 媒體控制頁改成點 header 才懶建,0x19 / 0x46 進來時它多半
+   還不存在;沒有這份快取,曲名就會掉在地上,header 也不知道自己該不該現身。 */
+static char s_media_now_title[64];
+static char s_media_now_artist[64];
+static bool s_media_now_playing = false;
+static lv_obj_t *s_media_hdr = NULL;
+static lv_obj_t *s_media_hdr_title = NULL;   /* 曲名(下排,跑馬燈) = 錶盤的 dial_header_content */
+static lv_obj_t *s_media_hdr_sub = NULL;     /* 演出者(上排小字)   = 錶盤的 dial_header_title */
+static lv_obj_t *s_media_hdr_art = NULL;     /* 專輯圖/遮罩        = 錶盤的 dial_header_img */
+static lv_obj_t *s_media_hdr_mask = NULL;    /* 底部漸層條         = 錶盤的 dial_header_bg_mask */
+/* 換台手勢裡「進來的」那條 header —— 對應底部 bar 的 s_devbar_in,同一組門檻、
+   同一條曲線,只有配色不同。它進場時我們還不知道下一台在播什麼(要等切過去之後
+   手機推的 0x19),所以裡面只有框和專輯圖佔位,沒有字。 */
+static lv_obj_t *s_media_hdr_in = NULL;
+static lv_obj_t *s_media_hdr_in_art = NULL;
+/* 換台完成後、下一台的 0x19 還沒到的那段:header 留著空框(跟 bar 換完名字就在那裡
+   是同一個道理 —— 不要閃一下消失再冒出來)。0x19/0x46 一到就填字;若回報的是「沒在
+   播」就會在那時收掉。目標設備離線(不會有回報)則不進這個狀態。 */
+static bool s_media_now_pending = false;
+static lv_obj_t *s_media_panel_parent = NULL; /* 媒體控制頁懶建時的父物件 */
+/* 拖曳判定 = 離按下起點的曼哈頓距離（不是每幀位移累積——真機手指按住
+   自帶 ±1-2px/幀抖動，累積必超標、hold 永遠 fire 不了，2026-07-06 踩過）。
+   R47：頂部 hit zone 跟媒體 header 兩邊都用，提到這裡共用。 */
+#define TOP_HOLD_DRIFT_CANCEL_PX 18
+
+static void mouse_media_header_sync(void);
+static void mouse_media_now_clear(void);
+static void media_center_ensure(void);
 
 static void update_v2t_btn_appearance(bool mic_active);
 static void mouse_v2t_set_active(bool active);
@@ -6230,6 +6265,7 @@ static rt_timer_t bottom_bar_multitask_timer = NULL;
    registers a back callback; the bottom-bar up gesture then returns to the
    instruction layer instead of firing multitask. */
 static bool s_hosted = false;
+static void media_exit_async_cb(void *p); /* 定義在媒體頁段:延後拆畫面避免 UAF */
 static void (*s_host_back_cb)(void) = NULL;
 static void (*s_host_pull_cb)(int up_px, int released) = NULL;
 
@@ -10356,47 +10392,123 @@ static void media_exit_btn_cb(lv_event_t *e)
     lv_async_call(media_exit_async_cb, NULL);
 }
 
-/**
- * @brief 建立媒體中心 tileview（仿 app_clock_status_bar）：
- *        - tileview 全螢幕，預設 hidden，初始 tile = home (0,1)
- *        - media tile (0,0)：媒體中心內容，geometric 在 home 上方
- *          → 從 home 往下拉，scroll_y 減少，media 從畫面上方滑下來
- *        - home tile (0,1)：透明，初始位置
- *        拖曳/snap/動畫全交給 LVGL tileview 處理，不再自己算 y
- */
-static void create_media_center_panel(lv_obj_t *parent)
+/* When the device-pager hosts this trackpad, the pager owns the top + bottom
+   edges (its device-name strip + bottom input bar). Set from
+   device_pager_set_active via hid_mouse_set_hosted. */
+static bool s_hosted_by_pager = false;
+void hid_mouse_set_hosted(bool hosted) { s_hosted_by_pager = hosted; }
+
+/* === R48:頂部 header ⇄ 媒體控制頁(同一塊東西的收合/展開)=====================
+   founder 2026-09-05:「點她後出來的媒體頁面也不要是從上面下來(最好是那層 header
+   展開變成媒體頁面)」。所以媒體頁不再是獨立的 tileview 圖層,而是一個跟 header
+   **同一個矩形**起跳的容器,tap 之後把它的寬高動畫到全螢幕;收合就是反過來。
+   頁內容(曲名/上一首/播放/下一首/音量)包在 s_media_sheet_content 裡,展開途中整包
+   隱藏 —— 不然每一幀都會看到被壓扁的控制列。 */
+#define MEDIA_HDR_W 300
+#define MEDIA_HDR_H 100
+#define MEDIA_HDR_R 30
+#define MEDIA_SHEET_ANIM_MS 240
+
+static int32_t s_sheet_anim_v = 0; /* 0 = header 大小,256 = 全螢幕 */
+
+static void media_sheet_anim_exec(void *var, int32_t v)
 {
-    media_tileview = lv_tileview_create(parent);
-    lv_obj_set_size(media_tileview, LV_HOR_RES_MAX, LV_VER_RES_MAX);
-    lv_obj_align(media_tileview, LV_ALIGN_CENTER, 0, 0);
-    lv_obj_set_scrollbar_mode(media_tileview, LV_SCROLLBAR_MODE_OFF);
-    lv_obj_set_style_bg_opa(media_tileview, LV_OPA_TRANSP, 0);
-    lv_obj_set_style_border_width(media_tileview, 0, 0);
-    lv_obj_set_style_pad_all(media_tileview, 0, 0);
-    lv_obj_add_flag(media_tileview, LV_OBJ_FLAG_HIDDEN);
+    (void)var;
+    if (s_media_sheet == NULL || !lv_obj_is_valid(s_media_sheet))
+        return;
+    s_sheet_anim_v = v;
+    lv_coord_t w = MEDIA_HDR_W + (LV_HOR_RES_MAX - MEDIA_HDR_W) * v / 256;
+    lv_coord_t h = MEDIA_HDR_H + (LV_VER_RES_MAX - MEDIA_HDR_H) * v / 256;
+    lv_obj_set_size(s_media_sheet, w, h);
+    lv_obj_set_style_radius(s_media_sheet, MEDIA_HDR_R - MEDIA_HDR_R * v / 256, 0);
+    lv_obj_align(s_media_sheet, LV_ALIGN_TOP_MID, 0, 0);
+}
 
-    // media (0,0)：geometric 上方，往下拖才滾到這裡
-    media_tile = lv_tileview_add_tile(media_tileview, 0, 0, LV_DIR_BOTTOM);
-    lv_obj_set_size(media_tile, LV_HOR_RES_MAX, LV_VER_RES_MAX);
-    lv_obj_set_style_bg_color(media_tile, lv_color_hex(0x000000), 0);
-    lv_obj_set_style_bg_opa(media_tile, LV_OPA_80, 0);
-    lv_obj_set_style_border_width(media_tile, 0, 0);
-    lv_obj_set_style_radius(media_tile, 0, 0);
-    lv_obj_set_scrollbar_mode(media_tile, LV_SCROLLBAR_MODE_OFF);
+static void media_sheet_anim_ready(lv_anim_t *a)
+{
+    (void)a;
+    if (s_media_sheet == NULL || !lv_obj_is_valid(s_media_sheet))
+        return;
+    if (s_media_sheet_open)
+    {
+        if (s_media_sheet_content && lv_obj_is_valid(s_media_sheet_content))
+            lv_obj_clear_flag(s_media_sheet_content, LV_OBJ_FLAG_HIDDEN);
+    }
+    else
+    {
+        lv_obj_add_flag(s_media_sheet, LV_OBJ_FLAG_HIDDEN);
+        mouse_media_header_sync(); /* 收完 header 回來(還在播的話) */
+    }
+}
 
-    // home (0,1)：geometric 下方，初始位置；只能往上滾去 media
-    media_home_tile = lv_tileview_add_tile(media_tileview, 0, 1, LV_DIR_TOP);
-    lv_obj_set_style_bg_opa(media_home_tile, LV_OPA_TRANSP, 0);
-    lv_obj_set_style_border_width(media_home_tile, 0, 0);
-    lv_obj_set_size(media_home_tile, LV_HOR_RES_MAX, LV_VER_RES_MAX);
-    lv_obj_set_scrollbar_mode(media_home_tile, LV_SCROLLBAR_MODE_OFF);
+/* 展開後頁面最上方那塊 = 原本 header 的位置。點它收回去(founder 的心智模型:
+   header 展開成頁,再點同一塊就收回)。 */
+static void media_sheet_collapse_cb(lv_event_t *e)
+{
+    (void)e;
+    media_sheet_set_open(false);
+}
 
-    /* 媒體頁頂部:「控制中設備」名稱+左右切換箭頭(2026-07-02 從 trackpad
-       頂部搬來 — 使用者要求)。同座標系(tile 全屏),沿用原 y40/42 位置;
-       label 非 clickable、箭頭可點;無設備時 update_ctrl_dev_label 隱藏。 */
-    /* 在線燈號:設備名上方小圓點,綠=在線/紅=斷線(founder 2026-07-22);
-       顏色/顯藏由 dev_offline_overlay_sync 管。 */
-    s_dev_status_dot = lv_obj_create(media_tile);
+/* R51(founder:「我媒體頁面拉左邊怎麼沒有我在其他頁面通用的返回手勢提示?你是不是
+   用自己的手勢擷取不是用我手表上寫的通用返回?」):對,第一版是自幹的 58px 邊緣把
+   手,所以沒有那條跟著手指走的返回提示。改成用**手錶原生的左緣返回偵測器**(開機時
+   lvsf_gesture_init 建在 lv_layer_top 的那組:偵測器 + 跟手提示箭頭),跟聊天室
+   (lv_chat_page)完全同一條路:
+     開頁  = display_gesture_detect_objs(0,true) 只留左緣那條(1/2/3 明確藏掉,
+             否則整寬的 BOTTOM bar 會吃掉媒體頁的按鈕)+ lvsf_gesture_bring_to_front()
+     返回  = 偵測器送 ESC → watch_demo.c 的 handle_back_event 認出媒體頁開著就收合
+     收頁  = 偵測器關回去(hid_mouse_enter_mode 的狀態),不然滑鼠頁的左緣拖曳
+             會被它吃掉又觸發一次 back。 */
+static void media_sheet_back_gesture_arm(bool on)
+{
+    extern void display_gesture_detect_objs(uint32_t idx, bool display);
+    extern void lvsf_gesture_bring_to_front(void);
+    display_gesture_detect_objs(0, on);
+    if (!on)
+        return;
+    display_gesture_detect_objs(1, false);
+    display_gesture_detect_objs(2, false);
+    display_gesture_detect_objs(3, false);
+    lvsf_gesture_bring_to_front();
+}
+
+/* watch_demo.c 的 handle_back_event 用這兩支決定「這次 ESC 是不是要收媒體頁」。 */
+bool hid_mouse_media_sheet_is_open(void)
+{
+    return s_media_sheet_open && s_media_sheet && lv_obj_is_valid(s_media_sheet);
+}
+
+void hid_mouse_media_sheet_close(void)
+{
+    media_sheet_set_open(false);
+}
+
+/**
+ * @brief 建立媒體控制頁(從 header 長出來的那一頁)。起始幾何 = header 的矩形。
+ */
+static void create_media_sheet(lv_obj_t *parent)
+{
+    s_media_sheet = lv_obj_create(parent);
+    lv_obj_remove_style_all(s_media_sheet);
+    lv_obj_set_size(s_media_sheet, MEDIA_HDR_W, MEDIA_HDR_H);
+    lv_obj_align(s_media_sheet, LV_ALIGN_TOP_MID, 0, 0);
+    lv_obj_set_style_radius(s_media_sheet, MEDIA_HDR_R, 0);
+    lv_obj_set_style_bg_color(s_media_sheet, lv_color_hex(0x000000), 0);
+    lv_obj_set_style_bg_opa(s_media_sheet, LV_OPA_COVER, 0);
+    lv_obj_set_style_clip_corner(s_media_sheet, true, 0);
+    lv_obj_clear_flag(s_media_sheet, LV_OBJ_FLAG_SCROLLABLE);
+    lv_obj_add_flag(s_media_sheet, LV_OBJ_FLAG_CLICKABLE); /* 吃掉底下觸控板的 press */
+    lv_obj_add_flag(s_media_sheet, LV_OBJ_FLAG_HIDDEN);
+
+    s_media_sheet_content = lv_obj_create(s_media_sheet);
+    lv_obj_remove_style_all(s_media_sheet_content);
+    lv_obj_set_size(s_media_sheet_content, LV_HOR_RES_MAX, LV_VER_RES_MAX);
+    lv_obj_set_pos(s_media_sheet_content, 0, 0);
+    lv_obj_clear_flag(s_media_sheet_content, LV_OBJ_FLAG_SCROLLABLE);
+    lv_obj_add_flag(s_media_sheet_content, LV_OBJ_FLAG_HIDDEN); /* 展開完才現身 */
+
+    /* 頁面頂部:在線燈號 + 控制中設備名(**沒有左右箭頭** —— founder:這一頁不能翻台)。 */
+    s_dev_status_dot = lv_obj_create(s_media_sheet_content);
     lv_obj_remove_style_all(s_dev_status_dot);
     lv_obj_set_size(s_dev_status_dot, 10, 10);
     lv_obj_align(s_dev_status_dot, LV_ALIGN_TOP_MID, 0, 26);
@@ -10404,10 +10516,9 @@ static void create_media_center_panel(lv_obj_t *parent)
     lv_obj_set_style_bg_opa(s_dev_status_dot, LV_OPA_COVER, 0);
     lv_obj_set_style_bg_color(s_dev_status_dot, lv_color_hex(0x4CAF50), 0);
     lv_obj_clear_flag(s_dev_status_dot, LV_OBJ_FLAG_CLICKABLE);
-    lv_obj_clear_flag(s_dev_status_dot, LV_OBJ_FLAG_SCROLLABLE);
     lv_obj_add_flag(s_dev_status_dot, LV_OBJ_FLAG_HIDDEN);
 
-    s_ctrl_dev_label = lv_label_create(media_tile);
+    s_ctrl_dev_label = lv_label_create(s_media_sheet_content);
     lv_obj_set_width(s_ctrl_dev_label, 200);
     lv_label_set_long_mode(s_ctrl_dev_label, LV_LABEL_LONG_DOT);
     lv_obj_set_style_text_align(s_ctrl_dev_label, LV_TEXT_ALIGN_CENTER, 0);
@@ -10416,114 +10527,364 @@ static void create_media_center_panel(lv_obj_t *parent)
     lv_obj_align(s_ctrl_dev_label, LV_ALIGN_TOP_MID, 0, 40);
     lv_obj_clear_flag(s_ctrl_dev_label, LV_OBJ_FLAG_CLICKABLE);
     lv_obj_clear_flag(s_ctrl_dev_label, LV_OBJ_FLAG_SCROLLABLE);
+    update_ctrl_dev_label();
 
-    s_dev_left_arrow = lv_img_create(media_tile);
-    lv_img_set_src(s_dev_left_arrow, &img_left_arrow);
-    lv_obj_align(s_dev_left_arrow, LV_ALIGN_TOP_MID, -117, 42);
-    lv_obj_add_flag(s_dev_left_arrow, LV_OBJ_FLAG_CLICKABLE);
-    lv_obj_set_ext_click_area(s_dev_left_arrow, 24);
-    lv_obj_add_event_cb(s_dev_left_arrow, dev_arrow_prev_cb, LV_EVENT_CLICKED,
-                        NULL);
-
-    s_dev_right_arrow = lv_img_create(media_tile);
-    lv_img_set_src(s_dev_right_arrow, &img_right_arrow);
-    lv_obj_align(s_dev_right_arrow, LV_ALIGN_TOP_MID, 117, 42);
-    lv_obj_add_flag(s_dev_right_arrow, LV_OBJ_FLAG_CLICKABLE);
-    lv_obj_set_ext_click_area(s_dev_right_arrow, 24);
-    lv_obj_add_event_cb(s_dev_right_arrow, dev_arrow_next_cb, LV_EVENT_CLICKED,
-                        NULL);
-
-    update_ctrl_dev_label(); // 依目前 active 設備設定文字/顯示 + 箭頭可見性
-
-    // 曲名 + 控制列 + 音量（與錶盤頂部面板的媒體格共用同一份 builder）
-    /* 這一頁跟著 active 設備動態切換,沒有固定歸屬 → 不種,靠校準。 */
-    media_content_build(media_tile, &media_center_title_label,
+    /* 曲名 + 控制列 + 音量(與舊媒體頁共用同一份 builder)。
+       這一頁跟著 active 設備動態切換,沒有固定歸屬 → 音量不種初值,靠 0x19 校準。 */
+    media_content_build(s_media_sheet_content, &media_center_title_label,
                         &media_center_play_img, &s_media_vol_slider,
                         &s_media_vol_btn, false);
 
-    // 離開 App：紅色 Exit 鈕（從舊右側抽屜移來），放媒體頁最底
-    lv_obj_t *media_exit_btn = lv_btn_create(media_tile);
-    lv_obj_set_size(media_exit_btn, 160, 56);
-    lv_obj_set_style_radius(media_exit_btn, 28, 0);
-    lv_obj_set_style_bg_color(media_exit_btn, lv_color_hex(0xFF3B30), 0);
-    lv_obj_set_style_bg_color(media_exit_btn, lv_color_hex(0xD9342B),
-                              LV_STATE_PRESSED);
-    lv_obj_set_style_bg_opa(media_exit_btn, LV_OPA_COVER, 0);
-    lv_obj_clear_flag(media_exit_btn, LV_OBJ_FLAG_PRESS_LOCK);
-    lv_obj_align(media_exit_btn, LV_ALIGN_BOTTOM_MID, 0, -24);
-    lv_obj_add_event_cb(media_exit_btn, media_exit_btn_cb, LV_EVENT_CLICKED, NULL);
-    lv_obj_t *media_exit_lbl = lv_label_create(media_exit_btn);
-    lv_label_set_text(media_exit_lbl, "Exit");
-    lv_obj_set_style_text_color(media_exit_lbl, lv_color_hex(0xFFFFFF), 0);
-    lv_obj_center(media_exit_lbl);
-    lv_obj_clear_flag(media_exit_lbl, LV_OBJ_FLAG_CLICKABLE);
-
-    // tileview value-changed：snap 回 home 時自動隱藏
-    lv_obj_add_event_cb(media_tileview, media_tileview_event_cb,
-                        LV_EVENT_VALUE_CHANGED, NULL);
-
-    // 起始 tile 設 home (0,1)
-    lv_obj_set_tile_id(media_tileview, 0, 1, false);
-}
-
-/**
- * @brief tileview value-changed cb：snap 完成後決定是否要收掉 tileview
- *        - tile 在 home → tileview 收進 hidden（讓底下 mouse mode UI 可用）
- *        - tile 在 media → 維持顯示
- */
-static void media_tileview_event_cb(lv_event_t *e)
-{
-    (void)e;
-    if (!media_tileview || !lv_obj_is_valid(media_tileview))
-        return;
-    lv_obj_t *act = lv_tileview_get_tile_act(media_tileview);
-    if (act == media_home_tile)
+    /* 離開 App:紅色 Exit 鈕。**只有獨立開 APP_ID_MOUSE 時才有** —— hosted(錶盤
+       下方拉出來的滑鼠頁)按它會去 exit 一個根本沒在跑的 app,那條路的退出是
+       「滑鼠頁頂部下拉回錶盤」。 */
+    if (s_pulldown_cb == NULL)
     {
-        lv_obj_add_flag(media_tileview, LV_OBJ_FLAG_HIDDEN);
+        lv_obj_t *media_exit_btn = lv_btn_create(s_media_sheet_content);
+        lv_obj_set_size(media_exit_btn, 160, 56);
+        lv_obj_set_style_radius(media_exit_btn, 28, 0);
+        lv_obj_set_style_bg_color(media_exit_btn, lv_color_hex(0xFF3B30), 0);
+        lv_obj_set_style_bg_color(media_exit_btn, lv_color_hex(0xD9342B),
+                                  LV_STATE_PRESSED);
+        lv_obj_set_style_bg_opa(media_exit_btn, LV_OPA_COVER, 0);
+        lv_obj_clear_flag(media_exit_btn, LV_OBJ_FLAG_PRESS_LOCK);
+        lv_obj_align(media_exit_btn, LV_ALIGN_BOTTOM_MID, 0, -24);
+        lv_obj_add_event_cb(media_exit_btn, media_exit_btn_cb, LV_EVENT_CLICKED, NULL);
+        lv_obj_t *media_exit_lbl = lv_label_create(media_exit_btn);
+        lv_label_set_text(media_exit_lbl, "Exit");
+        lv_obj_set_style_text_color(media_exit_lbl, lv_color_hex(0xFFFFFF), 0);
+        lv_obj_center(media_exit_lbl);
+        lv_obj_clear_flag(media_exit_lbl, LV_OBJ_FLAG_CLICKABLE);
     }
+
+    /* 收合熱區 = header 原本佔的那塊(建在 content 之後 = z 在上,吃得到 tap;
+       它下面只有設備名 label,不是按鈕,不會搶到別人的點擊)。 */
+    lv_obj_t *collapse_zone = lv_obj_create(s_media_sheet);
+    lv_obj_remove_style_all(collapse_zone);
+    lv_obj_set_size(collapse_zone, MEDIA_HDR_W, MEDIA_HDR_H);
+    lv_obj_align(collapse_zone, LV_ALIGN_TOP_MID, 0, 0);
+    lv_obj_set_style_bg_opa(collapse_zone, LV_OPA_TRANSP, 0);
+    lv_obj_clear_flag(collapse_zone, LV_OBJ_FLAG_SCROLLABLE);
+    lv_obj_add_flag(collapse_zone, LV_OBJ_FLAG_CLICKABLE);
+    lv_obj_add_event_cb(collapse_zone, media_sheet_collapse_cb, LV_EVENT_CLICKED,
+                        NULL);
 }
 
-/**
- * @brief 對外的開/收媒體中心：透過 lv_obj_set_tile_id 切換，
- *        animate=true 時用 tileview 內建動畫
- */
-/* When the device-pager hosts this trackpad, the pager owns the top + bottom
-   edges (its device-name strip + bottom input bar). Suppress the mouse page's
-   own media-center pull-down so the two don't fight. Set from
-   device_pager_set_active via hid_mouse_set_hosted. */
-static bool s_hosted_by_pager = false;
-void hid_mouse_set_hosted(bool hosted) { s_hosted_by_pager = hosted; }
-
-static void media_center_set_open(bool open, bool animate)
+/* 媒體控制頁懶建:只有「點頂部 header」和(獨立 app 時)「頂部下拉」兩個入口,
+   兩個都是使用者動作 —— 開機/進滑鼠模式時不必先付這塊 heap。 */
+static void media_center_ensure(void)
 {
-    if (!media_tileview || !lv_obj_is_valid(media_tileview))
+    if (s_media_sheet && lv_obj_is_valid(s_media_sheet))
         return;
+    if (s_media_panel_parent == NULL || !lv_obj_is_valid(s_media_panel_parent))
+        return;
+    create_media_sheet(s_media_panel_parent);
+    /* 曲名/播放狀態用快取補上 —— 這一頁是後來才建的,先前的 0x19/0x46 沒人接。 */
+    if (media_center_title_label && lv_obj_is_valid(media_center_title_label))
+        lv_label_set_text(media_center_title_label,
+                          s_media_now_title[0] ? s_media_now_title : "Media Title");
+    media_center_update_play_icon(s_media_now_playing);
+}
+
+/** 展開 / 收合。展開 = header 收起來、sheet 從 header 的矩形長到全螢幕。 */
+static void media_sheet_set_open(bool open)
+{
+    if (open)
+        media_center_ensure();
+    if (s_media_sheet == NULL || !lv_obj_is_valid(s_media_sheet))
+        return;
+    if (open == s_media_sheet_open &&
+        (!open || !lv_obj_has_flag(s_media_sheet, LV_OBJ_FLAG_HIDDEN)))
+        return;
+    s_media_sheet_open = open;
+    lv_anim_del(&s_sheet_anim_v, media_sheet_anim_exec);
     if (open)
     {
-        lv_obj_clear_flag(media_tileview, LV_OBJ_FLAG_HIDDEN);
-        lv_obj_move_foreground(media_tileview);
-        // 開啟 = 滾到 media tile (0,0)
-        lv_obj_set_tile_id(media_tileview, 0, 0, animate);
-        /* Seed the title. Use the phone's own media (0x46) ONLY when not routing
-           to a remote target; for an active remote target leave whatever the last
-           0x19 wrote, so opening the centre doesn't flash the phone's own song. */
-        if (media_center_title_label &&
-            lv_obj_is_valid(media_center_title_label) &&
-            !ble_hid_mouse_app_route())
+        /* 開場的曲名:控制目標是手機時用手機自己的 0x46(get_media_title);遠端目標
+           留最後一次 0x19 寫進來的,免得開頁閃一下手機的歌。 */
+        if (media_center_title_label && lv_obj_is_valid(media_center_title_label))
         {
-            char *title = get_media_title();
-            lv_label_set_text(media_center_title_label,
-                              (title && title[0]) ? title : "Media Title");
+            const char *t = s_media_now_title;
+            if (!ble_hid_mouse_app_route())
+            {
+                char *phone = get_media_title();
+                if (phone && phone[0]) t = phone;
+            }
+            lv_label_set_text(media_center_title_label, (t && t[0]) ? t : "Media Title");
         }
+        if (s_media_sheet_content && lv_obj_is_valid(s_media_sheet_content))
+            lv_obj_add_flag(s_media_sheet_content, LV_OBJ_FLAG_HIDDEN);
+        if (s_media_hdr && lv_obj_is_valid(s_media_hdr))
+            lv_obj_add_flag(s_media_hdr, LV_OBJ_FLAG_HIDDEN); /* 換 sheet 上場 */
+        media_sheet_anim_exec(NULL, 0);
+        lv_obj_clear_flag(s_media_sheet, LV_OBJ_FLAG_HIDDEN);
+        lv_obj_move_foreground(s_media_sheet);
+        media_sheet_back_gesture_arm(true); /* 手錶通用的左緣返回(含跟手提示) */
     }
     else
     {
-        // 收起 = 滾到 home tile (0,1)
-        lv_obj_set_tile_id(media_tileview, 0, 1, animate);
-        // value-changed 會在動畫結束後收 hidden；無動畫直接收
-        if (!animate)
-            lv_obj_add_flag(media_tileview, LV_OBJ_FLAG_HIDDEN);
+        media_sheet_back_gesture_arm(false); /* 收頁 = 偵測器關回滑鼠模式的狀態 */
+        if (s_media_sheet_content && lv_obj_is_valid(s_media_sheet_content))
+            lv_obj_add_flag(s_media_sheet_content, LV_OBJ_FLAG_HIDDEN);
     }
+    lv_anim_t a;
+    lv_anim_init(&a);
+    lv_anim_set_var(&a, &s_sheet_anim_v);
+    lv_anim_set_exec_cb(&a, media_sheet_anim_exec);
+    lv_anim_set_values(&a, s_sheet_anim_v, open ? 256 : 0);
+    lv_anim_set_time(&a, MEDIA_SHEET_ANIM_MS);
+    lv_anim_set_path_cb(&a, lv_anim_path_ease_out);
+    lv_anim_set_ready_cb(&a, media_sheet_anim_ready);
+    lv_anim_start(&a);
+}
+
+/* ---- 頂部「正在播放」header（R47 / R48 改版）------------------------------ *
+ * founder 2026-09-05:「上面的媒體 header 要跟我錶盤上面的邏輯完全一樣,只顯示
+ * 文字、過長用跑馬燈,不要有按鈕在 header 上」。所以這裡只有兩行字:上面小字是
+ * 演出者(對齊錶盤 dial_header_title)、下面是曲名並且 LONG_SCROLL_CIRCULAR
+ * (對齊 dial_header_content)。播放狀態圖示已移除。 */
+
+static void mouse_media_header_sync(void)
+{
+    if (!s_media_hdr || !lv_obj_is_valid(s_media_hdr))
+        return;
+    /* R50:換台手勢把 header 縮小+平移+淡出過,那些都是 style 殘留 —— 重新現身前
+       先整組歸位,否則新設備的第一首歌會是一塊縮小的半透明殘影。 */
+    lv_obj_set_width(s_media_hdr, MEDIA_HDR_W);
+    lv_obj_set_style_translate_x(s_media_hdr, 0, 0);
+    lv_obj_set_style_opa(s_media_hdr, LV_OPA_COVER, 0);
+    if (s_media_hdr_mask && lv_obj_is_valid(s_media_hdr_mask))
+    {
+        lv_obj_set_style_bg_opa(s_media_hdr_mask, 15, 0);
+        lv_obj_set_style_border_opa(s_media_hdr_mask, 30, 0);
+    }
+    if (s_media_hdr_in && lv_obj_is_valid(s_media_hdr_in))
+        lv_obj_add_flag(s_media_hdr_in, LV_OBJ_FLAG_HIDDEN);
+    if ((s_media_now_title[0] == '\0' && !s_media_now_pending) || s_media_sheet_open)
+    {
+        /* 沒在播(而且不是換台後等回報中),或已經展開成整頁 —— header 不該露臉。 */
+        lv_obj_add_flag(s_media_hdr, LV_OBJ_FLAG_HIDDEN);
+        return;
+    }
+    lv_obj_clear_flag(s_media_hdr, LV_OBJ_FLAG_HIDDEN);
+    if (s_media_hdr_title && lv_obj_is_valid(s_media_hdr_title))
+    {
+        lv_label_set_text(s_media_hdr_title, s_media_now_title);
+        lv_obj_set_style_text_opa(s_media_hdr_title, LV_OPA_COVER, 0);
+    }
+    if (s_media_hdr_sub && lv_obj_is_valid(s_media_hdr_sub))
+    {
+        lv_label_set_text(s_media_hdr_sub, s_media_now_artist);
+        lv_obj_set_style_text_opa(s_media_hdr_sub, LV_OPA_COVER, 0);
+    }
+    /* 專輯圖:只有控制目標 = 手機(沒開 relay route)時才有 —— MEDIA_HEADER_IMG 是
+       手機 0x46 推來的檔,拿它去代表桌面正在播的歌會是錯的圖。遠端目標就維持
+       media_mask 佔位,跟錶盤在圖還沒到時長得一樣。 */
+    if (s_media_hdr_art && lv_obj_is_valid(s_media_hdr_art))
+    {
+        if (!ble_hid_mouse_app_route() && MEDIA_HEADER_IMG[0])
+        {
+            lv_img_set_src(s_media_hdr_art, MEDIA_HEADER_IMG);
+            lv_img_set_zoom(s_media_hdr_art, 254);
+        }
+        else
+        {
+            lv_img_set_src(s_media_hdr_art, MEDIA_MASK);
+            lv_img_set_zoom(s_media_hdr_art, 256);
+        }
+        lv_obj_set_size(s_media_hdr_art, 100, 100);
+        lv_obj_set_style_img_opa(s_media_hdr_art, LV_OPA_30, 0);
+        lv_obj_align(s_media_hdr_art, LV_ALIGN_CENTER, 0, 0);
+    }
+}
+
+/* 目前控制中那台的 now-playing 快取。title 為空 = 沒有在播 → header 收起來。 */
+static void mouse_media_now_set(const char *title, const char *artist, bool playing)
+{
+    if (title == NULL) title = "";
+    if (artist == NULL) artist = "";
+    s_media_now_pending = false; /* 回報到了,不再是「等 0x19」的空框 */
+    strncpy(s_media_now_title, title, sizeof(s_media_now_title) - 1);
+    s_media_now_title[sizeof(s_media_now_title) - 1] = '\0';
+    strncpy(s_media_now_artist, artist, sizeof(s_media_now_artist) - 1);
+    s_media_now_artist[sizeof(s_media_now_artist) - 1] = '\0';
+    s_media_now_playing = playing;
+    mouse_media_header_sync();
+}
+
+static void mouse_media_now_clear(void)
+{
+    s_media_now_title[0] = '\0';
+    s_media_now_artist[0] = '\0';
+    s_media_now_playing = false;
+    s_media_now_pending = false;
+    mouse_media_header_sync();
+}
+
+/* 換台當下呼叫:上一台的曲名作廢,但 header **留著空框**等新那台的 0x19 —— 這樣
+   「出去的縮走、進來的長大」之後畫面上還是一條 header,不會閃一下不見。目標離線
+   時不會有回報,直接收掉。 */
+static void mouse_media_now_pending(void)
+{
+    s_media_now_title[0] = '\0';
+    s_media_now_artist[0] = '\0';
+    s_media_now_playing = false;
+    s_media_now_pending = !dev_active_offline();
+    mouse_media_header_sync();
+}
+
+static lv_point_t s_media_hdr_press;
+static bool s_media_hdr_dragged = false;
+
+static void media_header_cb(lv_event_t *e)
+{
+    lv_event_code_t code = lv_event_get_code(e);
+    lv_indev_t *indev = lv_indev_get_act();
+    if (code == LV_EVENT_PRESSED)
+    {
+        s_media_hdr_dragged = false;
+        if (indev) lv_indev_get_point(indev, &s_media_hdr_press);
+    }
+    else if (code == LV_EVENT_PRESSING)
+    {
+        if (s_media_hdr_dragged || indev == NULL)
+            return;
+        lv_point_t now;
+        lv_indev_get_point(indev, &now);
+        lv_coord_t dx = now.x - s_media_hdr_press.x;
+        lv_coord_t dy = now.y - s_media_hdr_press.y;
+        if (LV_ABS(dx) + LV_ABS(dy) <= TOP_HOLD_DRIFT_CANCEL_PX)
+            return;
+        s_media_hdr_dragged = true; /* 這次按壓不再算 tap */
+        /* header 蓋在頂部 hit zone 上,所以下拉手勢要自己轉發一次 —— 否則「從
+           header 上往下拉退出滑鼠頁」會變成死區(founder 的手指不會特地避開它)。
+           本物件沒有 PRESS_LOCK,錶盤 tileview 亮出來之後 press 下一 tick 就交棒。 */
+        if (dy > 0 && dy > LV_ABS(dx) && s_pulldown_cb)
+            s_pulldown_cb();
+    }
+    else if (code == LV_EVENT_RELEASED)
+    {
+        if (s_media_hdr_dragged)
+            return;
+        media_sheet_set_open(true); /* 沒拖 = tap → 展開成媒體控制頁 */
+    }
+}
+
+/* 錶盤那條音樂 header 的滑鼠頁版本 —— R51(founder:「媒體 header 的 ui 樣式也跟
+   錶盤那邊的不一樣」):不再是自己畫的黑藥丸,而是**逐項複刻** lv_message_list_layout.c
+   的 lv_dial_header_builder():
+     dial_header_bg      300x100 圓角 30 黑底(不 remove_style_all,連預設樣式都一樣)
+     dial_header_img_bg  100x100 圓角 20 clip_corner,裡面放專輯圖/media_mask
+     dial_header_bg_mask 貼底的那條「框」——**這裡不用它那張圖**:header_bg 是
+                         300x60 的點陣圖,橫向縮不了,換台手勢把 header 縮小時會被
+                         裁斷(founder 2026-09-05)。改成自己畫一個同尺寸、同圓角的
+                         半透明白框(白底 15% + 1px 白邊 30%,就是錶盤那支 builder
+                         裡被註解掉的、換成圖片之前的原始畫法),寬度用 LV_PCT(100)
+                         跟著 header 一起縮。曲名 label 一樣掛在它上面
+     dial_header_title   150x30 TOP_MID y8  font(-2)  = 演出者
+     dial_header_content 240x50 BOTTOM_MID  font(-1)  = 曲名,LONG_SCROLL_CIRCULAR
+     最後一顆 300x100 透明物件收觸控
+   專輯圖只有「控制目標 = 手機」時拿得到(MEDIA_HEADER_IMG 是手機 0x46 推的檔);
+   遠端桌面的 0x19 不帶圖,就維持 media_mask 佔位(= 錶盤在圖還沒到時的樣子)。 */
+/* header 的外殼(框 + 專輯圖佔位)—— 出去的那條和進來的那條共用同一份外觀,
+   差別只在進來的那條沒有文字(還不知道下一台在播什麼)。 */
+static lv_obj_t *media_hdr_shell_create(lv_obj_t *parent, lv_obj_t **out_art,
+                                        lv_obj_t **out_mask)
+{
+    lv_obj_t *hdr = lv_obj_create(parent);
+    lv_obj_set_size(hdr, MEDIA_HDR_W, MEDIA_HDR_H);
+    lv_obj_set_style_bg_color(hdr, lv_color_hex(0x000000), 0);
+    lv_obj_set_style_bg_opa(hdr, LV_OPA_COVER, 0);
+    lv_obj_set_style_radius(hdr, MEDIA_HDR_R, 0);
+    lv_obj_clear_flag(hdr, LV_OBJ_FLAG_SCROLLABLE);
+    lv_obj_align(hdr, LV_ALIGN_TOP_MID, 0, 0);
+
+    lv_obj_t *art_bg = lv_obj_create(hdr);
+    lv_obj_set_size(art_bg, 100, 100);
+    lv_obj_set_style_radius(art_bg, 20, 0);
+    lv_obj_set_style_clip_corner(art_bg, true, 0);
+    lv_obj_set_style_bg_opa(art_bg, LV_OPA_TRANSP, 0);
+    lv_obj_align(art_bg, LV_ALIGN_TOP_MID, 0, 0);
+    lv_obj_clear_flag(art_bg, LV_OBJ_FLAG_SCROLLABLE);
+
+    lv_obj_t *art = lv_img_create(art_bg);
+    lv_img_set_src(art, MEDIA_MASK);
+    lv_obj_set_size(art, 100, 100);
+    lv_obj_set_style_radius(art, 25, 0);
+    lv_obj_set_style_img_opa(art, LV_OPA_30, 0);
+    lv_obj_align(art, LV_ALIGN_CENTER, 0, 0);
+
+    /* 貼底的框:自己畫,寬度 100% → header 縮多少它就縮多少(原本那張 header_bg
+       是 300x60 的點陣圖,橫向縮不了,縮小時會被裁斷)。 */
+    lv_obj_t *mask = lv_obj_create(hdr);
+    lv_obj_remove_style_all(mask);
+    lv_obj_set_size(mask, LV_PCT(100), 60);
+    lv_obj_set_style_radius(mask, MEDIA_HDR_R, 0);
+    lv_obj_set_style_bg_color(mask, lv_color_hex(0xFFFFFF), 0);
+    lv_obj_set_style_bg_opa(mask, 15, 0);
+    lv_obj_set_style_border_width(mask, 1, 0);
+    lv_obj_set_style_border_color(mask, lv_color_hex(0xFFFFFF), 0);
+    lv_obj_set_style_border_opa(mask, 30, 0);
+    lv_obj_clear_flag(mask, LV_OBJ_FLAG_SCROLLABLE);
+    lv_obj_clear_flag(mask, LV_OBJ_FLAG_CLICKABLE);
+    lv_obj_align(mask, LV_ALIGN_BOTTOM_MID, 0, 0);
+
+    if (out_art) *out_art = art;
+    if (out_mask) *out_mask = mask;
+    return hdr;
+}
+
+static void create_media_header(lv_obj_t *parent)
+{
+    /* 先建**進來的**那條 → z 在下,換台時它從後面長出來,不會蓋到還沒走完的那條
+       (跟底部 bar 的 s_devbar_in 同一個道理與同一個順序)。 */
+    s_media_hdr_in = media_hdr_shell_create(parent, &s_media_hdr_in_art, NULL);
+    lv_obj_add_flag(s_media_hdr_in, LV_OBJ_FLAG_HIDDEN);
+    lv_obj_clear_flag(s_media_hdr_in, LV_OBJ_FLAG_CLICKABLE); /* 純畫面,手指永遠在真的那條上 */
+
+    /* 真的那一條:同一份外殼 + 兩行字 + 觸控。 */
+    s_media_hdr = media_hdr_shell_create(parent, &s_media_hdr_art, &s_media_hdr_mask);
+    lv_obj_add_flag(s_media_hdr, LV_OBJ_FLAG_HIDDEN); /* 有東西在播才現身 */
+
+    /* 上排小字 = 演出者(錶盤 dial_header_title)。 */
+    s_media_hdr_sub = lv_label_create(s_media_hdr);
+    lv_obj_set_size(s_media_hdr_sub, 150, 30);
+    lv_label_set_long_mode(s_media_hdr_sub, LV_LABEL_LONG_DOT);
+    lv_obj_set_style_anim_speed(s_media_hdr_sub, 15, 0);
+    lv_obj_set_style_text_align(s_media_hdr_sub, LV_TEXT_ALIGN_CENTER, LV_PART_MAIN);
+    lv_obj_set_style_text_font(s_media_hdr_sub,
+                               LV_EXT_FONT_GET(get_system_font_size(-2)), 0);
+    lv_obj_set_style_text_color(s_media_hdr_sub, lv_color_white(), 0);
+    lv_obj_set_style_text_opa(s_media_hdr_sub, LV_OPA_50, 0);
+    lv_obj_align(s_media_hdr_sub, LV_ALIGN_TOP_MID, 0, 8);
+    lv_label_set_text(s_media_hdr_sub, "");
+
+    /* 下排 = 曲名,掛在漸層條上、過長跑馬燈(錶盤 dial_header_content)。 */
+    s_media_hdr_title = lv_label_create(s_media_hdr_mask);
+    lv_obj_set_size(s_media_hdr_title, 240, 50);
+    lv_label_set_long_mode(s_media_hdr_title, LV_LABEL_LONG_SCROLL_CIRCULAR);
+    lv_obj_set_style_anim_speed(s_media_hdr_title, 15, 0);
+    lv_obj_set_style_text_align(s_media_hdr_title, LV_TEXT_ALIGN_CENTER, LV_PART_MAIN);
+    lv_obj_set_style_text_font(s_media_hdr_title,
+                               LV_EXT_FONT_GET(get_system_font_size(-1)), 0);
+    lv_obj_set_style_text_color(s_media_hdr_title, lv_color_white(), 0);
+    lv_obj_set_style_text_opa(s_media_hdr_title, LV_OPA_70, 0);
+    lv_obj_align(s_media_hdr_title, LV_ALIGN_BOTTOM_MID, 0, 0);
+    lv_label_set_text(s_media_hdr_title, "");
+
+    /* 觸控收在最後一顆透明物件上(錶盤的 houch_obj 同款)——
+       tap = 展開成媒體頁、明確下拉 = 退出滑鼠頁。 */
+    lv_obj_t *touch = lv_obj_create(s_media_hdr);
+    lv_obj_remove_style_all(touch);
+    lv_obj_set_size(touch, MEDIA_HDR_W, MEDIA_HDR_H);
+    lv_obj_align(touch, LV_ALIGN_CENTER, 0, 0);
+    lv_obj_set_style_bg_opa(touch, LV_OPA_TRANSP, 0);
+    lv_obj_clear_flag(touch, LV_OBJ_FLAG_SCROLLABLE);
+    lv_obj_add_flag(touch, LV_OBJ_FLAG_CLICKABLE);
+    lv_obj_clear_flag(touch, LV_OBJ_FLAG_PRESS_LOCK); /* 下拉要能把 press 交棒出去 */
+    lv_obj_add_event_cb(touch, media_header_cb, LV_EVENT_ALL, NULL);
+
+    mouse_media_header_sync();
 }
 
 /**
@@ -10554,9 +10915,6 @@ static void hid_mode_toggle(void)
    - 按滿 TOP_HOLD_TO_FLY_MS 沒動 → 進飛鼠（handfree，同 FSR 捏壓開關），
      動態加 PRESS_LOCK 鎖住 press，之後手指小滑不會誤斷；放開即回 trackpad */
 #define TOP_HOLD_TO_FLY_MS 250
-/* 拖曳判定＝離按下起點的曼哈頓距離（不是每幀位移累積——真機手指按住
-   自帶 ±1-2px/幀抖動，累積必超標、hold 永遠 fire 不了，2026-07-06 踩過） */
-#define TOP_HOLD_DRIFT_CANCEL_PX 18
 
 void set_hid_mouse_handfree_mode_to(bool v); // 定義在本檔後段
 static lv_timer_t *s_top_hold_timer = NULL;
@@ -10984,14 +11342,12 @@ static void status_bar_area_up_cb(lv_event_t *e)
                            下一 tick 被它的 tileview 接走（同一機制，只是換去處）*/
                         s_pulldown_cb();
                     }
-                    else if (dy > 0 && dy > LV_ABS(dx) && media_tileview &&
-                             lv_obj_is_valid(media_tileview))
+                    else if (dy > 0 && dy > LV_ABS(dx))
                     {
-                        // 明確往下拉 → 媒體下拉：這時才亮 tileview，
-                        // press 下一 tick 被它接走（原機制）
-                        lv_obj_set_tile_id(media_tileview, 0, 1, false);
-                        lv_obj_clear_flag(media_tileview, LV_OBJ_FLAG_HIDDEN);
-                        lv_obj_move_foreground(media_tileview);
+                        /* 獨立開 APP_ID_MOUSE(沒有錶盤可回)時,頂部下拉 = 開媒體
+                           控制頁。R48:改成跟 tap 同一個展開動畫,不再是滑下來的
+                           圖層 —— 這條路上沒有 header 可以長大,就直接展開。 */
+                        media_sheet_set_open(true);
                     }
                 }
             }
@@ -11008,7 +11364,7 @@ static void status_bar_area_up_cb(lv_event_t *e)
             top_logo_slide_home();
             hw_pull_snap(false);
         }
-        // press 被 tileview 接走（媒體下拉路徑）
+        // press 被錶盤 tileview 接走（下拉退出滑鼠頁那條）
         top_hold_cancel();
         top_fly_end("PRESS_LOST");
     }
@@ -11059,11 +11415,6 @@ static void status_bar_area_up_cb(lv_event_t *e)
         bool was_tap = (s_top_hold_timer != NULL);
         top_hold_cancel();
         top_fly_end("RELEASED");
-        // tap（沒拖沒 hold）或飛鼠放開 → 收 tileview
-        if (media_tileview && lv_obj_is_valid(media_tileview))
-        {
-            lv_obj_add_flag(media_tileview, LV_OBJ_FLAG_HIDDEN);
-        }
         /* 2026-08-07:進輸入的 tap 搬到底部的 keyboard_icon(bottom_logo_cb)，
            頂部這塊只留「下拉開面板 / 按住進飛鼠」。was_tap 保留給上面的
            top_fly_end 判斷用。 */
@@ -11077,13 +11428,19 @@ static void status_bar_area_up_cb(lv_event_t *e)
  */
 void mouse_mode_handle_media_title(const char *title)
 {
-    if (!media_center_title_label ||
-        !lv_obj_is_valid(media_center_title_label))
-        return;
     /* This is the phone's OWN media (NOTIFY 0x46). When a remote target is the
        active selection, the media centre shows that device's now-playing instead
        (mouse_mode_handle_remote_media_state / 0x19); ignore the phone's own here. */
     if (ble_hid_mouse_app_route())
+        return;
+    /* R47:先進快取(header 靠它決定要不要現身),媒體頁在不在都一樣要記。 */
+    {
+        extern char *get_media_artist(void);
+        char *artist = get_media_artist();
+        mouse_media_now_set(title, artist, s_media_now_playing);
+    }
+    if (!media_center_title_label ||
+        !lv_obj_is_valid(media_center_title_label))
         return;
     lv_label_set_text(media_center_title_label,
                       (title && title[0]) ? title : "Media Title");
@@ -11097,11 +11454,12 @@ void mouse_mode_handle_media_title(const char *title)
 void mouse_mode_handle_remote_media_state(const char *device_id, const char *title,
                                           const char *artist, bool playing)
 {
-    (void)artist; /* media centre shows title only for now */
-    if (!media_center_title_label || !lv_obj_is_valid(media_center_title_label))
-        return;
     if (device_id == NULL || s_dev_active_id[0] == '\0' ||
         strncmp(device_id, s_dev_active_id, SYNCED_DEVICE_ID_LEN) != 0)
+        return;
+    /* R47:先進快取 —— 滑鼠頁頂部的 header 吃這份,媒體控制頁是點了才建的。 */
+    mouse_media_now_set(title, artist, playing);
+    if (!media_center_title_label || !lv_obj_is_valid(media_center_title_label))
         return;
     lv_label_set_text(media_center_title_label,
                       (title && title[0]) ? title : "Media Title");
@@ -11110,6 +11468,8 @@ void mouse_mode_handle_remote_media_state(const char *device_id, const char *tit
 
 void mouse_mode_handle_media_play_state(bool playing)
 {
+    s_media_now_playing = playing;
+    mouse_media_header_sync();
     media_center_update_play_icon(playing);
 }
 
@@ -11180,6 +11540,10 @@ static void set_active_device_by_index(int idx)
        so the previous device's title doesn't linger as if it were this one's. */
     if (media_center_title_label && lv_obj_is_valid(media_center_title_label))
         lv_label_set_text(media_center_title_label, "Media Title");
+    /* R47/R52:換台 = 上一台的 now-playing 作廢。header 不直接收掉,而是留一個空框
+       等這一台的 0x19(見 mouse_media_now_pending)——「進來的那條長大之後立刻消失」
+       比什麼都沒有還突兀。 */
+    mouse_media_now_pending();
     LOG_I("[dev_switch] active -> idx=%d/%d id=%s", idx, (int)n, id);
 }
 
@@ -11242,6 +11606,7 @@ void hid_mouse_clear_active_device(void)
         return;
     s_dev_active_id[0] = '\0';
     LOG_W("[active] mouse clear");
+    mouse_media_now_clear(); /* R47:控制目標換回手機,遠端那台的曲名作廢 */
     commu_send_active_device("");
     ble_hid_mouse_set_app_route(false);
     LOG_I("[dev_switch] active -> phone (cleared)");
@@ -11251,7 +11616,15 @@ static const char *active_device_name(void); /* 定義在下方 */
 void hid_mouse_ensure_active_device(void)
 {
     if (active_device_name() != NULL)
+    {
+        /* 上次控制的那台還在 → 接回 relay(獨立 app 的 ONSTART 同一條路)。
+           **要重送一次 active** 而不是直接 return:手機收到 active-select 才會把
+           那台的 now-playing(0x19)推回來,滑鼠頁頂部的媒體 header 靠它現身。 */
+        LOG_W("[active] mouse reuse last device");
+        commu_send_active_device(s_dev_active_id);
+        ble_hid_mouse_set_app_route(true);
         return;
+    }
     int def = pick_default_device();
     if (def >= 0)
         set_active_device_by_index(def);
@@ -11299,9 +11672,35 @@ static bool dev_active_offline(void)
 }
 
 /* active 設備斷線=觸碰板區(y80 以下)灰+中央「斷線」(founder 2026-07-22 二改)。
-   overlay 吃 press=擋觸碰板/bar/滾動弧;頂部 80px 不蓋=媒體下拉照常(其 tap/
-   hold/左拉手勢另外 gate,只留下拉)。media tileview 開啟時 foreground 蓋過
-   overlay=面板內切設備可操作。同函式順路管媒體頁設備名上方的在線燈號。 */
+   overlay 吃 press=擋觸碰板/滾動弧;頂部 80px 不蓋=下拉退出照常。
+   R48(founder 2026-09-05:「offline 會蓋到下面的 bar 上面讓我不能左右繼續切換
+   設備」):**底部設備 bar 要在 overlay 之上** —— 斷線時最需要做的事就是換一台,
+   把換台的手勢一起蓋掉等於把人鎖在死頁面。bar 的 tap / 長按本來就已經 gate 掉
+   (bottom_logo_cb / bottom_logo_long_press_cb 開頭的 dev_active_offline()),
+   所以浮上來之後**只剩左右拖曳換設備**,正是 founder 要的。
+   媒體頁(sheet)展開時同樣壓在 overlay 之上。同函式順路管設備名上方的在線燈號。 */
+/* 把底部設備 bar(真的那條 + 拖曳時從後面長出來的那條)拉到 ref 之上。同一個
+   parent 才有可比的 z;已經在上面就不動(move_foreground 會 invalidate)。 */
+static void devbar_keep_above(lv_obj_t *ref)
+{
+    if (ref == NULL || !lv_obj_is_valid(ref))
+        return;
+    lv_obj_t *host = lv_obj_get_parent(ref);
+    /* 媒體 header 也一起 —— 它跟 overlay 上緣重疊 20px,不拉上來會被灰掉一角。 */
+    lv_obj_t *bars[3] = { s_devbar_in, s_top_logo, s_media_hdr };
+    for (int i = 0; i < 3; i++)
+    {
+        lv_obj_t *b = bars[i];
+        if (b == NULL || !lv_obj_is_valid(b))
+            continue;
+        if (lv_obj_get_parent(b) != host)
+            continue;
+        if (lv_obj_get_index(b) > lv_obj_get_index(ref))
+            continue;
+        lv_obj_move_foreground(b);
+    }
+}
+
 static void dev_offline_overlay_sync(void)
 {
     bool offline = dev_active_offline();
@@ -11334,8 +11733,10 @@ static void dev_offline_overlay_sync(void)
            會被 overlay 永遠壓住(founder 2026-07-22:媒體中心切到斷線設備
            OFFLINE 蓋在面板上)。 */
         lv_obj_t *host = NULL;
-        if (media_tileview && lv_obj_is_valid(media_tileview))
-            host = lv_obj_get_parent(media_tileview);
+        if (s_media_panel_parent && lv_obj_is_valid(s_media_panel_parent))
+            host = s_media_panel_parent; /* = 滑鼠頁的 bg,設備 bar 也在這一層 */
+        if (host == NULL && s_media_sheet && lv_obj_is_valid(s_media_sheet))
+            host = lv_obj_get_parent(s_media_sheet);
         if (host == NULL)
             host = hid_mouse_ui_host();
         if (host == NULL)
@@ -11361,11 +11762,16 @@ static void dev_offline_overlay_sync(void)
         lv_obj_clear_flag(s_dev_offline_overlay, LV_OBJ_FLAG_HIDDEN);
         lv_obj_move_foreground(s_dev_offline_overlay);
     }
-    /* OFFLINE 恆在媒體面板**下層**(founder 2026-07-22 定案:面板開著時被遮、
-       拉上去才看到;同 parent 才拉得動)。每 tick 保證,面板中途開也不會被壓。 */
-    if (media_tileview && lv_obj_is_valid(media_tileview) &&
-        !lv_obj_has_flag(media_tileview, LV_OBJ_FLAG_HIDDEN))
-        lv_obj_move_foreground(media_tileview);
+    /* OFFLINE 恆在「設備 bar」與「媒體頁」**下層**(同 parent 才拉得動)。每 tick
+       保證 —— overlay 是後來才建/才顯示的,z 一定比它們高,不主動壓回去就會蓋住。
+       只有真的被壓住(index 比較小)才動,不然每 tick 一次 move_foreground 等於每
+       tick 一次全區 invalidate。 */
+    devbar_keep_above(s_dev_offline_overlay);
+    if (s_media_sheet && lv_obj_is_valid(s_media_sheet) &&
+        !lv_obj_has_flag(s_media_sheet, LV_OBJ_FLAG_HIDDEN) &&
+        lv_obj_get_parent(s_media_sheet) == lv_obj_get_parent(s_dev_offline_overlay) &&
+        lv_obj_get_index(s_media_sheet) < lv_obj_get_index(s_dev_offline_overlay))
+        lv_obj_move_foreground(s_media_sheet);
 }
 
 /* 由 s_dev_active_id 在 E7 registry 反查目前控制設備的名稱；id 不在 registry(已移除/
@@ -11471,7 +11877,7 @@ static void update_ctrl_dev_label(void)
 #define DEVBAR_SETTLE_MS  220   /* 放開後的落地/彈回時間 */
 
 static lv_obj_t *s_devbar_label = NULL;    /* s_top_logo(=出去的那條)裡的名稱 */
-static lv_obj_t *s_devbar_in = NULL;       /* 進來的那條,只在拖曳中出現 */
+static lv_obj_t *s_devbar_in = NULL;       /* 進來的那條,只在拖曳中出現(宣告在檔案上方) */
 static lv_obj_t *s_devbar_in_label = NULL;
 static int32_t s_devbar_drag_px = 0;       /* 目前的視覺位移(左負右正) */
 static int32_t s_devbar_travel = 0;        /* 這一次按壓累積的手指位移 */
@@ -11597,6 +12003,88 @@ static void devbar_apply(int32_t drag_px)
     if (s_devbar_label && lv_obj_is_valid(s_devbar_label))
         lv_obj_set_style_text_opa(s_devbar_label,
                                   swiping ? devbar_content_opa(out_w) : LV_OPA_90, 0);
+
+    /* R50(founder:「拖移下面的 bar 時上面的媒體 header 也要跟著動」)+ R51 修正
+       (「為什麼媒體 header 是移動後突然消失,他可以像下面的 bar 一樣是縮小再變淡
+       嗎」):第一版是跟手指 1:1 平移 + 線性淡出,拖到底時它還沒淡完就被換台流程
+       整個藏掉 —— 看起來就是「滑一滑然後啪一聲不見」。改成**跟藥丸同一套曲線**:
+       先縮成一塊(0→0.7,300 寬縮到 100 = 專輯圖那格大小)、中心緩到 slot 邊緣,
+       之後(0.7→1)才淡出;裡面的字/圖用同一條 content ramp 淡掉。
+       **要放在下面那個 `s_devbar_in` 的 early return 之前** —— 進來的那條還沒建好
+       (或已拆)時,header 照樣要跟著動。 */
+    if (s_media_hdr && lv_obj_is_valid(s_media_hdr))
+    {
+        const float HW = (float)MEDIA_HDR_W; /* 300 = 整條 */
+        const float HH = (float)MEDIA_HDR_H; /* 100 = 縮到底的那一塊(專輯圖那格) */
+        float h_w = HW + (HH - HW) * out_shrink;
+        float h_rest = HW * 0.5f;
+        float h_exit = (sign > 0.f) ? (HW - HH * 0.5f) : (HH * 0.5f);
+        float h_c = h_rest + (h_exit - h_rest) * out_shrink;
+        float h_a = out_a; /* 與藥丸同一條淡出(0.7 之後才開始) */
+        if (!swiping)
+        {
+            h_w = HW;
+            h_c = h_rest;
+            h_a = 1.f;
+        }
+        lv_obj_set_width(s_media_hdr, (lv_coord_t)(h_w + 0.5f));
+        lv_obj_set_style_translate_x(s_media_hdr, (lv_coord_t)(h_c - h_rest), 0);
+        lv_obj_set_style_opa(s_media_hdr, (lv_opa_t)(h_a * 255.f), 0);
+        {
+            /* 內容(兩行字 + 專輯圖)的淡出:與藥丸的 barContentAlpha 同式,只是把
+               分母換成 header 自己的寬。 */
+            float fill = h_w / HW;
+            float ca = devbar_clamp01((fill - DEVBAR_CONTENT_HIDDEN_AT) /
+                                      (DEVBAR_CONTENT_FULL_AT - DEVBAR_CONTENT_HIDDEN_AT));
+            lv_opa_t co = (lv_opa_t)(ca * 255.f);
+            if (!swiping) co = LV_OPA_COVER;
+            if (s_media_hdr_title && lv_obj_is_valid(s_media_hdr_title))
+                lv_obj_set_style_text_opa(s_media_hdr_title, co, 0);
+            if (s_media_hdr_sub && lv_obj_is_valid(s_media_hdr_sub))
+                lv_obj_set_style_text_opa(s_media_hdr_sub, co, 0);
+            if (s_media_hdr_art && lv_obj_is_valid(s_media_hdr_art))
+                lv_obj_set_style_img_opa(s_media_hdr_art,
+                                         swiping ? (lv_opa_t)(ca * LV_OPA_30) : LV_OPA_30, 0);
+            /* 進來的那條:0.3 之後以一小塊現身、0.5 之後才變寬、alpha 隨到位程度浮現
+               —— 與底部 bar 的 s_devbar_in 同一組門檻同一條式子,只有尺寸(300/100
+               對 200/38)與配色不同。它裡面沒有字:下一台在播什麼要等切過去之後手機
+               推的 0x19,所以先進來的是框 + 專輯圖佔位,字晚一步填。
+               只有在**現在這條 header 看得到**(有東西在播)時才演 —— 沒有 header 的
+               時候憑空滑進來一個空框會很怪。 */
+            if (s_media_hdr_in && lv_obj_is_valid(s_media_hdr_in))
+            {
+                float arrival_h = devbar_clamp01((trav - DEVBAR_REVEAL_AT) /
+                                                 (1.f - DEVBAR_REVEAL_AT));
+                bool hdr_shown = !lv_obj_has_flag(s_media_hdr, LV_OBJ_FLAG_HIDDEN);
+                if (!swiping || arrival_h <= 0.f || !hdr_shown)
+                {
+                    lv_obj_add_flag(s_media_hdr_in, LV_OBJ_FLAG_HIDDEN);
+                }
+                else
+                {
+                    float in_grow_h = devbar_clamp01((trav - DEVBAR_WIDEN_AT) /
+                                                     (1.f - DEVBAR_WIDEN_AT));
+                    float in_w_h = HH + (HW - HH) * in_grow_h;
+                    float in_entry_h = (sign > 0.f) ? (HH * 0.5f) : (HW - HH * 0.5f);
+                    float in_c_h = in_entry_h + (HW * 0.5f - in_entry_h) * arrival_h;
+                    float in_a_h = arrival_h * 2.5f;
+                    if (in_a_h > 1.f) in_a_h = 1.f;
+                    lv_obj_set_width(s_media_hdr_in, (lv_coord_t)(in_w_h + 0.5f));
+                    lv_obj_set_style_translate_x(s_media_hdr_in,
+                                                 (lv_coord_t)(in_c_h - HW * 0.5f), 0);
+                    lv_obj_set_style_opa(s_media_hdr_in, (lv_opa_t)(in_a_h * 255.f), 0);
+                    lv_obj_clear_flag(s_media_hdr_in, LV_OBJ_FLAG_HIDDEN);
+                }
+            }
+
+            /* 貼底那個框**不跟著內容淡**(founder 2026-09-05:「縮小過程中邊框消失得
+               太早了看不太到 header 變窄」):它是 header 的**本體**,對應藥丸那顆
+               球 —— 球在縮的過程中是實心可見的,只有最後 0.7→1 才整顆淡出(那段由
+               上面 header 容器的 style opa = out_a 統一處理)。跟著 content ramp 淡
+               的只有內容(兩行字 + 專輯圖),因為它們在寬度不夠時本來就要讓位。
+               寬度靠 LV_PCT(100) 自己跟著縮,這裡什麼都不用做。 */
+        }
+    }
 
     if (!s_devbar_in || !lv_obj_is_valid(s_devbar_in))
         return;
@@ -12108,6 +12596,13 @@ void lv_create_mouse_screen(lv_obj_t *scr)
     lv_obj_add_event_cb(status_bar_area_up, status_bar_area_up_cb,
                         LV_EVENT_ALL, NULL);
 
+    /* R47:頂部「正在播放」header —— 建在 status_bar_area_up **之後** = z 在它之上,
+       所以藥丸上的 tap 歸自己(開媒體控制頁),藥丸以外的頂部區照舊「下拉退出 /
+       按住進飛鼠」。控制中那台沒在播 → 它整條隱藏,頂部完全跟以前一樣。
+       媒體控制頁本身懶建(media_center_ensure),這裡只記父物件。 */
+    s_media_panel_parent = bg;
+    create_media_header(bg);
+
     /* 「控制中設備」名稱+切換箭頭已搬進媒體下拉頁頂部
        (create_media_center_panel,2026-07-02 使用者要求) — trackpad 頂部
        不再放常駐設備名。 */
@@ -12176,8 +12671,8 @@ void lv_create_mouse_screen(lv_obj_t *scr)
        時同樣隨時滑得到,所以這一份就是純重複 —— founder 2026-08-12:「滑鼠 app 本來上
        面是不是還有一個媒體頁面?如果還有的話把那個拿掉,現在有外面的那個就夠了」。
        連帶好處是 heap:這台只剩 ~40KB,整層 tileview+兩個全螢幕 tile+控制列不再常駐。
-       所有 media_tileview 的使用點本來就都有 NULL 防護(它在 host 模式下一直是 NULL),
-       所以不建它不需要其他改動;offline overlay 取 host 也有 fallback。 */
+       R48:連那份 tileview 本身都拆了 —— 媒體控制頁改成頂部 header 展開而成
+       (create_media_sheet / media_sheet_set_open),兩種 host 共用同一條路。 */
 
     // 啟動自有底部 bar 的隱藏同步 poll（instruction_list 浮層 bar 顯示時收掉它）
     if (s_bar_ai_sync_timer == NULL)
@@ -12441,12 +12936,27 @@ void hid_mouse_destroy(void)
 
     // 媒體中心清理
     media_center_vol_cancel_repeat(); // 停音量長按 repeat timer，避免 screen teardown 後 timer UAF
-    media_tileview = NULL;
-    media_home_tile = NULL;
-    media_tile = NULL;
+    s_media_sheet = NULL;
+    s_media_sheet_content = NULL;
+    s_media_sheet_open = false;
+    s_sheet_anim_v = 0;
+    lv_anim_del(&s_sheet_anim_v, media_sheet_anim_exec);
     media_center_title_label = NULL;
     media_center_play_img = NULL;
     status_bar_area_up = NULL;
+    /* R47:header 與媒體頁都是 scr 子物件,teardown 一併釋放 —— 清指標即可。
+       now-playing 快取**不清**:它是資料不是畫面,下次進滑鼠頁 header 就能立刻
+       用上(跟 s_dev_active_id 同一個道理)。 */
+    s_media_hdr = NULL;
+    s_media_hdr_title = NULL;
+    s_media_hdr_sub = NULL;
+    s_media_hdr_art = NULL;
+    s_media_hdr_mask = NULL;
+    s_media_hdr_in = NULL;
+    s_media_hdr_in_art = NULL;
+    s_media_now_pending = false;
+    s_media_hdr_dragged = false;
+    s_media_panel_parent = NULL;
     /* 底部設備 bar:落地動畫可能還在跑,exec cb 會碰這些物件 → 先殺 anim 再歸零 */
     lv_anim_del(&s_devbar_drag_px, devbar_anim_exec_cb);
     s_top_logo = NULL;

@@ -1,11 +1,12 @@
 /**
  * @file lv_top_panel.c
  * @brief 錶盤頂部下拉面板 — ADR-0020 之後只剩**通知列表**。
- *        控制中心搬到下方上拉頁 (app_clock_status_bar.c 的 (1,2) tile)；
- *        各設備媒體中心搬到右側欄 (2+c,1)，一台一欄。
- *        滑鼠模式圖層仍由本檔管理：右側媒體欄往下拉到停車位 settle 時由
- *        lv_top_panel_mouse_enter() 進入；退出走面板底部的 Exit 鈕（只在
- *        滑鼠模式顯示 —— 平時面板沒有按鈕）。
+ *        控制中心 + App List 在右頁 (2,1)（R47 2026-09-05 從下方 (1,2) 搬去）。
+ *        滑鼠模式圖層仍由本檔管理：**錶盤往上拉**到下方停車位 (1,2) settle 時由
+ *        lv_top_panel_mouse_enter() 進入（控制目標 = 上次控制的那台）；
+ *        退出 = 滑鼠頁頂部下拉，settle 回錶盤（clock 的 settle handler 做）。
+ *        每設備一欄的媒體中心已退役 —— 正在播放的媒體改成掛在滑鼠頁頂部的
+ *        header（hid_mouse 自建），點它開那一台的媒體控制頁。
  */
 #include <rtthread.h>
 #include <string.h>
@@ -45,8 +46,8 @@ static bool s_opened = false;
 /* 滑鼠模式圖層                                                                */
 /* -------------------------------------------------------------------------- */
 
-/* 滑鼠模式時「頂部往下拉」= 把該欄媒體頁跟手拉下來、settle 才退出滑鼠
-   (founder 2026-08-11 R2/R4)。reveal 本身不拆任何東西,直接同步呼叫安全;
+/* 滑鼠模式時「頂部往下拉」= 把錶盤跟手拉下來、settle 才退出滑鼠
+   (R47:落點從「該欄媒體頁」改成錶盤)。reveal 本身不拆任何東西,直接同步呼叫安全;
    真正的退出由 clock 的 settle handler 做(那時 press 已交棒給 tileview)。 */
 static void panel_reveal_cb(void)
 {
@@ -97,6 +98,7 @@ static void mouse_layer_prepare(void)
     lv_obj_clear_flag(s_backdrop, LV_OBJ_FLAG_CLICKABLE);
     lv_obj_clear_flag(s_backdrop, LV_OBJ_FLAG_SCROLLABLE);
     lv_obj_add_flag(s_backdrop, LV_OBJ_FLAG_HIDDEN);
+    lv_obj_set_pos(s_mouse_layer, 0, 0); /* 上一輪下拉可能把它留在位移狀態 */
     lv_obj_move_foreground(s_mouse_layer);
     clock_main_status_bar_to_front(); /* 面板要壓在滑鼠圖層之上 */
     lv_obj_clear_flag(s_mouse_layer, LV_OBJ_FLAG_HIDDEN);
@@ -110,8 +112,8 @@ static void mouse_layer_activate(void)
     hid_mouse_enter_mode();       /* 這裡面已把上/下/左緣 zone 收掉 */
     hid_mouse_set_hosted(true);   /* 面板擁有上下緣 */
     display_status_bar_area(3, false); /* 右緣 zone enter_mode 沒收，補收 */
-    /* 控制目標由「進來時停在哪一欄」決定：媒體欄 settle 已經 set_active，
-       手機欄則已 clear —— active < 0 就直控手機、不開 route。 */
+    /* 控制目標由呼叫端在 settle 時選好（hid_mouse_ensure_active_device:上次控制
+       的那台 → 預設挑一台）。registry 真的空才 active < 0 = 直控手機、不開 route。 */
     ble_hid_mouse_set_app_route(hid_mouse_active_device_index() >= 0);
     LOG_I("[top_panel] mouse mode ON");
 }
@@ -140,6 +142,7 @@ static void mouse_layer_set(bool on)
         if (s_mouse_layer && lv_obj_is_valid(s_mouse_layer))
         {
             lv_obj_clean(s_mouse_layer);
+            lv_obj_set_pos(s_mouse_layer, 0, 0); /* 位移歸零,下次進來才不是歪的 */
             lv_obj_add_flag(s_mouse_layer, LV_OBJ_FLAG_HIDDEN);
         }
         LOG_I("[top_panel] mouse mode OFF");
@@ -175,8 +178,8 @@ static void mouse_activate_async_cb(void *unused)
     }
 }
 
-/** ADR-0020：右側媒體欄往下拉、settle 在滑鼠停車位時由 clock 呼叫。
-    控制目標（哪一台 / 手機）由呼叫端在 settle 時就選好。 */
+/** R47：錶盤往上拉、settle 在下方停車位 (1,2) 時由 clock 呼叫。
+    控制目標（哪一台）由呼叫端在 settle 時就選好。 */
 void lv_top_panel_mouse_enter(void)
 {
     if (s_mouse_mode)
@@ -194,6 +197,21 @@ void lv_top_panel_mouse_exit(void)
 /* -------------------------------------------------------------------------- */
 /* 對外                                                                        */
 /* -------------------------------------------------------------------------- */
+
+/* R49(founder 2026-09-05:「從上面往下拉沒有看到滑鼠頁面跟著我的手指往下拉」):
+   下拉退出的跟手動畫以前只有**錶盤那一格**在動 —— 滑鼠圖層是另一層,靜止不動,
+   所以看起來是錶盤蓋上來,不是滑鼠頁被拉走。這裡讓圖層整層跟著位移:錶盤 tileview
+   的 scroll 位置 → 圖層的 y。非滑鼠模式 no-op。 */
+void lv_top_panel_mouse_layer_set_offset_y(lv_coord_t y)
+{
+    if (!s_mouse_mode || s_mouse_layer == NULL || !lv_obj_is_valid(s_mouse_layer))
+        return;
+    if (y < 0) y = 0;
+    if (y > LV_VER_RES_MAX) y = LV_VER_RES_MAX;
+    if (lv_obj_get_y(s_mouse_layer) == y)
+        return;
+    lv_obj_set_y(s_mouse_layer, y);
+}
 
 /* 面板下拉進度 → 滑鼠模式黑底濃度（錶盤路徑由 gaus_dial_bg 負責）。 */
 void lv_top_panel_set_backdrop_opa(uint8_t opa)
@@ -217,8 +235,9 @@ void lv_top_panel_set_hor_enabled(bool enabled)
     (void)enabled;
 }
 
-/* 面板不再有設備列 / 媒體頁；設備數變動只影響錶盤右側可滑的媒體欄數。
-   保留這個入口（device_pager.c 的 E7 同步路徑呼叫它）。 */
+/* 面板不再有設備列 / 媒體頁；R47 之後右側也只有固定一格的控制中心 + App List，
+   設備數不再影響任何一格。保留這個入口（device_pager.c 的 E7 同步路徑呼叫它），
+   轉發到的 clock_main_media_cols_refresh() 現在是 no-op。 */
 void lv_top_panel_refresh_devices(void)
 {
     extern void clock_main_media_cols_refresh(void);
@@ -266,7 +285,8 @@ lv_obj_t *lv_top_panel_create(lv_obj_t *tile, lv_obj_t *layer_parent)
     s_tile = tile;
 
     /* 通知列表直接鋪滿 tile —— 沒有 pager、沒有設備列。滑鼠模式的退出走
-       「滑鼠頁頂部下拉」(clock_main_mouse_pulldown_reveal),面板不再放 Exit 鈕。 */
+       「滑鼠頁頂部下拉」(clock_main_mouse_pulldown_reveal) 落回錶盤,面板沒有
+       Exit 鈕。 */
     lv_message_list_layout_create(tile);
 
     LOG_I("[top_panel] created (notification-only, ADR-0020)");
