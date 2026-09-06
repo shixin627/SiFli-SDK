@@ -1130,18 +1130,28 @@ static void waveform_capture_process(motion_data_t *motion_data, Vector3 *gyro)
        但**不能** return —— 下面的手勢擷取要活著,「再倒過來 tap 一次」才退得出模式。
        RAW/MOUSE 收集維持原本的 return(收集中不跑手勢)。 */
     extern bool get_gesture_click_mode(void);
+    bool get_switch_freehand_mode(void); /* 本檔後段定義 */
     bool collecting = imu_raw_data_collection || imu_mouse_data_collection;
-    if (collecting || get_gesture_click_mode())
+    /* 手勢點擊模式的 burst 縮成 20 筆(440B,2 個 BLE 片段):35 筆=770B 要切 4 片,
+       游標 0x08 被擋在後面每 350ms 頓一下(founder 2026-09-06「卡卡的」)。收集模式維持 35。 */
+    #define GESTURE_CLICK_STREAM_STEP 20
+    int flush_at = collecting ? MAX_RAWDATA_TIME_STEP : GESTURE_CLICK_STREAM_STEP;
+    /* 手勢點擊模式:錶面朝下時**不送** 0x50 —— 退出用的那下倒置 tap 本身就是一次手指按壓,
+       手機模型會先判成 PRESS 送左鍵 down(2026-09-06 19:07:54 實測:PRESS 比 on=0 早 61ms),
+       電腦在退出瞬間多點一下。朝下期間手機沒樣本=沒判定;手錶自己的 tap 模型另走一條不受影響。 */
+    bool gc_stream = get_gesture_click_mode() && !get_switch_freehand_mode();
+    if (collecting || gc_stream)
     {
         // LOG_D("Collecting IMU raw data: ppg:%d, fsr_adc:%d", ppg_rawdata,
         //       fsr_adc_value);
         store_gesture_sample(&release_dataset, rt_tick_get_millisecond(),
                              linear_acce, gravity, ppg_rawdata, fsr_adc_value,
                              waveform_gesture_state.on_pressed);
-        if (release_dataset.gesture_sample_count >= MAX_RAWDATA_TIME_STEP)
+        if (release_dataset.gesture_sample_count >= flush_at)
         {
             getTargetWaveformFromSlidingWindow(
-                &release_dataset, targetWave_algo, MAX_RAWDATA_TIME_STEP);
+                &release_dataset, targetWave_algo,
+                release_dataset.gesture_sample_count);
             // if (!check_ppg_error)
             {
                 packMatrixToBuffer(gsensorSamplesBuffer, targetWave_algo, NULL,
@@ -1660,6 +1670,7 @@ bool get_scroll_up_mode(void)
 }
 extern bool get_hid_mouse_handfree_mode(void);
 extern bool hid_mouse_top_fly_active(void);
+extern bool get_gesture_click_mode(void); /* hid_mouse.c:手勢點擊模式(0x27) */
 
 /* ─────────────────────────────────────────────────────────────────────────
    側立方向盤 (pose-dial) —— 2026-07-20 founder 對調:圓盤改由「側立手錶」(錶面轉向
@@ -2204,7 +2215,9 @@ static void air_mouse_process(rt_uint32_t ts, Quaternion *quaternion,
      * posture). RELATIVE to this reference — no assumption about which body axis is
      * "up" — so normal posture is always right; only wrist ROLL away from it is
      * compensated, keeping left/right & up/down consistent. */
-    if (imu_mouse_data_collection)
+    /* 手勢點擊模式(founder 2026-09-06「動起來很怪」):游標位移沿用這條收集遊戲的
+       角速度映射(同 selector/同 roll 補償),下面送出時走正常游標路由但**不經移動鎖**。 */
+    if (imu_mouse_data_collection || get_gesture_click_mode())
     {
         if (s_collect_use_mouse_app_map)
         {
@@ -2354,6 +2367,39 @@ static void air_mouse_process(rt_uint32_t ts, Quaternion *quaternion,
             commu_send_mouse_move(delta_movement.x, delta_movement.y);
             delta_movement.x = 0;
             delta_movement.y = 0;
+        }
+    }
+    /* 手勢點擊模式:每幀直送、不看 mouse_movement_lock / 觸控板互鎖 / 姿態 switch
+       (頂部飛鼠那套「淨位移 80 解鎖、停 0.5s 重鎖」是給按住順便動設計的,連續控制會
+       一頓一頓)。符號沿用收集遊戲(手機端當時以正號對齊桌面滑鼠),反了就翻這個 SIGN。
+       走 control_provider(HID 直連或手機中繼都通),不像收集直接 commu_send_mouse_move。 */
+    else if (get_gesture_click_mode())
+    {
+        #define GESTURE_CLICK_MOVE_SIGN (1)
+        /* 每個 IMU 幀(100Hz)都送一筆 0x08 BLE 根本吞不下(連線間隔 15-35ms、寫入要等回應)
+           →排隊成批到達=卡。改累積,最多每 25ms 送一筆(40Hz,游標夠滑)。 */
+        #define GESTURE_CLICK_SEND_MS 25
+        static int s_gc_acc_x = 0, s_gc_acc_y = 0;
+        static rt_tick_t s_gc_last_send = 0;
+        s_gc_acc_x += GESTURE_CLICK_MOVE_SIGN * delta_movement.x;
+        s_gc_acc_y += GESTURE_CLICK_MOVE_SIGN * delta_movement.y;
+        delta_movement.x = 0;
+        delta_movement.y = 0;
+        rt_tick_t now = rt_tick_get();
+        if ((s_gc_acc_x != 0 || s_gc_acc_y != 0) &&
+            (now - s_gc_last_send) >= rt_tick_from_millisecond(GESTURE_CLICK_SEND_MS))
+        {
+            if (get_gravity_position() != GRAVITY_POSITION_FACE_SIDE)
+            {
+                int dx = s_gc_acc_x, dy = s_gc_acc_y;
+                if (dx > 127) dx = 127; else if (dx < -127) dx = -127;
+                if (dy > 127) dy = 127; else if (dy < -127) dy = -127;
+                control_provider.ble_hid_mouse_move((int8_t)dx, (int8_t)dy);
+                delta_movement.last_report_ts = ts;
+            }
+            s_gc_acc_x = 0;
+            s_gc_acc_y = 0;
+            s_gc_last_send = now;
         }
     }
     /* 體感拖曳(長按滿1s後手腕先動=左鍵按住+gyro 驅動游標)與「按住期間自由移動」
@@ -3001,7 +3047,7 @@ static void motion_tracking_in_hcpu(motion_data_t *motion_data)
      * air_mouse_process does NOT when the gesture app is foreground with collection
      * off, so it can't reset the reference itself — a stale reference from the
      * previous session is exactly why the direction "reversed again" next game. */
-    if (!imu_mouse_data_collection)
+    if (!imu_mouse_data_collection && !get_gesture_click_mode())
     {
         s_collect_gref_valid = false;
     }
