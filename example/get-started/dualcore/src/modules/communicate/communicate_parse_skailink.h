@@ -266,6 +266,15 @@ extern "C"
            沒有回覆鍵:圖到了就是回覆,沒到就維持設備名(可見的降級)。
            Keep in lockstep with WatchProtocol.kt/.swift SKAILINK_KEY_CONV_AVATAR_REQ. */
         KEY_CONV_AVATAR_REQ = 0x25,
+        /* 0x26 = deviceDrag(手機端 WatchProtocol.kt 已佔,韌體在 andrew_v29.5 分支)—— 這裡保留不用。 */
+        /* gestureClick 0x27,雙向。watch→phone(UPLINK) {"on":1|0}:滑鼠 app 的「手勢點擊」
+           模式切換(手錶錶面朝下 + 捏指 tap 翻轉;預設關)。開著時手錶照 RAW 收集那條
+           路送 IMU+PPG(NOTIFY 0x50),按放判定由**手機**跑因果按壓模型(手錶塞不下 ~9MB),
+           手機把每次判到的按下/放開當左鍵 down/up 送到 active 電腦(同 0x09 那條 relay)。
+           phone→watch(DOWNLINK) {"on":1|0,"ok":1|0}:手機武裝/解除完成的回執;ok=0 =
+           手機沒帶模型,手錶自己退出模式,免得畫著一隻手卻什麼都不會發生。
+           Keep in lockstep with WatchProtocol.kt SKAILINK_KEY_GESTURE_CLICK. */
+        KEY_GESTURE_CLICK = 0x27,
     } SKAI_LINK_KEY;
 
     /* Dispatched from communicate_parse.c for cmd_id == SKAI_LINK_COMMAND_ID.

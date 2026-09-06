@@ -155,6 +155,7 @@ bool commu_send_mouse_move(int dx, int dy);            /* -> KEY_MOUSE_MOVE   (0
 bool commu_send_mouse_button(uint8_t btn, uint8_t act);/* -> KEY_MOUSE_BUTTON (0x09) btn 0=L 1=R; act 0=up 1=down 2=click */
 bool commu_send_mouse_scroll(int dx, int dy);          /* -> KEY_MOUSE_SCROLL (0x0A) wheel=dy pan=dx */
 bool commu_send_mouse_back(void);                      /* -> KEY_MOUSE_BACK   (0x0B) */
+bool commu_send_gesture_click_mode(bool on);           /* -> KEY_GESTURE_CLICK (0x27) */
 /* Trackpad-hold radial dial uplink (standalone mouse app). phase ∈ start|update|end;
    dir -1..7 (0=up CW, -1=centre dead-zone); mag 0..1000. Full contract at KEY_DIAL_DIR. */
 bool commu_send_dial_dir(const char *phase, int dir, int mag); /* -> KEY_DIAL_DIR (0x1a) */
