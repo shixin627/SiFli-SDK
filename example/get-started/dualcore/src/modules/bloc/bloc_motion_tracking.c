@@ -1126,7 +1126,12 @@ static void waveform_capture_process(motion_data_t *motion_data, Vector3 *gyro)
     #ifdef REAL_TIME_IMU_DATA_COLLECTION
     extern bool imu_raw_data_collection;
     extern bool imu_mouse_data_collection;
-    if (imu_raw_data_collection || imu_mouse_data_collection)
+    /* 手勢點擊模式(滑鼠 app,SkaiLink 0x27):同一條 0x50 串流給手機跑按壓模型,
+       但**不能** return —— 下面的手勢擷取要活著,「再倒過來 tap 一次」才退得出模式。
+       RAW/MOUSE 收集維持原本的 return(收集中不跑手勢)。 */
+    extern bool get_gesture_click_mode(void);
+    bool collecting = imu_raw_data_collection || imu_mouse_data_collection;
+    if (collecting || get_gesture_click_mode())
     {
         // LOG_D("Collecting IMU raw data: ppg:%d, fsr_adc:%d", ppg_rawdata,
         //       fsr_adc_value);
@@ -1147,7 +1152,8 @@ static void waveform_capture_process(motion_data_t *motion_data, Vector3 *gyro)
             }
             release_dataset.gesture_sample_count = 0;
         }
-        return;
+        if (collecting)
+            return;
     }
     #endif
 

@@ -571,6 +571,32 @@ void handwrite_cand_apply_pending(void)
    丟掉舊的那筆沒有副作用。 */
 static char *s_tv_state_pending = NULL;
 
+/* 0x27 downlink ack。只在 ok=0 時有動作(手錶退出模式);其餘只留 log 讓鏈路可見。 */
+static void handle_gesture_click_ack(uint8_t *pValue, uint16_t length)
+{
+    extern void gesture_click_mode_ack(bool on, bool ok);
+    if (pValue == NULL || length == 0 || length > 64)
+    {
+        LOG_W("skailink: gestureClick ack bad length %u", length);
+        return;
+    }
+    char buf[65];
+    memcpy(buf, pValue, length);
+    buf[length] = '\0';
+    cJSON *root = cJSON_Parse(buf);
+    if (root == NULL)
+    {
+        LOG_W("skailink: gestureClick ack malformed: %s", buf);
+        return;
+    }
+    cJSON *j_on = cJSON_GetObjectItem(root, "on");
+    cJSON *j_ok = cJSON_GetObjectItem(root, "ok");
+    bool on = cJSON_IsNumber(j_on) && j_on->valueint == 1;
+    bool ok = cJSON_IsNumber(j_ok) && j_ok->valueint == 1;
+    cJSON_Delete(root);
+    gesture_click_mode_ack(on, ok);
+}
+
 static void handle_tv_state(uint8_t *pValue, uint16_t length)
 {
     if (pValue == NULL || length == 0) return;
@@ -707,6 +733,10 @@ void resolve_skailink_command(uint8_t key, uint8_t *pValue, uint16_t length)
     case KEY_TV_STATE:
         /* phone→watch (DOWNLINK): bound TV + pairing state for the TV remote app. */
         handle_tv_state(pValue, length);
+        break;
+    case KEY_GESTURE_CLICK:
+        /* phone→watch (DOWNLINK): {"on","ok"} 手機武裝手勢點擊模式的回執。 */
+        handle_gesture_click_ack(pValue, length);
         break;
     default:
         LOG_W("skailink: unknown key 0x%02x", key);
