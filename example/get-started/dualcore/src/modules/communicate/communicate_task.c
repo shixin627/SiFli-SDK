@@ -832,6 +832,14 @@ bool commu_send_mouse_back(void)
     LOG_I("send mouse back -> %s", ok ? "ok" : "FAIL");
     return ok;
 }
+/* watch→phone (SKAI_LINK 0x27): gesture click mode flipped (see KEY_GESTURE_CLICK). */
+bool commu_send_gesture_click_mode(bool on)
+{
+    bool ok = commu_send_string(SKAI_LINK_COMMAND_ID, KEY_GESTURE_CLICK,
+                                on ? "{\"on\":1}" : "{\"on\":0}");
+    LOG_I("send gesture click on=%d -> %s", on, ok ? "ok" : "FAIL");
+    return ok;
+}
 /* watch→phone (SKAI_LINK): trackpad-hold radial dial (see KEY_DIAL_DIR contract).
    phase is one of the three fixed literals start|update|end so raw %s is quote-safe;
    dir -1..7, mag 0..1000. Throttled by the caller (air_mouse_process) — no per-frame
