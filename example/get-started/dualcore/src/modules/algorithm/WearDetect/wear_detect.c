@@ -1239,21 +1239,17 @@ static void try_evaluate(void)
         return;
     ctx.last_eval_ms = now;
 
-    /* Diagnostic override: wear detection disabled by the user. Force WORN
-     * unless on the charger, so HR/sleep run regardless of the contact
+    /* Diagnostic override: wear detection disabled by the user. Force WORN,
+     * full stop, so HR/sleep/gestures run regardless of the contact
      * algorithm. set_status() no-ops when unchanged and drives the UI
-     * indicator + bg_hr gating + sleep on transition. */
+     * indicator + bg_hr gating + sleep on transition.
+     * founder 2026-09-06: the old "unless on the charger" exception (with a
+     * 90 s PLUGGED_HOLD_MS latch) made a watch on the USB flashing cable read
+     * NOT WORN with the switch off, so every gesture window died at the
+     * not-worn gate. Switch off now means worn, charger or not. */
     if (!s_detect_enabled)
     {
-        /* Latch "plugged": is_plugged mirrors the charge IC's charging bit
-         * (bloc_battery read_charge_status), which cycles while topping off.
-         * Raw use here means a status flip + LED power flip per cycle. */
-        static uint32_t last_plugged_ms = 0;
-        if (battery_get_charge_state()->is_plugged)
-            last_plugged_ms = now;
-        bool on_charger = (last_plugged_ms != 0) &&
-                          (now - last_plugged_ms < PLUGGED_HOLD_MS);
-        set_status(on_charger ? WEAR_STATUS_NOT_WEARING : WEAR_STATUS_WEARING);
+        set_status(WEAR_STATUS_WEARING);
         return;
     }
 
@@ -1554,7 +1550,7 @@ void wear_detect_set_enabled(bool enabled)
         LOG_I("Wear: detection re-enabled -> OFF + probe window");
     }
     LOG_I("Wear detection %s", enabled ? "ENABLED (normal)"
-                                       : "DISABLED (force worn unless charging)");
+                                       : "DISABLED (force worn, charger or not)");
     /* Votes/counters frozen during bypass are stale evidence — clear them
      * so re-enabling starts from a clean slate, and re-evaluate promptly on
      * the next feed instead of waiting out the throttle. */
