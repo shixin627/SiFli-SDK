@@ -353,6 +353,11 @@ static void gesture_recognition_algorithm(gesture_data_t *gesture)
                            直到顛倒手錶(姿態離開 gate 區間)才突然開始飛。滑鼠 app 的飛鼠只留
                            「頂部按住」一條明確路徑。恢復=取消註解下行。
                         set_hid_mouse_handfree_mode(); */
+                        /* 2026-09-06 founder:錶面朝下 + tap = 切換「手勢點擊」模式(手機跑
+                           按壓模型判左鍵;再倒過來 tap 一次退出;預設關)。見 hid_mouse.c
+                           gesture_click_mode_toggle()。 */
+                        extern void gesture_click_mode_toggle(void);
+                        gesture_click_mode_toggle();
                     }
                     else if (get_switch_mouse_scroll_mode())
                     {

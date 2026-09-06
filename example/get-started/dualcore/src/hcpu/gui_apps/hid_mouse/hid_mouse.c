@@ -170,6 +170,7 @@ LV_IMG_DECLARE(micro_icon);
 LV_IMG_DECLARE(micro_open_icon); // V2T active 時的 icon（淺藍麥克風）
 LV_IMG_DECLARE(switch_icon);
 LV_IMG_DECLARE(keyboard_icon);
+LV_IMG_DECLARE(gesture_hand_icon); // 觸控板正中「手勢點擊模式」的手(founder 2026-09-06)
 LV_IMG_DECLARE(down_arrow); // 輸入框下方收回按鈕
 
 static lv_point_t start_point;
@@ -587,6 +588,10 @@ static lv_obj_t *space_red_dot_x = NULL;
 static lv_obj_t *trackpad_mic_btn = NULL;
 /* 觸控板右緣的鍵盤鈕:電腦有聚焦輸入框時才浮現(founder 2026-08-17)。 */
 static lv_obj_t *kbd_side_btn = NULL;
+/* 手勢點擊模式(定義在 get_hid_mouse_handfree_mode 旁的區塊):圖示物件 + poll 同步 */
+static lv_obj_t *s_gesture_click_icon;
+static void gesture_click_icon_sync(void);
+static void gesture_click_apply(bool on, const char *why);
 static void kbd_side_btn_event_cb(lv_event_t *e);
 static void mouse_open_input_station(bool direct_field);
 static lv_obj_t *trackpad_mic_icon = NULL;
@@ -7238,6 +7243,15 @@ static void create_trackpad_mode_ui(lv_obj_t *parent)
     // 不再跟著 mode_container[TRACKPAD] 隱藏；keyboard mode mic view 也看得到
     lv_obj_t *arc_parent = lv_obj_get_parent(parent);
 
+    /* 手勢點擊模式的手:觸控板正中、半透明、不吃觸控(觸控板照常滑)。預設 HIDDEN,
+       由 gesture_click_icon_sync() 在 40ms poll 依旗標開關。 */
+    s_gesture_click_icon = lv_img_create(parent);
+    lv_img_set_src(s_gesture_click_icon, &gesture_hand_icon);
+    lv_obj_align(s_gesture_click_icon, LV_ALIGN_CENTER, 0, 0);
+    lv_obj_set_style_img_opa(s_gesture_click_icon, LV_OPA_70, 0);
+    lv_obj_clear_flag(s_gesture_click_icon, LV_OBJ_FLAG_CLICKABLE);
+    lv_obj_add_flag(s_gesture_click_icon, LV_OBJ_FLAG_HIDDEN);
+
     // 左側滾動弧形條（貼著圓形畫面左側邊緣）
     left_scroll_bar = (lv_obj_t *)lv_arc_create(arc_parent);
     lv_obj_set_size(left_scroll_bar, LV_HOR_RES_MAX, LV_VER_RES_MAX);
@@ -12440,6 +12454,7 @@ static void bar_ai_sync_timer_cb(lv_timer_t *t)
     }
     /* 右緣鍵盤鈕:只在**觸控板露著、電腦有聚焦輸入框、沒有別的東西蓋在上面**時浮現。
        0x17 旗標由通訊執行緒寫、這裡(LVGL 執行緒)讀 —— 單一 bool,不需鎖。 */
+    gesture_click_icon_sync();
     if (kbd_side_btn && lv_obj_is_valid(kbd_side_btn))
     {
         extern bool instruction_list_remote_target_has_focus(void);
@@ -12711,6 +12726,71 @@ bool get_hid_mouse_handfree_mode(void)
     return handfree;
 }
 
+/* ── 手勢點擊模式(gesture click,SkaiLink 0x27)──────────────────────────────
+   founder 2026-09-06:滑鼠 app 裡「錶面朝下 + 捏指 tap」切換;開著時觸控板正中畫一隻手,
+   手錶照 RAW 收集那條路送 IMU+PPG(0x50)給手機,**手機**跑因果按壓模型判手指按下/放開
+   → 左鍵 down/up 送到 active 電腦(手錶塞不下那顆模型)。再倒過來 tap 一次退出;
+   預設關;離開滑鼠 app 一律關。
+   執行緒:toggle 由手勢辨識執行緒叫、ack 由通訊執行緒叫、圖示在 40ms poll(LVGL 執行緒)
+   讀旗標更新 —— 單一 bool,不需鎖(同 0x17 旗標慣例)。 */
+static volatile bool s_gesture_click_mode = false;
+static lv_obj_t *s_gesture_click_icon = NULL; /* 建在 mode_container[TRACKPAD] 上,預設 HIDDEN(前段有 tentative 宣告) */
+
+bool get_gesture_click_mode(void)
+{
+    return s_gesture_click_mode;
+}
+
+static void gesture_click_apply(bool on, const char *why)
+{
+    if (s_gesture_click_mode == on)
+        return;
+    s_gesture_click_mode = on;
+    LOG_I("[gesture-click] %s -> %s", why, on ? "ON" : "OFF");
+    /* LCPU 端 PPG/raw 串流開關(同 gesture app 的 RAW/MOUSE 鈕)。收集鈕仍開著就別關。 */
+    extern bool imu_raw_data_collection;
+    extern bool imu_mouse_data_collection;
+    if (watch_sys_sync.notify_imu_rawdata_collection)
+        watch_sys_sync.notify_imu_rawdata_collection(
+            on || imu_raw_data_collection || imu_mouse_data_collection);
+    if (!commu_send_gesture_click_mode(on))
+        LOG_W("[gesture-click] 0x27 uplink FAILED (link down?) — phone not told, mode %s locally",
+              on ? "ON" : "OFF");
+}
+
+/* 手勢辨識執行緒:錶面朝下 + tap。只在滑鼠模式下有效(gate 在 caller 也在這)。 */
+void gesture_click_mode_toggle(void)
+{
+    if (!app_control_get_mouse_mode())
+    {
+        LOG_I("[gesture-click] inverted tap outside mouse mode — ignored");
+        return;
+    }
+    gesture_click_apply(!s_gesture_click_mode, "inverted tap");
+}
+
+/* 通訊執行緒:手機 0x27 回執。ok=0(手機沒模型)→ 退出,免得畫著手卻不會點。 */
+void gesture_click_mode_ack(bool on, bool ok)
+{
+    LOG_I("[gesture-click] phone ack on=%d ok=%d (local %d)", on, ok, s_gesture_click_mode);
+    if (on && !ok && s_gesture_click_mode)
+        gesture_click_apply(false, "phone nack");
+}
+
+/* 40ms poll(LVGL 執行緒):手圖示只在「模式開 + 觸控板露著」時顯示。 */
+static void gesture_click_icon_sync(void)
+{
+    lv_obj_t *icon = s_gesture_click_icon;
+    if (icon == NULL || !lv_obj_is_valid(icon))
+        return;
+    bool want = s_gesture_click_mode && (current_hid_mode == HID_MODE_TRACKPAD);
+    bool hidden = lv_obj_has_flag(icon, LV_OBJ_FLAG_HIDDEN);
+    if (want && hidden)
+        lv_obj_clear_flag(icon, LV_OBJ_FLAG_HIDDEN);
+    else if (!want && !hidden)
+        lv_obj_add_flag(icon, LV_OBJ_FLAG_HIDDEN);
+}
+
 void set_hid_mouse_handfree_mode(void)
 {
     handfree = !handfree;
@@ -12799,6 +12879,7 @@ void hid_mouse_enter_mode(void)
    no-device case.) Mirrors the mode-related lines of hid_mouse_destroy. */
 void hid_mouse_exit_mode(void)
 {
+    gesture_click_apply(false, "exit mouse mode");
     app_control_set_mouse_mode(false);
     skaiwatch_ble_set_performance(BLE_PERF_SLOW);
     extern void set_status_bar_area_up_state(bool state);
@@ -12975,6 +13056,8 @@ void hid_mouse_destroy(void)
     top_hold_cancel();
     s_top_fly_active = false;
     handfree = false;
+    gesture_click_apply(false, "destroy");
+    s_gesture_click_icon = NULL; /* 隨 UI 樹一起被拆,別留懸空指標給 poll */
 
     // Keyboard mode 下半部 mic 區清理
     s_kbd_ui_built = false; /* R40:圖層拆了,下次進鍵盤要重建 */
