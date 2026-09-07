@@ -112,10 +112,9 @@ const lv_i18n_lang_t {}_lang =
     for k, v in s.items():
         # k = "str_" + k
         # data = data + u'char *{} = "{}";\n'.format(k,v)
-        # key and singular
-        translation = u'"{}", "{}"'.format(k, v)
-        # plural
-        translation = translation + u', {0}'
+        # lv_i18n_phrase_t only carries the translated text; the key is the
+        # struct member name (looked up by offsetof), so it is not stored.
+        translation = u'"{}"'.format(v)
         data = data + u"    .{} = {{{}}},\n".format(k, translation)
     data = template.format(lang, data, lang, lang, lang)
 
