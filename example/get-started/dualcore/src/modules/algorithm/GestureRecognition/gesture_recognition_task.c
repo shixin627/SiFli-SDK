@@ -358,6 +358,9 @@ static void gesture_recognition_algorithm(gesture_data_t *gesture)
                     LOG_I("%s", dbl);
                     gesture_stage2_report(dbl);
                     gesture_led_notify_double_tap();
+                    /* 額外送一個雙擊事件;滑鼠模式也送(那邊目前沒人接,等於沒事)。
+                       兩下的 tap 動作在下面照常各走一次,不被這個取代。 */
+                    send_virtual_gesture_event(GESTURE_EVENT_DOUBLE_TAP);
                     s_last_tap_ms = 0;
                 }
                 else

@@ -103,6 +103,7 @@ extern "C"
         void (*notify_pageview_action)(uint8_t action);
         void (*notify_unit_test_action)(uint8_t action);
         void (*trigger_longpress_event)(void);
+        void (*trigger_double_tap_event)(void); /* 雙擊:額外事件,不取代 tap */
         void (*trigger_back_event)(void);
         void (*trigger_finger_event)(uint8_t finger_event);
         void (*trigger_unknown_event)(void);

@@ -711,6 +711,7 @@ static void send_bare_msg(uint8_t msg_type)
 #endif
 }
 static void trigger_longpress_event(void) { send_bare_msg(LVGL_MSG_TYPE_LONGPRESS_EVENT); }
+static void trigger_double_tap_event(void) { send_bare_msg(LVGL_MSG_TYPE_DOUBLE_TAP_EVENT); }
 static void trigger_back_event(void)      { send_bare_msg(LVGL_MSG_TYPE_BACK_EVENT); }
 
 static void test_all(uint8_t action)
@@ -957,6 +958,7 @@ static int bloc_control_provider_register(void)
 	control_provider.notify_pageview_action = notify_pageview_action;
 	control_provider.notify_unit_test_action = test_all;
 	control_provider.trigger_longpress_event = trigger_longpress_event;
+	control_provider.trigger_double_tap_event = trigger_double_tap_event;
 	control_provider.trigger_back_event = trigger_back_event;
 	control_provider.trigger_finger_event = trigger_finger_event;
 	control_provider.trigger_unknown_event = trigger_unknown_event;

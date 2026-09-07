@@ -19,11 +19,13 @@ extern "C"
 #define GESTURE_EVENT_HAND_RELEASE (1 << 8)
 #define GESTURE_EVENT_MOVE_FORWARD (1 << 9)
 #define GESTURE_EVENT_MOVE_BACKWARD (1 << 10)
+#define GESTURE_EVENT_DOUBLE_TAP (1 << 11) /* 額外事件:兩個 tap 相距 150~600ms,兩下仍各自送 tap */
 
 #define GESTURE_ALL_EVENTS (GESTURE_EVENT_PRESS | GESTURE_EVENT_TAP | GESTURE_EVENT_HOLD |                         \
                             GESTURE_EVENT_FINGER_RELEASE | GESTURE_EVENT_FORCE_RELEASE | GESTURE_EVENT_LONGPRESS | \
                             GESTURE_EVENT_BACK | GESTURE_EVENT_WRIST_PRONATION | GESTURE_EVENT_HAND_RELEASE |      \
-                            GESTURE_EVENT_MOVE_FORWARD | GESTURE_EVENT_MOVE_BACKWARD)
+                            GESTURE_EVENT_MOVE_FORWARD | GESTURE_EVENT_MOVE_BACKWARD |                     \
+                            GESTURE_EVENT_DOUBLE_TAP)
 
     typedef enum
     {

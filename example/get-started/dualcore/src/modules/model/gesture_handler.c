@@ -133,6 +133,9 @@ static void print_gesture_event(rt_uint32_t recv_set)
   case GESTURE_EVENT_TAP:
     LOG_I("GESTURE_EVENT_TAP");
     break;
+  case GESTURE_EVENT_DOUBLE_TAP:
+    LOG_I("GESTURE_EVENT_DOUBLE_TAP");
+    break;
   case GESTURE_EVENT_HOLD:
     LOG_I("GESTURE_EVENT_HOLD");
     break;
@@ -446,6 +449,19 @@ static void gesture_event_handler_hcpu(rt_uint32_t recv_set)
         animate_to_message_list();
       }
     }
+    break;
+  }
+
+  /* 雙擊(2026-09-07):stage 2 看到兩個 tap 相距 150~600ms 才送。不改 gesture_detect_state
+     —— 第二下的 tap 已經照常走過 handle_finger_tap,這裡只多送一個 LVGL 事件,
+     沒有畫面掛 handle_double_tap_event 就等於沒發生。 */
+  case GESTURE_EVENT_DOUBLE_TAP:
+  {
+    if (gesture_collection_in_progress())
+    {
+      return;
+    }
+    control_provider.trigger_double_tap_event();
     break;
   }
 
