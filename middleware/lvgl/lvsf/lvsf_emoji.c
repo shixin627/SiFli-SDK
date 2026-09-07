@@ -170,21 +170,84 @@ static void *emoji_get_by_path(const char *path)
 
 static char path_buf[80];
 
-/* Build path from a single unicode codepoint using the switch table */
+/* Single-codepoint lookup.
+ *
+ * emoji_info.h lists every codepoint that has a standalone image file as
+ * GET_EMOJI_INFO(<hex>). The file name is just "emoji_<hex>.bin" where <hex>
+ * is the canonical lowercase %x rendering of the codepoint (no leading zeros),
+ * so the name can be produced with snprintf("%x") -- there is no need to store
+ * 1180 string literals plus a 1180-case switch (that cost ~27 KB of flash).
+ *
+ * Instead the header is expanded into a compact uint16_t membership table.
+ * Every entry is either U+1Fxxx (Supplemental Symbols block) or a 4-digit BMP
+ * codepoint >= U+1000, so EMOJI_KEY() folds them into disjoint uint16 ranges:
+ *   U+1F000..U+1FFFF -> 0x0000..0x0FFF
+ *   U+1000 ..U+FFFF  -> 0x1000..0xFFFF
+ * emoji_info.h lists the U+1Fxxx block first, then the BMP block, each in
+ * ascending order, so the folded table is ascending as well and can be
+ * binary-searched. The order is verified once at runtime; if a regenerated
+ * header ever breaks it we fall back to a linear scan (same result, slower).
+ */
+#define EMOJI_KEY(cp) ((uint16_t)((cp) >= 0x1F000 ? (cp) - 0x1F000 : (cp)))
+
+static const uint16_t emoji_single_keys[] = {
+#define GET_EMOJI_INFO(_id) EMOJI_KEY(0x##_id),
+#include "emoji_info.h"
+#undef GET_EMOJI_INFO
+};
+#define EMOJI_SINGLE_COUNT (sizeof(emoji_single_keys) / sizeof(emoji_single_keys[0]))
+
+static bool emoji_single_has(uint32_t u)
+{
+    static int8_t sorted = -1; /* -1 = not checked yet */
+    uint16_t key;
+
+    if (u >= 0x1F000 && u <= 0x1FFFF)
+        key = (uint16_t)(u - 0x1F000);
+    else if (u >= 0x1000 && u <= 0xFFFF)
+        key = (uint16_t)u;
+    else
+        return false;
+
+    if (sorted < 0)
+    {
+        sorted = 1;
+        for (uint32_t i = 1; i < EMOJI_SINGLE_COUNT; i++)
+        {
+            if (emoji_single_keys[i] <= emoji_single_keys[i - 1])
+            {
+                sorted = 0;
+                break;
+            }
+        }
+    }
+
+    if (sorted)
+    {
+        uint32_t lo = 0, hi = EMOJI_SINGLE_COUNT;
+        while (lo < hi)
+        {
+            uint32_t mid = (lo + hi) / 2;
+            uint16_t k = emoji_single_keys[mid];
+            if (k == key) return true;
+            if (k < key) lo = mid + 1;
+            else hi = mid;
+        }
+        return false;
+    }
+
+    for (uint32_t i = 0; i < EMOJI_SINGLE_COUNT; i++)
+        if (emoji_single_keys[i] == key) return true;
+    return false;
+}
+
+/* Build path from a single unicode codepoint */
 static const char *single_to_path(uint32_t u)
 {
-#define GET_EMOJI_INFO(_id) \
-    case 0x##_id: \
-        sprintf(path_buf, "%semoji_%s%s", EMOJI_RES_PATH, #_id, EMOJI_RES_SUFFIX); \
-        return path_buf;
-
-    switch (u)
-    {
-#include "emoji_info.h"
-    default:
+    if (!emoji_single_has(u))
         return NULL;
-    }
-#undef GET_EMOJI_INFO
+    snprintf(path_buf, sizeof(path_buf), "%semoji_%x%s", EMOJI_RES_PATH, (unsigned)u, EMOJI_RES_SUFFIX);
+    return path_buf;
 }
 
 /* Build path from a sequence of codepoints, e.g. "emoji_1f468_200d_1f469.bin" */
