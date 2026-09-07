@@ -341,6 +341,30 @@ static void gesture_recognition_algorithm(gesture_data_t *gesture)
                 tap_recognition_score == 1   ? GESTURE_LED_VERDICT_TAP
                 : tap_recognition_score == 0 ? GESTURE_LED_VERDICT_RELEASE
                                              : GESTURE_LED_VERDICT_NONE);
+            /* ── 雙擊(2026-09-07)──────────────────────────────────────────
+               兩個 tap 判決相距 150~600 ms 就是雙擊。founder 的雙擊錄音兩下間隔
+               260~410 ms;視窗都在峰值後 250 ms 送出,所以判決間距 ≈ 峰值間距。
+               只做「亮燈 + log」,不改任何動作:兩下各自仍照 tap 走(滑鼠模式下電腦
+               自然收到兩次 click)。三連擊不串:配對成功就歸零,第三下重新起算。 */
+            if (tap_recognition_score == 1)
+            {
+                static rt_tick_t s_last_tap_ms = 0;
+                rt_tick_t now_ms = rt_tick_get_millisecond();
+                rt_tick_t dt = now_ms - s_last_tap_ms;
+                if (s_last_tap_ms != 0 && dt >= 150 && dt <= 600)
+                {
+                    char dbl[32];
+                    rt_snprintf(dbl, sizeof(dbl), "DOUBLE-TAP dt=%d", (int)dt);
+                    LOG_I("%s", dbl);
+                    gesture_stage2_report(dbl);
+                    gesture_led_notify_double_tap();
+                    s_last_tap_ms = 0;
+                }
+                else
+                {
+                    s_last_tap_ms = now_ms ? now_ms : 1;
+                }
+            }
             if (tap_recognition_score == 1)
             {
                 if (app_control_get_mouse_mode())

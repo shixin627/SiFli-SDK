@@ -699,6 +699,187 @@ static void gesture_capture_timeout_report(gesture_type_t type, capture_state_t 
 #endif
 }
 
+
+/* ── TAP stage-1 v5:局部峰挑選(2026-09-07)────────────────────────────────────
+   舊擷取器(上面那套 arm → 追全域最大 → 安靜 100ms 確認)在「手在動的時候捏」這個
+   情境有三個結構性損失,用 founder 的雙擊錄音(51 次 FSR 按壓、背景 ‖Δa‖ 中位數
+   0.1~0.36,靜止是 0.013)逐次對帳:
+     15 次沒切出視窗 —— 8 次是 4×median 門檻被前一下自己灌高,6 次落在
+        「峰值後收 25 筆 + cooldown 100ms」的 350ms 死區(雙擊第二下正好在 290ms),
+     13 次錨太早 —— arm 在「手接近」的動作上,視窗裝的是接近不是敲擊。
+   v5 不 arm、不追最大值:每一筆都是候選,「過門檻且是前後 100ms 的最大值」就是
+   一個事件,事件間隔 ≥150ms,事件後 600ms 內門檻的背景值凍結在事件前的值。
+   離線(paper_progam/mouse3/work/watch_tap/v5_eval.py)三個資料集一起看:
+                         本檔單擊   雙擊   日常 tap/分  假雙擊/分   mouse3 八人 s1/e2e
+     舊                    12/51    2/20     3.47        0.21        0.751/0.708
+     v5 k4 veto.25 minpk.3 19/51    5/20     3.51        0.46        0.710/0.667
+   代價在捏得輕的人(dad 0.72→0.52、willson 0.45→0.31):V5_MIN_PEAK 是唯一壓得住
+   日常誤觸的旋鈕,0.4 會把他們砍一半,0.3 是折衷。RELEASE 擷取器不動(沒有真值)。
+   延遲跟舊的一樣:確認峰值要等 10 筆,視窗都在峰值後 250ms 送出。 */
+#define V5_LOOKAHEAD 10                        /* 峰值 = 前後 10 筆(100ms)的最大值 */
+#define V5_RING (2 * V5_LOOKAHEAD + 1)
+#define V5_MIN_GAP 15                          /* 兩事件至少 150ms               */
+#define V5_FREEZE_MS 600                       /* 事件後門檻背景凍結多久           */
+#define V5_MIN_PEAK 0.30f                      /* 事件 ‖Δa‖ 峰值下限(壓日常誤觸)  */
+#define V5_VETO_MEDIAN 0.25f                   /* 事件當下的 median75 過這個就丟    */
+
+typedef struct
+{
+    float d[V5_RING];    /* difference_accel                        */
+    float bg[V5_RING];   /* median75(未凍結)                        */
+    float thr[V5_RING];  /* 當時生效的門檻                          */
+    bool trig[V5_RING];  /* d > thr                                 */
+    uint32_t n;          /* 推入筆數;最新一筆的樣本序號 = n-1        */
+    bool has_peak;
+    uint32_t last_peak_n;
+    bool frozen;
+    float frozen_bg;
+    rt_tick_t frozen_until;
+} v5_state_t;
+static v5_state_t s_v5;
+
+static void gesture_tap_capture_v5(time_t ts, Vector3 *linear_acce,
+                                   Vector3 *gravity, uint32_t ppg,
+                                   rt_uint32_t fsr_adc_value,
+                                   waveform_gesture_state_t *state,
+                                   gesture_dataset_t *dataset,
+                                   capture_state_t *cap)
+{
+    rt_tick_t now = rt_tick_get_millisecond();
+    v5_state_t *v = &s_v5;
+    float d = state->difference_accel;
+
+    /* 1) 門檻 + 推環。環每一筆都推,不受閘門影響 —— 閘門只擋「產生事件」,
+          不然閘門一開一關環就斷了。 */
+    float bg_now =
+        calculate_median_difference_accel(GESTURE_ADAPTIVE_MEDIAN_SAMPLES);
+    if (v->frozen && (int32_t)(now - v->frozen_until) >= 0)
+    {
+        v->frozen = false;
+    }
+    float bg_thr = v->frozen ? v->frozen_bg : bg_now;
+    float thr = bg_thr * GESTURE_ADAPTIVE_K;
+    if (thr < TAP_START_THRESHOLD)
+    {
+        thr = TAP_START_THRESHOLD;
+    }
+    uint32_t slot = v->n % V5_RING;
+    v->d[slot] = d;
+    v->bg[slot] = bg_now;
+    v->thr[slot] = thr;
+    v->trig[slot] = (d > thr);
+    v->n++;
+
+    /* 2) 收集中:存尾巴,滿 35 筆就送。沒有 cooldown —— 下一個事件由 V5_MIN_GAP 管。 */
+    if (dataset->gesture_sample_count > 0)
+    {
+        store_gesture_sample(dataset, ts, linear_acce, gravity, ppg,
+                             fsr_adc_value, state->on_pressed);
+        if (dataset->gesture_sample_count >= GESTURE_TAP_TIME_STEP)
+        {
+            dataset->gesture_ended = true;
+            getTargetWaveformFromSlidingWindow(dataset, targetWave_algo,
+                                               GESTURE_TAP_TIME_STEP);
+            notify_gesture_dataset_hcpu(rt_tick_get(), GESTURE_TAP_TIME_STEP,
+                                        targetWave_algo);
+            gesture_led_notify_capture();
+            gesture_capture_report(GESTURE_TYPE_TAP, cap, bg_now,
+                                   fsr_adc_value, true, true, true);
+            dataset->gesture_started = false;
+            dataset->gesture_ended = false;
+            dataset->gesture_sample_count = 0;
+        }
+        return;
+    }
+
+    /* 3) 閘門(同舊擷取器):剛醒 / 姿態 / 轉動鎖 → 這筆不當候選。 */
+    if (now - SkaiWatchSys.pre_hcpu_wakeup_tick < 300)
+    {
+        return;
+    }
+    if (state->if_watchface_visible == false && !imu_data_collection)
+    {
+        return;
+    }
+    if (state->gyro_lock_status && !imu_data_collection)
+    {
+        return;
+    }
+
+    /* 4) 候選 = 10 筆前那一筆:過門檻、距上一事件 ≥150ms、是環裡的最大值
+          (比它早的要嚴格小於,比它晚的不能超過 —— 對齊離線 argmax 取第一個)。 */
+    if (v->n < V5_RING)
+    {
+        return;
+    }
+    uint32_t c_n = v->n - 1 - V5_LOOKAHEAD;
+    uint32_t cs = c_n % V5_RING;
+    if (!v->trig[cs])
+    {
+        return;
+    }
+    if (v->has_peak && (c_n - v->last_peak_n) < V5_MIN_GAP)
+    {
+        return;
+    }
+    float dc = v->d[cs];
+    for (uint32_t k = 0; k < V5_RING; k++)
+    {
+        uint32_t idx = v->n - V5_RING + k;
+        float dk = v->d[idx % V5_RING];
+        if (idx < c_n && dk >= dc)
+        {
+            return;
+        }
+        if (idx > c_n && dk > dc)
+        {
+            return;
+        }
+    }
+
+    /* 5) 事件。凍結門檻背景(只在沒凍結時開一次,不連鎖)。 */
+    v->has_peak = true;
+    v->last_peak_n = c_n;
+    if (!v->frozen)
+    {
+        v->frozen = true;
+        v->frozen_bg = v->bg[cs];
+        v->frozen_until = now + V5_FREEZE_MS;
+    }
+    cap->armed = false;
+    cap->realigns = 0;
+    cap->arm_age = V5_LOOKAHEAD;
+    cap->peak_age = V5_LOOKAHEAD;
+    cap->peak_val = dc;
+    cap->arm_median = v->bg[cs];
+    cap->arm_threshold = v->thr[cs];
+
+    bool veto_ok = (v->bg[cs] <= V5_VETO_MEDIAN);
+    bool strong = (dc >= V5_MIN_PEAK);
+    if (!veto_ok || !strong)
+    {
+        /* 燈 1 藍 + 燈 2:橙 = 背景太吵、青 = 峰值太弱(借 CONFIRM 那個顏色)。 */
+        gesture_led_notify_stage1_drop(!veto_ok ? GESTURE_LED_S1_DROP_MED
+                                                : GESTURE_LED_S1_DROP_CONFIRM);
+        gesture_capture_report(GESTURE_TYPE_TAP, cap, bg_now, fsr_adc_value,
+                               veto_ok, true, strong);
+        return;
+    }
+
+    /* 6) 回填:峰值在滑動窗的 slot 23-10=13,往前 9 筆起抄,峰值落在視窗 index 9,
+          跟舊擷取器完全一樣的對齊;現在這筆(slot 23)已經在裡面。 */
+    int first = ACCEL_WINDOW_SIZE - 1 - V5_LOOKAHEAD - FEEDBACK_ACCEL_SAMPLES_FOR_TAP;
+    for (int i = first; i < ACCEL_WINDOW_SIZE; i++)
+    {
+        store_gesture_sample(dataset, ts, &state->sliding_window_accel[i],
+                             &state->sliding_window_gravity[i],
+                             state->sliding_window_ppg[i],
+                             state->sliding_window_fsr_adc[i],
+                             state->on_pressed);
+    }
+    dataset->gesture_started = true;
+}
+
 extern int get_gesture_recognition_threshold(void);
 static void gesture_event_capture_hcpu(uint16_t freq, time_t ts,
                                        Vector3 *linear_acce, Vector3 *gyro,
@@ -719,6 +900,13 @@ static void gesture_event_capture_hcpu(uint16_t freq, time_t ts,
         prev_ppg_rawdata[i] = prev_ppg_rawdata[i + 1];
     }
     prev_ppg_rawdata[2] = ppg;
+    /* TAP 走 v5(局部峰);資料收集模式(imu_data_collection)與 RELEASE 仍走舊擷取器。 */
+    if (type == GESTURE_TYPE_TAP && !imu_data_collection)
+    {
+        gesture_tap_capture_v5(ts, linear_acce, gravity, ppg, fsr_adc_value,
+                               state, dataset, cap);
+        return;
+    }
     if ((current_time - wait_start_time) < cooldown_period)
     {
         return;
