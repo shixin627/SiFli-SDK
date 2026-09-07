@@ -23,6 +23,7 @@
 #define GLED_COLOR_OFF 0x141414     /* 熄滅:看得到位置但不搶戲 */
 #define GLED_COLOR_CAPTURE 0xFFFFFF /* 燈 1:白 = 有送進 stage 2 */
 #define GLED_COLOR_GATED 0xFF2A2A   /* 燈 1:紅 = 被 gate 攔掉,模型沒跑 */
+#define GLED_COLOR_S1DROP 0x2E7BFF  /* 燈 1:藍 = stage 1 自己丟掉(從沒送出) */
 
 #define GLED_COLOR_RELEASE 0x2E7BFF /* 燈 2:藍 = release */
 #define GLED_COLOR_TAP 0x27D07C     /* 燈 2:綠 = tap */
@@ -54,6 +55,8 @@ static volatile uint32_t s_capture_tick = 0; /* 0 = 從未發生 */
 static volatile uint32_t s_gate_tick = 0;
 static volatile uint32_t s_verdict_tick = 0;
 static volatile uint8_t s_gate = GESTURE_LED_GATE_OTHER;
+static volatile uint32_t s_s1drop_tick = 0;
+static volatile uint8_t s_s1drop = GESTURE_LED_S1_DROP_MED;
 static volatile uint8_t s_verdict = GESTURE_LED_VERDICT_NONE;
 
 static bool s_enabled = true;
@@ -82,6 +85,24 @@ static uint32_t gled_gate_color(uint8_t gate)
         return GLED_COLOR_GATE_MOTOR;
     default:
         return GLED_COLOR_GATE_OTHER;
+    }
+}
+
+static uint32_t gled_s1drop_color(uint8_t why)
+{
+    switch (why)
+    {
+    case GESTURE_LED_S1_DROP_MED:
+        return GLED_COLOR_GATE_TOUCHING; /* 橙 */
+    case GESTURE_LED_S1_DROP_GYRO:
+        return GLED_COLOR_GATE_MOTOR; /* 紫 */
+    case GESTURE_LED_S1_DROP_CONFIRM:
+        return GLED_COLOR_GATE_GUI_OFF; /* 青 */
+    case GESTURE_LED_S1_DROP_TIMEOUT:
+        return GLED_COLOR_GATED; /* 紅 */
+    case GESTURE_LED_S1_DROP_POSE:
+    default:
+        return GLED_COLOR_GATE_NOT_WORN; /* 黃 */
     }
 }
 
@@ -120,6 +141,12 @@ static void gled_timer_cb(lv_timer_t *t)
     {
         want_capture = GLED_COLOR_GATED;
         want_verdict = gled_gate_color(s_gate);
+    }
+    else if (gled_within(s_s1drop_tick, GLED_CAPTURE_HOLD_MS))
+    {
+        /* stage 1 自己丟的:藍 + 原因色。比白(送出)優先,因為同一個 arm 只會有一種結局。 */
+        want_capture = GLED_COLOR_S1DROP;
+        want_verdict = gled_s1drop_color(s_s1drop);
     }
     else
     {
@@ -209,6 +236,12 @@ void gesture_led_notify_capture(void)
        所以夾到 1。 */
     uint32_t now = rt_tick_get();
     s_capture_tick = now ? now : 1u;
+}
+
+void gesture_led_notify_stage1_drop(gesture_led_s1drop_t why)
+{
+    s_s1drop = (uint8_t)why;
+    s_s1drop_tick = rt_tick_get();
 }
 
 void gesture_led_notify_gate(gesture_led_gate_t gate)
