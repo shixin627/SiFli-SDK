@@ -227,7 +227,13 @@ void gesture_confirm_set(uint16_t peak_x100)
    genuinely noisy — walking crosses the tap threshold ~11% of the time, so
    this emits roughly one line per second per extractor, on both UART and the
    BLE link to the phone. Turn on only for a capture session: `gcap log on`. */
+/* 開發版預設開:這版組態 FINSH 關著、ULOG 只到 W,`gcap log on` 送不進去、COM12 也印不出
+   LOG_I —— 唯一能到手上的診斷就是 BLE log 進手機(founder 2026-09-07 倒立 tap 燈不亮,要看數字)。 */
+#if kReleaseMode
 static bool capture_log_on = false;
+#else
+static bool capture_log_on = true;
+#endif
 
 /* Read by gesture_recognition_task.c so one switch covers both stages. */
 bool gesture_capture_log_on(void)
@@ -673,6 +679,26 @@ static void gesture_capture_report(gesture_type_t type, capture_state_t *cap,
 #endif
 }
 
+/* arm 逾時的一行報告,格式對齊 gesture_capture_report(同樣 dev-only、同樣走 BLE log)。 */
+static void gesture_capture_timeout_report(gesture_type_t type, capture_state_t *cap)
+{
+#if !kReleaseMode
+    if (!capture_log_on)
+        return;
+    char line[80];
+    rt_snprintf(line, sizeof(line), "CUT %s pk=%d thr=%d med=%d ra=%d age=%d ARM-TIMEOUT",
+                (type == GESTURE_TYPE_TAP) ? "TAP" : "REL", (int)(cap->peak_val * 100.0f),
+                (int)(cap->arm_threshold * 100.0f), (int)(cap->arm_median * 100.0f),
+                cap->realigns, cap->arm_age);
+    LOG_I("%s", line);
+    #ifdef BSP_USING_COMMUNICATE
+    commu_send_bluetooth_log(line);
+    #endif
+#else
+    (void)type; (void)cap;
+#endif
+}
+
 extern int get_gesture_recognition_threshold(void);
 static void gesture_event_capture_hcpu(uint16_t freq, time_t ts,
                                        Vector3 *linear_acce, Vector3 *gyro,
@@ -703,12 +729,16 @@ static void gesture_event_capture_hcpu(uint16_t freq, time_t ts,
     }
     else if (state->if_watchface_visible == false && !imu_data_collection)
     {
+        if (cap->armed)
+            gesture_led_notify_stage1_drop(GESTURE_LED_S1_DROP_POSE);
         cap->armed = false; /* posture gate — drop any in-flight arm too */
         reset_gesture_state(dataset, current_time, type, 2);
         return;
     }
     else if (state->gyro_lock_status && !imu_data_collection)
     {
+        if (cap->armed)
+            gesture_led_notify_stage1_drop(GESTURE_LED_S1_DROP_GYRO);
         cap->armed = false; /* gyro lock — same */
         reset_gesture_state(dataset, current_time, type, 3);
         return;
@@ -799,6 +829,10 @@ static void gesture_event_capture_hcpu(uint16_t freq, time_t ts,
        extractor should be free to re-arm immediately. */
     if (cap->arm_age > GESTURE_ARM_TIMEOUT)
     {
+        /* 診斷燈:arm 了但 800ms 內湊不出視窗(峰值一直被更強的樣本頂掉,或動作拖太長)。
+           以前完全靜默 —— 倒立 tap「什麼燈都不亮」有一半是這條。 */
+        gesture_led_notify_stage1_drop(GESTURE_LED_S1_DROP_TIMEOUT);
+        gesture_capture_timeout_report(type, cap);
         dataset->gesture_sample_count = 0;
         dataset->gesture_started = false;
         dataset->gesture_ended = false;
@@ -883,6 +917,13 @@ static void gesture_event_capture_hcpu(uint16_t freq, time_t ts,
                    要代表的正是「有東西送出去」。只寫 volatile,不碰 LVGL。 */
                 gesture_led_notify_capture();
             }
+        }
+        else
+        {
+            /* 診斷燈:視窗切出來了但 stage 1 自己丟掉 —— 這在 release 版以前完全看不見。 */
+            gesture_led_notify_stage1_drop(!is_gesture   ? GESTURE_LED_S1_DROP_MED
+                                           : !posture_ok ? GESTURE_LED_S1_DROP_POSE
+                                                         : GESTURE_LED_S1_DROP_CONFIRM);
         }
         gesture_capture_report(type, cap, calculate_median_difference_accel(75),
                                fsr_adc_value, is_gesture, posture_ok,
@@ -1142,25 +1183,29 @@ static void waveform_capture_process(motion_data_t *motion_data, Vector3 *gyro)
     bool gc_stream = get_gesture_click_mode() && !get_switch_freehand_mode();
     if (collecting || gc_stream)
     {
+        /* 收集模式沿用 release_dataset(當時擷取整個被 return 跳過,沒人共用);手勢點擊模式
+           擷取還活著,motion_control_lock 為真時 RELEASE 擷取就用 release_dataset,兩邊搶同一個
+           計數器會把視窗切壞 —— 串流改用自己的一份。 */
+        static gesture_dataset_t gc_stream_dataset = {0};
+        gesture_dataset_t *sd = collecting ? &release_dataset : &gc_stream_dataset;
         // LOG_D("Collecting IMU raw data: ppg:%d, fsr_adc:%d", ppg_rawdata,
         //       fsr_adc_value);
-        store_gesture_sample(&release_dataset, rt_tick_get_millisecond(),
+        store_gesture_sample(sd, rt_tick_get_millisecond(),
                              linear_acce, gravity, ppg_rawdata, fsr_adc_value,
                              waveform_gesture_state.on_pressed);
-        if (release_dataset.gesture_sample_count >= flush_at)
+        if (sd->gesture_sample_count >= flush_at)
         {
-            getTargetWaveformFromSlidingWindow(
-                &release_dataset, targetWave_algo,
-                release_dataset.gesture_sample_count);
+            getTargetWaveformFromSlidingWindow(sd, targetWave_algo,
+                                               sd->gesture_sample_count);
             // if (!check_ppg_error)
             {
                 packMatrixToBuffer(gsensorSamplesBuffer, targetWave_algo, NULL,
-                                   release_dataset.gesture_sample_count);
+                                   sd->gesture_sample_count);
                 commu_send_linear_acce_buffer(
                     gsensorSamplesBuffer,
-                    release_dataset.gesture_sample_count * BYTES_PER_SAMPLE);
+                    sd->gesture_sample_count * BYTES_PER_SAMPLE);
             }
-            release_dataset.gesture_sample_count = 0;
+            sd->gesture_sample_count = 0;
         }
         if (collecting)
             return;
@@ -1192,7 +1237,11 @@ static void waveform_capture_process(motion_data_t *motion_data, Vector3 *gyro)
     }
     else
     {
-        if (SkaiWatchSys.motion_control_lock)
+        /* 滑鼠模式一律用 TAP 擷取器。lock 為真時走 RELEASE 擷取器,arm 門檻是 1.55(TAP 是 0.15)
+           —— 錶盤底部滑進來的滑鼠頁(hid_mouse_enter_mode)不會像 standalone app 的 ONRESUME 那樣
+           開 motion control,lock 停在錶盤留下的 true,倒立捏指 tap 峰值 0.3-1.5 幾乎全過不了
+           1.55 → 什麼燈都不亮(founder 2026-09-07;離線重放同一份錄音 TAP 擷取器 10/10 SENT)。 */
+        if (SkaiWatchSys.motion_control_lock && !app_control_get_mouse_mode())
         {
             gesture_event_capture_hcpu(IMU_NOARMAL_SAMPLE_RATE, current_ts,
                                        linear_acce, gyro, gravity, ppg_rawdata,

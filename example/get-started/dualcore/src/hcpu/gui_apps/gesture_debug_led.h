@@ -53,6 +53,18 @@ typedef enum
     GESTURE_LED_GATE_OTHER,       /* 白  — model-off / mouse-mode / arm-control */
 } gesture_led_gate_t;
 
+/* stage 1 自己把「已 arm/已切出」的視窗丟掉,從沒交到 stage 2。燈 1 轉藍,燈 2 說原因。
+   founder 2026-09-07:倒立 tap 常常連白點都不亮 —— 白只代表「送出去了」,stage 1 自己
+   丟掉的完全看不見,這組把那條線畫出來。 */
+typedef enum
+{
+    GESTURE_LED_S1_DROP_MED = 0, /* 橙 — 背景動作太吵(arm 當下的 ‖Δa‖ 中位數過 veto) */
+    GESTURE_LED_S1_DROP_GYRO,    /* 紫 — 轉動鎖(近 100ms 角速度總量過 GYRO_LOCK_THRESHOLD)砍掉正在 arm 的視窗 */
+    GESTURE_LED_S1_DROP_CONFIRM, /* 青 — 走路模式的峰值確認沒過 */
+    GESTURE_LED_S1_DROP_POSE,    /* 黃 — 姿態閘(if_watchface_visible=false)砍掉正在 arm 的視窗 */
+    GESTURE_LED_S1_DROP_TIMEOUT, /* 紅 — arm 了但 800ms 內湊不出視窗(峰值一直被頂掉/動作拖太長) */
+} gesture_led_s1drop_t;
+
 #if GESTURE_DEBUG_LED_ENABLE
 
 /** 建立兩顆燈並啟動更新 timer。**只能在 LVGL 執行緒呼叫**（ui_layer_system_builder）。 */
@@ -63,6 +75,9 @@ void gesture_led_notify_capture(void);
 
 /** stage 2 在跑模型前把視窗攔掉了。任何執行緒可呼叫。 */
 void gesture_led_notify_gate(gesture_led_gate_t gate);
+
+/** stage 1 自己丟掉了一個(已 arm 的)視窗。任何執行緒可呼叫。 */
+void gesture_led_notify_stage1_drop(gesture_led_s1drop_t why);
 
 /** stage 2 的模型判決。任何執行緒可呼叫。 */
 void gesture_led_notify_verdict(gesture_led_verdict_t verdict);
@@ -76,6 +91,7 @@ bool gesture_led_is_enabled(void);
 static inline void gesture_led_init(void) {}
 static inline void gesture_led_notify_capture(void) {}
 static inline void gesture_led_notify_gate(gesture_led_gate_t g) { (void)g; }
+static inline void gesture_led_notify_stage1_drop(gesture_led_s1drop_t w) { (void)w; }
 static inline void gesture_led_notify_verdict(gesture_led_verdict_t v) { (void)v; }
 static inline void gesture_led_set_enabled(bool enabled) { (void)enabled; }
 static inline bool gesture_led_is_enabled(void) { return false; }
