@@ -43,11 +43,19 @@ typedef struct
 
 typedef struct
 {
+    int32_t value;
+    int32_t min;
+    int32_t max;
+} eng_var_t;
+
+typedef struct
+{
     bool used;
     char app_id[SKAIAPP_ID_MAX];
-    uint8_t n_t, n_r;
+    uint8_t n_t, n_r, n_v;
     eng_timer_t t[SKAIAPP_MAX_TIMERS];
     eng_rem_t   r[SKAIAPP_MAX_REMINDERS];
+    eng_var_t   v[SKAIAPP_MAX_VARS];
 } eng_app_t;
 
 static eng_app_t s_apps[SKAIAPP_MAX_APPS];
@@ -137,6 +145,13 @@ void skaiapp_engine_load(const char *app_id, const skaiapp_eng_seed_t *seed)
     strncpy(a->app_id, app_id, SKAIAPP_ID_MAX - 1);
     a->n_t = seed->n_timers;
     a->n_r = seed->n_reminders;
+    a->n_v = seed->n_vars;
+    for (int i = 0; i < a->n_v; i++)
+    {
+        a->v[i].value = seed->v[i].value;
+        a->v[i].min = seed->v[i].min;
+        a->v[i].max = seed->v[i].max;
+    }
     for (int i = 0; i < a->n_t; i++)
     {
         a->t[i].duration_s = seed->t[i].duration_s;
@@ -256,6 +271,70 @@ bool skaiapp_engine_timer_query(const char *app_id, int idx,
     return ok;
 }
 
+/* ── counters ── */
+
+/* Arm the debounced write-back of this app's mutable state. Shared with the
+   reminder toggle: one flash write per burst of taps, never one per tap
+   (the flash-XIP-stall rule — a write storm starves the GUI). MUST be called
+   with the lock held. */
+static void arm_persist(const char *app_id)
+{
+    strncpy(s_persist_id, app_id, SKAIAPP_ID_MAX - 1);
+    s_persist_id[SKAIAPP_ID_MAX - 1] = '\0';
+    s_persist_due_ms = now_ms() + PERSIST_DEBOUNCE_MS;
+    s_persist_armed = true;
+}
+
+static void var_apply(const char *app_id, int idx, int32_t value, bool relative)
+{
+    lock();
+    eng_app_t *a = find_app(app_id);
+    if (a != NULL && idx >= 0 && idx < a->n_v)
+    {
+        eng_var_t *v = &a->v[idx];
+        int64_t next = relative ? ((int64_t)v->value + value) : (int64_t)value;
+        /* Clamp, never wrap: the package states the range the app is meaningful
+           over, and a tally that silently went negative is a bug the user
+           cannot see the cause of. */
+        if (next < v->min) next = v->min;
+        if (next > v->max) next = v->max;
+        if ((int32_t)next != v->value)
+        {
+            v->value = (int32_t)next;
+            arm_persist(app_id);
+        }
+    }
+    unlock();
+    poke();
+}
+
+void skaiapp_engine_var_add(const char *app_id, int idx, int32_t delta)
+{
+    var_apply(app_id, idx, delta, true);
+}
+
+void skaiapp_engine_var_set(const char *app_id, int idx, int32_t value)
+{
+    var_apply(app_id, idx, value, false);
+}
+
+bool skaiapp_engine_var_get(const char *app_id, int idx, int32_t *out,
+                            int32_t *min_out, int32_t *max_out)
+{
+    bool ok = false;
+    lock();
+    eng_app_t *a = find_app(app_id);
+    if (a != NULL && idx >= 0 && idx < a->n_v)
+    {
+        if (out != NULL)     *out = a->v[idx].value;
+        if (min_out != NULL) *min_out = a->v[idx].min;
+        if (max_out != NULL) *max_out = a->v[idx].max;
+        ok = true;
+    }
+    unlock();
+    return ok;
+}
+
 /* ── reminder controls ── */
 
 bool skaiapp_engine_reminder_toggle(const char *app_id, int idx)
@@ -267,10 +346,7 @@ bool skaiapp_engine_reminder_toggle(const char *app_id, int idx)
     {
         a->r[idx].cfg.enabled = a->r[idx].cfg.enabled ? 0 : 1;
         now_on = a->r[idx].cfg.enabled;
-        strncpy(s_persist_id, app_id, SKAIAPP_ID_MAX - 1);
-        s_persist_id[SKAIAPP_ID_MAX - 1] = '\0';
-        s_persist_due_ms = now_ms() + PERSIST_DEBOUNCE_MS;
-        s_persist_armed = true;
+        arm_persist(app_id);
     }
     unlock();
     poke();
@@ -662,7 +738,9 @@ static void process_persist(void)
 {
     char id[SKAIAPP_ID_MAX];
     uint8_t enabled[SKAIAPP_MAX_REMINDERS];
+    int32_t values[SKAIAPP_MAX_VARS];
     uint8_t n = 0;
+    uint8_t nv = 0;
     bool go = false;
     lock();
     if (s_persist_armed && now_ms() >= s_persist_due_ms)
@@ -677,6 +755,11 @@ static void process_persist(void)
             {
                 enabled[i] = a->r[i].cfg.enabled;
             }
+            nv = a->n_v;
+            for (int i = 0; i < nv; i++)
+            {
+                values[i] = a->v[i].value;
+            }
             go = true;
         }
         s_persist_armed = false;
@@ -684,9 +767,9 @@ static void process_persist(void)
     unlock();
     if (go)
     {
-        if (skaiapp_store_rewrite_reminder_enabled(id, enabled, n) != 0)
+        if (skaiapp_store_rewrite_state(id, enabled, n, values, nv) != 0)
         {
-            LOG_W("persist toggle for '%s' failed", id);
+            LOG_W("persist state for '%s' failed", id);
         }
     }
 }

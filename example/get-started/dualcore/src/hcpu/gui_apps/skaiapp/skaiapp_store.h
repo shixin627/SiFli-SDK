@@ -33,14 +33,24 @@ int  skaiapp_store_install(const uint8_t *json, uint32_t len,
 /* Remove package file + meta + engine record. Returns SKAIAPP_ACK_*. */
 int  skaiapp_store_remove(const char *id);
 
+/* Record the picture the user chose ON THE WATCH for photo slot `idx` of `id`
+   (a path under /photo, from the watch's own album). Rewrites the stored package
+   and bumps the generation so an open page redraws. 0 = ok.
+   Called from the LVGL thread on a tap — one small write per pick, never a loop. */
+int  skaiapp_store_set_photo_src(const char *id, uint8_t idx, const char *path);
+
 /* Load raw JSON into an rt_malloc'd buffer (caller rt_free's). 0 = ok. */
 int  skaiapp_store_load(const char *id, uint8_t **buf, uint32_t *len);
 
-/* Debounced persist target for the reminder on/off toggle (engine thread only —
-   one small rewrite, mind the flash-XIP-stall rule). 0 = ok. */
-int  skaiapp_store_rewrite_reminder_enabled(const char *id,
-                                            const uint8_t enabled[SKAIAPP_MAX_REMINDERS],
-                                            uint8_t n);
+/* Debounced persist target for everything the WATCH itself changes: the
+   reminder on/off toggles and the counters' current values (written into each
+   var's `val`, leaving `init` as the phone wrote it). Engine thread only — one
+   small rewrite per burst, mind the flash-XIP-stall rule. 0 = ok. */
+int  skaiapp_store_rewrite_state(const char *id,
+                                 const uint8_t enabled[SKAIAPP_MAX_REMINDERS],
+                                 uint8_t n_enabled,
+                                 const int32_t values[SKAIAPP_MAX_VARS],
+                                 uint8_t n_values);
 
 /* Bumped on every install/remove; the host app polls it from an lv_timer. */
 uint32_t skaiapp_store_generation(void);

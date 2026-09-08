@@ -39,6 +39,14 @@ typedef struct
 #define SKAIAPP_TF_HAS_NOTIFY     0x04
 #define SKAIAPP_TF_AUTOSTART_NEXT 0x08
 
+/* one counter's starting point + clamp (schema `vars`) */
+typedef struct
+{
+    int32_t value;      /* `val` if the watch already persisted one, else `init` */
+    int32_t min;
+    int32_t max;
+} skaiapp_seed_var_t;
+
 typedef struct
 {
     uint8_t  kind;      /* 0 interval / 1 daily */
@@ -55,8 +63,10 @@ typedef struct skaiapp_eng_seed
 {
     uint8_t n_timers;
     uint8_t n_reminders;
+    uint8_t n_vars;
     skaiapp_seed_timer_t t[SKAIAPP_MAX_TIMERS];
     skaiapp_seed_rem_t   r[SKAIAPP_MAX_REMINDERS];
+    skaiapp_seed_var_t   v[SKAIAPP_MAX_VARS];
 } skaiapp_eng_seed_t;
 
 /* thread + timer bootstrap (INIT_APP_EXPORT'd in skaiapp_engine.c) */
@@ -74,6 +84,15 @@ bool skaiapp_engine_timer_query(const char *app_id, int idx,
 
 /* toggle returns the NEW enabled state; next-fire query: 0 = disabled/none,
    else minutes-of-day of the next fire (display as HH:MM) */
+/* counters (LVGL thread, from rendered buttons). add/set clamp to the var's
+   min/max and arm the same debounced package rewrite the reminder toggle uses,
+   so a tally survives a reboot without a flash write per tap. */
+void     skaiapp_engine_var_add(const char *app_id, int idx, int32_t delta);
+void     skaiapp_engine_var_set(const char *app_id, int idx, int32_t value);
+/* false = no such var (the renderer then draws "--" like any absent reading) */
+bool     skaiapp_engine_var_get(const char *app_id, int idx, int32_t *out,
+                                int32_t *min_out, int32_t *max_out);
+
 bool     skaiapp_engine_reminder_toggle(const char *app_id, int idx);
 bool     skaiapp_engine_reminder_enabled(const char *app_id, int idx);
 uint16_t skaiapp_engine_reminder_next(const char *app_id, int idx);

@@ -271,13 +271,82 @@ static int32_t legacy_gauge_max(const char *b)
 
 /* ── item parsing ── */
 
+/* Intern a raw C string (not a cJSON node) into the model pool, bounded by
+   `cap`. 0xFFFF when it does not fit — callers must treat that as "no value",
+   never as offset 0. */
+static uint16_t pool_add_str(skaiapp_model_t *m, const char *src, size_t cap)
+{
+    size_t len = strlen(src);
+    if (len == 0 || len > cap)
+    {
+        return 0xFFFF;
+    }
+    if ((uint32_t)m->strpool_used + len + 1 > SKAIAPP_STRPOOL_MAX)
+    {
+        return 0xFFFF;
+    }
+    uint16_t off = m->strpool_used;
+    memcpy(&m->strpool[off], src, len);
+    m->strpool[off + len] = '\0';
+    m->strpool_used = (uint16_t)(off + len + 1);
+    return off;
+}
+
 typedef struct
 {
     char t_ids[SKAIAPP_MAX_TIMERS][SKAIAPP_ID_MAX];
     char r_ids[SKAIAPP_MAX_REMINDERS][SKAIAPP_ID_MAX];
     char m_ids[SKAIAPP_MAX_MEMOS][SKAIAPP_ID_MAX];
-    uint8_t nt, nr, nm;
+    char p_ids[SKAIAPP_MAX_PHOTOS][SKAIAPP_ID_MAX];
+    char v_ids[SKAIAPP_MAX_VARS][SKAIAPP_ID_MAX];
+    uint8_t nt, nr, nm, np, nv;
 } ref_ctx_t;
+
+/* "var.add:<id>:<delta>" / "var.set:<id>:<value>" — one verb carries both the
+   target and the amount, which is why this platform needs no expression
+   language on the watch. false = not this verb (or an unknown var). */
+static bool parse_var_action(const char *a, const char *prefix,
+                             skaiapp_witem_t *it, const ref_ctx_t *refs,
+                             uint8_t act)
+{
+    size_t plen = strlen(prefix);
+    if (strncmp(a, prefix, plen) != 0)
+    {
+        return false;
+    }
+    const char *rest = a + plen;
+    const char *colon = strchr(rest, ':');
+    if (colon == NULL || colon == rest)
+    {
+        return false;
+    }
+    size_t idlen = (size_t)(colon - rest);
+    if (idlen >= SKAIAPP_ID_MAX)
+    {
+        return false;
+    }
+    char id[SKAIAPP_ID_MAX];
+    memcpy(id, rest, idlen);
+    id[idlen] = '\0';
+    int slot = -1;
+    for (uint8_t i = 0; i < refs->nv; i++)
+    {
+        if (strcmp(refs->v_ids[i], id) == 0)
+        {
+            slot = i;
+            break;
+        }
+    }
+    if (slot < 0)
+    {
+        LOG_W("var action targets unknown var: %s", a);
+        return false;
+    }
+    it->action = act;
+    it->action_idx = (int8_t)slot;
+    it->action_arg = (int32_t)strtol(colon + 1, NULL, 10);
+    return true;
+}
 
 static bool parse_leaf(skaiapp_model_t *m, const cJSON *jit, ref_ctx_t *refs)
 {
@@ -294,6 +363,7 @@ static bool parse_leaf(skaiapp_model_t *m, const cJSON *jit, ref_ctx_t *refs)
     memset(it, 0, sizeof(*it));
     it->bind_idx = -1;
     it->action_idx = -1;
+    it->action_off = 0xFFFF;
     it->text_off = 0xFFFF;
     const char *w = jw->valuestring;
 
@@ -325,6 +395,8 @@ static bool parse_leaf(skaiapp_model_t *m, const cJSON *jit, ref_ctx_t *refs)
                 it->bind = SKAIAPP_BIND_REMINDER;
             else if ((it->bind_idx = (int16_t)resolve_ref(b, "memo:", refs->m_ids, refs->nm)) >= 0)
                 it->bind = SKAIAPP_BIND_MEMO;
+            else if ((it->bind_idx = (int16_t)resolve_ref(b, "var:", refs->v_ids, refs->nv)) >= 0)
+                it->bind = SKAIAPP_BIND_VAR;
             else
                 LOG_W("value bind unresolved: %s", b);
         }
@@ -372,6 +444,8 @@ static bool parse_leaf(skaiapp_model_t *m, const cJSON *jit, ref_ctx_t *refs)
             }
             else if ((it->bind_idx = (int16_t)resolve_ref(b, "timer:", refs->t_ids, refs->nt)) >= 0)
                 it->bind = SKAIAPP_BIND_TIMER;
+            else if ((it->bind_idx = (int16_t)resolve_ref(b, "var:", refs->v_ids, refs->nv)) >= 0)
+                it->bind = SKAIAPP_BIND_VAR;
             else
                 LOG_W("gauge bind unresolved: %s", b);
         }
@@ -395,8 +469,52 @@ static bool parse_leaf(skaiapp_model_t *m, const cJSON *jit, ref_ctx_t *refs)
                 it->action = SKAIAPP_ACT_TIMER_RESET;
             else if ((it->action_idx = resolve_ref(a, "reminder.toggle:", refs->r_ids, refs->nr)) >= 0)
                 it->action = SKAIAPP_ACT_REMINDER_TOGGLE;
+            else if (parse_var_action(a, "var.add:", it, refs, SKAIAPP_ACT_VAR_ADD))
+                ; /* handled */
+            else if (parse_var_action(a, "var.set:", it, refs, SKAIAPP_ACT_VAR_SET))
+                ; /* handled */
+            else if (strncmp(a, "phone.run:", 10) == 0 && a[10] != '\0')
+            {
+                /* The target is one of the USER's saved phone Actions; the watch
+                   never interprets it, it only echoes the id back up (0x28) for
+                   the phone to run. Pool it like any other external string. */
+                it->action = SKAIAPP_ACT_PHONE_RUN;
+                it->action_off = pool_add_str(m, &a[10], SKAIAPP_ACTION_ID_MAX - 1);
+                if (it->action_off == 0xFFFF)
+                {
+                    it->action = SKAIAPP_ACT_NONE;
+                    LOG_W("phone.run id did not fit the pool: %s", a);
+                }
+            }
             else
-                LOG_W("button action unresolved: %s", a); /* incl. v2 phone:* */
+                LOG_W("button action unresolved: %s", a);
+        }
+    }
+    else if (strcmp(w, "image") == 0)
+    {
+        /* A picture slot the user filled from the phone gallery. The path was
+           written by the phone AFTER the file landed on this watch, so by the
+           time we parse it the file is already there (or the user hasn't picked
+           one yet and `src` is empty → placeholder). */
+        it->wtype = SKAIAPP_W_IMAGE;
+        const cJSON *js = cJSON_GetObjectItem(jit, "size");
+        it->size = 1; /* l */
+        if (js != NULL && cJSON_IsString(js) && js->valuestring != NULL)
+        {
+            if (strcmp(js->valuestring, "m") == 0)
+                it->size = 0;
+            else if (strcmp(js->valuestring, "full") == 0)
+                it->size = 2;
+        }
+        const cJSON *jb = cJSON_GetObjectItem(jit, "bind");
+        if (jb != NULL && cJSON_IsString(jb) && jb->valuestring != NULL)
+        {
+            it->bind_idx = (int16_t)resolve_ref(jb->valuestring, "photo:",
+                                                refs->p_ids, refs->np);
+            if (it->bind_idx >= 0)
+                it->bind = SKAIAPP_BIND_PHOTO;
+            else
+                LOG_W("image bind unresolved: %s", jb->valuestring);
         }
     }
     else if (strcmp(w, "spacer") == 0)
@@ -600,6 +718,80 @@ static void parse_memos(const cJSON *arr, skaiapp_model_t *m)
     m->n_memos = i;
 }
 
+/* photos: id + the watch-side path of the picture the phone transferred. The
+   path is bounded on copy like every other external string (overflow rules);
+   an over-long or non-string src simply leaves the slot empty (placeholder). */
+static void parse_photos(const cJSON *arr, skaiapp_model_t *m)
+{
+    uint8_t i = 0;
+    if (cJSON_IsArray(arr))
+    {
+        const cJSON *e = NULL;
+        cJSON_ArrayForEach(e, arr)
+        {
+            if (i >= SKAIAPP_MAX_PHOTOS)
+            {
+                break;
+            }
+            copy_str(m->photo_id[i], SKAIAPP_ID_MAX, cJSON_GetObjectItem(e, "id"));
+            copy_str(m->photo_src[i], SKAIAPP_PATH_MAX, cJSON_GetObjectItem(e, "src"));
+            i++;
+        }
+    }
+    m->n_photos = i;
+}
+
+/* vars: the package's own counters. The model keeps id + unit (render), the
+   SEED carries the numbers to the engine, which owns the live value. `val` is
+   the watch's own persisted current value (written back debounced); `init` is
+   what a fresh install — or a re-push from the phone — starts from. */
+static void parse_vars(const cJSON *arr, skaiapp_model_t *m,
+                       skaiapp_eng_seed_t *seed)
+{
+    uint8_t i = 0;
+    if (cJSON_IsArray(arr))
+    {
+        const cJSON *e = NULL;
+        cJSON_ArrayForEach(e, arr)
+        {
+            if (i >= SKAIAPP_MAX_VARS)
+            {
+                break;
+            }
+            copy_str(m->var_id[i], SKAIAPP_ID_MAX, cJSON_GetObjectItem(e, "id"));
+            m->var_unit_off[i] = pool_add(m, cJSON_GetObjectItem(e, "unit"));
+
+            const cJSON *jinit = cJSON_GetObjectItem(e, "init");
+            const cJSON *jval  = cJSON_GetObjectItem(e, "val");
+            const cJSON *jmin  = cJSON_GetObjectItem(e, "min");
+            const cJSON *jmax  = cJSON_GetObjectItem(e, "max");
+            int32_t init = cJSON_IsNumber(jinit) ? (int32_t)jinit->valuedouble : 0;
+            int32_t v    = cJSON_IsNumber(jval) ? (int32_t)jval->valuedouble : init;
+            int32_t mn   = cJSON_IsNumber(jmin) ? (int32_t)jmin->valuedouble : SKAIAPP_VAR_MIN;
+            int32_t mx   = cJSON_IsNumber(jmax) ? (int32_t)jmax->valuedouble : SKAIAPP_VAR_MAX;
+            if (mn > mx)
+            {
+                mn = SKAIAPP_VAR_MIN;
+                mx = SKAIAPP_VAR_MAX;
+            }
+            if (v < mn) v = mn;
+            if (v > mx) v = mx;
+            if (seed != NULL)
+            {
+                seed->v[i].value = v;
+                seed->v[i].min = mn;
+                seed->v[i].max = mx;
+            }
+            i++;
+        }
+    }
+    m->n_vars = i;
+    if (seed != NULL)
+    {
+        seed->n_vars = i;
+    }
+}
+
 /* ── top level ── */
 
 int skaiapp_pkg_parse(const uint8_t *json, uint32_t len, skaiapp_model_t *m,
@@ -649,12 +841,21 @@ int skaiapp_pkg_parse(const uint8_t *json, uint32_t len, skaiapp_model_t *m,
                 SKAIAPP_MAX_REMINDERS, &refs.nr);
     collect_ids(cJSON_GetObjectItem(root, "memos"), refs.m_ids,
                 SKAIAPP_MAX_MEMOS, &refs.nm);
+    collect_ids(cJSON_GetObjectItem(root, "photos"), refs.p_ids,
+                SKAIAPP_MAX_PHOTOS, &refs.np);
+    collect_ids(cJSON_GetObjectItem(root, "vars"), refs.v_ids,
+                SKAIAPP_MAX_VARS, &refs.nv);
 
     skaiapp_eng_seed_t seed;
     memset(&seed, 0, sizeof(seed));
     parse_timers(cJSON_GetObjectItem(root, "timers"), m, &seed, &refs);
     parse_reminders(cJSON_GetObjectItem(root, "reminders"), m, &seed);
     parse_memos(cJSON_GetObjectItem(root, "memos"), m);
+    parse_photos(cJSON_GetObjectItem(root, "photos"), m);
+    /* vars are parsed BEFORE the page: the item pass resolves var: binds and
+       var.* actions against them. The seed is filled here too (NULL on a
+       display re-parse, which must not disturb live counter values). */
+    parse_vars(cJSON_GetObjectItem(root, "vars"), m, &seed);
 
     const cJSON *jp = cJSON_GetObjectItem(root, "page");
     const cJSON *jitems = (jp != NULL) ? cJSON_GetObjectItem(jp, "items") : NULL;

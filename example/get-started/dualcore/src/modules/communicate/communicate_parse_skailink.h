@@ -266,6 +266,13 @@ extern "C"
            沒有回覆鍵:圖到了就是回覆,沒到就維持設備名(可見的降級)。
            Keep in lockstep with WatchProtocol.kt/.swift SKAILINK_KEY_CONV_AVATAR_REQ. */
         KEY_CONV_AVATAR_REQ = 0x25,
+        /* watch→phone (UPLINK): {"id":"<appId>","action":"<phone Action id>"} — a
+           SkaiApp button whose action is `phone.run:<id>` was tapped. The watch
+           does not interpret the id at all; the phone looks it up among the
+           user's SAVED Actions and runs it through the normal script runner.
+           This is the platform's escape hatch: a generated mini-app reaches
+           anything the phone can do without any firmware change. */
+        KEY_SKAIAPP_ACTION = 0x28,
         /* 0x26 = deviceDrag(手機端 WatchProtocol.kt 已佔,韌體在 andrew_v29.5 分支)—— 這裡保留不用。 */
         /* gestureClick 0x27,雙向。watch→phone(UPLINK) {"on":1|0}:滑鼠 app 的「手勢點擊」
            模式切換(手錶錶面朝下 + 捏指 tap 翻轉;預設關)。開著時手錶照 RAW 收集那條
