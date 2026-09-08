@@ -39,11 +39,16 @@ typedef enum
     _LV_I18N_PLURAL_TYPE_NUM,
 } lv_i18n_plural_type_t;
 
+/* One translated phrase. Only `singular` is ever read (lv_ext_str_get and
+ * app_lang.c's external .bin decoder); the former `key` and `plurals[]`
+ * members were never dereferenced anywhere yet cost 28 B per phrase per
+ * language in flash plus the key string literals duplicated into every
+ * language table (~13 KB total). The lookup key stays the compile-time
+ * offsetof() in lang_translation_t, so the layout change is self-consistent
+ * for both builtin tables and runtime-decoded packs. */
 typedef struct
 {
-    const char *key;
     const char *singular;
-    const char *plurals[_LV_I18N_PLURAL_TYPE_NUM];
 } lv_i18n_phrase_t;
 
 /*  generated translation table

@@ -405,7 +405,7 @@ def generate_lang_c(
 
     for key in keys:
         lines.append(
-            f"    .{key} = {{{c_string_literal(key)}, {c_string_literal(translations[key])}, {{0}}}},"
+            f"    .{key} = {{{c_string_literal(translations[key])}}},"
         )
 
     lines.extend(
