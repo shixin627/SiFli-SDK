@@ -445,6 +445,15 @@ static void process_lvgl_message(lvgl_msg_t *msg)
         }
         break;
 
+    case LVGL_MSG_TYPE_DOUBLE_TAP_EVENT:
+        /* 只有掛了 handler 的畫面才會收到;其餘情況兩個 tap 已各自處理過,這裡不做事。 */
+        if (lvgl_msg_handler.handle_double_tap_event)
+        {
+            lvgl_msg_handler.handle_double_tap_event();
+            trigger_activity();
+        }
+        break;
+
     case LVGL_MSG_TYPE_BACK_EVENT:
         if (lvgl_msg_handler.handle_back_event)
         {

@@ -27,6 +27,10 @@
 
 #define GLED_COLOR_RELEASE 0x2E7BFF /* 燈 2:藍 = release */
 #define GLED_COLOR_TAP 0x27D07C     /* 燈 2:綠 = tap */
+/* 雙擊:兩顆燈一起洋紅。刻意用兩顆同色而不是燈 2 換色 —— 雙擊的第二個 tap 本身
+   也會點綠燈,單看燈 2 分不出「兩次單擊」和「一次雙擊」。 */
+#define GLED_COLOR_DOUBLE_TAP 0xFF3DB8
+#define GLED_DOUBLE_HOLD_MS 1000
 
 /* 燈 2 在「燈 1 紅」時改當 gate 指示器 */
 #define GLED_COLOR_GATE_GUI_OFF 0x00D0D0  /* 青 */
@@ -58,6 +62,7 @@ static volatile uint8_t s_gate = GESTURE_LED_GATE_OTHER;
 static volatile uint32_t s_s1drop_tick = 0;
 static volatile uint8_t s_s1drop = GESTURE_LED_S1_DROP_MED;
 static volatile uint8_t s_verdict = GESTURE_LED_VERDICT_NONE;
+static volatile uint32_t s_double_tick = 0; /* 雙擊:兩顆同時洋紅 */
 
 static bool s_enabled = true;
 
@@ -135,9 +140,16 @@ static void gled_timer_cb(lv_timer_t *t)
     uint32_t want_capture = GLED_COLOR_OFF;
     uint32_t want_verdict = GLED_COLOR_OFF;
 
+    /* 雙擊最優先:它是 stage 2 對「兩個視窗」的合成判決,後到的任何單窗事件
+       (第二下的白/綠、或緊接著的 stage-1 drop)都不該把它蓋掉。 */
+    if (gled_within(s_double_tick, GLED_DOUBLE_HOLD_MS))
+    {
+        want_capture = GLED_COLOR_DOUBLE_TAP;
+        want_verdict = GLED_COLOR_DOUBLE_TAP;
+    }
     /* gate 的資訊比 capture 更晚也更確定,所以它贏:同一個視窗先點白再轉紅,
        最後看到的是紅 + gate 顏色,不會兩種訊息互相蓋來蓋去。 */
-    if (gled_within(s_gate_tick, GLED_CAPTURE_HOLD_MS))
+    else if (gled_within(s_gate_tick, GLED_CAPTURE_HOLD_MS))
     {
         want_capture = GLED_COLOR_GATED;
         want_verdict = gled_gate_color(s_gate);
@@ -262,6 +274,14 @@ void gesture_led_notify_verdict(gesture_led_verdict_t verdict)
     s_verdict = (uint8_t)verdict;
     uint32_t now = rt_tick_get();
     s_verdict_tick = now ? now : 1u;
+}
+
+void gesture_led_notify_double_tap(void)
+{
+    if (!s_enabled)
+        return;
+    uint32_t now = rt_tick_get();
+    s_double_tick = now ? now : 1u;
 }
 
 void gesture_led_set_enabled(bool enabled)

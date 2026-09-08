@@ -6,6 +6,7 @@
  *               紅 = stage 2 收到了，但在跑模型之前就被 gate 攔掉。
  *               不亮 = IMU 那層根本沒擷取到東西。
  *   燈 2（右）：白燈時 = 模型判決:藍 = release、綠 = tap、不亮 = 模型不認。
+ *   雙擊：兩顆燈同時洋紅 1 秒（stage 2 看到兩個 tap 相距 150~600 ms）。
  *               紅燈時 = 是哪一道 gate 攔的（顏色見 gesture_led_gate_t）。
  *
  * 「擷取到但沒判決」有兩種完全不同的原因——模型跑了不認、或根本沒跑到模型——
@@ -82,6 +83,9 @@ void gesture_led_notify_stage1_drop(gesture_led_s1drop_t why);
 /** stage 2 的模型判決。任何執行緒可呼叫。 */
 void gesture_led_notify_verdict(gesture_led_verdict_t verdict);
 
+/** stage 2 判定雙擊(兩個 tap 相距 150~600 ms)。兩顆燈同時洋紅。任何執行緒可呼叫。 */
+void gesture_led_notify_double_tap(void);
+
 /** 執行期開關（預設 ON）。關掉時兩顆燈隱藏。 */
 void gesture_led_set_enabled(bool enabled);
 bool gesture_led_is_enabled(void);
@@ -93,6 +97,7 @@ static inline void gesture_led_notify_capture(void) {}
 static inline void gesture_led_notify_gate(gesture_led_gate_t g) { (void)g; }
 static inline void gesture_led_notify_stage1_drop(gesture_led_s1drop_t w) { (void)w; }
 static inline void gesture_led_notify_verdict(gesture_led_verdict_t v) { (void)v; }
+static inline void gesture_led_notify_double_tap(void) {}
 static inline void gesture_led_set_enabled(bool enabled) { (void)enabled; }
 static inline bool gesture_led_is_enabled(void) { return false; }
 

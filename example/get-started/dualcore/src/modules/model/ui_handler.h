@@ -128,6 +128,9 @@ extern "C"
         LVGL_MSG_TYPE_LAUNCHER_ACTION,
         /***** virtual gesture event ******/
         LVGL_MSG_TYPE_LONGPRESS_EVENT,
+        /* 雙擊(2026-09-07):兩個 tap 相距 150~600ms。這是「額外」的事件 —— 兩下各自
+           仍照 tap 走,沒人掛 handle_double_tap_event 就什麼都不發生。 */
+        LVGL_MSG_TYPE_DOUBLE_TAP_EVENT,
         LVGL_MSG_TYPE_UNGRAB_EVENT,
         LVGL_MSG_TYPE_BACK_EVENT,
         /***** Indicator ******/
@@ -390,6 +393,7 @@ extern "C"
         void (*handle_clear_notification_bar_indicator)(void);
         void (*handle_tap_event)(void);
         void (*handle_longpress_event)(void);
+        void (*handle_double_tap_event)(void); /* 預設 NULL = 沒人用雙擊,忽略 */
         void (*handle_back_event)(void);
         void (*handle_grab_event)(void);
         void (*handle_ungrab_event)(void);
