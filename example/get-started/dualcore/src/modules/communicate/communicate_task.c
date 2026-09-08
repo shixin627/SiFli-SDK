@@ -791,6 +791,23 @@ bool commu_send_skaiapp_voice(const char *app_id, const char *memo_id)
     return ok;
 }
 
+/* watch→phone (SKAI_LINK): a SkaiApp button asked the phone to run one of the
+   user's saved Actions. `action_id` is opaque here — it was authored on the
+   phone, travelled down inside the package, and goes straight back up. */
+bool commu_send_skaiapp_action(const char *app_id, const char *action_id)
+{
+    if (app_id == NULL || app_id[0] == '\0' || action_id == NULL || action_id[0] == '\0')
+        return false;
+    char json[128];
+    int n = rt_snprintf(json, sizeof(json), "{\"id\":\"%s\",\"action\":\"%s\"}",
+                        app_id, action_id);
+    if (n <= 0 || n >= (int)sizeof(json)) return false;
+    bool ok = commu_send_string(SKAI_LINK_COMMAND_ID, KEY_SKAIAPP_ACTION, json);
+    LOG_I("send skaiapp action app=%s action=%s -> %s", app_id, action_id,
+          ok ? "ok" : "FAILED");
+    return ok;
+}
+
 /* watch→phone (SKAI_LINK): device-page trackpad relay. The right-side device
    page hosts the hid_mouse trackpad; rather than emitting BLE HID reports, its
    events stream here and the phone actuates them on the active target device.

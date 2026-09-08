@@ -266,6 +266,13 @@ extern "C"
            沒有回覆鍵:圖到了就是回覆,沒到就維持設備名(可見的降級)。
            Keep in lockstep with WatchProtocol.kt/.swift SKAILINK_KEY_CONV_AVATAR_REQ. */
         KEY_CONV_AVATAR_REQ = 0x25,
+        /* watch→phone (UPLINK): {"id":"<appId>","action":"<phone Action id>"} — a
+           SkaiApp button whose action is `phone.run:<id>` was tapped. The watch
+           does not interpret the id at all; the phone looks it up among the
+           user's SAVED Actions and runs it through the normal script runner.
+           This is the platform's escape hatch: a generated mini-app reaches
+           anything the phone can do without any firmware change. */
+        KEY_SKAIAPP_ACTION = 0x28,
         /* watch→phone (UPLINK): {"p":<permille>,"to":"<device_id>"} — 底部設備藥丸拖曳中的
            進度。p 是位移/螢幕寬的千分比,負=往下一台(同手機 dragX 的正負),0=靜止或彈回,
            ±1000=落地;to 是正拖向那台的 registry id(橡皮筋/沒有鄰居時為空)。

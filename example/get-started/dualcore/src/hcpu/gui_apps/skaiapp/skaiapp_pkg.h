@@ -36,6 +36,12 @@ extern "C" {
 #define SKAIAPP_MAX_TIMERS      4
 #define SKAIAPP_MAX_REMINDERS   4
 #define SKAIAPP_MAX_MEMOS       4
+#define SKAIAPP_MAX_PHOTOS      2
+#define SKAIAPP_MAX_VARS        4
+#define SKAIAPP_ACTION_ID_MAX   65   /* phone Action id (uuid) + NUL */
+#define SKAIAPP_VAR_MIN         (-999999)
+#define SKAIAPP_VAR_MAX         (999999)
+#define SKAIAPP_PATH_MAX        72   /* "/skaiapp/img/" + 48-char name + ".bin" */
 #define SKAIAPP_MAX_DAILY_TIMES 6
 #define SKAIAPP_STRPOOL_MAX     4608 /* all texts of one package, truncating pool */
 #define SKAIAPP_PKG_MAX_BYTES   8192 /* serialized package cap (schema) */
@@ -53,6 +59,7 @@ typedef enum
     SKAIAPP_W_BUTTON,
     SKAIAPP_W_SPACER,
     SKAIAPP_W_ROW,     /* marker: next `row_n` items are its children */
+    SKAIAPP_W_IMAGE,   /* a picture the user picked on the phone (photo slot) */
 } skaiapp_wtype_t;
 
 /* Binds are two different things wearing one name, and only one of them was
@@ -75,6 +82,8 @@ typedef enum
     SKAIAPP_BIND_TIMER,    /* bind_idx = timer slot */
     SKAIAPP_BIND_REMINDER, /* bind_idx = reminder slot */
     SKAIAPP_BIND_MEMO,     /* bind_idx = memo slot → user-authored text */
+    SKAIAPP_BIND_PHOTO,    /* bind_idx = photo slot → user-picked picture file */
+    SKAIAPP_BIND_VAR,      /* bind_idx = var slot → this package's own counter */
 } skaiapp_bind_t;
 
 typedef enum
@@ -84,6 +93,9 @@ typedef enum
     SKAIAPP_ACT_TIMER_PAUSE,
     SKAIAPP_ACT_TIMER_RESET,
     SKAIAPP_ACT_REMINDER_TOGGLE,
+    SKAIAPP_ACT_VAR_ADD,   /* action_idx = var slot, action_arg = delta */
+    SKAIAPP_ACT_VAR_SET,   /* action_idx = var slot, action_arg = new value */
+    SKAIAPP_ACT_PHONE_RUN, /* action_off = strpool offset of the phone Action id */
 } skaiapp_action_t;
 
 /* color token index — resolved to lv colors in the renderer */
@@ -106,7 +118,9 @@ typedef struct
                             int16 not int8: the dispatch table grows with every
                             capability and must not silently hit a ceiling. */
     uint8_t  action;     /* skaiapp_action_t (button) */
-    int8_t   action_idx; /* timer/reminder slot the action targets */
+    int8_t   action_idx; /* timer/reminder/var slot the action targets */
+    int32_t  action_arg; /* var.add delta / var.set value */
+    uint16_t action_off; /* phone.run: strpool offset of the Action id, 0xFFFF none */
     uint8_t  ghost;      /* button style: 0 primary 1 ghost */
     uint8_t  spacer_h;   /* 8/16/24 */
     uint8_t  icon;       /* icon enum index (skaiapp_render maps to assets) */
@@ -125,6 +139,8 @@ typedef struct
     uint8_t  n_timers;
     uint8_t  n_reminders;
     uint8_t  n_memos;
+    uint8_t  n_photos;
+    uint8_t  n_vars;
     skaiapp_witem_t items[SKAIAPP_MAX_ITEMS];
     /* timers/reminders live in the engine; the model only needs display bits */
     char     timer_label[SKAIAPP_MAX_TIMERS][SKAIAPP_NAME_MAX];
@@ -132,6 +148,15 @@ typedef struct
     uint16_t memo_text_off[SKAIAPP_MAX_MEMOS];
     /* memo ids (needed to name the memo when the watch voice-fills it) */
     char     memo_id[SKAIAPP_MAX_MEMOS][SKAIAPP_ID_MAX];
+    /* photo slots: the id (for the store's per-slot file sweep) and the file the
+       phone transferred BEFORE it re-pushed this package. Empty src = the user
+       hasn't picked a picture yet → the renderer draws a placeholder. */
+    char     photo_id[SKAIAPP_MAX_PHOTOS][SKAIAPP_ID_MAX];
+    char     photo_src[SKAIAPP_MAX_PHOTOS][SKAIAPP_PATH_MAX];
+    /* counters: the RUNTIME value lives in the engine (it must survive closing
+       the page); the model only carries what the renderer needs to draw it. */
+    char     var_id[SKAIAPP_MAX_VARS][SKAIAPP_ID_MAX];
+    uint16_t var_unit_off[SKAIAPP_MAX_VARS];
     uint16_t strpool_used;
     char     strpool[SKAIAPP_STRPOOL_MAX];
 } skaiapp_model_t;

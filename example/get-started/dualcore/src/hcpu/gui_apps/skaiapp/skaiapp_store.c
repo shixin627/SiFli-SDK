@@ -15,6 +15,7 @@
 #include <rtdbg.h>
 
 #define SKAIAPP_DIR "/skaiapp"
+#define SKAIAPP_IMG_DIR SKAIAPP_DIR "/img"
 
 typedef struct
 {
@@ -138,6 +139,165 @@ static int sim_ram_put(const char *id, const uint8_t *data, uint32_t len)
 }
 #endif
 
+/*
+ * Drop the pictures of app `app_id` that no longer belong to it.
+ *
+ * Picture files are named `<appId>-<photoId>-<contentHash>.bin` by the phone
+ * (SkaiappPhoto), so "still in use" is exactly "named in the package we just
+ * installed". Anything else with this app's prefix is a picture the user
+ * replaced — nobody else will ever delete it, and the watch's flash is small.
+ * `m` NULL = the app is being removed, so every one of its pictures goes.
+ *
+ * One readdir per install/remove, off the LVGL thread (this runs on the BLE
+ * parse thread): rare, bounded, and no file is opened — only stat-free unlink
+ * of names we already matched. (The bot-avatar incident taught us never to put
+ * unthrottled filesystem work on a path that repeats; this one does not.)
+ */
+static void sweep_photos(const char *app_id, const skaiapp_model_t *m)
+{
+    if (app_id == NULL || app_id[0] == '\0')
+    {
+        return;
+    }
+    DIR *dir = opendir(SKAIAPP_IMG_DIR);
+    if (dir == NULL)
+    {
+        return; /* no pictures ever transferred — nothing to sweep */
+    }
+    size_t id_len = strlen(app_id);
+    struct dirent *ent;
+    while ((ent = readdir(dir)) != NULL)
+    {
+        /* only this app's files: "<appId>-..." */
+        if (strncmp(ent->d_name, app_id, id_len) != 0 || ent->d_name[id_len] != '-')
+        {
+            continue;
+        }
+        bool referenced = false;
+        if (m != NULL)
+        {
+            for (uint8_t i = 0; i < m->n_photos && !referenced; i++)
+            {
+                const char *src = m->photo_src[i];
+                const char *slash = strrchr(src, '/');
+                const char *base = (slash != NULL) ? slash + 1 : src;
+                if (base[0] != '\0' && strcmp(base, ent->d_name) == 0)
+                {
+                    referenced = true;
+                }
+            }
+        }
+        if (referenced)
+        {
+            continue;
+        }
+        char path[SKAIAPP_PATH_MAX];
+        rt_snprintf(path, sizeof(path), SKAIAPP_IMG_DIR "/%s", ent->d_name);
+        if (unlink(path) == 0)
+        {
+            LOG_I("swept old picture %s", ent->d_name);
+        }
+    }
+    closedir(dir);
+}
+
+/*
+ * Keep the pictures the user chose ON THE WATCH when the phone re-pushes the
+ * same app.
+ *
+ * A re-push is how every edit works ("make the title bigger"), and the phone's
+ * copy of the package has no idea which album picture the user picked here — so
+ * without this, changing anything about a barcode app silently empties its
+ * frame and the user has to pick again. Only slots the incoming package leaves
+ * EMPTY are carried over, so the phone can still set or clear a picture
+ * deliberately.
+ *
+ * `raw`/`len` are the incoming document; returns a rewritten rt_malloc'd copy
+ * (caller frees) or NULL when there is nothing to carry, in which case the
+ * caller keeps using the original.
+ */
+static uint8_t *carry_over_photos(const char *id, const uint8_t *raw, uint32_t len,
+                                  uint32_t *out_len)
+{
+    uint8_t *prev = NULL;
+    uint32_t prev_len = 0;
+    if (skaiapp_store_load(id, &prev, &prev_len) != 0)
+    {
+        return NULL; /* first install — nothing to keep */
+    }
+    cJSON *old_root = cJSON_ParseWithLength((const char *)prev, prev_len);
+    rt_free(prev);
+    if (old_root == NULL)
+    {
+        return NULL;
+    }
+    cJSON *new_root = cJSON_ParseWithLength((const char *)raw, len);
+    if (new_root == NULL)
+    {
+        cJSON_Delete(old_root);
+        return NULL;
+    }
+    cJSON *old_arr = cJSON_GetObjectItem(old_root, "photos");
+    cJSON *new_arr = cJSON_GetObjectItem(new_root, "photos");
+    bool changed = false;
+    if (cJSON_IsArray(old_arr) && cJSON_IsArray(new_arr))
+    {
+        cJSON *ne = NULL;
+        cJSON_ArrayForEach(ne, new_arr)
+        {
+            const cJSON *nid = cJSON_GetObjectItem(ne, "id");
+            cJSON *nsrc = cJSON_GetObjectItem(ne, "src"); /* written below when present */
+            if (!cJSON_IsString(nid) ||
+                (cJSON_IsString(nsrc) && nsrc->valuestring[0] != '\0'))
+            {
+                continue; /* the phone stated a picture for this slot — respect it */
+            }
+            cJSON *oe = NULL;
+            cJSON_ArrayForEach(oe, old_arr)
+            {
+                const cJSON *oid = cJSON_GetObjectItem(oe, "id");
+                const cJSON *osrc = cJSON_GetObjectItem(oe, "src");
+                if (cJSON_IsString(oid) && strcmp(oid->valuestring, nid->valuestring) == 0 &&
+                    cJSON_IsString(osrc) && osrc->valuestring[0] != '\0')
+                {
+                    if (nsrc != NULL)
+                    {
+                        cJSON_SetValuestring(nsrc, osrc->valuestring);
+                    }
+                    else
+                    {
+                        cJSON_AddStringToObject(ne, "src", osrc->valuestring);
+                    }
+                    changed = true;
+                    break;
+                }
+            }
+        }
+    }
+    cJSON_Delete(old_root);
+    uint8_t *merged = NULL;
+    if (changed)
+    {
+        char *printed = cJSON_PrintUnformatted(new_root);
+        if (printed != NULL)
+        {
+            size_t plen = strlen(printed);
+            if (plen > 0 && plen <= SKAIAPP_PKG_MAX_BYTES)
+            {
+                merged = rt_malloc(plen + 1);
+                if (merged != NULL)
+                {
+                    memcpy(merged, printed, plen + 1);
+                    *out_len = (uint32_t)plen;
+                }
+            }
+            cJSON_free(printed);
+        }
+    }
+    cJSON_Delete(new_root);
+    return merged;
+}
+
 /* parse `raw` and (on success) register meta + engine record. */
 static int adopt_package(const uint8_t *raw, uint32_t len, bool write_to_fs,
                          char out_id[SKAIAPP_ID_MAX])
@@ -171,23 +331,41 @@ static int adopt_package(const uint8_t *raw, uint32_t len, bool write_to_fs,
     {
         char path[64];
         make_path(path, sizeof(path), m->id);
-        if (write_file(path, raw, len) != 0)
+        /* Keep any album picture the user chose on the WATCH for a slot this
+           package leaves empty — an edit must not empty the frame. */
+        const uint8_t *doc = raw;
+        uint32_t doc_len = len;
+        uint8_t *merged = NULL;
+        if (m->n_photos > 0)
+        {
+            uint32_t merged_len = 0;
+            merged = carry_over_photos(m->id, raw, len, &merged_len);
+            if (merged != NULL)
+            {
+                doc = merged;
+                doc_len = merged_len;
+            }
+        }
+        if (write_file(path, doc, doc_len) != 0)
         {
 #if defined(BSP_USING_PC_SIMULATOR)
             /* no writable FS on sim → RAM-back it so render/engine still run */
-            if (sim_ram_put(m->id, raw, len) != 0)
+            if (sim_ram_put(m->id, doc, doc_len) != 0)
             {
                 unlock();
+                rt_free(merged);
                 rt_free(m);
                 return SKAIAPP_ACK_STORAGE;
             }
 #else
             unlock();
             LOG_E("write %s failed", path);
+            rt_free(merged);
             rt_free(m);
             return SKAIAPP_ACK_STORAGE;
 #endif
         }
+        rt_free(merged);
     }
     s_meta[slot].used = true;
     strncpy(s_meta[slot].id, m->id, SKAIAPP_ID_MAX - 1);
@@ -209,6 +387,10 @@ static int adopt_package(const uint8_t *raw, uint32_t len, bool write_to_fs,
     unlock();
 
     skaiapp_engine_load(m->id, &seed);
+    if (write_to_fs) /* a real install: the package just named its pictures */
+    {
+        sweep_photos(m->id, m);
+    }
     s_gen++;
     LOG_I("skaiapp '%s' (%s) ready, timers=%d reminders=%d items=%d",
           m->id, m->name, m->n_timers, m->n_reminders, m->n_items);
@@ -357,6 +539,7 @@ int skaiapp_store_remove(const char *id)
     unlock();
     if (slot >= 0)
     {
+        sweep_photos(id, NULL); /* the app is gone; so are its pictures */
         skaiapp_engine_unload(id);
         s_gen++;
         LOG_I("skaiapp '%s' removed", id);
@@ -409,9 +592,80 @@ static bool id_path_safe(const char *id)
     return true;
 }
 
-int skaiapp_store_rewrite_reminder_enabled(const char *id,
-                                           const uint8_t enabled[SKAIAPP_MAX_REMINDERS],
-                                           uint8_t n)
+int skaiapp_store_set_photo_src(const char *id, uint8_t idx, const char *path)
+{
+    if (id == NULL || path == NULL || idx >= SKAIAPP_MAX_PHOTOS)
+    {
+        return -1;
+    }
+    /* The only writer of this field on the watch is a tap on the picker, and the
+       only thing it may name is a file in the watch's own album. Bounding it here
+       keeps a malformed package (or a future caller) from pointing a slot at an
+       arbitrary path. */
+    if (strncmp(path, "/photo/", 7) != 0 || strlen(path) >= SKAIAPP_PATH_MAX)
+    {
+        LOG_W("photo pick rejected: %s", path);
+        return -1;
+    }
+    uint8_t *raw = NULL;
+    uint32_t len = 0;
+    if (skaiapp_store_load(id, &raw, &len) != 0)
+    {
+        return -1;
+    }
+    cJSON *root = cJSON_ParseWithLength((const char *)raw, len);
+    rt_free(raw);
+    if (root == NULL)
+    {
+        return -2;
+    }
+    int ret = -2;
+    cJSON *arr = cJSON_GetObjectItem(root, "photos");
+    if (arr != NULL && cJSON_IsArray(arr))
+    {
+        cJSON *e = cJSON_GetArrayItem(arr, (int)idx);
+        if (e != NULL)
+        {
+            cJSON *js = cJSON_GetObjectItem(e, "src");
+            if (js != NULL)
+            {
+                cJSON_SetValuestring(js, path);
+            }
+            else
+            {
+                cJSON_AddStringToObject(e, "src", path);
+            }
+            char *printed = cJSON_PrintUnformatted(root);
+            if (printed != NULL)
+            {
+                size_t plen = strlen(printed);
+                if (plen > 0 && plen <= SKAIAPP_PKG_MAX_BYTES)
+                {
+                    char fpath[64];
+                    make_path(fpath, sizeof(fpath), id);
+                    ret = write_file(fpath, (const uint8_t *)printed, (uint32_t)plen);
+#if defined(BSP_USING_PC_SIMULATOR)
+                    if (ret != 0) { ret = sim_ram_put(id, (const uint8_t *)printed, (uint32_t)plen); }
+#endif
+                }
+                cJSON_free(printed);
+            }
+        }
+    }
+    cJSON_Delete(root);
+    if (ret == 0)
+    {
+        s_gen++; /* the host app's tick redraws the open page with the picture */
+        LOG_I("skaiapp '%s' photo %u = %s", id, idx, path);
+    }
+    return ret;
+}
+
+int skaiapp_store_rewrite_state(const char *id,
+                                const uint8_t enabled[SKAIAPP_MAX_REMINDERS],
+                                uint8_t n,
+                                const int32_t values[SKAIAPP_MAX_VARS],
+                                uint8_t n_values)
 {
     uint8_t *raw = NULL;
     uint32_t len = 0;
@@ -448,6 +702,33 @@ int skaiapp_store_rewrite_reminder_enabled(const char *id,
             }
             i++;
         }
+    }
+    /* Counters: write the live value into `val`, never over `init` — a re-push
+       from the phone must still be able to reset the app to its starting state. */
+    cJSON *varr = cJSON_GetObjectItem(root, "vars");
+    if (varr != NULL && cJSON_IsArray(varr))
+    {
+        uint8_t i = 0;
+        cJSON *e = NULL;
+        cJSON_ArrayForEach(e, varr)
+        {
+            if (i >= n_values || i >= SKAIAPP_MAX_VARS)
+            {
+                break;
+            }
+            cJSON *jv = cJSON_GetObjectItem(e, "val");
+            if (jv != NULL)
+            {
+                cJSON_SetNumberValue(jv, (double)values[i]);
+            }
+            else
+            {
+                cJSON_AddNumberToObject(e, "val", (double)values[i]);
+            }
+            i++;
+        }
+    }
+    {
         char *printed = cJSON_PrintUnformatted(root);
         if (printed != NULL)
         {
