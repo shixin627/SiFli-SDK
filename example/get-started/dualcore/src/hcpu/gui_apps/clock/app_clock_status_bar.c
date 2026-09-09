@@ -1187,9 +1187,130 @@ static void qrcode_btn_event_cb(lv_event_t *e)
     animate_to_home_from_notification_center();
 }
 
+/* 尋找手機 = 讓手機用鬧鐘音量響起來(AndroidFindPhoneEffects:循環播放 + 震動 +
+   自動跳出全螢幕 Stop 頁,且不受靜音 / 勿擾影響),在會議 / 安靜場合誤觸的代價很高
+   —— founder 2026-09-09:「先跳一個二次確認的小視窗,不要馬上就叫手機」。兩個入口(控制中心這顆 + 設定頁那顆)共用
+   這支,確認邏輯只有一份;找手機的實際發送仍是 control_provider.find_phone()。
+
+   版型 = 手錶既有的確認 modal(app_setting.c 的 show_reset_modal「清除所有內容與
+   設定?」),第一版用 lv_msgbox 被 founder 打回「跟其他 UI 風格完全不一樣」——
+   lv_msgbox 是 LVGL 內建外觀,整支韌體沒有別的地方在用。逐項對齊那支:
+     全螢幕黑底 OPA_90 → 標題(白, 系統字級 0, 置中換行, 寬 80%, TOP_MID +110)
+     → 說明(0xAAAAAA, 字級 -1) → 底部兩顆藥丸(寬 60%、高 56、圓角 28)。
+   差別只有主要動作的顏色:重設是破壞性的所以紅,找手機不是,用 systemBlue
+   0x0091FF(= tv_remote 的 TV_COL_ACCENT);取消沿用 systemGray5 0x2C2C2E。
+   parent 取 lv_scr_act() 跟 reset modal 一致 —— 新建的子物件排在最後 = 疊在
+   控制中心浮層之上,且螢幕被收掉時會一起銷毀,不會像掛 layer_top 那樣變孤兒。 */
+static lv_obj_t *find_phone_modal = NULL;
+
+static void find_phone_modal_close(void)
+{
+    if (find_phone_modal && lv_obj_is_valid(find_phone_modal))
+    {
+        lv_obj_del(find_phone_modal);
+    }
+    find_phone_modal = NULL;
+}
+
+static void find_phone_modal_cancel_cb(lv_event_t *e)
+{
+    LOG_D("Find phone: cancelled");
+    find_phone_modal_close();
+}
+
+static void find_phone_modal_confirm_cb(lv_event_t *e)
+{
+    LOG_I("Find phone: confirmed");
+    find_phone_modal_close();
+    control_provider.find_phone();
+}
+
+/* 建一顆藥丸鈕(兩顆只差顏色 / 文字 / callback,共用免得樣式漂移)。 */
+static lv_obj_t *find_phone_pill(lv_obj_t *parent, uint32_t bg, const char *text,
+                                 lv_event_cb_t cb)
+{
+    lv_obj_t *btn = lv_btn_create(parent);
+    lv_obj_set_size(btn, LV_HOR_RES * 60 / 100, 56);
+    lv_obj_set_style_radius(btn, 28, 0);
+    lv_obj_set_style_bg_color(btn, lv_color_hex(bg), 0);
+    lv_obj_set_style_bg_opa(btn, LV_OPA_COVER, 0);
+    lv_obj_set_style_border_width(btn, 0, 0);
+    lv_obj_set_style_shadow_width(btn, 0, 0);
+    lv_obj_add_event_cb(btn, cb, LV_EVENT_CLICKED, NULL);
+
+    lv_obj_t *label = lv_label_create(btn);
+    lv_label_set_text(label, text);
+    lv_obj_set_style_text_color(label, lv_color_hex(0xFFFFFF), 0);
+    lv_obj_set_style_text_font(label, LV_EXT_FONT_GET(get_system_font_size(0)), 0);
+    lv_obj_center(label);
+    return btn;
+}
+
+/* 對外(app_setting.c 的找手機那顆也走這條)。 */
+void find_phone_show_confirm(void)
+{
+    if (find_phone_modal && lv_obj_is_valid(find_phone_modal))
+    {
+        /* 已經開著就不再疊一個(重複點同一顆的情況)。 */
+        return;
+    }
+    find_phone_modal = NULL;
+
+    find_phone_modal = lv_obj_create(lv_scr_act());
+    if (find_phone_modal == NULL)
+    {
+        /* 建不出來(heap 緊)就當作沒按 —— 這顆的整個重點是「別在沒確認的情況下
+           讓手機大聲響」,fallback 直接送出等於把二次確認繞掉。 */
+        LOG_W("Find phone: confirm modal alloc failed, ignoring tap");
+        return;
+    }
+    lv_obj_set_size(find_phone_modal, LV_HOR_RES, LV_VER_RES);
+    lv_obj_align(find_phone_modal, LV_ALIGN_CENTER, 0, 0);
+    lv_obj_set_style_bg_color(find_phone_modal, lv_color_hex(0x000000), 0);
+    lv_obj_set_style_bg_opa(find_phone_modal, LV_OPA_90, 0);
+    lv_obj_set_style_border_width(find_phone_modal, 0, 0);
+    lv_obj_set_style_pad_all(find_phone_modal, 0, 0);
+    lv_obj_clear_flag(find_phone_modal, LV_OBJ_FLAG_SCROLLABLE);
+    lv_obj_move_foreground(find_phone_modal);
+
+    lv_obj_t *title = lv_label_create(find_phone_modal);
+    lv_label_set_text(title,
+                      LV_EXT_STR_GET_BY_KEY(find_phone_confirm_msg, "Ring your phone?"));
+    lv_obj_set_style_text_color(title, lv_color_hex(0xFFFFFF), 0);
+    lv_obj_set_style_text_font(title, LV_EXT_FONT_GET(get_system_font_size(0)), 0);
+    lv_obj_set_style_text_align(title, LV_TEXT_ALIGN_CENTER, 0);
+    lv_label_set_long_mode(title, LV_LABEL_LONG_WRAP);
+    lv_obj_set_width(title, LV_PCT(80));
+    lv_obj_align(title, LV_ALIGN_TOP_MID, 0, 110);
+
+    lv_obj_t *desc = lv_label_create(find_phone_modal);
+    lv_label_set_text(desc, LV_EXT_STR_GET_BY_KEY(
+                                find_phone_confirm_desc,
+                                "Your phone will ring at\nfull volume and vibrate."));
+    lv_obj_set_style_text_color(desc, lv_color_hex(0xAAAAAA), 0);
+    lv_obj_set_style_text_font(desc, LV_EXT_FONT_GET(get_system_font_size(-1)), 0);
+    lv_obj_set_style_text_align(desc, LV_TEXT_ALIGN_CENTER, 0);
+    lv_label_set_long_mode(desc, LV_LABEL_LONG_WRAP);
+    lv_obj_set_width(desc, LV_PCT(80));
+    lv_obj_align_to(desc, title, LV_ALIGN_OUT_BOTTOM_MID, 0, 15);
+
+    /* 主要動作在最下面(拇指最近),取消疊在它上面 —— 跟 reset modal 同一個排法。 */
+    lv_obj_t *ring_btn =
+        find_phone_pill(find_phone_modal, 0x0091FF,
+                        LV_EXT_STR_GET_BY_KEY(find_phone_ring, "Ring"),
+                        find_phone_modal_confirm_cb);
+    lv_obj_align(ring_btn, LV_ALIGN_BOTTOM_MID, 0, -40);
+
+    lv_obj_t *cancel_btn =
+        find_phone_pill(find_phone_modal, 0x2C2C2E,
+                        LV_EXT_STR_GET_BY_KEY(cancel, "Cancel"),
+                        find_phone_modal_cancel_cb);
+    lv_obj_align_to(cancel_btn, ring_btn, LV_ALIGN_OUT_TOP_MID, 0, -10);
+}
+
 static void find_phone_btn_event_cb(lv_event_t *e)
 {
-    control_provider.find_phone();
+    find_phone_show_confirm();
 }
 
 #if !kReleaseMode
