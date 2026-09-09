@@ -308,9 +308,37 @@ void check_is_at_instruction_list(void)
         {
             myLancher[app_index_instruction_list].reset_list();
             instruction_list_pause();
-            display_gesture_detect_objs(0, true);
             open_skai_widget_ai(false);
-            display_status_bar_area(3, true);
+            /* R50(founder 2026-09-09:「在滑鼠 app 內先叫出左邊的 skaibar 列表,
+               右側就變成可以拉出 App List —— 那只該在錶盤拉得出來」):
+               這條 else 是「清單不再是當前介面」的還原分支,以前無條件把右緣 zone
+               (idx3 = 錶盤右側的控制中心 + App List 把手)和左緣返回偵測器開回去。
+               但滑鼠頁正是 mouse_layer_activate() 特地 display_status_bar_area(3,
+               false)、hid_mouse_enter_mode() 特地把偵測器收掉的地方 —— 在滑鼠頁上
+               開一次 skaibar 清單、清單一收(或開 AI 輸入框讓 _at_ai_interface 翻
+               true),這裡就把右緣把手重新掛回去,右緣於是拉得出 App List。
+               上/下/左三條之所以沒事,是因為那三條由 set_status_bar_area_*_state
+               收掉、這條 else 沒去碰它們 —— 剛好對上 founder 只看到「右側」的症狀。
+               閘門用 app_control_get_mouse_mode():那支正是 hid_mouse_enter_mode()
+               設起、hid_mouse_exit_mode() 清掉的旗標,也就是「觸控板已經接管邊緣」
+               的單一真相,hosted / standalone / device_pager 三條進入路徑都涵蓋
+               (hid_mouse.c 自己也是用 is_at_mouse_mode() || app_control_get_
+               mouse_mode() 這組)。滑鼠面上不還原,離開滑鼠模式時由各自的 exit 路徑
+               (mouse_layer_set(false) / hid_mouse_exit_mode)負責開回來。 */
+            extern bool app_control_get_mouse_mode(void);
+            extern bool lv_top_panel_mouse_mode(void);
+            bool on_mouse_surface =
+                is_at_mouse_mode() || gui_app_is_actived(APP_ID_MOUSE) ||
+                app_control_get_mouse_mode() || lv_top_panel_mouse_mode();
+            if (!on_mouse_surface)
+            {
+                display_gesture_detect_objs(0, true);
+                display_status_bar_area(3, true);
+            }
+            else
+            {
+                LOG_I("[ATINST] leave on mouse surface: keep edge zone 3 hidden");
+            }
         }
         LOG_I("is_at_instruction_list: %d", _at_instruction_list);
     }
