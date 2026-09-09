@@ -834,7 +834,10 @@ static void btn_find_phone_event_callback(lv_event_t *e)
     lv_event_code_t event = lv_event_get_code(e);
     if (LV_EVENT_SHORT_CLICKED == event || LV_EVENT_CLICKED == event)
     {
-        control_provider.find_phone();
+        /* founder 2026-09-09:找手機要先二次確認,別一點就讓手機大聲響。確認視窗
+           跟控制中心那顆共用同一支(app_clock_status_bar.c),按「是」才真的送。 */
+        extern void find_phone_show_confirm(void);
+        find_phone_show_confirm();
     }
 }
 
