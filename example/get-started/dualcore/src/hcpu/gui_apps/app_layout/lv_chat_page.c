@@ -224,6 +224,12 @@ static bool s_awaiting_reply = false;
    若也去 memmove/改 offset,兩邊會撞在同一塊緩衝上。改成獨立的一格小緩衝、渲染時
    當成串尾多出來的一則 user 訊息畫上去;手機的 conv_state 一到就清掉(裡面已含這句)。 */
 static char s_local_echo[192];
+/* 回音上牆的時刻。手機回來的狀態**不一定已經含這句**(送出那一刻 controller 先發佈一版
+   舊的),以前一收到任何狀態就把回音撤掉 → 「我輸入的東西先出現、消失一下又回來」
+   (founder 2026-09-10)。現在只有在手機版本裡真的看到這句、或等太久(送失敗、手機把字
+   放回草稿)才撤。 */
+static uint32_t s_echo_tick;
+#define CHAT_ECHO_STALE_MS 30000
 
 /* Pending clarify/approval (0x12 top-level `approval` {rid,q,opts:[{id,label}]}, 2026-08-13):
    the desktop agent is BLOCKED asking — render the question + one tappable chip per option.
@@ -604,6 +610,7 @@ static void chat_stop_recording_and_send(void)
         clearVoice2Text();
         /* 不等手機回音:自己那句馬上上牆,並立刻進入「等待中」。 */
         chat_copy_utf8(s_local_echo, sizeof(s_local_echo), text);
+        s_echo_tick = (uint32_t)rt_tick_get();
         s_awaiting_reply = true;
         s_live_turn = true;
         chat_page_apply_pending_state();
@@ -1629,7 +1636,28 @@ void skai_chat_on_conv_state(const uint8_t *json, uint16_t length)
     }
     cJSON_Delete(root);
 
-    s_local_echo[0] = '\0'; /* 手機的版本到了,本機回音讓位 */
+    /* 本機回音讓位的條件:手機版本裡已有這句(從最新往回找 user/outgoing、前綴相符),或
+       回音已經掛太久。否則保留 —— 這份狀態只是送出前的舊版,下一份才會帶著它。 */
+    if (s_local_echo[0] != '\0')
+    {
+        size_t elen = strlen(s_local_echo);
+        while (elen > 0 && (s_local_echo[elen - 1] == ' ' || s_local_echo[elen - 1] == '\n'))
+            elen--;
+        bool landed = false;
+        for (int i = count - 1; i >= 0 && !landed; i--)
+        {
+            const chat_msg_t *m = &s_pending_msgs[i];
+            if (strcmp(m->role, "user") != 0 && strcmp(m->role, "outgoing") != 0)
+                continue;
+            const char *t = (m->off <= CHAT_TEXT_POOL) ? (s_text_pool + m->off) : "";
+            landed = (elen > 0 && strncmp(t, s_local_echo, elen) == 0);
+        }
+        bool stale = (uint32_t)(rt_tick_get() - s_echo_tick) > (uint32_t)rt_tick_from_millisecond(CHAT_ECHO_STALE_MS);
+        if (landed || stale)
+            s_local_echo[0] = '\0';
+        else
+            LOG_W("[chat] rx without my echo yet (%d msgs) — keeping it", count);
+    }
     s_pending_msg_count = count; /* publish LAST so an LVGL reader never sees a half-filled buffer */
     /* 拓一份進 per-session 快取(同一條 BLE 執行緒,pending 剛寫完就 memcpy,不跨執行緒)。 */
     chat_cache_store(s_state_sid);
