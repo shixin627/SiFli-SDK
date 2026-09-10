@@ -6209,6 +6209,10 @@ static void list_item_activate(list_item_t *item)
            非 Hermes 的 '@' 房(WhatsApp/Messenger)沒有 bot 的概念 → 不註冊,catcher
            維持 HIDDEN、保留原生捲動手感。 */
         wf_chat_bind_switcher(item->id, item->title);
+        /* 來過的房先用手錶自己的快取補畫,不必等手機繞雲端一圈(滑鼠抽屜那條
+           sd_open_chat_async_cb 早就這樣做;左頁這條一直漏了 → 每次進來都先空白)。
+           conv_state 的 sid 與列的 id 同一個 pager key,對得上才命中。 */
+        chat_page_try_restore(item->id);
         return;
     }
 
@@ -6354,6 +6358,10 @@ static void on_tap(void)
            非 Hermes 的 '@' 房(WhatsApp/Messenger)沒有 bot 的概念 → 不註冊,catcher
            維持 HIDDEN、保留原生捲動手感。 */
         wf_chat_bind_switcher(item->id, item->title);
+        /* 來過的房先用手錶自己的快取補畫,不必等手機繞雲端一圈(滑鼠抽屜那條
+           sd_open_chat_async_cb 早就這樣做;左頁這條一直漏了 → 每次進來都先空白)。
+           conv_state 的 sid 與列的 id 同一個 pager key,對得上才命中。 */
+        chat_page_try_restore(item->id);
         return;
     }
 

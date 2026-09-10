@@ -123,6 +123,10 @@ static bool s_live_turn;
 
 static char s_pending_title[64];
 static bool s_pending_sending;
+/* 手機有沒有為**這間房**送過至少一份 conv_state。沒送過=還在等 → 置中「載入中…」;
+   送過但零則=這個 session 本來就是空的 → 改「尚無訊息」,別讓人一直等(founder
+   2026-09-10:「如果那個 session 是空的,手錶上不要一直顯示載入中」)。開房/換房歸零。 */
+static bool s_state_received;
 static chat_msg_t s_pending_msgs[CHAT_MAX_MSGS];
 static volatile int s_pending_msg_count; /* written LAST on BLE, read FIRST on LVGL */
 
@@ -704,6 +708,7 @@ void chat_page_switch_session(const char *title)
         lv_obj_clear_flag(s_loading_label, LV_OBJ_FLAG_HIDDEN);
     s_pending_msg_count = 0;
     s_pool_used = 0;
+    s_state_received = false;
     s_appr_pending = false;
     s_local_echo[0] = 0;
     s_awaiting_reply = false;
@@ -962,6 +967,7 @@ static void chat_hslide_settle(int from, int to, uint16_t ms, lv_anim_ready_cb_t
     if (done != NULL)
         lv_anim_set_ready_cb(&a, done);
     lv_anim_start(&a);
+    s_state_received = false; /* 新房的 conv_state 還沒到 */
 }
 
 /* 點一下(沒拖成任何模式):把 CLICKED 轉送給 catcher 底下、訊息列表裡命中的
@@ -1147,6 +1153,7 @@ void chat_page_open(const char *title, const char *icon_src)
            + OVERFLOW_VISIBLE and NO size on the img; reserve the flex footprint with a 44px wrapper box
            the natural-size img is centred in (founder 2026-06-29). */
         const lv_img_dsc_t *dsc = (const lv_img_dsc_t *)icon_src;
+    s_state_received = false;
         lv_obj_t *iconbox = lv_obj_create(header);
         lv_obj_remove_style_all(iconbox);
         lv_obj_set_size(iconbox, 44, 44);
@@ -1637,6 +1644,7 @@ void chat_page_set_style_hermes(bool hermes)
    只用在 Hermes(AI)房;@聯絡人房的來訊是真人講的話,不該假裝在打字。 */
 /* ── 重繪成本才是真正的天花板(founder 2026-08-26「回覆完後手錶直接當機」)──
    每一次 lv_label_ins_text 都會讓**整個** label 重新斷行 + 重新取字形。回覆長到
+    s_state_received = true;
    三四百個中文字時,單次重繪本身就很貴;一拍 40ms 追加一次 = 一秒 25 次全量重繪,
    GUI 執行緒被自己餵飽,畫面就此不動(BLE 還活著、也沒有重開 → 不是 crash,是 GUI
    餓死)。所以節流的對象不是「一次接幾個字」,是「一秒重繪幾次」:
@@ -2025,6 +2033,9 @@ void chat_page_apply_pending_state(void)
         {
             lv_obj_t *lbl = chat_add_hermes_turn(s_msg_list, chat_msg_text(cm), mine);
             if (i == count - 1 && !echo)
+        {
+            /* 手機已回過這間房的狀態但零則 = session 本來就空,不是還在載入。 */
+            lv_label_set_text(s_loading_label, s_state_received ? "尚無訊息" : "載入中…");
             {
                 /* 直播那一則:掛上揭露游標。新文字若是已畫內容的**延長**(拿已畫長度
                    的雜湊對一次),就保留已畫的部分、只接後面 —— 不會閃回開頭;對不上
