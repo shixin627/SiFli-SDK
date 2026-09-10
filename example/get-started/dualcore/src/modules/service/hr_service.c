@@ -1843,9 +1843,18 @@ static void bg_hr_flush_bucket(uint32_t bucket_start_ts)
  *
  * The charger gate stays: on the cradle there is definitively no wrist, and it
  * costs nothing to keep. */
+/* 2026-09-10 (founder): the wear verdict is a GATE again, not just a label.
+ * Off-wrist means no burst at all; wear_detect's motion-driven probe is what
+ * lights the PPG until a wrist is confirmed, and set_status(WEARING) calls
+ * hr_service_bg_hr_kick() so the curve resumes at once. With the settings
+ * toggle off (the default) wear_detect forces WORN, so this gate is inert
+ * there and bursts run exactly as before. */
 static int bg_hr_skip_reason(void)
 {
     if (hr_service_env.is_ready != RT_TRUE) return BGHR_NOT_READY;
+#ifdef BSP_USING_WEAR_DETECT
+    if (!wear_detect_is_wearing()) return BGHR_NOT_WORN;
+#endif
 #if kReleaseMode
     /* Release: on the charger means off-wrist, so skip PPG entirely.
        Dev builds deliberately keep sampling while charging so wear detection
@@ -1894,6 +1903,9 @@ static void bg_hr_finish_burst(void)
      * LED off/on, a GH3018 re-init and the whole warm-up over again, and buys
      * nothing the extra seconds would not have bought. */
     if (bg_hr_burst_extends < BGHR_EXTEND_MAX &&
+#ifdef BSP_USING_WEAR_DETECT
+        wear_detect_is_wearing() &&      /* verdict flipped mid-burst: no extra light */
+#endif
         bg_hr_pulse_recent() &&          /* a table never earns the extra light */
         (bg_hr_burst_best == 0 ||
          !curve_judge((uint32_t)time(NULL), bg_hr_burst_best, RT_NULL)))
@@ -2544,8 +2556,31 @@ static void bg_hr_period_cb(void *param)
     rt_timer_start(bg_hr_sample_timer);
 }
 
+/* One-shot soft timer that runs the period callback out of band. Static
+ * storage: the heap on this build peaks near exhaustion. */
+static struct rt_timer bg_hr_kick_timer;
+static rt_bool_t bg_hr_kick_timer_ready = RT_FALSE;
+#define BG_HR_KICK_DELAY_MS  2000
+
+/* Ask for a burst now-ish. Called by wear_detect from set_status(WEARING) on
+ * the PPG/IMU feed thread; the burst itself must start on the soft-timer
+ * thread (bg_hr_period_cb / bg_hr_finish_burst assume it), so this only arms
+ * a one-shot. bg_hr_period_cb re-checks BUSY / charging / wear itself. */
+void hr_service_bg_hr_kick(void)
+{
+    if (!bg_hr_kick_timer_ready) return;
+    rt_timer_start(&bg_hr_kick_timer); /* restart if already pending */
+}
+
 static void bg_hr_init(void)
 {
+    if (!bg_hr_kick_timer_ready)
+    {
+        rt_timer_init(&bg_hr_kick_timer, "bghr_k", bg_hr_period_cb, RT_NULL,
+                      rt_tick_from_millisecond(BG_HR_KICK_DELAY_MS),
+                      RT_TIMER_FLAG_ONE_SHOT | RT_TIMER_FLAG_SOFT_TIMER);
+        bg_hr_kick_timer_ready = RT_TRUE;
+    }
     bg_hr_period_timer = rt_timer_create(
         "bghr_p", bg_hr_period_cb, RT_NULL,
         rt_tick_from_millisecond(BG_HR_PERIOD_MS),
