@@ -735,7 +735,9 @@ static int evaluate_imu_only(void)
     uint32_t tnow = rt_tick_get_millisecond();
     bool fallback_probe =
         !s_probe_active &&
+#if kReleaseMode
         !battery_get_charge_state()->is_plugged &&
+#endif
         (tnow - s_last_probe_open_ms >= PROBE_FALLBACK_MS) &&
         /* Not inside the post-OFF cooldown: the entry gates would refuse the
          * whole 30 s window and the fallback would be burnt for 10 min. */
@@ -778,8 +780,11 @@ static int evaluate_imu_only(void)
  */
 static int evaluate_once(uint32_t now)
 {
-#if (CUSTOMER_BOARD_VER == BOARD_VER_29)
-    /* --- Board v29: charging always means OFF WRIST --- */
+#if (CUSTOMER_BOARD_VER == BOARD_VER_29) && kReleaseMode
+    /* --- Board v29: charging always means OFF WRIST ---
+     * Release only. A dev build sits on the USB cable all day, and this
+     * early return skipped the whole IMU-motion path, so nothing on the bench
+     * could ever open a probe (2026-09-10). Same split bg_hr_skip_reason uses. */
     if (battery_get_charge_state()->is_charging)
     {
         LOG_I("Eval: charging (board v29) -> force OFF");
@@ -1482,8 +1487,13 @@ static void probe_open_or_extend(uint32_t now, const char *why, float imu_var)
         }
         return;
     }
+#if kReleaseMode
+    /* On the charger the watch is off-wrist by contract. Release only: a dev
+     * watch on the bench is plugged into the flashing cable, and this refused
+     * every motion probe there (2026-09-10). */
     if (battery_get_charge_state()->is_plugged)
-        return; /* on the charger the watch is off-wrist by contract */
+        return;
+#endif
     /* A burst still in flight (started while worn, verdict flipped since) has
      * PPG and accel up; hr_set_power(1) would be vetoed and our expiry would
      * cut its light. The burst end powers down and the next motion reopens. */
