@@ -93,6 +93,18 @@ static bool step_poll_first = true;
     #define USE_BMI270_ANY_MOTION_WAKE 0
 #endif
 
+/* Arm the same any_motion interrupt in screen-off for the WEAR DETECTOR only
+   (founder 2026-09-10): while the watch is off-wrist and asleep, nothing feeds
+   it accelerometer data, so "pick it up" could only be noticed by the chip's
+   ~1 s wrist-wake tilt detector -- a flat pick-up or a shove never opened the
+   PPG probe. any_motion fires within ~200 ms of any Z-axis slope. This path
+   never lights the screen; that stays behind USE_BMI270_ANY_MOTION_WAKE and
+   its pose gate. Costs an LCPU wake per motion, rate-limited to one probe
+   kick per 2 s inside wear_detect_on_motion_wake(). */
+#ifndef USE_BMI270_ANY_MOTION_PROBE
+    #define USE_BMI270_ANY_MOTION_PROBE 1
+#endif
+
 #define MAIN_EVENT_BATTERY_CHARGING (1 << 0)
 #define MAIN_EVENT_BATTERY_VOLTAGE (1 << 1)
 #define MAIN_EVENT_HAND_LIFT (1 << 2)
@@ -207,7 +219,7 @@ void bmi270_on_wrist_wake_detected(void)
     hand_tracking_lift_callback(2);
 }
 
-#if USE_BMI270_ANY_MOTION_WAKE
+#if USE_BMI270_ANY_MOTION_WAKE || USE_BMI270_ANY_MOTION_PROBE
 /* Observation window after any_motion. any_motion fires DURING motion, so a
    single accel sample is unreliable (accel != gravity while moving). Poll accel
    until the motion SETTLES (magnitude stops changing => linear accel ~0, so
@@ -229,6 +241,15 @@ void bmi270_on_wrist_wake_detected(void)
 
 void bmi270_on_any_motion_detected(void)
 {
+#if defined(BSP_USING_WEAR_DETECT) && USE_BMI270_ANY_MOTION_PROBE
+    /* Probe path first, screen path (if compiled) second; the probe kick only
+       validates and starts a soft timer, safe on this 1280-byte stack. */
+    extern void wear_detect_on_motion_wake(void);
+    wear_detect_on_motion_wake();
+#endif
+#if !USE_BMI270_ANY_MOTION_WAKE
+    return; /* probe-only build: never light the screen from any_motion */
+#endif
 #ifdef BSP_USING_GESTURE_DETECT
     int16_t rx = 0, ry = 0, rz = 0;
     float ax = 0.0f, ay = 0.0f, az = 0.0f;
@@ -276,7 +297,7 @@ void bmi270_on_any_motion_detected(void)
 #endif
     hand_tracking_lift_callback(2);
 }
-#endif /* USE_BMI270_ANY_MOTION_WAKE */
+#endif /* USE_BMI270_ANY_MOTION_WAKE || USE_BMI270_ANY_MOTION_PROBE */
 
 /* === LCPU PM policy override =============================================
    The middleware default in bf0_pm.c (RT_WEAK pm_policy[]) picks STANDBY
@@ -362,8 +383,8 @@ void on_lcpu_sleep_mode_changed(bool sleep)
     if (sleep)
     {
         bmi270_hw_wrist_wake_enable(1);
-#if USE_BMI270_ANY_MOTION_WAKE
-        bmi270_any_motion_enable(1); /* fast additional trigger, pose-gated */
+#if USE_BMI270_ANY_MOTION_WAKE || USE_BMI270_ANY_MOTION_PROBE
+        bmi270_any_motion_enable(1); /* screen wake (pose-gated) and/or wear probe */
 #endif
         /* ...unless somebody has claimed the screen-off accel stream. A bg_hr
            burst (hr_service bmi270_set_hr_accel_stream(1)) or wear_detect's
@@ -400,7 +421,7 @@ void on_lcpu_sleep_mode_changed(bool sleep)
         bmi270_set_fifo_wm_int(0, 0);
         bmi270_set_drdy_int_routing(1);
         bmi270_hw_wrist_wake_enable(0);
-#if USE_BMI270_ANY_MOTION_WAKE
+#if USE_BMI270_ANY_MOTION_WAKE || USE_BMI270_ANY_MOTION_PROBE
         bmi270_any_motion_enable(0);
 #endif
     }
