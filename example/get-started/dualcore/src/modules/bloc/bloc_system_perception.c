@@ -173,7 +173,7 @@ void app_periodic_task(void)
        session. Idempotent — converges LCPU within one period after any reboot. */
     if (watch_sys_sync.set_wear_detect_enable)
     {
-        watch_sys_sync.set_wear_detect_enable(SkaiWatchSys.flag_field.wear_detect_on ? true : false);
+        watch_sys_sync.set_wear_detect_enable(SkaiWatchSys.flag_field.wear_detect_off ? false : true);
     }
 #if SKAI_HEALTH_DIAG
     /* Same reasoning for the continuous-HR diagnostic: it is meant to run a whole
