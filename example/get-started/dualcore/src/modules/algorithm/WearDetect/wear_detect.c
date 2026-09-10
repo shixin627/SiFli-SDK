@@ -534,9 +534,10 @@ extern void hr_service_bg_hr_kick(void);
 
 /* Diagnostic override (settings toggle "佩戴偵測"): when false, the contact
  * algorithm is bypassed and the watch is forced WORN unless on the charger. */
-/* Default OFF (bypass) since 2026-09-03, matching the HCPU's persisted
- * default; the HCPU re-pushes the setting on subscribe / every minute. */
-static bool s_detect_enabled = false;
+/* Default ON since 2026-09-10 (was bypass 2026-09-03..09-10), matching the
+ * HCPU's persisted default; the HCPU re-pushes the setting on subscribe /
+ * every minute. */
+static bool s_detect_enabled = true;
 
 /* -------------------- Helpers -------------------- */
 
