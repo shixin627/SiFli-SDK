@@ -857,6 +857,8 @@ static void chat_next_page_build(int dir)
         lv_obj_move_to_index(list, (int32_t)lv_obj_get_index(s_msg_list) + 1);
         lv_obj_move_to_index(tl, (int32_t)lv_obj_get_index(list) + 1);
     }
+    {
+        LOG_W("[chat] next page dir=%d: no neighbour", dir);
     s_next_list = list;
     s_next_title = tl;
     s_next_dir = dir;
@@ -1045,6 +1047,8 @@ static void chat_swipe_catcher_cb(lv_event_t *e)
                 dy = -sb;
             if (dy != 0)
                 lv_obj_scroll_by(s_msg_list, 0, dy, LV_ANIM_OFF);
+        LOG_D("[chat] catcher press (%d,%d) cb=%d next=%d", (int)s_hs_last.x, (int)s_hs_last.y,
+              (int)(s_session_switch_cb != NULL), (int)s_next_dir);
             s_hs_last_vy = vy;
         }
         else if (s_hs_mode == CHAT_HS_MODE_HSWIPE && s_msg_list != NULL &&
@@ -1069,6 +1073,8 @@ static void chat_swipe_catcher_cb(lv_event_t *e)
                           s_next_dir == dir && s_next_list != NULL;
             if (commit)
             {
+            if (s_hs_mode != CHAT_HS_MODE_IDLE)
+                LOG_D("[chat] catcher mode=%d dx=%d dy=%d", (int)s_hs_mode, (int)s_hs_dx, (int)s_hs_dy);
                 chat_hslide_settle(s_hs_dx, (dir > 0) ? -LV_HOR_RES : LV_HOR_RES, 160,
                                    chat_hslide_commit_done);
             }
@@ -1096,6 +1102,8 @@ static void chat_swipe_catcher_cb(lv_event_t *e)
         else if (mode == CHAT_HS_MODE_IDLE && code == LV_EVENT_RELEASED)
         {
             lv_point_t p;
+        LOG_D("[chat] catcher release code=%d mode=%d dx=%d next=%d list=%d", (int)code, mode,
+              (int)s_hs_dx, (int)s_next_dir, (int)(s_next_list != NULL));
             lv_indev_get_point(indev, &p);
             chat_catcher_forward_click(&p);
         }
