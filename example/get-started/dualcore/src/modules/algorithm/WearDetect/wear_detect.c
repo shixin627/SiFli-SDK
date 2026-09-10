@@ -380,16 +380,24 @@
 
 /* [DC-led] After motion while off-wrist, hold PPG powered for this long so
  * the wrist can confirm even if the user then stays still. If nothing
- * confirms within the window, PPG is powered back down until next motion. */
-#define PROBE_WINDOW_MS         (3 * 60 * 1000)
+ * confirms within the window, PPG is powered back down until next motion.
+ *
+ * 2026-09-10 (founder spec): while NOT worn, EVERY motion -- the standby
+ * wrist-wake interrupt or IMU variance on a live feed -- opens the probe if it
+ * is dark and otherwise pushes its expiry out to now + this window. A wrist
+ * that keeps moving keeps the probe alive until the alive run confirms it;
+ * a watch that stops moving lets it lapse 2 min after the last motion. Once
+ * WORN, motion does nothing (bg_hr owns the light) until the next OFF verdict.
+ * bg_hr bursts are gated on the wear verdict since the same date, so this
+ * probe is the ONLY thing that lights the PPG while off-wrist. */
+#define PROBE_WINDOW_MS         (2 * 60 * 1000)
 
-/* A hardware wrist-wake interrupt while OFF opens a probe (see
- * wear_detect_on_motion_wake). Rate-limited to this: the interrupt fires on any
- * nudge once the pose gate is bypassed, and each probe costs LED current, so a
- * watch rattling in a bag must not hold the LED on. 3 min with a
- * PROBE_FALLBACK_WINDOW_MS window bounds the duty at ~25% in that worst case,
- * while a wrist put on and raised to look confirms within ~25 s. */
-#define MOTION_WAKE_PROBE_MIN_MS (3u * 60u * 1000u)
+/* Debounce for the standby motion interrupt: it can fire several times a
+ * second while the wrist is moving, and each call restarts a soft timer or
+ * rewrites the expiry. The extension semantics make a longer limit pointless
+ * (a second motion inside the window only moves the expiry), and a real limit
+ * would contradict "any motion reopens the probe". */
+#define MOTION_WAKE_DEBOUNCE_MS  (2000u)
 
 /* While OFF with no motion, still open a probe at this interval so a
  * wrongly-voted OFF on a resting wrist can re-enter (see the fallback
@@ -517,6 +525,12 @@ static bool s_probe_owns_accel = false;
 extern int bmi270_set_hr_accel_stream(int en);
 extern bool hr_service_bg_burst_active(void);
 static uint32_t s_last_motion_wake_ms = 0;
+/* Single entry point for "motion while NOT worn": open the probe if it is
+ * dark, otherwise extend it. Defined with the public API below. */
+static void probe_open_or_extend(uint32_t now, const char *why, float imu_var);
+/* bg_hr resumes the moment the wrist is confirmed instead of waiting for the
+ * next 10-min tick (hr_service.c). */
+extern void hr_service_bg_hr_kick(void);
 
 /* Diagnostic override (settings toggle "佩戴偵測"): when false, the contact
  * algorithm is bypassed and the watch is forced WORN unless on the charger. */
@@ -675,6 +689,10 @@ static void set_status(wear_status_t new_status)
         LOG_I("Wear detected: ON WRIST");
         notify_wear_status(true);
         diag_emit_last(WEAR_DIAG_EVT_ON);
+        /* Bursts were held back while off-wrist (bg_hr_skip_reason); ask for
+         * one now so the curve resumes in seconds, not at the next 10-min tick.
+         * The probe's PPG is still lit, the burst re-opens it in HR mode. */
+        hr_service_bg_hr_kick();
     }
     else
     {
@@ -724,31 +742,27 @@ static int evaluate_imu_only(void)
         (ctx.last_off_verdict_ms == 0u ||
          tnow - ctx.last_off_verdict_ms >= WARM_REENTRY_COOLDOWN_MS);
 
-    if (imu_var >= IMU_RETRIGGER_THD || fallback_probe)
+    if (imu_var >= IMU_RETRIGGER_THD)
     {
         /* Motion while off-wrist + PPG asleep: power PPG up and (re)start the
          * probe window, so the next few minutes of PPG can confirm a real wrist
          * even if the user then stays still. We never vote ON from IMU alone --
          * only a live PPG pulse (in evaluate_once) confirms wear. */
-        if (!s_probe_active)
-        {
-            hr_set_power(1);
-            /* Ignore the first few seconds after powering PPG up: the signal is
-             * unstable and PI spikes during warm-up (this fakes a pulse on a
-             * table). Arm the settle gate so evaluate_once drops those reads. */
-            ctx.ppg_settling = true;
-            ctx.ppg_restart_ms = rt_tick_get_millisecond();
-            s_last_probe_open_ms = rt_tick_get_millisecond();
-            LOG_I("Wear: %s (var=%.4f) -> open PPG probe window (settling %ums)",
-                  fallback_probe ? "fallback re-probe" : "motion",
-                  imu_var, PPG_SETTLE_MS);
-            ctx.last_imu_var = imu_var;
-            diag_emit_last(WEAR_DIAG_EVT_PROBE_OPEN);
-        }
+        probe_open_or_extend(tnow, "motion", imu_var);
+    }
+    else if (fallback_probe)
+    {
+        /* No motion: the short fallback window, not extended by anything. */
+        hr_set_power(1);
+        ctx.ppg_settling = true;
+        ctx.ppg_restart_ms = tnow;
+        s_last_probe_open_ms = tnow;
         s_probe_active = true;
-        s_probe_until_ms = rt_tick_get_millisecond() +
-                           ((imu_var >= IMU_RETRIGGER_THD) ? PROBE_WINDOW_MS
-                                                           : PROBE_FALLBACK_WINDOW_MS);
+        s_probe_until_ms = tnow + PROBE_FALLBACK_WINDOW_MS;
+        ctx.last_imu_var = imu_var;
+        LOG_I("Wear: fallback re-probe (var=%.4f) -> open PPG probe window (%us)",
+              imu_var, (unsigned)(PROBE_FALLBACK_WINDOW_MS / 1000u));
+        diag_emit_last(WEAR_DIAG_EVT_PROBE_OPEN);
     }
     else
     {
@@ -1126,6 +1140,11 @@ static int evaluate_once(uint32_t now)
                               : 0.0f;
     if (alive_imu_fresh)
         ctx.last_imu_var = alive_imu_var;
+    /* Still moving while the probe is lit: keep it lit (now + 2 min). Without
+     * this only the STALE branch ever extended, i.e. a probe that was actually
+     * delivering PPG expired on its original clock even under motion. */
+    if (s_probe_active && alive_imu_fresh && alive_imu_var >= IMU_RETRIGGER_THD)
+        probe_open_or_extend(now, "motion", alive_imu_var);
     bool alive_now = (pi >= PI_THD_TO_ON) &&
                      (pi_range <= PI_RANGE_MAX) &&
                      (pi > 0.0f && (pi_range / pi) >= PI_AC_RATIO_THD) &&
@@ -1433,37 +1452,69 @@ static void motion_probe_release_accel(void)
         (void)bmi270_set_hr_accel_stream(0);
 }
 
-/* Timer-thread half of wear_detect_on_motion_wake(). Opens the probe window
- * exactly as the motion branch of evaluate_imu_only() does. Re-checks the
+/* "Motion while NOT worn" -- the one place a probe is opened or extended by
+ * motion, whichever thread noticed it (IMU feed eval, or the standby wrist-wake
+ * interrupt via its soft timer). Opening claims the screen-off accel stream so
+ * the alive test has fresh IMU data (in standby DRDY is un-routed; a probe
+ * that only powers the PPG is blind) and arms the settle gate against the
+ * driver's warm-up spikes. Extending only moves the expiry. */
+static void probe_open_or_extend(uint32_t now, const char *why, float imu_var)
+{
+    if (ctx.status == WEAR_STATUS_WEARING)
+        return; /* worn: bg_hr owns the light, motion is not our business */
+    /* A window that lapsed without its expiry ever running (no PPG/IMU feed
+     * reached try_evaluate: power request vetoed, sensor refused) is a phantom:
+     * treat it as dark and re-open below rather than just moving its clock. */
+    if (s_probe_active && (int32_t)(now - s_probe_until_ms) > 0)
+    {
+        s_probe_active = false;
+        motion_probe_release_accel();
+        LOG_I("Wear: lapsed probe reopened by %s", why);
+    }
+    if (s_probe_active)
+    {
+        uint32_t until = now + PROBE_WINDOW_MS;
+        if ((int32_t)(until - s_probe_until_ms) > 0)
+        {
+            s_probe_until_ms = until;
+            LOG_D("Wear: %s while probing -> probe extended to +%us", why,
+                  (unsigned)(PROBE_WINDOW_MS / 1000u));
+        }
+        return;
+    }
+    if (battery_get_charge_state()->is_plugged)
+        return; /* on the charger the watch is off-wrist by contract */
+    /* A burst still in flight (started while worn, verdict flipped since) has
+     * PPG and accel up; hr_set_power(1) would be vetoed and our expiry would
+     * cut its light. The burst end powers down and the next motion reopens. */
+    if (hr_service_bg_burst_active())
+        return;
+    (void)bmi270_set_hr_accel_stream(1);
+    s_probe_owns_accel = true;
+    hr_set_power(1);
+    /* Ignore the first few seconds after powering PPG up: the signal is
+     * unstable and PI spikes during warm-up (this fakes a pulse on a table).
+     * Arm the settle gate so evaluate_once drops those reads. */
+    ctx.ppg_settling = true;
+    ctx.ppg_restart_ms = now;
+    s_last_probe_open_ms = now;
+    s_probe_active = true;
+    s_probe_until_ms = now + PROBE_WINDOW_MS;
+    if (imu_var >= 0.0f)
+        ctx.last_imu_var = imu_var;
+    LOG_I("Wear: %s while off-wrist -> open PPG probe window (%us, settling %ums)",
+          why, (unsigned)(PROBE_WINDOW_MS / 1000u), PPG_SETTLE_MS);
+    diag_emit_last(WEAR_DIAG_EVT_PROBE_OPEN);
+}
+
+/* Timer-thread half of wear_detect_on_motion_wake(). Re-checks the
  * preconditions because up to a tick has passed since the interrupt. */
 static void motion_probe_kick_cb(void *arg)
 {
     (void)arg;
     if (!ctx.initialized || !s_detect_enabled)
         return;
-    if (ctx.status == WEAR_STATUS_WEARING || s_probe_active)
-        return;
-    if (battery_get_charge_state()->is_plugged)
-        return;
-    /* A burst already has PPG and accel up; hr_set_power(1) would be vetoed and
-     * our expiry would wipe the burst's evidence mid-burst. Leave it alone. */
-    if (hr_service_bg_burst_active())
-        return;
-
-    uint32_t now = rt_tick_get_millisecond();
-    /* Route DRDY back FIRST: without it the alive test never sees fresh accel
-     * data and this probe could not confirm a wrist no matter how good the
-     * pulse is. Released in motion_probe_release_accel(). */
-    (void)bmi270_set_hr_accel_stream(1);
-    s_probe_owns_accel = true;
-    hr_set_power(1);
-    ctx.ppg_settling = true;
-    ctx.ppg_restart_ms = now;
-    s_last_probe_open_ms = now;
-    s_probe_active = true;
-    s_probe_until_ms = now + PROBE_FALLBACK_WINDOW_MS;
-    LOG_I("Wear: wrist-wake INT while off-wrist -> open PPG probe window");
-    diag_emit_last(WEAR_DIAG_EVT_PROBE_OPEN);
+    probe_open_or_extend(rt_tick_get_millisecond(), "wrist-wake INT", -1.0f);
 }
 
 void wear_detect_on_motion_wake(void)
@@ -1483,24 +1534,13 @@ void wear_detect_on_motion_wake(void)
         motion_probe_release_accel();
         LOG_I("Wear: stale probe flag cleared (window expired with no data)");
     }
-    /* Already burning LED current for a probe or a burst: nothing to add. */
-    if (s_probe_active || hr_service_bg_burst_active())
-        return;
-    /* On the charger the watch is off-wrist by contract; don't probe a cradle. */
-    if (battery_get_charge_state()->is_plugged)
-        return;
-    /* Inside the post-OFF cooldown both entry gates refuse, so the window would
-     * be spent for nothing and the rate limit below would block the next one.
-     * Same reasoning as the fallback probe's guard. */
-    if (ctx.last_off_verdict_ms != 0u &&
-        (now - ctx.last_off_verdict_ms) < WARM_REENTRY_COOLDOWN_MS)
-        return;
     if (s_last_motion_wake_ms != 0u &&
-        (now - s_last_motion_wake_ms) < MOTION_WAKE_PROBE_MIN_MS)
+        (now - s_last_motion_wake_ms) < MOTION_WAKE_DEBOUNCE_MS)
         return;
     s_last_motion_wake_ms = now;
     /* Defer: the caller is the bmi270 thread (1280-byte stack) holding the
-     * IMU's api_lock. Powering the PPG belongs in the timer thread. */
+     * IMU's api_lock. Powering the PPG belongs in the timer thread; extending
+     * an active probe goes through the same path so there is one writer. */
     rt_timer_start(&s_motion_probe_timer);
 }
 
