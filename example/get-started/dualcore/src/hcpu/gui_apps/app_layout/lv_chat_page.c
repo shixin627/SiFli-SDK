@@ -149,6 +149,11 @@ typedef struct
 static chat_cache_entry_t *s_chat_cache; /* [CHAT_CACHE_ENTRIES] */
 /* 最近一包 conv_state 的 sid(BLE 執行緒寫;快取拓寫也在同一執行緒,不跨)。 */
 static char s_state_sid[64];
+/* 目前開著的房是哪個 session(pager key)。LVGL 執行緒寫(開房/換頁),BLE 執行緒讀:
+   sid 對不上的 conv_state 直接丟 —— 快速滑到第二頁再滑回來時,手機為第二頁讀回來的
+   狀態會晚到,沒這道閘門就會先畫成第二頁再被第一頁蓋回去(founder 2026-09-10)。
+   空字串 = 這間房沒綁 key(walk-in / 舊路徑),不擋。 */
+static char s_room_sid[64];
 
 static void chat_cache_ensure(void)
 {
@@ -735,6 +740,12 @@ bool chat_page_try_restore(const char *sid)
 {
     if (!chat_page_is_open())
         return false;
+    /* 開房的人手上才有 key:順手綁定,之後只收這間房的 conv_state。 */
+    if (sid != NULL)
+    {
+        strncpy(s_room_sid, sid, sizeof(s_room_sid) - 1);
+        s_room_sid[sizeof(s_room_sid) - 1] = '\0';
+    }
     chat_cache_entry_t *e = chat_cache_find(sid);
     if (e == NULL || e->msg_count <= 0)
         return false;
@@ -970,6 +981,9 @@ static void chat_hslide_settle(int from, int to, uint16_t ms, lv_anim_ready_cb_t
         lv_anim_set_ready_cb(&a, done);
     lv_anim_start(&a);
     s_state_received = false; /* 新房的 conv_state 還沒到 */
+    s_state_received = false; /* 新房的 conv_state 還沒到 */
+    strncpy(s_room_sid, s_next_sid, sizeof(s_room_sid) - 1);
+    s_room_sid[sizeof(s_room_sid) - 1] = '\0';
 }
 
 /* 點一下(沒拖成任何模式):把 CLICKED 轉送給 catcher 底下、訊息列表裡命中的
@@ -1161,6 +1175,8 @@ void chat_page_open(const char *title, const char *icon_src)
            + OVERFLOW_VISIBLE and NO size on the img; reserve the flex footprint with a 44px wrapper box
            the natural-size img is centred in (founder 2026-06-29). */
         const lv_img_dsc_t *dsc = (const lv_img_dsc_t *)icon_src;
+    s_state_received = false;
+    s_room_sid[0] = '\0'; /* 開房的人若有 key 會經 chat_page_try_restore 綁上 */
     s_state_received = false;
         lv_obj_t *iconbox = lv_obj_create(header);
         lv_obj_remove_style_all(iconbox);
@@ -1508,6 +1524,19 @@ void skai_chat_on_conv_state(const uint8_t *json, uint16_t length)
                 items[n++] = m;
             }
             else
+    /* 先驗身分再動任何 pending 緩衝:別的房的狀態連標題都不准留下。 */
+    if (s_room_sid[0] != '\0')
+    {
+        cJSON *j_sid0 = cJSON_GetObjectItem(root, "sid");
+        if (cJSON_IsString(j_sid0) && j_sid0->valuestring[0] != '\0' &&
+            strncmp(j_sid0->valuestring, s_room_sid, sizeof(s_room_sid)) != 0)
+        {
+            LOG_W("[chat] conv_state for %.24s dropped — room is %.24s", j_sid0->valuestring, s_room_sid);
+            cJSON_Delete(root);
+            return;
+        }
+    }
+
             {
                 for (int i = 1; i < CHAT_MAX_MSGS; i++)
                     items[i - 1] = items[i];
