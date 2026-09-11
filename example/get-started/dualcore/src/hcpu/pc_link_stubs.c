@@ -232,6 +232,15 @@ void bloc_handwrite_next_pick(int idx) { (void)idx; }
 void bloc_handwrite_cancel(void) { }
 void bloc_handwrite_clear(void) { }
 void bloc_handwrite_backspace(void) { }
+/* communicate/ 整個目錄不編進 PC sim,所以 0x03 批次那份 id 反查表也沒有。
+   (lv_instruction_list_layout.c 的 single_device_try_open_session 2026-09 起會叫它,
+   link 才曝出來。)sim 沒有手機批次 → 一律回 NULL = 沿用 title,與真機的 miss 路徑同。 */
+const char *device_actions_id_for_title(const char *device_id, const char *title)
+{
+    (void)device_id;
+    (void)title;
+    return NULL;
+}
 void bloc_motion_drag_set(bool on) { (void)on; }
 void bloc_press_free_move_set(bool on) { (void)on; }
 void bloc_wrist_accum_reset(void) { }
