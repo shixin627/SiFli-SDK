@@ -152,6 +152,7 @@ typedef enum
  *********************/
 LV_IMG_DECLARE(img_mouse);
 LV_IMG_DECLARE(mouse_mode_icon);
+LV_IMG_DECLARE(logout); // 手寫頁右緣鍵的「退出」態(founder 2026-09-02:要離開的圖)
 LV_IMG_DECLARE(plus_button);
 LV_IMG_DECLARE(enter_icon);
 LV_IMG_DECLARE(capital_icon);
@@ -170,6 +171,7 @@ LV_IMG_DECLARE(micro_icon);
 LV_IMG_DECLARE(micro_open_icon); // V2T active 時的 icon（淺藍麥克風）
 LV_IMG_DECLARE(switch_icon);
 LV_IMG_DECLARE(keyboard_icon);
+LV_IMG_DECLARE(handwrite_icon); // 右緣手寫鈕（鍵盤鈕的雙生鈕）
 LV_IMG_DECLARE(gesture_hand_icon); // 觸控板正中「手勢點擊模式」的手(founder 2026-09-06)
 LV_IMG_DECLARE(down_arrow); // 輸入框下方收回按鈕
 
@@ -586,13 +588,17 @@ static lv_obj_t *space_red_dot = NULL;
 static lv_obj_t *space_red_dot_x = NULL;
 // trackpad mode 的 mic btn 內元件（功能跟 keyboard 長按 space 完全等效）
 static lv_obj_t *trackpad_mic_btn = NULL;
-/* 觸控板右緣的鍵盤鈕:電腦有聚焦輸入框時才浮現(founder 2026-08-17)。 */
+/* 觸控板右緣的鍵盤鈕:電腦有聚焦輸入框時才浮現(founder 2026-08-17)。
+   2026-09-02 founder 加第二顆:同一時機、同一欄的手寫鈕 —— 按鍵盤=鍵盤輸入、
+   按手寫=手寫輸入(頂部左右滑拉出寫字板那條退役,手寫只剩這個入口)。 */
 static lv_obj_t *kbd_side_btn = NULL;
+static lv_obj_t *hw_side_btn = NULL;
 /* 手勢點擊模式(定義在 get_hid_mouse_handfree_mode 旁的區塊):圖示物件 + poll 同步 */
 static lv_obj_t *s_gesture_click_icon;
 static void gesture_click_icon_sync(void);
 static void gesture_click_apply(bool on, const char *why);
 static void kbd_side_btn_event_cb(lv_event_t *e);
+static void hw_side_btn_event_cb(lv_event_t *e);
 static void mouse_open_input_station(bool direct_field);
 static lv_obj_t *trackpad_mic_icon = NULL;
 static lv_obj_t *trackpad_mic_red_dot = NULL;
@@ -708,9 +714,7 @@ static bool collapse_anim_running = false;
 //   - tileview value-changed：snap 回 home 時自動隱藏 tileview
 //   - title / play state 由 bloc_control notify_media_title 路由進來
 static lv_obj_t *status_bar_area_up = NULL;
-static lv_obj_t *s_top_logo = NULL; /* 頂部滑鼠圖(左拉進手寫時跟手位移;宣告提前
-                                       到此=手寫段 hw_open_commit 也要歸位它) */
-static void top_logo_tx_anim_exec(void *obj, int32_t v); /* 定義在 status_bar 段 */
+static lv_obj_t *s_top_logo = NULL; /* 底部設備 bar 本體(舊名:頂部滑鼠圖) */
 static lv_obj_t *s_devbar_in;       /* 拖曳換設備時從後面長出來的那條(定義見 devbar 段) */
 /* R48(founder 2026-09-05):媒體控制頁不再是「從上面滑下來的 tileview」,而是
    **頂部那條 header 自己長大**成整頁(展開/收合動畫)。tileview / media_tile /
@@ -2355,7 +2359,8 @@ static void handle_proximity_input(lv_event_t *e)
                 {
                     /* 輸入法循環:英文→中文→數字→**語音**→英文。
                        founder 2026-08-03:第四站原位換掉手寫 —— 手寫的程式整段保留,
-                       只是循環不再走到它(hw_open_from_mode_switch 因此變成無呼叫者)。 */
+                       只是循環不再走到它(2026-09-02 起 hw_open_from_mode_switch 的呼叫者=觸控板
+                       右緣的手寫鈕)。 */
                     bool to_voice = false;
                     if (current_keyboard_mode == KEYBOARD_MODE_LETTERS)
                     {
@@ -5285,9 +5290,11 @@ void hid_mouse_trigger_skaibar_from_pose(void)
 
 /* ═══════════════════════════════════════════════════════════════════════════
    手寫模式 (handwriting) —— 2026-07-20 founder 三改定案:
-   進入=「畫面右緣向左拉出」:view 跟著手指從右滑進來(觸控機 (0) 分支→hw_pull_begin,
-   之後 hw_view cb 跟手),放開拉超過 1/3 → snap 展開並 commit(送 0x1b start),
-   不足 → snap 縮回(不開)。體感照 app_clock_status_bar 通知列表的拉出(founder 指定)。
+   進入(2026-09-02 founder 定案)=**觸控板右緣的手寫鈕**,跟鍵盤鈕同時浮現
+   (=電腦上點了輸入框時):按鍵盤=鍵盤輸入、按手寫=手寫輸入。程式化直開
+   (hw_open_from_mode_switch → hw_open_commit 送 0x1b start),沒有跟手動畫。
+   (舊入口=頂部圖示左右滑跟手拉出,同日退役;下面 hw_pull_* 那組跟手三段式
+    因此沒有呼叫者,留著備復原。)
    輸入=**直接在錶面上寫**(hw_view 觸控 cb 把指尖座標餵 bloc_handwrite_feed_point、
    按=下筆/放=提筆+本地 lv_line 軌跡即畫,畫布=錶面解析度,0x1b 串流到手機 ML Kit
    辨識+桌面軌跡);結束=提筆後 idle(HW_IDLE_END_MS)沒再下筆,桌面自動送出辨識文字。
@@ -5306,13 +5313,42 @@ extern bool app_control_get_mouse_mode(void);
 static lv_obj_t *s_hw_view = NULL;
 static lv_obj_t *s_hw_backdrop = NULL; /* 進場黑底:獨立於 view,原地漸黑(founder
                                           2026-07-22:元件滑入,觸碰板原地變黑) */
-static lv_obj_t *s_hw_btn_exit = NULL;  /* 頂部:退出(取消不送出,founder 2026-07-20) */
-static lv_obj_t *s_hw_btn_clear = NULL; /* 底部情境鍵——板上有字=清空(文字)/沒字=刪除(圖) */
+/* (2026-09-02 founder:頂部那顆滑鼠圖標拿掉 —— 連帶它「點一下滑回滑鼠模式」的動作
+   也不要了。退出改由右緣刪除鍵的第三態承擔,見 hw_side_key_refresh。hw_btn_exit_cb
+   保留=退出這個動作本身還在,只是換人按。) */
+static lv_obj_t *s_hw_btn_clear = NULL; /* 右緣中間的情境鍵——三態,見 hw_side_key_refresh */
 static lv_obj_t *s_hw_btn_clear_lbl = NULL; /* 清空狀態的文字 */
+static lv_obj_t *s_hw_btn_exit_img = NULL;  /* 退出狀態的圖=logout(founder
+                                               2026-09-02:用離開的圖,不要滑鼠圖) */
 static lv_obj_t *s_hw_btn_clear_img = NULL; /* 刪除狀態的圖=鍵盤頁同款 backspace_icon
                                                (founder 2026-07-22:別用預設藍鈕) */
-static lv_obj_t *s_hw_btn_mode = NULL; /* 左下(=鍵盤 mode_btn 同位):erth 切輸入法圖,
-                                          點=收手寫開鍵盤(英文→數字→手寫循環) */
+/* (2026-09-02 founder:左下的切輸入法鈕拿掉 —— 手寫已經有自己的入口(觸控板右緣
+   手寫鈕),頁內不需要再提供「換成鍵盤」這條路。) */
+
+/* 頂部輸入框(founder 2026-09-02):顯示這一輪已定稿的全文,可以點文字中間把游標
+   插到那裡,之後按的候選字就插在游標處。
+   **文字的真相在手錶端**:每按一次候選字就把該候選插進 s_hw_text[],所以手錶自己
+   就知道全文,不必等手機下推。手機那邊仍然照舊累積它自己的 committedText(純附加),
+   兩邊在「游標插中間」時會發散 —— 所以送出改成由手錶把 s_hw_text 直接交出去
+   (hw_btn_enter_cb),手機那條 session 用 cancel 收掉,不讓它再 commit 一次。 */
+static lv_obj_t *s_hw_input_bar = NULL;
+static lv_obj_t *s_hw_input_lbl = NULL;
+static lv_obj_t *s_hw_caret_obj = NULL;      /* 游標=2px 線,疊在 label 上 */
+static lv_timer_t *s_hw_caret_timer = NULL;  /* 500ms 閃爍,同鍵盤頁 cursor_blink_timer */
+#ifdef BSP_USING_PC_SIMULATOR
+/* 手寫輸入框的量測探針(定義在檔尾):msh 設旗標、LVGL thread 上的 poll 代跑。 */
+static volatile bool s_hw_probe_req = false;
+static void hw_probe_run_on_lvgl(void);
+#endif
+/* 輸入框內文字/游標的固定幾何:框 260x45,文字左緣內縮 20,行高約 22 置中。 */
+#define HW_INPUT_PAD_X  20
+#define HW_INPUT_TEXT_Y 11
+#define HW_CARET_Y      8
+#define HW_CARET_H      28
+#define HW_TEXT_MAX 96
+static char s_hw_text[HW_TEXT_MAX];
+static uint16_t s_hw_text_len; /* bytes,不含結尾 NUL */
+static uint16_t s_hw_caret;    /* 插入點的 byte offset,恆落在 UTF-8 字元邊界 */
 static lv_obj_t *s_hw_btn_enter = NULL; /* 退出鈕下方同欄:輸入(送出)——候選清單空才顯示;
                                            有候選時該欄顯示候選(founder 2026-07-22:底部
                                            不再有下個字/輸入,定稿一律按候選字) */
@@ -5369,6 +5405,7 @@ static void hw_backdrop_hide(void)
     }
 }
 static void hw_open_commit(void);
+static void hw_btn_exit_cb(lv_event_t *e); /* 定義在本段尾:退出(取消不送出) */
 static void close_handwrite_from_pose(void); /* 定義在本段尾:輸入鈕=送出 */
 static void hw_cancel_session(void);         /* 定義在本段尾:退出鈕/離開 app=取消 */
 
@@ -5413,14 +5450,258 @@ static void hw_view_event_cb(lv_event_t *e)
 /* 按鈕(founder 2026-07-20:不要自動輸入/2026-07-22:定稿一律按候選字):頂部退出=
    取消(不送出);候選欄=按候選定稿+換下字,清單空時同欄顯示輸入=結束送出。
    按鈕不 bubble,不會誤餵筆跡。 */
-/* 按候選字=用該候選定稿+換下個字("n"+pick;founder 2026-07-20 晚)。 */
+/* ══ 頂部輸入框:手錶端文字緩衝 + 游標(founder 2026-09-02) ══════════════════
+   全部以 byte offset 記位置,但只停在 UTF-8 字元邊界 —— 中文一個字 3 bytes,
+   用字元數當索引跟 label 的量測 API(以 letter 為單位)換算會來回轉,乾脆兩邊
+   各留一個換算函式,緩衝本身一律 byte。 */
+
+/* 回傳 pos 前面那個 UTF-8 字元的起點(pos 已在邊界上)。 */
+static uint16_t hw_utf8_prev(const char *t, uint16_t pos)
+{
+    if (pos == 0)
+        return 0;
+    uint16_t i = pos - 1;
+    while (i > 0 && ((unsigned char)t[i] & 0xC0) == 0x80)
+        i--;
+    return i;
+}
+
+/* letter(第幾個字元) → byte offset。 */
+static uint16_t hw_utf8_byte_of_letter(const char *t, uint32_t letter)
+{
+    uint16_t i = 0;
+    uint32_t n = 0;
+    while (t[i] != '\0' && n < letter)
+    {
+        i++;
+        while (t[i] != '\0' && ((unsigned char)t[i] & 0xC0) == 0x80)
+            i++;
+        n++;
+    }
+    return i;
+}
+
+/* byte offset → letter。 */
+static uint32_t hw_utf8_letter_of_byte(const char *t, uint16_t pos)
+{
+    uint32_t n = 0;
+    for (uint16_t i = 0; i < pos && t[i] != '\0'; i++)
+    {
+        if (((unsigned char)t[i] & 0xC0) != 0x80)
+            n++;
+    }
+    return n;
+}
+
+static void hw_side_key_refresh(void);
+static void hw_caret_set_from_abs_x(lv_coord_t abs_x);
+
+/* 量 s_hw_text 前 byte_len 個 byte 的顯示寬度。**直接問字型**,不經過 label 的
+   layout/coords —— 真機的輸入框用 FreeType(EPIC)字型、模擬器用內建點陣字型,
+   走 label 量測那條在兩邊行為不保證一致;lv_txt_get_width 兩邊都只是拿字型的
+   glyph 寬度累加,而且不需要 label 已經被排版過。 */
+static lv_coord_t hw_text_width_upto(uint16_t byte_len)
+{
+    if (byte_len == 0 || s_hw_input_lbl == NULL ||
+        !lv_obj_is_valid(s_hw_input_lbl))
+        return 0;
+    const lv_font_t *f =
+        lv_obj_get_style_text_font(s_hw_input_lbl, LV_PART_MAIN);
+    if (f == NULL)
+        return 0;
+    lv_coord_t ls =
+        lv_obj_get_style_text_letter_space(s_hw_input_lbl, LV_PART_MAIN);
+    return lv_txt_get_width(s_hw_text, byte_len, f, ls, LV_TEXT_FLAG_NONE);
+}
+
+/* 游標閃爍(founder 2026-09-02:「要跟鍵盤那邊一樣會閃爍」)。節奏照鍵盤頁的
+   cursor_blink_cb:500ms toggle HIDDEN。這裡用自己的 timer 而不是共用鍵盤那顆 ——
+   那顆綁在 input_cursor 上,兩頁同時活著會互相搶顯藏。
+   timer 的命是綁在 view 上的:cb 一發現 caret 物件沒了就自我了斷,離場那條路
+   (hw_caret_blink_stop)也一定會刪,避免 screen teardown 後 timer UAF。 */
+static void hw_caret_blink_cb(lv_timer_t *t)
+{
+    (void)t;
+    if (s_hw_caret_obj == NULL || !lv_obj_is_valid(s_hw_caret_obj))
+    {
+        if (s_hw_caret_timer)
+        {
+            lv_timer_del(s_hw_caret_timer);
+            s_hw_caret_timer = NULL;
+        }
+        return;
+    }
+    if (lv_obj_has_flag(s_hw_caret_obj, LV_OBJ_FLAG_HIDDEN))
+        lv_obj_clear_flag(s_hw_caret_obj, LV_OBJ_FLAG_HIDDEN);
+    else
+        lv_obj_add_flag(s_hw_caret_obj, LV_OBJ_FLAG_HIDDEN);
+}
+
+/* 起跑/重新對時:游標立刻亮起,並把 500ms 重新計時 —— 剛打完字或剛移動游標的
+   那一刻不該剛好輪到隱形的半拍。 */
+static void hw_caret_blink_kick(void)
+{
+    if (s_hw_caret_obj == NULL || !lv_obj_is_valid(s_hw_caret_obj))
+        return;
+    if (s_hw_caret_timer == NULL)
+        s_hw_caret_timer = lv_timer_create(hw_caret_blink_cb, 500, NULL);
+    else
+        lv_timer_reset(s_hw_caret_timer);
+    lv_obj_clear_flag(s_hw_caret_obj, LV_OBJ_FLAG_HIDDEN);
+}
+
+static void hw_caret_blink_stop(void)
+{
+    if (s_hw_caret_timer)
+    {
+        lv_timer_del(s_hw_caret_timer);
+        s_hw_caret_timer = NULL;
+    }
+}
+
+/* 重畫輸入框:文字 + 游標位置。游標 x = 框內左緣 + 前綴字寬(hw_text_width_upto),
+   純算術,不讀 label 的 layout/coords。 */
+static void hw_input_refresh(void)
+{
+    if (s_hw_input_lbl == NULL || !lv_obj_is_valid(s_hw_input_lbl))
+        return;
+    lv_label_set_text(s_hw_input_lbl, s_hw_text);
+    /* **要 update 的是 parent 不是 label 自己**(founder 2026-09-02 第二次回報
+       「點輸入框游標還是只會跑到最前面」的真因,本檔 update_cursor_position 那段
+       2026-08-07 就踩過同一個坑並寫下來了):label 的 x/y 與 coords 是 bar 那一層
+       算出來的,只 refresh label 自己,它的 coords 還是舊的/零 —— content width 一旦
+       是 0,lv_label_get_letter_pos 內部的 _lv_txt_get_next_line(max_w=0) 就把每個字
+       都排成新的一行,pos.x 恆為 0,游標於是永遠貼在最左邊;同一個原因也讓點擊
+       換算出來的字元索引恆為 0。 */
+    if (s_hw_input_bar && lv_obj_is_valid(s_hw_input_bar))
+        lv_obj_update_layout(s_hw_input_bar);
+    else
+        lv_obj_update_layout(s_hw_input_lbl);
+    if (s_hw_caret_obj && lv_obj_is_valid(s_hw_caret_obj))
+    {
+        /* 純算術:框內左緣 + 游標前面那段字的寬度。不讀 label 的 x/coords,所以
+           不管這支在什麼時機被呼叫(建立當下、還沒 layout、隱藏中)都是對的。 */
+        lv_obj_set_align(s_hw_caret_obj, LV_ALIGN_DEFAULT);
+        lv_obj_set_pos(s_hw_caret_obj,
+                       (lv_coord_t)(HW_INPUT_PAD_X +
+                                    hw_text_width_upto(s_hw_caret)),
+                       HW_CARET_Y);
+        hw_caret_blink_kick(); /* 動過就亮起並重新計時 */
+    }
+    hw_side_key_refresh(); /* 有字/沒字決定右緣鍵是退格還是退出 */
+}
+
+/* 把 ins 插在游標處,游標移到插入內容之後。滿了就整段丟掉(不做半個字元的截斷)。 */
+static void hw_text_insert(const char *ins)
+{
+    if (ins == NULL)
+        return;
+    uint16_t n = (uint16_t)strlen(ins);
+    if (n == 0)
+        return;
+    if ((uint16_t)(s_hw_text_len + n) >= HW_TEXT_MAX)
+    {
+        LOG_W("[handwrite] text buffer full, drop insert");
+        return;
+    }
+    memmove(&s_hw_text[s_hw_caret + n], &s_hw_text[s_hw_caret],
+            (size_t)(s_hw_text_len - s_hw_caret) + 1); /* 含結尾 NUL */
+    memcpy(&s_hw_text[s_hw_caret], ins, n);
+    s_hw_text_len = (uint16_t)(s_hw_text_len + n);
+    s_hw_caret = (uint16_t)(s_hw_caret + n);
+    hw_input_refresh();
+}
+
+/* 刪掉游標前面那個字元。回 false=游標已在最前面(沒東西可刪)。 */
+static bool hw_text_backspace(void)
+{
+    if (s_hw_caret == 0)
+        return false;
+    uint16_t from = hw_utf8_prev(s_hw_text, s_hw_caret);
+    uint16_t n = (uint16_t)(s_hw_caret - from);
+    memmove(&s_hw_text[from], &s_hw_text[s_hw_caret],
+            (size_t)(s_hw_text_len - s_hw_caret) + 1);
+    s_hw_text_len = (uint16_t)(s_hw_text_len - n);
+    s_hw_caret = from;
+    hw_input_refresh();
+    return true;
+}
+
+static void hw_text_reset(void)
+{
+    s_hw_text[0] = '\0';
+    s_hw_text_len = 0;
+    s_hw_caret = 0;
+    hw_input_refresh();
+}
+
+/* 絕對 x → 游標位置。抽出來是為了讓 PC sim 的探針(hw_probe)能走**同一條**換算,
+   不必偽造 indev —— 這條路踩過三輪都沒修好,靠猜的成本比抽函式高太多。 */
+static void hw_caret_set_from_abs_x(lv_coord_t abs_x)
+{
+    if (s_hw_input_lbl == NULL || !lv_obj_is_valid(s_hw_input_lbl) ||
+        s_hw_input_bar == NULL || !lv_obj_is_valid(s_hw_input_bar))
+        return;
+    /* 基準取**框**的左緣再扣掉文字內縮:框是使用者正在點的東西,它的 coords 一定
+       已經 render 過;label 則不一定(先前讀它讀到零)。 */
+    lv_area_t a;
+    lv_obj_get_content_coords(s_hw_input_bar, &a); /* 扣掉 2px border */
+    lv_coord_t rel_x = (lv_coord_t)(abs_x - a.x1 - HW_INPUT_PAD_X);
+    if (rel_x < 0)
+        rel_x = 0;
+    /* lv_label_get_letter_on 在這個 label 上量不出東西(founder 2026-09-02:
+       「點文字中間也只會都跑到文字最前面」= 它一律回 0)。改成自己掃:對每一個
+       字元邊界問 lv_label_get_letter_pos 拿它的 x,取離點擊點最近的那個。
+       字數上限就是這條輸入框放得下的量,迴圈成本可以忽略。 */
+    /* 掃每一個字元邊界,取「前綴寬度」離點擊點最近的那個。同樣只用字寬,
+       不碰 label 量測。 */
+    uint16_t best = 0;
+    lv_coord_t best_d = LV_COORD_MAX;
+    for (uint16_t b = 0; b <= s_hw_text_len;)
+    {
+        lv_coord_t d = (lv_coord_t)LV_ABS(rel_x - hw_text_width_upto(b));
+        if (d < best_d)
+        {
+            best_d = d;
+            best = b;
+        }
+        if (b == s_hw_text_len)
+            break;
+        /* 跳到下一個 UTF-8 字元的起點 */
+        b++;
+        while (b < s_hw_text_len &&
+               ((unsigned char)s_hw_text[b] & 0xC0) == 0x80)
+            b++;
+    }
+    s_hw_caret = best;
+    hw_input_refresh();
+    LOG_I("[handwrite] caret rel_x=%d -> byte %d", (int)rel_x, (int)best);
+}
+
+/* 點輸入框=把游標移到點到的字中間(founder 2026-09-02)。 */
+static void hw_input_bar_cb(lv_event_t *e)
+{
+    (void)e;
+    lv_indev_t *indev = lv_indev_get_act();
+    if (indev == NULL)
+        return;
+    lv_point_t p;
+    lv_indev_get_point(indev, &p);
+    hw_caret_set_from_abs_x(p.x);
+}
+
+/* 按候選字=用該候選定稿+換下個字("n"+pick;founder 2026-07-20 晚)。
+   2026-09-02 起同時把該候選插進手錶端的文字緩衝(游標處)—— 頂部輸入框顯示的
+   就是它,送出送的也是它。 */
 static void hw_cand_btn_cb(lv_event_t *e)
 {
     int idx = (int)(intptr_t)lv_event_get_user_data(e);
     if (idx < 0 || idx >= s_hw_cand_count)
         return;
+    if (s_hw_cand_lbls[idx] && lv_obj_is_valid(s_hw_cand_lbls[idx]))
+        hw_text_insert(lv_label_get_text(s_hw_cand_lbls[idx]));
     bloc_handwrite_next_pick(idx); /* 送 "n"+i:手機用 candidates[i] 定稿 */
-    hw_ink_clear();                /* 清板+清候選,輸入鈕現形 */
+    hw_ink_clear();                /* 清板+清候選 */
 }
 
 /* 候選列清空(本地立即;手機事後也會下發空清單,冪等)+輸入鈕現形。 */
@@ -5429,8 +5710,6 @@ static void hw_cand_clear_local(void)
     s_hw_cand_count = 0;
     if (s_hw_cand_row)
         lv_obj_add_flag(s_hw_cand_row, LV_OBJ_FLAG_HIDDEN);
-    if (s_hw_btn_enter)
-        lv_obj_clear_flag(s_hw_btn_enter, LV_OBJ_FLAG_HIDDEN);
 }
 
 /* GUI thread(communicate 0x1c→ui_handler):候選清單更新。count=0=清空。
@@ -5451,6 +5730,9 @@ void mouse_handwrite_candidates(const char *const *texts, int count)
     {
         if (i < count)
         {
+            /* 寬度吃內容(=鍵盤選字列):長候選才不會被固定寬切掉/疊在一起。 */
+            lv_obj_set_width(s_hw_cand_btns[i], LV_SIZE_CONTENT);
+            lv_obj_set_style_pad_hor(s_hw_cand_btns[i], 8, LV_PART_MAIN);
             lv_label_set_text(s_hw_cand_lbls[i], texts[i]);
             lv_obj_clear_flag(s_hw_cand_btns[i], LV_OBJ_FLAG_HIDDEN);
         }
@@ -5460,50 +5742,94 @@ void mouse_handwrite_candidates(const char *const *texts, int count)
         }
     }
     lv_obj_clear_flag(s_hw_cand_row, LV_OBJ_FLAG_HIDDEN);
-    if (s_hw_btn_enter)
-        lv_obj_add_flag(s_hw_btn_enter, LV_OBJ_FLAG_HIDDEN); /* 有候選=先定稿,藏輸入 */
+    lv_obj_scroll_to_x(s_hw_cand_row, 0, LV_ANIM_OFF); /* 新一輪候選從最左看起 */
+    /* (2026-09-02:Enter 搬到底部常駐,不再跟候選列搶同一格 —— 候選還在時也能按,
+       按下去會先採 top-1 定稿再送出,見 hw_btn_enter_cb。) */
 }
 
-/* 情境鍵內容:板上有字=「清空」文字、沒字=鍵盤頁的 backspace 圖(founder 2026-07-20
-   合併/2026-07-22 刪除改圖)。 */
+/* 右緣中間那顆鍵的三態(founder 2026-09-02:「刪除鍵移到右邊中間,沒有東西可以
+   刪除時就要變成退出」):
+     板上有筆跡        → 「清空」(擦掉正在寫的這個字)
+     沒筆跡但輸入框有字 → backspace 圖(刪游標前一個字)
+     兩者都沒有         → 「退出」(沒東西可刪了,這顆就是離開)
+   三態共用同一顆鈕,label 與圖二選一顯示。 */
 static void hw_btn_clear_refresh_label(void)
 {
-    if (s_hw_btn_clear_lbl == NULL || s_hw_btn_clear_img == NULL)
+    if (s_hw_btn_clear_lbl == NULL || s_hw_btn_clear_img == NULL ||
+        s_hw_btn_exit_img == NULL)
         return;
-    if (s_hw_stroke_idx < 0)
-    {
-        lv_obj_add_flag(s_hw_btn_clear_lbl, LV_OBJ_FLAG_HIDDEN);
-        lv_obj_clear_flag(s_hw_btn_clear_img, LV_OBJ_FLAG_HIDDEN);
-    }
-    else
-    {
+    /* 三選一:清空=文字、刪除=backspace 圖、退出=logout 圖(founder 2026-09-02)。 */
+    bool clear_state = (s_hw_stroke_idx >= 0);
+    bool exit_state = (!clear_state && s_hw_caret == 0);
+    if (clear_state)
         lv_label_set_text(s_hw_btn_clear_lbl,
                           LV_EXT_STR_GET_BY_KEY(handwrite_clear, "Clear"));
+    if (clear_state)
         lv_obj_clear_flag(s_hw_btn_clear_lbl, LV_OBJ_FLAG_HIDDEN);
+    else
+        lv_obj_add_flag(s_hw_btn_clear_lbl, LV_OBJ_FLAG_HIDDEN);
+    if (exit_state)
+        lv_obj_clear_flag(s_hw_btn_exit_img, LV_OBJ_FLAG_HIDDEN);
+    else
+        lv_obj_add_flag(s_hw_btn_exit_img, LV_OBJ_FLAG_HIDDEN);
+    if (!clear_state && !exit_state)
+        lv_obj_clear_flag(s_hw_btn_clear_img, LV_OBJ_FLAG_HIDDEN);
+    else
         lv_obj_add_flag(s_hw_btn_clear_img, LV_OBJ_FLAG_HIDDEN);
-    }
 }
 
-/* 情境鍵:板上有字=清空(擦掉當前字重寫,送 "c");沒字=刪除(backspace 已定稿
-   最後一字,送 "b")。 */
+/* hw_input_refresh 的對外名字(宣告在 helpers 段開頭,實體就是上面這支)。 */
+static void hw_side_key_refresh(void)
+{
+    hw_btn_clear_refresh_label();
+}
+
+/* 三態的動作。退格同時往手機送 "b" —— 手機那份 committedText 只會從尾端刪,
+   游標在中間時兩邊會對不起來,但最終送出的是手錶這份,手機那份只影響桌面的
+   即時預覽。 */
 static void hw_btn_clear_cb(lv_event_t *e)
 {
     (void)e;
-    if (s_hw_stroke_idx < 0)
-    {
-        bloc_handwrite_backspace();
-    }
-    else
+    if (s_hw_stroke_idx >= 0)
     {
         bloc_handwrite_clear();
         hw_ink_clear();
+        return;
     }
+    if (s_hw_caret == 0)
+    {
+        hw_btn_exit_cb(NULL); /* 沒東西可刪=退出 */
+        return;
+    }
+    if (hw_text_backspace())
+        bloc_handwrite_backspace();
 }
 
+/* 送出(founder 2026-09-02 起 Enter 常駐底部):**手錶端的 s_hw_text 就是真相**。
+   還有候選沒定稿時先採 top-1 併進去 —— Enter 不再等候選清空才出現,不這樣做
+   會漏掉正在寫的那個字。
+   送完用 cancel("x") 收掉手機那條 session:讓它自己 end→commit 會再送一次它的
+   committedText(游標插中間時跟手錶不同),兩份都到桌面就變成打兩次。
+   dest="enter" = 直打模式的「在聚焦欄位按 Enter」——這顆鈕唯一的入口就是觸控板
+   右緣手寫鈕,而它只在電腦有聚焦輸入框時才浮現,所以目的地本來就指定好了。 */
 static void hw_btn_enter_cb(lv_event_t *e)
 {
     (void)e;
-    close_handwrite_from_pose(); /* 送 end → 手機 commit → 桌面送出 */
+    if (s_hw_cand_count > 0 && s_hw_cand_lbls[0] &&
+        lv_obj_is_valid(s_hw_cand_lbls[0]))
+        hw_text_insert(lv_label_get_text(s_hw_cand_lbls[0]));
+    if (s_hw_text_len > 0)
+    {
+        extern bool commu_send_voice_station_commit(const char *dest,
+                                                    const char *text);
+        commu_send_voice_station_commit("enter", s_hw_text);
+        LOG_I("[handwrite] submit len=%d", (int)s_hw_text_len);
+    }
+    else
+    {
+        LOG_I("[handwrite] submit with empty text — just closing");
+    }
+    hw_cancel_session(); /* 送 "x" 收手機 session + 收視覺(不讓手機再 commit) */
 }
 
 /* 退出動畫收尾:藏 view+座標歸位。 */
@@ -5533,25 +5859,12 @@ static void hw_btn_exit_cb(lv_event_t *e)
     if (!s_hw_view_active)
         return;
     s_hw_view_active = false;
+    hw_caret_blink_stop();
     bloc_handwrite_cancel(); /* 上行 "x" 即刻送(手機清狀態+收 skaibar) */
     if (current_hid_mode != HID_MODE_TRACKPAD)
         apply_hid_mode(HID_MODE_TRACKPAD);
-    /* 滑鼠圖從左緣同步滑回(founder 2026-07-22:退出時圖要跟著頁面回來,
-       鏡像進場的滑出;不然揭開時已站在原位=靜態)。 */
-    if (s_top_logo && lv_obj_is_valid(s_top_logo))
-    {
-        lv_anim_del(s_top_logo, NULL);
-        lv_obj_set_style_translate_x(s_top_logo,
-                                     (lv_coord_t)-(int32_t)LV_HOR_RES, 0);
-        lv_anim_t la;
-        lv_anim_init(&la);
-        lv_anim_set_var(&la, s_top_logo);
-        lv_anim_set_exec_cb(&la, top_logo_tx_anim_exec);
-        lv_anim_set_values(&la, (int32_t)-(int32_t)LV_HOR_RES, 0);
-        lv_anim_set_time(&la, 200);
-        lv_anim_set_path_cb(&la, lv_anim_path_ease_out);
-        lv_anim_start(&la);
-    }
+    /* (2026-09-02:頂部圖示左拉進場已退役 —— 進場不再把滑鼠圖推出左緣,
+       退出時自然也不必再把它滑回來。) */
     if (s_hw_view)
     {
         lv_obj_clear_flag(s_hw_view, LV_OBJ_FLAG_CLICKABLE); /* 滑出中不吃筆跡 */
@@ -5569,38 +5882,8 @@ static void hw_btn_exit_cb(lv_event_t *e)
     LOG_I("[handwrite] close view (cancel, slide-right)");
 }
 
-/* 切輸入法(erth 鈕):收手寫(取消不送出)→開鍵盤。mode 在數字→手寫時已復位
-   英文,循環=英文→數字→手寫→英文(founder 2026-07-22)。 */
-static void hw_btn_mode_cb(lv_event_t *e)
-{
-    (void)e;
-    hw_cancel_session();
-    /* 循環錨定:手寫→**英文**,一律強制 mode+重建布局(founder 2026-07-22:殘留
-       數字布局害循環卡「寫→數→寫」,英文永遠到不了)。 */
-    kbd_pinyin_clear();
-    current_keyboard_mode = KEYBOARD_MODE_LETTERS;
-    if (keyboard_container != NULL)
-    {
-        lv_obj_t *kb_parent = lv_obj_get_parent(keyboard_container);
-        lv_obj_del(keyboard_container);
-        create_circular_keyboard_layout(kb_parent);
-    }
-    /* 切整個 app 到鍵盤模式:觸碰板模式下鍵盤整棵子樹藏著,光 toggle 可見性
-       什麼都看不到(founder 2026-07-22:按了跑回觸碰板)。 */
-    apply_hid_mode(HID_MODE_KEYBOARD);
-    if (keyboard_container != NULL)
-    {
-        lv_anim_del(keyboard_container, NULL);
-        lv_obj_set_style_translate_y(keyboard_container, 0, 0);
-    }
-    /* 正規升鍵盤(勿手動 clear HIDDEN):藏 mic 區(含黑色⌨鈕)+顯 container+
-       arrows/arcs 同步。手動展開會漏藏 mic 區,退出時⌨鈕露出(founder
-       2026-07-22 截圖)。**別呼 expand_anim_driver_cb(NULL,100)**——那是
-       mic-view expand 的另一套 bar 幾何(380×90@y195),會把 mode_set_visible
-       剛放好的 310×45@y64 拉去畫面中央(founder:「下層多一個輸入框」)。 */
-    kbd_lower_set_keyboard(true);
-    kbd_cand_refresh(); /* 進鍵盤立即出列(數字快捷列) */
-}
+/* (2026-09-02:hw_btn_mode_cb —— 手寫頁左下的「切輸入法」—— 隨著那顆鈕一起
+   退役刪除。手寫現在只有觸控板右緣手寫鈕一個入口,頁內不再提供切去鍵盤的路。) */
 
 /* 頂部 logo tap 的去處(founder 2026-08-03:語音**原位換掉手寫**)。
    手寫原本同時是「入口」與「循環第一站」,只換循環那一站的話入口還是會走到它 ——
@@ -5721,48 +6004,93 @@ static void ensure_hw_view(void)
     lv_obj_add_flag(s_hw_view, LV_OBJ_FLAG_HIDDEN);
     lv_obj_add_event_cb(s_hw_view, hw_view_event_cb, LV_EVENT_ALL, NULL);
 
-    /* 頂部=mouse_mode_icon(取消不送出;founder 2026-07-30:輸入頁頂部改放滑鼠圖=「點我回
-       滑鼠模式」,與觸控板頂部鍵盤圖對調——顯示目標模式。點本頁頂部=滑回退出)。位置
-       對齊 status_bar 頂部 80 高感應區置中。 */
-    s_hw_btn_exit = lv_obj_create(s_hw_view);
-    lv_obj_remove_style_all(s_hw_btn_exit);
-    lv_obj_set_size(s_hw_btn_exit, 100, 80);
-    lv_obj_align(s_hw_btn_exit, LV_ALIGN_TOP_MID, 0, 0);
-    lv_obj_add_flag(s_hw_btn_exit, LV_OBJ_FLAG_CLICKABLE);
-    lv_obj_clear_flag(s_hw_btn_exit, LV_OBJ_FLAG_SCROLLABLE);
-    lv_obj_add_event_cb(s_hw_btn_exit, hw_btn_exit_cb, LV_EVENT_CLICKED, NULL);
-    lv_obj_t *exit_img = lv_img_create(s_hw_btn_exit);
-    lv_img_set_src(exit_img, &mouse_mode_icon);
-    lv_img_set_zoom(exit_img, 180);
-    lv_obj_center(exit_img);
-    lv_obj_clear_flag(exit_img, LV_OBJ_FLAG_CLICKABLE);
+    /* 頂部=輸入框(founder 2026-09-02,原地取代那顆滑鼠圖標):顯示這一輪已定稿
+       的全文,點文字中間=游標插到那裡。造型沿用鍵盤/候選列那條 pill,同 310×45
+       @y64,三條列看起來是同一家。 */
+    /* 位置(founder 2026-09-02 二改:兩條框整體再往上,寬度自己縮好別出圓)。
+       y=44 那條線的圓半寬 = sqrt(233^2 - (233-44)^2) = 136 → 可用寬 272,
+       所以取 260(x=103..363),兩邊各留 12 的餘裕。 */
+    s_hw_input_bar = lv_obj_create(s_hw_view);
+    lv_obj_remove_style_all(s_hw_input_bar);
+    lv_obj_set_size(s_hw_input_bar, 260, 45);
+    lv_obj_set_pos(s_hw_input_bar, (LV_HOR_RES_MAX - 260) / 2, 44);
+    lv_obj_set_style_bg_color(s_hw_input_bar, lv_color_hex(0x1a1a1a), LV_PART_MAIN);
+    lv_obj_set_style_bg_opa(s_hw_input_bar, LV_OPA_90, LV_PART_MAIN);
+    lv_obj_set_style_border_color(s_hw_input_bar, lv_color_hex(0xFFFFFF),
+                                  LV_PART_MAIN);
+    lv_obj_set_style_border_width(s_hw_input_bar, 2, LV_PART_MAIN);
+    lv_obj_set_style_border_opa(s_hw_input_bar, LV_OPA_50, LV_PART_MAIN);
+    lv_obj_set_style_radius(s_hw_input_bar, 100, LV_PART_MAIN);
+    lv_obj_clear_flag(s_hw_input_bar, LV_OBJ_FLAG_SCROLLABLE);
+    lv_obj_add_flag(s_hw_input_bar, LV_OBJ_FLAG_CLICKABLE);
+    lv_obj_add_event_cb(s_hw_input_bar, hw_input_bar_cb, LV_EVENT_CLICKED, NULL);
+    s_hw_input_lbl = lv_label_create(s_hw_input_bar);
+    lv_label_set_long_mode(s_hw_input_lbl, LV_LABEL_LONG_CLIP);
+    lv_obj_set_width(s_hw_input_lbl, 220); /* 260 的框 - 左右各 20 */
+    lv_obj_set_style_text_color(s_hw_input_lbl, lv_color_hex(0xFFFFFF), 0);
+    lv_label_set_text(s_hw_input_lbl, "");
+    /* **固定座標,不用 align**(founder 2026-09-02 第三次回報「點輸入框游標還是
+       不會換位置」之後的定案):align 的結果要等 parent layout 才讀得到,游標位置
+       就得回頭讀 label 的 x/coords —— 那正是先前一直算成 0 的來源。位置寫死之後,
+       游標的 x = HW_INPUT_PAD_X + 前綴字寬,是純算術,任何時機呼叫都對。 */
+    lv_obj_set_pos(s_hw_input_lbl, HW_INPUT_PAD_X, HW_INPUT_TEXT_Y);
+    lv_obj_clear_flag(s_hw_input_lbl, LV_OBJ_FLAG_CLICKABLE);
+    /* 游標:2px 白線,位置由 hw_input_refresh 依 label 量測結果擺。 */
+    s_hw_caret_obj = lv_obj_create(s_hw_input_bar);
+    lv_obj_remove_style_all(s_hw_caret_obj);
+    lv_obj_set_size(s_hw_caret_obj, 2, HW_CARET_H);
+    lv_obj_set_style_bg_color(s_hw_caret_obj, lv_color_hex(0xA6D3E6), 0);
+    lv_obj_set_style_bg_opa(s_hw_caret_obj, LV_OPA_COVER, 0);
+    lv_obj_clear_flag(s_hw_caret_obj, LV_OBJ_FLAG_CLICKABLE);
+    lv_obj_clear_flag(s_hw_caret_obj, LV_OBJ_FLAG_SCROLLABLE);
 
     /* 候選列=鍵盤輸入框同款 pill(founder 2026-07-22 視覺統一:同位(43,64)、同
        310×45、同深色底+白框+radius 100——兩模式看起來是同一條輸入列)。列本體
        不可點,候選鈕(透明+白字)自己吃 press。 */
     s_hw_cand_row = lv_obj_create(s_hw_view);
     lv_obj_remove_style_all(s_hw_cand_row);
-    lv_obj_set_size(s_hw_cand_row, 310, 45);
-    lv_obj_set_pos(s_hw_cand_row, (LV_HOR_RES_MAX - 310) / 2, 64); /* 置中,同鍵盤 bar */
+    /* 候選列 = **鍵盤那條選字列的同一套**(founder 2026-09-02:「結果比較長要把寬度
+       變多並用左右滑動方式抉擇結果(跟鍵盤那一樣)」)。原本固定寬的候選鈕會讓長候選
+       (寫 1234 那種)整排疊在一起 —— 鈕寬固定、label 內容溢出就互相蓋掉。
+       改成:全寬到圓緣、上下各一條線(pill 圓角會被捲動內容穿出,所以不用 pill)、
+       水平捲動、鈕寬吃 LV_SIZE_CONTENT、每顆右緣 1px 淡線當分隔。 */
+    lv_obj_set_size(s_hw_cand_row, LV_HOR_RES, 45);
+    lv_obj_set_pos(s_hw_cand_row, 0, 98);
     lv_obj_set_style_bg_color(s_hw_cand_row, lv_color_hex(0x1a1a1a), LV_PART_MAIN);
-    lv_obj_set_style_bg_opa(s_hw_cand_row, LV_OPA_90, LV_PART_MAIN);
+    lv_obj_set_style_bg_opa(s_hw_cand_row, LV_OPA_70, LV_PART_MAIN);
     lv_obj_set_style_border_color(s_hw_cand_row, lv_color_hex(0xFFFFFF),
                                   LV_PART_MAIN);
     lv_obj_set_style_border_width(s_hw_cand_row, 2, LV_PART_MAIN);
     lv_obj_set_style_border_opa(s_hw_cand_row, LV_OPA_50, LV_PART_MAIN);
-    lv_obj_set_style_radius(s_hw_cand_row, 100, LV_PART_MAIN);
-    lv_obj_clear_flag(s_hw_cand_row, LV_OBJ_FLAG_SCROLLABLE);
-    lv_obj_clear_flag(s_hw_cand_row, LV_OBJ_FLAG_CLICKABLE);
+    lv_obj_set_style_border_side(s_hw_cand_row,
+                                 LV_BORDER_SIDE_TOP | LV_BORDER_SIDE_BOTTOM,
+                                 LV_PART_MAIN);
+    lv_obj_add_flag(s_hw_cand_row, LV_OBJ_FLAG_SCROLLABLE);
+    lv_obj_set_scroll_dir(s_hw_cand_row, LV_DIR_HOR);
+    lv_obj_set_scrollbar_mode(s_hw_cand_row, LV_SCROLLBAR_MODE_OFF);
+    lv_obj_add_flag(s_hw_cand_row, LV_OBJ_FLAG_CLICKABLE);
     lv_obj_set_flex_flow(s_hw_cand_row, LV_FLEX_FLOW_ROW);
-    lv_obj_set_flex_align(s_hw_cand_row, LV_FLEX_ALIGN_SPACE_EVENLY,
+    lv_obj_set_flex_align(s_hw_cand_row, LV_FLEX_ALIGN_START,
                           LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
+    /* 內容用左右 pad 避開圓弧裁切(這個高度的弦緣 x≈36) */
+    lv_obj_set_style_pad_left(s_hw_cand_row, 36, LV_PART_MAIN);
+    lv_obj_set_style_pad_right(s_hw_cand_row, 36, LV_PART_MAIN);
+    lv_obj_set_style_pad_column(s_hw_cand_row, 6, LV_PART_MAIN);
     lv_obj_add_flag(s_hw_cand_row, LV_OBJ_FLAG_HIDDEN);
     for (int i = 0; i < HW_CAND_MAX; i++)
     {
         s_hw_cand_btns[i] = lv_obj_create(s_hw_cand_row);
-        lv_obj_set_size(s_hw_cand_btns[i], 52, 39);
+        /* 寬度在 mouse_handwrite_candidates 依內容設成 LV_SIZE_CONTENT;
+           這裡的 42 只是還沒有候選時的起始值。 */
+        lv_obj_set_size(s_hw_cand_btns[i], 42, 39);
         lv_obj_set_style_bg_opa(s_hw_cand_btns[i], LV_OPA_TRANSP, LV_PART_MAIN);
-        lv_obj_set_style_border_width(s_hw_cand_btns[i], 0, LV_PART_MAIN);
+        /* 選項之間淡淡的分隔線(=鍵盤選字列同款):每顆右緣 1px 白 20% */
+        lv_obj_set_style_border_color(s_hw_cand_btns[i], lv_color_hex(0xFFFFFF),
+                                      LV_PART_MAIN);
+        lv_obj_set_style_border_width(s_hw_cand_btns[i], 1, LV_PART_MAIN);
+        lv_obj_set_style_border_opa(s_hw_cand_btns[i], LV_OPA_20, LV_PART_MAIN);
+        lv_obj_set_style_border_side(s_hw_cand_btns[i], LV_BORDER_SIDE_RIGHT,
+                                     LV_PART_MAIN);
         lv_obj_clear_flag(s_hw_cand_btns[i], LV_OBJ_FLAG_SCROLLABLE);
         lv_obj_add_event_cb(s_hw_cand_btns[i], hw_cand_btn_cb, LV_EVENT_CLICKED,
                             (void *)(intptr_t)i);
@@ -5782,14 +6110,11 @@ static void ensure_hw_view(void)
         lv_obj_set_style_line_rounded(s_hw_lines[i], true, 0);
     }
 
-    /* 底部只剩情境鍵(清空/刪除),置中(founder 2026-07-22:下個字/輸入退出底部——
-       定稿一律按候選字,輸入移到候選欄)。透明容器照鍵盤頁 del_btn 樣式(founder:
-       預設藍鈕醜);按鈕自己吃 press,不會 bubble 進筆跡。 */
+    /* 情境鍵搬到**右邊中間**(founder 2026-09-02)。透明容器照鍵盤頁 del_btn 樣式
+       (founder:預設藍鈕醜);按鈕自己吃 press,不會 bubble 進筆跡。 */
     s_hw_btn_clear = lv_obj_create(s_hw_view);
-    /* 位置=鍵盤頁 del_btn 的螢幕絕對位(founder 2026-07-22 對齊肌肉記憶):
-       container top 166 + pad 8 + 內部(300,195) → (308,369),同 80×50。 */
-    lv_obj_set_size(s_hw_btn_clear, 80, 50);
-    lv_obj_set_pos(s_hw_btn_clear, 308, 369);
+    lv_obj_set_size(s_hw_btn_clear, 80, 60);
+    lv_obj_align(s_hw_btn_clear, LV_ALIGN_RIGHT_MID, -12, 0);
     lv_obj_set_style_bg_opa(s_hw_btn_clear, LV_OPA_TRANSP, LV_PART_MAIN);
     lv_obj_set_style_border_width(s_hw_btn_clear, 0, LV_PART_MAIN);
     lv_obj_clear_flag(s_hw_btn_clear, LV_OBJ_FLAG_SCROLLABLE);
@@ -5802,27 +6127,22 @@ static void ensure_hw_view(void)
     lv_obj_align(s_hw_btn_clear_img, LV_ALIGN_CENTER, 0, 0);
     lv_obj_set_style_img_opa(s_hw_btn_clear_img, LV_OPA_50, LV_PART_MAIN);
     lv_obj_clear_flag(s_hw_btn_clear_img, LV_OBJ_FLAG_CLICKABLE);
-    hw_btn_clear_refresh_label(); /* 板上有字=清空文字/沒字=刪除圖 */
+    s_hw_btn_exit_img = lv_img_create(s_hw_btn_clear);
+    lv_img_set_src(s_hw_btn_exit_img, &logout);
+    /* logout.png 只有 16x16(backspace_icon 是 46x33、mouse_mode_icon 64x64),
+       zoom 150 等於畫成 9px —— founder 2026-09-02:「小到不行」。460 ≈ 29px,
+       與旁邊那兩態的視覺量體相當;代價是放大 2.9 倍會糊,要更銳利得換一張大圖。 */
+    lv_img_set_zoom(s_hw_btn_exit_img, 460);
+    lv_obj_align(s_hw_btn_exit_img, LV_ALIGN_CENTER, 0, 0);
+    lv_obj_clear_flag(s_hw_btn_exit_img, LV_OBJ_FLAG_CLICKABLE);
+    lv_obj_add_flag(s_hw_btn_exit_img, LV_OBJ_FLAG_HIDDEN);
+    hw_btn_clear_refresh_label(); /* 清空 / 退格 / 退出 三態 */
 
-    /* 切輸入法鈕:位置=鍵盤 mode_btn 絕對位(container 166+pad 8+內部(65,195)→
-       (73,369)),同 erth 圖;點=收手寫開鍵盤(founder 2026-07-22 循環)。 */
-    s_hw_btn_mode = lv_obj_create(s_hw_view);
-    lv_obj_set_size(s_hw_btn_mode, 50, 50);
-    lv_obj_set_pos(s_hw_btn_mode, 73, 369);
-    lv_obj_set_style_bg_opa(s_hw_btn_mode, LV_OPA_TRANSP, LV_PART_MAIN);
-    lv_obj_set_style_border_width(s_hw_btn_mode, 0, LV_PART_MAIN);
-    lv_obj_clear_flag(s_hw_btn_mode, LV_OBJ_FLAG_SCROLLABLE);
-    lv_obj_add_event_cb(s_hw_btn_mode, hw_btn_mode_cb, LV_EVENT_CLICKED, NULL);
-    lv_obj_t *hw_mode_img = lv_img_create(s_hw_btn_mode);
-    lv_img_set_src(hw_mode_img, &erth);
-    lv_obj_center(hw_mode_img);
-    lv_obj_clear_flag(hw_mode_img, LV_OBJ_FLAG_CLICKABLE);
-
-    /* 輸入鈕=候選欄的空狀態:與候選列同一位置,候選清單沒東西才顯示
-       (有候選→先按候選定稿,才輪得到送出)。 */
+    /* Enter 搬到**底部**(founder 2026-09-02),常駐不再藏。240 寬不是 310:
+       y=364 那條的圓形可用寬度只到 x≈81..385,310 會被圓切掉兩端。 */
     s_hw_btn_enter = lv_obj_create(s_hw_view);
-    lv_obj_set_size(s_hw_btn_enter, 310, 45);
-    lv_obj_set_pos(s_hw_btn_enter, (LV_HOR_RES_MAX - 310) / 2, 64); /* 置中,同鍵盤 bar */
+    lv_obj_set_size(s_hw_btn_enter, 240, 45);
+    lv_obj_set_pos(s_hw_btn_enter, (LV_HOR_RES_MAX - 240) / 2, 364);
     lv_obj_set_style_bg_color(s_hw_btn_enter, lv_color_hex(0x1a1a1a), LV_PART_MAIN);
     lv_obj_set_style_bg_opa(s_hw_btn_enter, LV_OPA_90, LV_PART_MAIN);
     /* 亮起提示(founder 2026-07-22):候選清空=可送出,sky-accent 全亮框+字,
@@ -5838,6 +6158,8 @@ static void ensure_hw_view(void)
     lv_obj_set_style_text_color(lbl_enter, lv_color_hex(0xA6D3E6), 0);
     lv_label_set_text(lbl_enter, LV_EXT_STR_GET_BY_KEY(handwrite_enter, "Enter"));
     lv_obj_center(lbl_enter);
+
+    hw_input_refresh(); /* 空字串起手:游標貼左緣,右緣鍵是「退出」 */
 }
 
 /* snap 動畫完成:展開→正式開啟 session。 */
@@ -5959,13 +6281,8 @@ static void hw_open_commit(void)
         lv_obj_move_foreground(s_hw_view);
         hw_backdrop_sync(0);
     }
-    /* 左拉進場的滑鼠圖:頁面已蓋滿,無感歸位(退出滑回時要在原位)。 */
-    if (s_top_logo && lv_obj_is_valid(s_top_logo))
-    {
-        lv_anim_del(s_top_logo, NULL);
-        lv_obj_set_style_translate_x(s_top_logo, 0, 0);
-    }
     s_hw_view_active = true;
+    hw_text_reset(); /* view 建一次復用:新 session 一律空字串起手 */
     bloc_handwrite_begin(LV_HOR_RES, LV_VER_RES); /* 送 0x1b start(畫布=錶面解析度) */
     motor_pattern_unlocked(); /* 短震=手寫就緒 */
     LOG_I("[handwrite] open view canvas=%dx%d", (int)LV_HOR_RES, (int)LV_VER_RES);
@@ -5978,6 +6295,7 @@ static void close_handwrite_from_pose(void)
     if (!s_hw_view_active)
         return;
     s_hw_view_active = false;
+    hw_caret_blink_stop();
     bloc_handwrite_end(); /* 旗標交 motion thread 送 pending "u"+"end"(手機 commit 辨識) */
     if (s_hw_view)
     {
@@ -6009,6 +6327,7 @@ static void hw_cancel_session(void)
     if (!s_hw_view_active)
         return;
     s_hw_view_active = false;
+    hw_caret_blink_stop();
     bloc_handwrite_cancel(); /* 旗標交 motion thread 送 "x"(手機清狀態+收 skaibar) */
     if (s_hw_view)
     {
@@ -6434,13 +6753,19 @@ static void text_input_bar_cb(lv_event_t *e)
                     /* hosted (device_pager): bottom-bar up returns to the
                        instruction layer instead of sending multitask. Safe to
                        call here — this is the LVGL-thread release handler. */
+                    /* 底部上滑=離開這一頁,兩條路同一個語意(founder 2026-09-02:
+                       不要再分開走)。hosted 交還給 device_pager 的指令層;
+                       app_run 直開的沒有那個 callback,就退出這個 app 回上一層 ——
+                       原本這裡改送 multitask 給電腦,等於同一個手勢在兩條路上做
+                       完全不同的事,也是「直開的滑鼠 app 離不開」的來源之一
+                       (左緣右滑返回本來就被 Main 的狀態機 gate 掉)。 */
                     if (s_hosted && s_host_back_cb)
                     {
                         s_host_back_cb();
                     }
-                    else if (control_provider.ble_hid_keyboard_multitask)
+                    else
                     {
-                        control_provider.ble_hid_keyboard_multitask(true);
+                        lv_async_call(media_exit_async_cb, NULL);
                     }
                     lv_anim_init(&multitask_hint_release_anim);
                     lv_anim_set_time(&multitask_hint_release_anim, 200);
@@ -7313,10 +7638,15 @@ static void create_trackpad_mode_ui(lv_obj_t *parent)
        顯藏由既有的 40ms poll(bar_ai_sync_timer_cb)依 0x17 快取旗標驅動 —— 旗標本身
        是通訊執行緒寫的,不能在那邊碰 LVGL(本檔最典型的當機來源)。
        造型沿用語音站底部那顆鍵盤鈕(50 圓 + keyboard_icon zoom 150),同一件事同一個樣子。 */
-    kbd_side_btn = lv_obj_create(parent);
+    /* **掛在 arc_parent(bg)、且建在兩條滾動弧之後**(founder 2026-09-02:「兩個按鈕
+       都在滾動條下方會被蓋掉」)—— 弧條是 bg 的子物件、又在 mode_container 之後建立,
+       所以掛在 mode_container 上的鈕不管怎麼 move_foreground 都在整條弧下面(跨父層的
+       z 由父層順序決定)。同層晚建=在弧之上。位置也往內收到 -34:右弧 arc_width=30
+       佔住右緣 30px,鈕原本 -6 整顆坐在弧上,只是被蓋住看不出來。 */
+    kbd_side_btn = lv_obj_create(arc_parent);
     lv_obj_remove_style_all(kbd_side_btn);
     lv_obj_set_size(kbd_side_btn, 50, 50);
-    lv_obj_align(kbd_side_btn, LV_ALIGN_RIGHT_MID, -6, 0);
+    lv_obj_align(kbd_side_btn, LV_ALIGN_RIGHT_MID, -34, -30);
     lv_obj_set_style_bg_color(kbd_side_btn, lv_color_hex(0x333333), 0);
     lv_obj_set_style_bg_opa(kbd_side_btn, LV_OPA_60, 0);
     lv_obj_set_style_radius(kbd_side_btn, LV_RADIUS_CIRCLE, 0);
@@ -7332,6 +7662,31 @@ static void create_trackpad_mode_ui(lv_obj_t *parent)
         lv_obj_center(side_img);
         lv_obj_clear_flag(side_img, LV_OBJ_FLAG_CLICKABLE);
     }
+
+    /* 手寫鈕(founder 2026-09-02):鍵盤鈕正下方同欄、同造型 —— 兩顆一起浮現、
+       一起收起(顯藏在同一支 poll 裡跟鍵盤鈕共用同一個 want 條件)。
+       按它=直接開手寫頁(hw_open_from_mode_switch),寫的字一樣進電腦那個聚焦中的
+       欄位;頂部圖示左右滑拉出寫字板的舊入口同日退役。 */
+    hw_side_btn = lv_obj_create(arc_parent); /* 同上:bg 層、弧之後 */
+    lv_obj_remove_style_all(hw_side_btn);
+    lv_obj_set_size(hw_side_btn, 50, 50);
+    lv_obj_align(hw_side_btn, LV_ALIGN_RIGHT_MID, -34, 30);
+    lv_obj_set_style_bg_color(hw_side_btn, lv_color_hex(0x333333), 0);
+    lv_obj_set_style_bg_opa(hw_side_btn, LV_OPA_60, 0);
+    lv_obj_set_style_radius(hw_side_btn, LV_RADIUS_CIRCLE, 0);
+    lv_obj_clear_flag(hw_side_btn, LV_OBJ_FLAG_SCROLLABLE);
+    lv_obj_add_flag(hw_side_btn, LV_OBJ_FLAG_CLICKABLE);
+    lv_obj_set_ext_click_area(hw_side_btn, 8);
+    lv_obj_add_event_cb(hw_side_btn, hw_side_btn_event_cb, LV_EVENT_CLICKED, NULL);
+    lv_obj_add_flag(hw_side_btn, LV_OBJ_FLAG_HIDDEN); /* 預設收起,有聚焦才浮現 */
+    {
+        lv_obj_t *hw_img = lv_img_create(hw_side_btn);
+        lv_img_set_src(hw_img, &handwrite_icon);
+        lv_img_set_zoom(hw_img, 150);
+        lv_obj_center(hw_img);
+        lv_obj_clear_flag(hw_img, LV_OBJ_FLAG_CLICKABLE);
+    }
+
 
     #if SHOW_SCROLL_ZONE_DEBUG
     {
@@ -10932,35 +11287,9 @@ static void hid_mode_toggle(void)
 
 void set_hid_mouse_handfree_mode_to(bool v); // 定義在本檔後段
 static lv_timer_t *s_top_hold_timer = NULL;
-/* 圖示左拉=手寫頁跟手進場(founder 2026-07-22:按著滑鼠圖往左滑,滑鼠圖左滑走+
-   手寫頁(頂部鍵盤圖)從右跟進;放開 1/4 或快甩=commit)。 */
-static bool s_top_hw_pull = false;
-static lv_coord_t s_top_hw_last_x = 0;
-static lv_coord_t s_top_hw_vx = 0;
-
-static void top_logo_tx_anim_exec(void *obj, int32_t v)
-{
-    lv_obj_set_style_translate_x((lv_obj_t *)obj, (lv_coord_t)v, 0);
-}
-
-/* 取消左拉:滑鼠圖動畫滑回原位(跳回會閃,founder 2026-07-22)。 */
-static void top_logo_slide_home(void)
-{
-    if (s_top_logo == NULL || !lv_obj_is_valid(s_top_logo))
-        return;
-    lv_anim_del(s_top_logo, NULL);
-    lv_coord_t cur = lv_obj_get_style_translate_x(s_top_logo, LV_PART_MAIN);
-    if (cur == 0)
-        return;
-    lv_anim_t a;
-    lv_anim_init(&a);
-    lv_anim_set_var(&a, s_top_logo);
-    lv_anim_set_exec_cb(&a, top_logo_tx_anim_exec);
-    lv_anim_set_values(&a, cur, 0);
-    lv_anim_set_time(&a, 200); /* =hw_pull_snap 縮回同步 */
-    lv_anim_set_path_cb(&a, lv_anim_path_ease_out);
-    lv_anim_start(&a);
-}
+/* (2026-09-02 founder:頂部圖示左右滑拉出寫字板整條退役 —— 手寫改由觸控板右緣
+   的手寫鈕進入,只在電腦有聚焦輸入框時跟鍵盤鈕一起浮現。頂部這塊只剩
+   「下拉開面板 / 按住進飛鼠」。) */
 static bool s_top_fly_active = false;
 static lv_point_t s_top_press_start;
 
@@ -11265,6 +11594,19 @@ static void kbd_side_btn_event_cb(lv_event_t *e)
     mouse_open_input_station(true);
 }
 
+/* 右緣手寫鈕(founder 2026-09-02):跟鍵盤鈕同時浮現,按它進手寫輸入。
+   走跟鍵盤 Mode 鈕第三站同一條程式化直開(無 snap 動畫),手寫 session 的行為
+   一個像素都沒動。 */
+static void hw_side_btn_event_cb(lv_event_t *e)
+{
+    (void)e;
+    if (dev_active_offline())
+        return;
+    if (current_hid_mode != HID_MODE_TRACKPAD)
+        return;
+    hw_open_from_mode_switch();
+}
+
 /**
  * @brief status_bar_area_up 事件 cb（仿 app_clock_status_bar 的
  *        notification_status_bar_cb）
@@ -11297,33 +11639,7 @@ static void status_bar_area_up_cb(lv_event_t *e)
     }
     else if (code == LV_EVENT_PRESSING)
     {
-        /* 圖示左拉跟手中:手寫頁 x=右緣+dx、滑鼠圖 translate=dx(founder
-           2026-07-22:滑鼠圖左滑走+鍵盤頁從右進)。 */
-        if (s_top_hw_pull)
-        {
-            lv_indev_t *indev = lv_indev_get_act();
-            if (indev)
-            {
-                lv_point_t now;
-                lv_indev_get_point(indev, &now);
-                lv_coord_t dx = now.x - s_top_press_start.x;
-                if (dx > 0)
-                    dx = 0;
-                s_top_hw_vx = now.x - s_top_hw_last_x;
-                s_top_hw_last_x = now.x;
-                if (s_hw_view)
-                {
-                    lv_coord_t x = (lv_coord_t)(LV_HOR_RES + dx);
-                    if (x < 0)
-                        x = 0;
-                    lv_obj_set_x(s_hw_view, x);
-                    hw_backdrop_sync(x); /* 黑底跟手漸黑 */
-                }
-                if (s_top_logo && lv_obj_is_valid(s_top_logo))
-                    lv_obj_set_style_translate_x(s_top_logo, dx, 0);
-            }
-        }
-        else if (s_top_hold_timer)
+        if (s_top_hold_timer)
         {
             lv_indev_t *indev = lv_indev_get_act();
             if (indev)
@@ -11335,22 +11651,10 @@ static void status_bar_area_up_cb(lv_event_t *e)
                 if (LV_ABS(dx) + LV_ABS(dy) > TOP_HOLD_DRIFT_CANCEL_PX)
                 {
                     top_hold_cancel();
-                    /* 水平左拉主導=手寫頁跟手進場;**明確下拉主導**=媒體下拉;
-                       其他方向(斜向/上向)=手滑,不觸發任何層(founder 2026-07-22:
-                       tap 手一晃就跳媒體層擋住滑鼠圖)。斷線時只留媒體下拉。 */
-                    if (dx < 0 && LV_ABS(dx) > LV_ABS(dy) &&
-                        !dev_active_offline() && hw_view_stage_offscreen())
-                    {
-                        s_top_hw_pull = true;
-                        s_top_hw_last_x = now.x;
-                        s_top_hw_vx = 0;
-                        /* 跟手期間鎖住 press:此區平常故意不鎖(媒體下拉要讓
-                           tileview 接手),但左拉時手指滑出 80px 帶會 PRESS_LOST
-                           →縮回(founder:「有移動但滑不進來」)。放開時解鎖。 */
-                        lv_obj_add_flag(status_bar_area_up,
-                                        LV_OBJ_FLAG_PRESS_LOCK);
-                    }
-                    else if (dy > 0 && dy > LV_ABS(dx) && s_pulldown_cb)
+                    /* **明確下拉主導**=媒體下拉;其他方向(水平/斜向/上向)=手滑,
+                       不觸發任何層(founder 2026-07-22:tap 手一晃就跳媒體層擋住
+                       滑鼠圖;2026-09-02:水平左拉的手寫進場已退役)。 */
+                    if (dy > 0 && dy > LV_ABS(dx) && s_pulldown_cb)
                     {
                         /* 面板 host 模式：明確往下拉 → 亮出錶盤頂部面板，press
                            下一 tick 被它的 tileview 接走（同一機制，只是換去處）*/
@@ -11369,61 +11673,12 @@ static void status_bar_area_up_cb(lv_event_t *e)
     }
     else if (code == LV_EVENT_PRESS_LOST)
     {
-        if (s_top_hw_pull)
-        {
-            /* 左拉中被搶:縮回不 commit,滑鼠圖動畫滑回+解鎖 press */
-            s_top_hw_pull = false;
-            if (status_bar_area_up && lv_obj_is_valid(status_bar_area_up))
-                lv_obj_clear_flag(status_bar_area_up, LV_OBJ_FLAG_PRESS_LOCK);
-            top_logo_slide_home();
-            hw_pull_snap(false);
-        }
         // press 被錶盤 tileview 接走（下拉退出滑鼠頁那條）
         top_hold_cancel();
         top_fly_end("PRESS_LOST");
     }
     else if (code == LV_EVENT_RELEASED)
     {
-        if (s_top_hw_pull)
-        {
-            /* 左拉放開:過 1/4 或快甩=commit 開手寫,否則縮回。commit 時滑鼠圖
-               **不在這裡歸位**——頁面還沒蓋滿,立刻歸位會閃一下跳回(founder
-               2026-07-22);等 hw_open_commit(蓋滿)才歸位。取消=動畫滑回。 */
-            s_top_hw_pull = false;
-            if (status_bar_area_up && lv_obj_is_valid(status_bar_area_up))
-                lv_obj_clear_flag(status_bar_area_up, LV_OBJ_FLAG_PRESS_LOCK);
-            bool commit = false;
-            if (s_hw_view)
-                commit = (lv_obj_get_x(s_hw_view) <= (LV_HOR_RES * 3) / 4) ||
-                         (s_top_hw_vx <= -6);
-            if (commit)
-            {
-                /* 快甩早放:圖不能凍在放開位(founder 2026-07-22)——跟進場頁
-                   同步 200ms 繼續滑出左緣;hw_open_commit 蓋滿後歸位。 */
-                if (s_top_logo && lv_obj_is_valid(s_top_logo))
-                {
-                    lv_anim_del(s_top_logo, NULL);
-                    lv_anim_t la;
-                    lv_anim_init(&la);
-                    lv_anim_set_var(&la, s_top_logo);
-                    lv_anim_set_exec_cb(&la, top_logo_tx_anim_exec);
-                    lv_anim_set_values(
-                        &la,
-                        lv_obj_get_style_translate_x(s_top_logo, LV_PART_MAIN),
-                        (int32_t)-(int32_t)LV_HOR_RES);
-                    lv_anim_set_time(&la, 200);
-                    lv_anim_set_path_cb(&la, lv_anim_path_ease_out);
-                    lv_anim_start(&la);
-                }
-            }
-            else
-            {
-                top_logo_slide_home();
-            }
-            hw_pull_snap(commit);
-            top_hold_cancel();
-            return;
-        }
         /* hold timer 還活著=沒進飛鼠也沒拖=tap(飛鼠 timer 已 fire=NULL、
            拖曳意圖時已 cancel=NULL)。 */
         bool was_tap = (s_top_hold_timer != NULL);
@@ -12487,22 +12742,43 @@ static void bar_ai_sync_timer_cb(lv_timer_t *t)
         extern void instruction_list_drawer_enforce_bar_hidden(void);
         instruction_list_drawer_enforce_bar_hidden();
     }
-    /* 右緣鍵盤鈕:只在**觸控板露著、電腦有聚焦輸入框、沒有別的東西蓋在上面**時浮現。
-       0x17 旗標由通訊執行緒寫、這裡(LVGL 執行緒)讀 —— 單一 bool,不需鎖。 */
-    gesture_click_icon_sync();
-    if (kbd_side_btn && lv_obj_is_valid(kbd_side_btn))
+    /* 右緣鍵盤鈕 + 手寫鈕:只在**觸控板露著、電腦有聚焦輸入框、沒有別的東西蓋在
+       上面**時浮現,兩顆同進同出(founder 2026-09-02:同一個時機給兩種輸入法)。
+       0x17 旗標由通訊執行緒寫、這裡(LVGL 執行緒)讀 —— 單一 bool,不需鎖。
+       手寫頁自己開著時也要收:它是全螢幕 overlay,鈕留著會疊在筆跡上面。 */
     {
         extern bool instruction_list_remote_target_has_focus(void);
         bool want = (current_hid_mode == HID_MODE_TRACKPAD) && !engaged &&
                     !tap_grace && !lift && !dev_active_offline() &&
+                    !s_hw_view_active &&
                     instruction_list_remote_target_has_focus();
-        bool hidden = lv_obj_has_flag(kbd_side_btn, LV_OBJ_FLAG_HIDDEN);
-        if (want && hidden)
-            lv_obj_clear_flag(kbd_side_btn, LV_OBJ_FLAG_HIDDEN);
-        else if (!want && !hidden)
-            lv_obj_add_flag(kbd_side_btn, LV_OBJ_FLAG_HIDDEN);
+        gesture_click_icon_sync();
+        lv_obj_t *const side_btns[2] = {kbd_side_btn, hw_side_btn};
+        for (int i = 0; i < 2; i++)
+        {
+            lv_obj_t *b = side_btns[i];
+            if (b == NULL || !lv_obj_is_valid(b))
+                continue;
+            bool hidden = lv_obj_has_flag(b, LV_OBJ_FLAG_HIDDEN);
+            if (want && hidden)
+            {
+                lv_obj_clear_flag(b, LV_OBJ_FLAG_HIDDEN);
+                /* 浮現當下再抬一次 z:同層(bg)後來建立/移前景的東西會壓過去,
+                   建立順序只保證「剛建好那一刻」在弧之上。 */
+                lv_obj_move_foreground(b);
+            }
+            else if (!want && !hidden)
+                lv_obj_add_flag(b, LV_OBJ_FLAG_HIDDEN);
+        }
     }
     dev_offline_overlay_sync(); /* active 設備斷線=灰版+「斷線」(順路 poll) */
+#ifdef BSP_USING_PC_SIMULATOR
+    if (s_hw_probe_req)
+    {
+        s_hw_probe_req = false;
+        hw_probe_run_on_lvgl(); /* msh 只設旗標,實際動 LVGL 在這裡(見探針段) */
+    }
+#endif
 }
 
 void lv_create_mouse_screen(lv_obj_t *scr)
@@ -12941,11 +13217,14 @@ void hid_mouse_destroy(void)
     hw_cancel_session(); /* 手寫殘留:取消(不送出)收乾淨(離開 app 清殘留) */
     /* view 是 scr 子物件、screen teardown 一併釋放——只清指標,下次 ensure 重建 */
     s_hw_view = NULL;
-    s_hw_btn_exit = NULL;
+    hw_caret_blink_stop(); /* 物件隨 bg 子樹拆掉,timer 留著會 UAF */
+    s_hw_input_bar = NULL;
+    s_hw_input_lbl = NULL;
+    s_hw_caret_obj = NULL;
+    s_hw_btn_exit_img = NULL;
     s_hw_btn_clear = NULL;
     s_hw_btn_clear_lbl = NULL;
     s_hw_btn_clear_img = NULL;
-    s_hw_btn_mode = NULL;
     s_hw_btn_enter = NULL;
     s_hw_backdrop = NULL;
     s_hw_cand_row = NULL;
@@ -13085,7 +13364,6 @@ void hid_mouse_destroy(void)
     s_devbar_landing = false;
     s_devbar_dir = 0;
     s_devbar_pending = 0;
-    s_top_hw_pull = false;
     // 頂部按住進的飛鼠模式：app 被拆時可能收不到 RELEASED，static 殘留
     // true 會讓下次進 app 直接是飛鼠 → 拆除時一律歸位
     top_hold_cancel();
@@ -13136,6 +13414,7 @@ void hid_mouse_destroy(void)
     }
     kbd_exit_btn = NULL; /* 物件隨 bg 子樹拆除,清 stale 引用 */
     kbd_side_btn = NULL;
+    hw_side_btn = NULL;
     kbd_top_pull = NULL;
     s_kbd_cand_row = NULL;
     s_kbd_py_lbl = NULL;
@@ -13289,6 +13568,74 @@ static int app_main(intent_t i)
     gui_app_regist_msg_handler(APP_ID_MOUSE, msg_handler);
     return 0;
 }
+
+#ifdef BSP_USING_PC_SIMULATOR
+/* ── PC sim 探針:手寫頁輸入框/游標(founder 2026-09-02 連三輪回報「點輸入框游標
+   還是跑到最前面」)。真機是 release build 沒有 log,只能在模擬器上把 label 的量測
+   結果直接印出來,看 lv_label_get_letter_pos 給的 x 到底是不是恆 0。
+
+   **msh 指令只設旗標**:LVGL 物件一律只能在 LVGL thread 上碰(本專案所有 sim 測試
+   指令都走 lvgl_send_msg 是同一個理由)。第一版直接在 msh thread 呼 ensure_hw_view,
+   sim 當場掛住連提示字元都回不來。真正的 probe 由 40ms 的 bar_ai_sync_timer_cb
+   (跑在 LVGL thread)代跑。
+   用法:goto_app mouse → hw_probe */
+static void hw_probe_run_on_lvgl(void)
+{
+    LOG_W("hw_probe: step1 ensure\n");
+    ensure_hw_view();
+    LOG_W("hw_probe: step2 view=%p lbl=%p\n", (void *)s_hw_view,
+               (void *)s_hw_input_lbl);
+    if (s_hw_view == NULL || s_hw_input_lbl == NULL)
+    {
+        LOG_W("hw_probe: view not built\n");
+        return;
+    }
+    lv_obj_clear_flag(s_hw_view, LV_OBJ_FLAG_HIDDEN);
+    lv_obj_set_x(s_hw_view, 0);
+    lv_obj_move_foreground(s_hw_view);
+    LOG_W("hw_probe: step3 shown\n");
+    hw_text_reset();
+    LOG_W("hw_probe: step4 reset\n");
+    hw_text_insert("測試好"); /* CJK:真機走 FT font,與 sim 的內建字型不同支 */
+    LOG_W("hw_probe: step5 inserted\n");
+    lv_obj_update_layout(s_hw_view);
+    LOG_W("hw_probe: step6 layout\n");
+    lv_area_t la;
+    lv_obj_get_coords(s_hw_input_lbl, &la);
+    LOG_W("hw_probe: text=%s lbl x1=%d w=%d\n", s_hw_text, (int)la.x1,
+               (int)lv_obj_get_width(s_hw_input_lbl));
+    for (uint32_t i = 0; i <= 4; i++)
+    {
+        LOG_W("hw_probe: prefix %d width=%d", (int)i,
+              (int)hw_text_width_upto((uint16_t)(i * 3)));
+    }
+    /* 走真正那條換算(=點擊 cb 用的同一支) */
+    hw_caret_set_from_abs_x((lv_coord_t)(la.x1 + 40));
+    LOG_W("hw_probe: tap+40 caret=%d\n", (int)s_hw_caret);
+    hw_caret_set_from_abs_x((lv_coord_t)(la.x1 + 120));
+    LOG_W("hw_probe: tap+120 caret=%d\n", (int)s_hw_caret);
+    /* 候選列:塞長短不一的假候選,驗 founder 2026-09-02 回報的「結果全部疊在
+       一起」有沒有被 LV_SIZE_CONTENT + 水平捲動解掉。 */
+    {
+        static const char *fake[5] = {"1234", "1284", "l234", "一二三四",
+                                      "1234567"};
+        s_hw_view_active = true; /* candidates() 的 gate:probe 沒走 open_commit */
+        mouse_handwrite_candidates(fake, 5);
+        LOG_W("hw_probe: candidates pushed n=%d", 5);
+    }
+}
+
+static int hw_probe(int argc, char *argv[])
+{
+    (void)argc;
+    (void)argv;
+    s_hw_probe_req = true;
+    LOG_W("hw_probe: queued (needs the mouse app running)\n");
+    return 0;
+}
+MSH_CMD_EXPORT(hw_probe, hw_probe - measure handwriting input bar caret);
+#endif /* BSP_USING_PC_SIMULATOR */
+
 
 BUILTIN_APP_EXPORT(LV_EXT_STR_ID(mouse), LV_EXT_IMG_GET(img_mouse),
                    APP_ID_MOUSE, app_main, 1);
