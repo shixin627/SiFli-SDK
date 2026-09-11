@@ -376,7 +376,14 @@ void instruction_list_set_session_page_mode(bool on)
 /* R9(founder:「actions 在下面」):把 conv: 開頭的 session item 穩定移到清單
    前段,actions 落在後段。static 暫存 —— list_item_t ~260B x30 ≈ 7.8KB,放
    LVGL thread 的堆疊太肥。呼叫端(session pager 注入)接著自己 refresh。 */
-/* R27:把 conv: 段**強制排成 ids[] 給的順序**(其餘 actions 維持原順序、整段在後)。
+/* R81(founder 2026-09-10:「bot 在 actions 最下面,每次進去都在 bot 的位置」):
+   段落順序跟 R9 對調 —— **actions 在上、bot(conv:)段整段在最下面**。
+   conv 段內部仍照注入端給的 ts 舊→新(sp_inject_sessions_into_actions),所以最新
+   的 session 落在**整份清單的最後一項**。進場落點的規則(reset_list_internal /
+   refresh 尾端的 re-land)本來就是「最後一個 conv 項」,方向一翻它自然就是
+   bot 段 —— 那邊不用改。 */
+/* R27:把 conv: 段**強制排成 ids[] 給的順序**(其餘 actions 維持原順序;R81 起 actions
+   整段在前、conv 段在後)。
    為什麼需要這支:`add_or_update_custom_instruction` 對已存在的 id 只更新內容,
    **位置原地不動**;`instruction_list_move_conv_items_first` 又是穩定分段。所以注入端
    改排序(R26 ts 由新→舊改舊→新)只對「這次才第一次出現」的 session 生效,早就在清單裡
@@ -388,6 +395,10 @@ bool instruction_list_order_conv_items(const char *const *ids, uint8_t n)
     if (list_item_count == 0)
         return false;
     uint8_t w = 0;
+    /* 0) actions 等非 conv 項,原順序,整段在**前**(R81) */
+    for (uint8_t i = 0; i < list_item_count && w < MAX_LIST_ITEMS; i++)
+        if (strncmp(list_items[i].id, "conv:", 5) != 0)
+            s_order_tmp[w++] = list_items[i];
     /* 1) 依 ids[] 指定的順序收 conv 項 */
     for (uint8_t k = 0; k < n && w < MAX_LIST_ITEMS; k++)
     {
@@ -414,10 +425,6 @@ bool instruction_list_order_conv_items(const char *const *ids, uint8_t n)
         if (!taken)
             s_order_tmp[w++] = list_items[i];
     }
-    /* 3) actions 等非 conv 項,原順序,整段在 conv 之後 */
-    for (uint8_t i = 0; i < list_item_count && w < MAX_LIST_ITEMS; i++)
-        if (strncmp(list_items[i].id, "conv:", 5) != 0)
-            s_order_tmp[w++] = list_items[i];
     if (w != list_item_count)
         return false; /* 數不對就別動整份清單(寧可順序舊,也不要掉項目) */
     bool changed = false;
@@ -6469,8 +6476,11 @@ static void reset_list_internal(void)
     uint8_t scroll_to_index;
     {
         /* R49(founder 2026-08-13 定案):**進場落點 = 最新的那個 session**,也就是 conv 段
-           最下面、緊鄰 actions 上方的那一項(conv 段由舊到新、最新在最下面)。只有完全沒有
-           session 時才退回舊行為 —— 停在 actions 最下面。
+           最下面那一項(conv 段由舊到新、最新在最下面)。只有完全沒有 session 時才退回舊
+           行為 —— 停在清單最下面。
+           R81(founder 2026-09-10):bot 段搬到 actions **下面**之後,「最後一個 conv 項」
+           就是整份清單的最後一項 —— 規則一個字都不用改,落點自然落在 bot 上,往上捲才是
+           較舊的 bot、再往上是 actions。
            (R3 原本一律停在整份清單的最後一項,也就是 actions 最下面;有 session 之後那個
            落點對使用者沒有意義 —— 進來第一眼要看到的是最新的對話。) */
         uint8_t newest_conv = (uint8_t)-1;
