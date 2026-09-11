@@ -241,6 +241,15 @@ static void inline setup_grad_rect_layer(EPIC_LayerConfigTypeDef *p_layer, draw_
     p_layer->transform_cfg.scale_y = EPIC_INPUT_SCALE_NONE / area_h;
     p_layer->alpha = EPIC_OPA_MAX;
     p_layer->data_size = 2 * 2 * 4;
+    /* The gradient is a 2x2 ARGB8888 texture stretched by the hardware, so the interpolated
+       colours carry 8 bits per channel while the framebuffer only keeps 5/6/5.  Without dither
+       every dropped LSB becomes a hard horizontal band across the rectangle.  EPIC has an LFSR
+       dither unit that only ever touches the bits actually being dropped
+       (input_bit_mask & ~output_bit_mask), so MAX here means exactly one LSB of noise -- it
+       cannot overshoot.  Default is DISABLE, which is why lv_obj_set_style_bg_dither_mode()
+       looks like a no-op on this chip: LVGL's software dither never runs, draw_rect is the
+       EPIC path. */
+    p_layer->dither_level = EPIC_DITHER_LEVEL_MAX;
 }
 
 static void draw_rect(EPIC_LayerConfigTypeDef *dst, EPIC_LayerConfigTypeDef *p_mask_layer,

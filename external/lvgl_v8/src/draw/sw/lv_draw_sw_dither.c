@@ -39,6 +39,23 @@ static const uint8_t dither_ordered_threshold_matrix[8 * 8] = {
     42, 26, 38, 22, 41, 25, 37, 21
 }; /* Shift by 6 to normalize */
 
+/* 上游把矩陣值(0..63)減 32 後,直接當 -32..+31 加到三個 8-bit 通道上。
+   但 RGB565 的量化級距只有 R/B = 8、G = 4 —— ±32 是級距的 4~8 倍,
+   出來的不是抖色而是肉眼可見的顆粒與 8x8 交叉紋。
+   這裡把振幅收到「剛好一個 LSB」:因為 lv_color_hex() 是截斷量化,
+   偏移量取 [0, step) 的正值(不是 ±step/2,否則整張圖會被壓暗半格)。 */
+#if LV_COLOR_DEPTH == 16
+    #define DITHER_OFS_R(m) ((m) >> 3)   /* 0..7  == 5-bit 的一格 */
+    #define DITHER_OFS_G(m) ((m) >> 4)   /* 0..3  == 6-bit 的一格 */
+    #define DITHER_OFS_B(m) ((m) >> 3)
+#else
+    /* 其他色深維持上游行為 */
+    #define DITHER_OFS_R(m) ((int)(m) - 32)
+    #define DITHER_OFS_G(m) ((int)(m) - 32)
+    #define DITHER_OFS_B(m) ((int)(m) - 32)
+#endif
+
+
 
 LV_ATTRIBUTE_FAST_MEM void lv_dither_ordered_hor(lv_grad_t * grad, lv_coord_t x, lv_coord_t y, lv_coord_t w)
 {
@@ -53,12 +70,12 @@ LV_ATTRIBUTE_FAST_MEM void lv_dither_ordered_hor(lv_grad_t * grad, lv_coord_t x,
 
     /*The apply the algorithm for this patch*/
     for(lv_coord_t j = 0; j < w; j++) {
-        int8_t factor = dither_ordered_threshold_matrix[(y & 7) * 8 + ((j) & 7)] - 32;
+        uint8_t m = dither_ordered_threshold_matrix[(y & 7) * 8 + ((j) & 7)];
         lv_color32_t tmp = grad->hmap[LV_CLAMP(0, j - 4, grad->size)];
         lv_color32_t t;
-        t.ch.red   = LV_CLAMP(0, tmp.ch.red + factor, 255);
-        t.ch.green = LV_CLAMP(0, tmp.ch.green + factor, 255);
-        t.ch.blue  = LV_CLAMP(0, tmp.ch.blue + factor, 255);
+        t.ch.red   = LV_CLAMP(0, tmp.ch.red   + DITHER_OFS_R(m), 255);
+        t.ch.green = LV_CLAMP(0, tmp.ch.green + DITHER_OFS_G(m), 255);
+        t.ch.blue  = LV_CLAMP(0, tmp.ch.blue  + DITHER_OFS_B(m), 255);
 
         grad->map[j] = lv_color_hex(t.full);
     }
@@ -78,11 +95,11 @@ LV_ATTRIBUTE_FAST_MEM void lv_dither_ordered_ver(lv_grad_t * grad, lv_coord_t x,
 
     /*The apply the algorithm for this patch*/
     for(lv_coord_t j = 0; j < 8; j++) {
-        int8_t factor = dither_ordered_threshold_matrix[(y & 7) * 8 + ((j + x) & 7)] - 32;
+        uint8_t m = dither_ordered_threshold_matrix[(y & 7) * 8 + ((j + x) & 7)];
         lv_color32_t t;
-        t.ch.red   = LV_CLAMP(0, tmp.ch.red + factor, 255);
-        t.ch.green = LV_CLAMP(0, tmp.ch.green + factor, 255);
-        t.ch.blue  = LV_CLAMP(0, tmp.ch.blue + factor, 255);
+        t.ch.red   = LV_CLAMP(0, tmp.ch.red   + DITHER_OFS_R(m), 255);
+        t.ch.green = LV_CLAMP(0, tmp.ch.green + DITHER_OFS_G(m), 255);
+        t.ch.blue  = LV_CLAMP(0, tmp.ch.blue  + DITHER_OFS_B(m), 255);
 
         grad->map[j] = lv_color_hex(t.full);
     }
