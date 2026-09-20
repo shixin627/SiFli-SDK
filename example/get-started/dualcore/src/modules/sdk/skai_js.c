@@ -21,6 +21,7 @@
 #define DBG_LVL DBG_INFO
 #include <rtdbg.h>
 
+#include "lvgl.h"      /* lv_timer: JS timers run on the LVGL thread */
 #include "quickjs.h"
 
 #include "skai/skai_dispatch.h"
@@ -55,6 +56,13 @@ static uint8_t    s_log_head;   /* next write slot */
 static uint8_t    s_log_used;
 static uint32_t   s_log_dropped;
 
+static skai_js_log_sink_t s_log_sink;
+
+void skai_js_set_log_sink(skai_js_log_sink_t sink)
+{
+    s_log_sink = sink;
+}
+
 static void app_log(const char *keyid, const char *fmt, ...)
 {
     va_list ap;
@@ -77,6 +85,9 @@ static void app_log(const char *keyid, const char *fmt, ...)
     va_start(ap, fmt);
     rt_vsnprintf(l->text, sizeof(l->text), fmt, ap);
     va_end(ap);
+
+    if (s_log_sink)
+        s_log_sink(l->keyid, l->text);
 
     s_log_head = (uint8_t)((s_log_head + 1) % SKAI_JS_LOG_LINES);
     LOG_I("[%s] %s", l->keyid, l->text);
@@ -532,6 +543,37 @@ static void clear_handlers(void)
  * session-long deadline would kill an app just for staying open; no deadline
  * would let a handler hang the LVGL thread, which is the whole screen), and
  * make sure a throwing handler is neither fatal nor silent. */
+/* Point QuickJS's stack guard at what is ACTUALLY left of this thread's stack,
+ * here, now. The guard counts down from where the stack was when it was last
+ * set, and a click handler enters JS from deep inside LVGL's input and event
+ * code — far below where the runtime was created. A budget measured at
+ * creation let a handler run the real stack out and reset the watch
+ * (2026-09-20: tapping a Bot-written timer's chip rebooted it). So every entry
+ * re-measures, leaving room for the C the script calls into (LVGL, the RTC
+ * alarm service, logging). */
+static void js_fit_stack(JSRuntime *rt)
+{
+    rt_thread_t self = rt_thread_self();
+    size_t budget = 2048;
+
+    if (self && self->stack_size > 4096)
+    {
+        uint8_t probe;
+        size_t left = (size_t)(&probe - (uint8_t *)self->stack_addr);
+        /* 8 KB, not 4: the C the script calls into includes a KVDB write
+           (skai.persist -> FlashDB) from inside an LVGL event callback, which is
+           several KB on its own. With 4 KB the watch reset on the first tap that
+           saved a timer id (2026-09-20). */
+        const size_t margin = 8192;
+        if (left <= self->stack_size)
+            budget = (left > margin + 2048) ? left - margin : 2048;
+        else
+            budget = self->stack_size / 2;   /* not on this thread's stack after all */
+    }
+    JS_UpdateStackTop(rt);
+    JS_SetMaxStackSize(rt, budget);
+}
+
 static void js_reenter(JSValue fn, const char *what, int argc, JSValueConst *argv)
 {
     JSContext *ctx = s_session_ctx;
@@ -540,6 +582,7 @@ static void js_reenter(JSValue fn, const char *what, int argc, JSValueConst *arg
 
     if (!ctx || JS_IsUndefined(fn))
         return;
+    js_fit_stack(JS_GetRuntime(ctx));
 
     env = (js_env_t *)JS_GetContextOpaque(ctx);
     if (env)
@@ -716,6 +759,211 @@ static JSValue js_skai_on_click(JSContext *ctx, JSValueConst this_val,
     return JS_NewBool(ctx, 1);
 }
 
+/* ── timers and console ──
+ *
+ * setTimeout / setInterval / clearTimeout / clearInterval and console.log are
+ * the first things anyone writing JavaScript reaches for, and an app that cannot
+ * tick a clock or poll a sensor is not much of an app. They are the standard
+ * globals rather than skai.* capabilities because they grant nothing: a timer
+ * only schedules the app's OWN code, which already runs under the same quota
+ * and watchdog, re-armed per firing exactly like a click (js_reenter).
+ *
+ * They run on lv_timer, i.e. on the LVGL thread — the thread the context lives
+ * on — so no locking and no cross-thread call into QuickJS. A timer is bounded
+ * like everything else here: a fixed table, a floor on the period (a 0 ms
+ * interval would monopolise the GUI thread), and every one dies with the
+ * session. */
+#define SKAI_JS_TIMERS         16
+#define SKAI_JS_TIMER_MIN_MS   10
+#define SKAI_JS_INTERVAL_MIN_MS 50
+#define SKAI_JS_TIMER_MAX_MS   (24u * 3600u * 1000u)
+
+typedef struct
+{
+    lv_timer_t *t;
+    JSValue     fn;
+    int32_t     id;       /* what JS holds; 0 = free slot */
+    bool        repeat;
+} js_timer_t;
+
+static js_timer_t s_timers[SKAI_JS_TIMERS];
+static int32_t    s_timer_seq;
+
+static void timer_release(js_timer_t *jt)
+{
+    if (jt->t)
+        lv_timer_del(jt->t);
+    if (s_session_ctx)
+        JS_FreeValue(s_session_ctx, jt->fn);
+    jt->t = NULL;
+    jt->fn = JS_UNDEFINED;
+    jt->id = 0;
+}
+
+static void clear_timers(void)
+{
+    for (int i = 0; i < SKAI_JS_TIMERS; i++)
+        if (s_timers[i].id != 0)
+            timer_release(&s_timers[i]);
+}
+
+static void timer_fire(lv_timer_t *t)
+{
+    js_timer_t *jt = (js_timer_t *)t->user_data;
+    JSValue fn;
+
+    if (!s_session_ctx || jt == NULL || jt->id == 0 || jt->t != t)
+        return;
+
+    /* Hold our own reference: the handler may clear this very timer (or, for a
+       timeout, the slot is released first), which frees the stored value. */
+    fn = JS_DupValue(s_session_ctx, jt->fn);
+    if (!jt->repeat)
+        timer_release(jt);   /* one-shot: gone before it runs, so it can re-arm itself */
+    js_reenter(fn, "timer", 0, NULL);
+    if (s_session_ctx)
+        JS_FreeValue(s_session_ctx, fn);
+}
+
+static JSValue js_set_timer(JSContext *ctx, int argc, JSValueConst *argv, bool repeat)
+{
+    int32_t ms = 0;
+    js_timer_t *jt = NULL;
+    const char *what = repeat ? "setInterval" : "setTimeout";
+
+    /* A timer outlives the call that set it, so it only exists where the
+       context does too: inside an app's session, not a one-shot eval. */
+    if (ctx != s_session_ctx)
+        return JS_ThrowTypeError(ctx, "%s: only available inside a running app", what);
+    if (argc < 1 || !JS_IsFunction(ctx, argv[0]))
+        return JS_ThrowTypeError(ctx, "%s: first argument must be a function", what);
+    if (argc >= 2 && JS_ToInt32(ctx, &ms, argv[1]) < 0)
+        return JS_EXCEPTION;
+    if (ms < (repeat ? SKAI_JS_INTERVAL_MIN_MS : SKAI_JS_TIMER_MIN_MS))
+        ms = repeat ? SKAI_JS_INTERVAL_MIN_MS : SKAI_JS_TIMER_MIN_MS;
+    if ((uint32_t)ms > SKAI_JS_TIMER_MAX_MS)
+        ms = (int32_t)SKAI_JS_TIMER_MAX_MS;
+
+    for (int i = 0; i < SKAI_JS_TIMERS; i++)
+    {
+        if (s_timers[i].id == 0)
+        {
+            jt = &s_timers[i];
+            break;
+        }
+    }
+    if (jt == NULL)
+        return JS_ThrowRangeError(ctx, "%s: %d timers is the limit", what, SKAI_JS_TIMERS);
+
+    jt->t = lv_timer_create(timer_fire, (uint32_t)ms, jt);
+    if (jt->t == NULL)
+        return JS_ThrowInternalError(ctx, "%s: no timer available", what);
+    if (!repeat)
+        lv_timer_set_repeat_count(jt->t, 1);
+    jt->fn = JS_DupValue(ctx, argv[0]);
+    jt->repeat = repeat;
+    if (++s_timer_seq <= 0)
+        s_timer_seq = 1;
+    jt->id = s_timer_seq;
+    return JS_NewInt32(ctx, jt->id);
+}
+
+static JSValue js_set_timeout(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+    (void)this_val;
+    return js_set_timer(ctx, argc, argv, false);
+}
+
+static JSValue js_set_interval(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+    (void)this_val;
+    return js_set_timer(ctx, argc, argv, true);
+}
+
+static JSValue js_clear_timer(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+    int32_t id = 0;
+
+    (void)this_val;
+    if (argc < 1 || JS_ToInt32(ctx, &id, argv[0]) < 0 || id <= 0)
+        return JS_UNDEFINED;   /* clearTimeout(undefined) is a no-op in every JS */
+    for (int i = 0; i < SKAI_JS_TIMERS; i++)
+        if (s_timers[i].id == id)
+            timer_release(&s_timers[i]);
+    return JS_UNDEFINED;
+}
+
+/* console.log(a, b, ...) — joined with spaces into one app-log line, which is
+ * also what reaches the developer's phone. Objects print as JSON so a log of a
+ * data structure is readable rather than "[object Object]". */
+static JSValue js_console_log(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+    js_env_t *env = (js_env_t *)JS_GetContextOpaque(ctx);
+    char line[SKAI_JS_LOG_LINE];
+    size_t used = 0;
+
+    (void)this_val;
+    line[0] = '\0';
+    for (int i = 0; i < argc && used < sizeof(line) - 1; i++)
+    {
+        JSValue shown = JS_UNDEFINED;
+        const char *str;
+
+        if (JS_IsObject(argv[i]) && !JS_IsFunction(ctx, argv[i]))
+            shown = JS_JSONStringify(ctx, argv[i], JS_UNDEFINED, JS_UNDEFINED);
+        str = JS_ToCString(ctx, JS_IsUndefined(shown) || JS_IsException(shown) ? argv[i] : shown);
+        if (JS_IsException(shown))
+            JS_FreeValue(ctx, JS_GetException(ctx));
+        JS_FreeValue(ctx, shown);
+        if (str)
+        {
+            int w = rt_snprintf(line + used, sizeof(line) - used, "%s%s",
+                                i ? " " : "", str);
+            JS_FreeCString(ctx, str);
+            if (w > 0)
+                used += (size_t)w;
+            if (used >= sizeof(line))
+                used = sizeof(line) - 1;
+        }
+    }
+    if (env)
+        app_log(env->pol->keyid, "%s", line);
+    return JS_UNDEFINED;
+}
+
+static void inject_std_globals(JSContext *ctx, JSValue global)
+{
+    JSValue console = JS_NewObject(ctx);
+
+    for (int i = 0; i < SKAI_JS_TIMERS; i++)
+    {
+        if (s_timers[i].id == 0)
+        {
+            s_timers[i].fn = JS_UNDEFINED;
+            s_timers[i].t = NULL;
+        }
+    }
+
+    JS_SetPropertyStr(ctx, global, "setTimeout",
+                      JS_NewCFunction(ctx, js_set_timeout, "setTimeout", 2));
+    JS_SetPropertyStr(ctx, global, "setInterval",
+                      JS_NewCFunction(ctx, js_set_interval, "setInterval", 2));
+    JS_SetPropertyStr(ctx, global, "clearTimeout",
+                      JS_NewCFunction(ctx, js_clear_timer, "clearTimeout", 1));
+    JS_SetPropertyStr(ctx, global, "clearInterval",
+                      JS_NewCFunction(ctx, js_clear_timer, "clearInterval", 1));
+
+    JS_SetPropertyStr(ctx, console, "log",
+                      JS_NewCFunction(ctx, js_console_log, "log", 1));
+    JS_SetPropertyStr(ctx, console, "info",
+                      JS_NewCFunction(ctx, js_console_log, "info", 1));
+    JS_SetPropertyStr(ctx, console, "warn",
+                      JS_NewCFunction(ctx, js_console_log, "warn", 1));
+    JS_SetPropertyStr(ctx, console, "error",
+                      JS_NewCFunction(ctx, js_console_log, "error", 1));
+    JS_SetPropertyStr(ctx, global, "console", console);
+}
+
 /* Build the `skai` global from the dispatch table. Namespaces come from the
  * capability names, so "weather.temp" lands at skai.weather.temp with no list
  * of namespaces maintained anywhere. */
@@ -783,7 +1031,20 @@ static void inject_skai(JSContext *ctx)
         JS_FreeValue(ctx, ui);
     }
 
+    /* skai.theme: the design tokens (skai_ui_theme), frozen so an app reads
+       them and cannot repaint the product for the next app. */
+    {
+        JSValue theme = JS_NewObject(ctx);
+        for (int t = 0; t < skai_ui_theme_count; t++)
+            JS_DefinePropertyValueStr(ctx, theme, skai_ui_theme[t].name,
+                                      JS_NewInt32(ctx, skai_ui_theme[t].value),
+                                      JS_PROP_ENUMERABLE);
+        JS_PreventExtensions(ctx, theme);
+        JS_SetPropertyStr(ctx, root, "theme", theme);
+    }
+
     JS_SetPropertyStr(ctx, global, "skai", root);
+    inject_std_globals(ctx, global);
     JS_FreeValue(ctx, global);
 }
 
@@ -963,10 +1224,23 @@ static JSContext *runtime_start(JSRuntime **out_rt, js_env_t *env)
      *    at JS_NewRuntime(); a constant larger than the host thread's stack
      *    means the native stack is already gone by the time the check fires. */
     {
+        /* What is actually left below here, less a margin for the C code the
+           interpreter calls into (LVGL, the dispatch table, logging). A fixed
+           half of the thread's stack was 8 KB on the 16 KB GUI thread — and
+           QuickJS's recursive parser spends that on an ordinary program with a
+           loop and an else-if chain inside a timer callback ("SyntaxError: stack
+           overflow", 2026-09-20). */
         rt_thread_t self = rt_thread_self();
         size_t budget = 2048;
         if (self && self->stack_size > 4096)
-            budget = (size_t)self->stack_size / 2;
+        {
+            uint8_t probe;
+            size_t left = (size_t)(&probe - (uint8_t *)self->stack_addr);
+            const size_t margin = 3072;
+            budget = (left > margin + 2048) ? left - margin : 2048;
+            if (budget > self->stack_size)
+                budget = self->stack_size / 2;   /* not on this thread's stack after all */
+        }
         JS_SetMaxStackSize(rt, budget);
     }
 
@@ -1012,6 +1286,7 @@ void skai_js_close(void)
         return;
     clear_handlers();
     clear_subs();
+    clear_timers();
     s_handlers_init = false;
     JS_FreeContext(s_session_ctx);
     JS_FreeRuntime(s_session_rt);
@@ -1020,6 +1295,11 @@ void skai_js_close(void)
 }
 
 bool skai_js_is_open(void) { return s_session_ctx != NULL; }
+
+const char *skai_js_current_app_id(void)
+{
+    return s_session_ctx ? s_session_policy.app_id : NULL;
+}
 
 skai_js_result_t skai_js_eval(const char *src, uint32_t len,
                               const skai_js_policy_t *policy)
@@ -1038,6 +1318,7 @@ skai_js_result_t skai_js_eval(const char *src, uint32_t len,
     if (s_session_ctx)
     {
         arm_watchdog(&s_session_env);
+        js_fit_stack(JS_GetRuntime(s_session_ctx));
         val = JS_Eval(s_session_ctx, src, len,
                       s_session_policy.app_id[0] ? s_session_policy.app_id : "<app>",
                       JS_EVAL_TYPE_GLOBAL);
@@ -1056,6 +1337,7 @@ skai_js_result_t skai_js_eval(const char *src, uint32_t len,
     if (!ctx)
         return SKAI_JS_ERR_INTERNAL;
 
+    js_fit_stack(JS_GetRuntime(ctx));
     val = JS_Eval(ctx, src, len, policy->app_id[0] ? policy->app_id : "<app>",
                   JS_EVAL_TYPE_GLOBAL);
     if (JS_IsException(val))
@@ -1071,7 +1353,13 @@ skai_js_result_t skai_js_eval(const char *src, uint32_t len,
  * defined. The vendored one scans "/" for loose .js files; Skai apps are
  * installed packages under /skaiapp with a verified manifest, so an unvetted
  * filesystem scan is exactly the discovery path we do not want. Returning NULL
- * keeps script apps out of the builtin list — they launch through their host. */
+ * keeps script apps out of the builtin list — they launch through their host.
+ *
+ * cutils.h (above) defines `printf` as rt_kprintf, and LVGL headers pulled in
+ * by gui_app_fwk.h put `printf` inside __attribute__((format(...))), which
+ * armclang rejects under -Werror. The simulator (MSVC) never sees that
+ * attribute, so only the watch build tripped on it. */
+#undef printf
 #include "gui_app_fwk.h"
 const builtin_app_desc_t *gui_qjs_app_list_get_next(const builtin_app_desc_t *ptr_app)
 {

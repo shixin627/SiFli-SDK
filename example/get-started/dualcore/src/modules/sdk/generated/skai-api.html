@@ -56,8 +56,9 @@ code{background:var(--code-bg);padding:1px 5px;border-radius:4px;font-size:13px}
 <div class="wrap">
 <nav>
   <h1>Skai SDK</h1>
-  <p class="ver">1.0 &middot; 71 capabilities</p>
-  <ul><li><a href="#app">skai.app</a></li>
+  <p class="ver">1.0 &middot; 95 capabilities</p>
+  <ul><li><a href="#alarm">skai.alarm</a></li>
+<li><a href="#app">skai.app</a></li>
 <li><a href="#battery">skai.battery</a></li>
 <li><a href="#display">skai.display</a></li>
 <li><a href="#haptic">skai.haptic</a></li>
@@ -87,6 +88,40 @@ declined it.</p>
 not a sentinel number to memorise.</p>
 <p class="lede">Generated from the annotated SDK headers by
 <code>tools/sdk/gen_dispatch.py</code>. Do not edit by hand.</p>
+<section id="alarm">
+<h2>skai.alarm</h2>
+<article id="alarm.cancel">
+<h3>cancel</h3>
+<pre class="sig">skai.alarm.cancel(id: number): boolean</pre>
+<p class="meta"><span class="badge tier-T1" title="granted automatically">T1</span><span class="badge thread" title="">any thread</span></p>
+<p>Stop an alarm before it fires (or forget one that already fired).</p>
+<table><thead><tr><th>parameter</th><th>type</th></tr></thead><tbody>
+<tr><td><code>id</code></td><td><code>number</code></td></tr>
+</tbody></table>
+<p class="c"><span>C</span> <code>bool skai_alarm_cancel(int32_t id);</code></p>
+</article>
+<article id="alarm.remaining">
+<h3>remaining</h3>
+<pre class="sig">skai.alarm.remaining(id: number): number | null</pre>
+<p class="meta"><span class="badge tier-T1" title="granted automatically">T1</span><span class="badge thread" title="">any thread</span></p>
+<p>Seconds until the alarm fires; 0 once it has fired; null for an unknown id. Read it from a setInterval to draw a countdown — the number stays right across sleep because it comes from the clock, not from counting ticks.</p>
+<table><thead><tr><th>parameter</th><th>type</th></tr></thead><tbody>
+<tr><td><code>id</code></td><td><code>number</code></td></tr>
+</tbody></table>
+<p class="c"><span>C</span> <code>int32_t skai_alarm_remaining(int32_t id);</code></p>
+</article>
+<article id="alarm.set">
+<h3>set</h3>
+<pre class="sig">skai.alarm.set(text: string, seconds: number): number | null</pre>
+<p class="meta"><span class="badge tier-T1" title="granted automatically">T1</span><span class="badge thread" title="">any thread</span></p>
+<p>Fire in `seconds` (1..86400): the watch wakes, vibrates and shows `text` as a notification, even if this app is closed or the screen is off. Returns an alarm id (&gt;0) to cancel or query it, or 0 when all slots are in use. An app can only see and cancel its own alarms. When it fires, a running app's skai.on_change("alarm.remaining", fn) handler runs.</p>
+<table><thead><tr><th>parameter</th><th>type</th></tr></thead><tbody>
+<tr><td><code>text</code></td><td><code>string</code></td></tr>
+<tr><td><code>seconds</code></td><td><code>number</code></td></tr>
+</tbody></table>
+<p class="c"><span>C</span> <code>int32_t skai_alarm_set(const char *text, int32_t seconds);</code></p>
+</article>
+</section>
 <section id="app">
 <h2>skai.app</h2>
 <article id="app.exit">
@@ -335,8 +370,8 @@ not a sentinel number to memorise.</p>
 <pre class="sig">skai.ui.align_to(id: number, ref_id: number, side: string, dx: number, dy: number): boolean</pre>
 <p class="meta"><span class="badge tier-T1" title="granted automatically">T1</span><span class="badge thread" title="calls from elsewhere are refused">LVGL thread</span></p>
 <p>Place a widget relative to ANOTHER widget, which is how every built-in screen is actually laid out.</p>
-<p>`side` is one of: below, above, left, right, center — each meaning "outside that edge of `ref`, centred on the other axis", the same five lv_obj_align_to anchors the C screens use. `dx`/`dy` offset from there.</p>
-<p>Why this earns its place next to ui.align: without it a reproduction has to precompute every y from font metrics and icon heights, so the layout is correct for exactly one font size and one icon set and silently drifts the moment either changes. It still takes two opaque slot ids and one of five names — no LVGL object, no style, no coordinate system.</p>
+<p>`side` is one of: below, above, left, right, center — each meaning "outside that edge of `ref`, centred on the other axis" — plus below_left, which is "under it, left edges flush" and is what a rule drawn beneath a short label needs. Six of lv_obj_align_to's twelve OUT_* anchors, chosen because they are the ones the built-in screens actually use. `dx`/`dy` offset from there.</p>
+<p>Why this earns its place next to ui.align: without it a reproduction has to precompute every y from font metrics and icon heights, so the layout is correct for exactly one font size and one icon set and silently drifts the moment either changes. It still takes two opaque slot ids and one name from the closed set above — no LVGL object, no style, no coordinate system.</p>
 <table><thead><tr><th>parameter</th><th>type</th></tr></thead><tbody>
 <tr><td><code>id</code></td><td><code>number</code></td></tr>
 <tr><td><code>ref_id</code></td><td><code>number</code></td></tr>
@@ -366,6 +401,13 @@ not a sentinel number to memorise.</p>
 </tbody></table>
 <p class="c"><span>C</span> <code>int32_t skai_ui_bar(int32_t percent);</code></p>
 </article>
+<article id="ui.box">
+<h3>box</h3>
+<pre class="sig">skai.ui.box(): number | null</pre>
+<p class="meta"><span class="badge tier-T1" title="granted automatically">T1</span><span class="badge thread" title="calls from elsewhere are refused">LVGL thread</span></p>
+<p>A card you lay out yourself: a vertical group (like ui.row, closed by ui.end) already wearing the content-card look - surface fill, hairline, radius 24, padding 16. Size, colours, radius and padding are all yours to change with the set_* calls below; tappable with ui.on_click.</p>
+<p class="c"><span>C</span> <code>int32_t skai_ui_box(void);</code></p>
+</article>
 <article id="ui.button">
 <h3>button</h3>
 <pre class="sig">skai.ui.button(text: string): number | null</pre>
@@ -375,6 +417,16 @@ not a sentinel number to memorise.</p>
 <tr><td><code>text</code></td><td><code>string</code></td></tr>
 </tbody></table>
 <p class="c"><span>C</span> <code>int32_t skai_ui_button(const char *text);</code></p>
+</article>
+<article id="ui.checkbox">
+<h3>checkbox</h3>
+<pre class="sig">skai.ui.checkbox(text: string): number | null</pre>
+<p class="meta"><span class="badge tier-T1" title="granted automatically">T1</span><span class="badge thread" title="calls from elsewhere are refused">LVGL thread</span></p>
+<p>A tick box with a caption. Tapping it toggles it; skai.ui.on_click on it receives "1" (now ticked) or "0". Read it back with ui.value.</p>
+<table><thead><tr><th>parameter</th><th>type</th></tr></thead><tbody>
+<tr><td><code>text</code></td><td><code>string</code></td></tr>
+</tbody></table>
+<p class="c"><span>C</span> <code>int32_t skai_ui_checkbox(const char *text);</code></p>
 </article>
 <article id="ui.clear">
 <h3>clear</h3>
@@ -432,11 +484,21 @@ not a sentinel number to memorise.</p>
 </tbody></table>
 <p class="c"><span>C</span> <code>int32_t skai_ui_image(const char *rel_path);</code></p>
 </article>
+<article id="ui.item">
+<h3>item</h3>
+<pre class="sig">skai.ui.item(text: string): number | null</pre>
+<p class="meta"><span class="badge tier-T1" title="granted automatically">T1</span><span class="badge thread" title="calls from elsewhere are refused">LVGL thread</span></p>
+<p>A full-width tappable row, the natural child of ui.list(). skai.ui.on_click on it receives the row's text. Drawn as the phone app's content card.</p>
+<table><thead><tr><th>parameter</th><th>type</th></tr></thead><tbody>
+<tr><td><code>text</code></td><td><code>string</code></td></tr>
+</tbody></table>
+<p class="c"><span>C</span> <code>int32_t skai_ui_item(const char *text);</code></p>
+</article>
 <article id="ui.keypad">
 <h3>keypad</h3>
 <pre class="sig">skai.ui.keypad(map: string): number | null</pre>
 <p class="meta"><span class="badge tier-T1" title="granted automatically">T1</span><span class="badge thread" title="calls from elsewhere are refused">LVGL thread</span></p>
-<p>A grid of keys as ONE widget, laid out from a map: keys separated by spaces, rows by "\n" — e.g. "7 8 9 +\n4 5 6 -\n1 2 3 x\n  0 . /".</p>
+<p>Keys separated by spaces and ROWS BY \n, never by / or | — a number pad is ui.keypad("7 8 9\n4 5 6\n1 2 3\n  0 C"). A grid of keys as ONE widget.</p>
 <p>One widget rather than one per key, because that is what the underlying button matrix is: bounded by construction, no per-key slot to exhaust, and a hostile app cannot fabricate a key id. The click handler receives the key's text.</p>
 <table><thead><tr><th>parameter</th><th>type</th></tr></thead><tbody>
 <tr><td><code>map</code></td><td><code>string</code></td></tr>
@@ -465,6 +527,13 @@ not a sentinel number to memorise.</p>
 </tbody></table>
 <p class="c"><span>C</span> <code>int32_t skai_ui_label(const char *text);</code></p>
 </article>
+<article id="ui.list">
+<h3>list</h3>
+<pre class="sig">skai.ui.list(): number | null</pre>
+<p class="meta"><span class="badge tier-T1" title="granted automatically">T1</span><span class="badge thread" title="calls from elsewhere are refused">LVGL thread</span></p>
+<p>── lists and controls ── A list is a group, like ui.row: everything created after ui.list() goes into it until ui.end(). It fills the rest of the page and scrolls vertically, so it is the way to show more rows than fit on the round screen.</p>
+<p class="c"><span>C</span> <code>int32_t skai_ui_list(void);</code></p>
+</article>
 <article id="ui.page">
 <h3>page</h3>
 <pre class="sig">skai.ui.page(): number | null</pre>
@@ -473,12 +542,54 @@ not a sentinel number to memorise.</p>
 <p>Pages stack vertically and the user swipes between them, which is the shape the built-in screens use. The app declares structure and nothing else: no scroll offset, no gesture, no momentum, no snap.</p>
 <p class="c"><span>C</span> <code>int32_t skai_ui_page(void);</code></p>
 </article>
+<article id="ui.remove">
+<h3>remove</h3>
+<pre class="sig">skai.ui.remove(id: number): boolean</pre>
+<p class="meta"><span class="badge tier-T1" title="granted automatically">T1</span><span class="badge thread" title="calls from elsewhere are refused">LVGL thread</span></p>
+<p>Delete one widget (and anything inside it). Its id stops working.</p>
+<table><thead><tr><th>parameter</th><th>type</th></tr></thead><tbody>
+<tr><td><code>id</code></td><td><code>number</code></td></tr>
+</tbody></table>
+<p class="c"><span>C</span> <code>bool skai_ui_remove(int32_t id);</code></p>
+</article>
 <article id="ui.row">
 <h3>row</h3>
 <pre class="sig">skai.ui.row(): number | null</pre>
 <p class="meta"><span class="badge tier-T1" title="granted automatically">T1</span><span class="badge thread" title="calls from elsewhere are refused">LVGL thread</span></p>
 <p>Horizontal group. Widgets created after it land inside until ui.end().</p>
 <p class="c"><span>C</span> <code>int32_t skai_ui_row(void);</code></p>
+</article>
+<article id="ui.scroll_to">
+<h3>scroll_to</h3>
+<pre class="sig">skai.ui.scroll_to(id: number): boolean</pre>
+<p class="meta"><span class="badge tier-T1" title="granted automatically">T1</span><span class="badge thread" title="calls from elsewhere are refused">LVGL thread</span></p>
+<p>Scroll the list or page holding this widget until it is on screen.</p>
+<table><thead><tr><th>parameter</th><th>type</th></tr></thead><tbody>
+<tr><td><code>id</code></td><td><code>number</code></td></tr>
+</tbody></table>
+<p class="c"><span>C</span> <code>bool skai_ui_scroll_to(int32_t id);</code></p>
+</article>
+<article id="ui.section">
+<h3>section</h3>
+<pre class="sig">skai.ui.section(text: string): number | null</pre>
+<p class="meta"><span class="badge tier-T1" title="granted automatically">T1</span><span class="badge thread" title="calls from elsewhere are refused">LVGL thread</span></p>
+<p>A small grey group header above a run of rows ("Ingredients", "Steps").</p>
+<table><thead><tr><th>parameter</th><th>type</th></tr></thead><tbody>
+<tr><td><code>text</code></td><td><code>string</code></td></tr>
+</tbody></table>
+<p class="c"><span>C</span> <code>int32_t skai_ui_section(const char *text);</code></p>
+</article>
+<article id="ui.set_accessory">
+<h3>set_accessory</h3>
+<pre class="sig">skai.ui.set_accessory(id: number, text: string, tone: number): boolean</pre>
+<p class="meta"><span class="badge tier-T1" title="granted automatically">T1</span><span class="badge thread" title="calls from elsewhere are refused">LVGL thread</span></p>
+<p>A small capsule at the right end of a ui.item — a countdown, a count, a state. tone 0 neutral grey, 1 active sky (running/selected), 2 done green, 3 warning orange, 4 alert red. "" hides it.</p>
+<table><thead><tr><th>parameter</th><th>type</th></tr></thead><tbody>
+<tr><td><code>id</code></td><td><code>number</code></td></tr>
+<tr><td><code>text</code></td><td><code>string</code></td></tr>
+<tr><td><code>tone</code></td><td><code>number</code></td></tr>
+</tbody></table>
+<p class="c"><span>C</span> <code>bool skai_ui_set_accessory(int32_t id, const char *text, int32_t tone);</code></p>
 </article>
 <article id="ui.set_arc">
 <h3>set_arc</h3>
@@ -501,6 +612,29 @@ not a sentinel number to memorise.</p>
 </tbody></table>
 <p class="c"><span>C</span> <code>bool skai_ui_set_bg(int32_t id, int32_t rgb);</code></p>
 </article>
+<article id="ui.set_bg_opa">
+<h3>set_bg_opa</h3>
+<pre class="sig">skai.ui.set_bg_opa(id: number, percent: number): boolean</pre>
+<p class="meta"><span class="badge tier-T1" title="granted automatically">T1</span><span class="badge thread" title="calls from elsewhere are refused">LVGL thread</span></p>
+<p>Background opacity 0..100: a tint such as accent at 18 % for a selected chip.</p>
+<table><thead><tr><th>parameter</th><th>type</th></tr></thead><tbody>
+<tr><td><code>id</code></td><td><code>number</code></td></tr>
+<tr><td><code>percent</code></td><td><code>number</code></td></tr>
+</tbody></table>
+<p class="c"><span>C</span> <code>bool skai_ui_set_bg_opa(int32_t id, int32_t percent);</code></p>
+</article>
+<article id="ui.set_border">
+<h3>set_border</h3>
+<pre class="sig">skai.ui.set_border(id: number, rgb: number, width: number): boolean</pre>
+<p class="meta"><span class="badge tier-T1" title="granted automatically">T1</span><span class="badge thread" title="calls from elsewhere are refused">LVGL thread</span></p>
+<p>Outline: colour 0xRRGGBB and width 0..8 px (0 removes it).</p>
+<table><thead><tr><th>parameter</th><th>type</th></tr></thead><tbody>
+<tr><td><code>id</code></td><td><code>number</code></td></tr>
+<tr><td><code>rgb</code></td><td><code>number</code></td></tr>
+<tr><td><code>width</code></td><td><code>number</code></td></tr>
+</tbody></table>
+<p class="c"><span>C</span> <code>bool skai_ui_set_border(int32_t id, int32_t rgb, int32_t width);</code></p>
+</article>
 <article id="ui.set_color">
 <h3>set_color</h3>
 <pre class="sig">skai.ui.set_color(id: number, rgb: number): boolean</pre>
@@ -511,6 +645,17 @@ not a sentinel number to memorise.</p>
 <tr><td><code>rgb</code></td><td><code>number</code></td></tr>
 </tbody></table>
 <p class="c"><span>C</span> <code>bool skai_ui_set_color(int32_t id, int32_t rgb);</code></p>
+</article>
+<article id="ui.set_detail">
+<h3>set_detail</h3>
+<pre class="sig">skai.ui.set_detail(id: number, text: string): boolean</pre>
+<p class="meta"><span class="badge tier-T1" title="granted automatically">T1</span><span class="badge thread" title="calls from elsewhere are refused">LVGL thread</span></p>
+<p>A second, grey line under a ui.item's caption. "" hides it.</p>
+<table><thead><tr><th>parameter</th><th>type</th></tr></thead><tbody>
+<tr><td><code>id</code></td><td><code>number</code></td></tr>
+<tr><td><code>text</code></td><td><code>string</code></td></tr>
+</tbody></table>
+<p class="c"><span>C</span> <code>bool skai_ui_set_detail(int32_t id, const char *text);</code></p>
 </article>
 <article id="ui.set_font">
 <h3>set_font</h3>
@@ -523,6 +668,17 @@ not a sentinel number to memorise.</p>
 </tbody></table>
 <p class="c"><span>C</span> <code>bool skai_ui_set_font(int32_t id, int32_t rel_size);</code></p>
 </article>
+<article id="ui.set_gap">
+<h3>set_gap</h3>
+<pre class="sig">skai.ui.set_gap(id: number, px: number): boolean</pre>
+<p class="meta"><span class="badge tier-T1" title="granted automatically">T1</span><span class="badge thread" title="calls from elsewhere are refused">LVGL thread</span></p>
+<p>Space between the children of a box/row/list, 0..64 px.</p>
+<table><thead><tr><th>parameter</th><th>type</th></tr></thead><tbody>
+<tr><td><code>id</code></td><td><code>number</code></td></tr>
+<tr><td><code>px</code></td><td><code>number</code></td></tr>
+</tbody></table>
+<p class="c"><span>C</span> <code>bool skai_ui_set_gap(int32_t id, int32_t px);</code></p>
+</article>
 <article id="ui.set_icon">
 <h3>set_icon</h3>
 <pre class="sig">skai.ui.set_icon(id: number, name: string): boolean</pre>
@@ -533,6 +689,40 @@ not a sentinel number to memorise.</p>
 <tr><td><code>name</code></td><td><code>string</code></td></tr>
 </tbody></table>
 <p class="c"><span>C</span> <code>bool skai_ui_set_icon(int32_t id, const char *name);</code></p>
+</article>
+<article id="ui.set_pad">
+<h3>set_pad</h3>
+<pre class="sig">skai.ui.set_pad(id: number, px: number): boolean</pre>
+<p class="meta"><span class="badge tier-T1" title="granted automatically">T1</span><span class="badge thread" title="calls from elsewhere are refused">LVGL thread</span></p>
+<p>Inner padding on all sides, 0..64 px.</p>
+<table><thead><tr><th>parameter</th><th>type</th></tr></thead><tbody>
+<tr><td><code>id</code></td><td><code>number</code></td></tr>
+<tr><td><code>px</code></td><td><code>number</code></td></tr>
+</tbody></table>
+<p class="c"><span>C</span> <code>bool skai_ui_set_pad(int32_t id, int32_t px);</code></p>
+</article>
+<article id="ui.set_radius">
+<h3>set_radius</h3>
+<pre class="sig">skai.ui.set_radius(id: number, px: number): boolean</pre>
+<p class="meta"><span class="badge tier-T1" title="granted automatically">T1</span><span class="badge thread" title="calls from elsewhere are refused">LVGL thread</span></p>
+<p>Corner radius in px, 0..240 (240 = fully round / capsule).</p>
+<table><thead><tr><th>parameter</th><th>type</th></tr></thead><tbody>
+<tr><td><code>id</code></td><td><code>number</code></td></tr>
+<tr><td><code>px</code></td><td><code>number</code></td></tr>
+</tbody></table>
+<p class="c"><span>C</span> <code>bool skai_ui_set_radius(int32_t id, int32_t px);</code></p>
+</article>
+<article id="ui.set_range">
+<h3>set_range</h3>
+<pre class="sig">skai.ui.set_range(id: number, min: number, max: number): boolean</pre>
+<p class="meta"><span class="badge tier-T1" title="granted automatically">T1</span><span class="badge thread" title="calls from elsewhere are refused">LVGL thread</span></p>
+<p>Change the range of a slider, bar or arc.</p>
+<table><thead><tr><th>parameter</th><th>type</th></tr></thead><tbody>
+<tr><td><code>id</code></td><td><code>number</code></td></tr>
+<tr><td><code>min</code></td><td><code>number</code></td></tr>
+<tr><td><code>max</code></td><td><code>number</code></td></tr>
+</tbody></table>
+<p class="c"><span>C</span> <code>bool skai_ui_set_range(int32_t id, int32_t min, int32_t max);</code></p>
 </article>
 <article id="ui.set_size">
 <h3>set_size</h3>
@@ -549,11 +739,71 @@ not a sentinel number to memorise.</p>
 <h3>set_text</h3>
 <pre class="sig">skai.ui.set_text(id: number, text: string): boolean</pre>
 <p class="meta"><span class="badge tier-T1" title="granted automatically">T1</span><span class="badge thread" title="calls from elsewhere are refused">LVGL thread</span></p>
+<p>Change the text of a label, a list row (ui.item), a button or a checkbox.</p>
 <table><thead><tr><th>parameter</th><th>type</th></tr></thead><tbody>
 <tr><td><code>id</code></td><td><code>number</code></td></tr>
 <tr><td><code>text</code></td><td><code>string</code></td></tr>
 </tbody></table>
 <p class="c"><span>C</span> <code>bool skai_ui_set_text(int32_t id, const char *text);</code></p>
+</article>
+<article id="ui.set_value">
+<h3>set_value</h3>
+<pre class="sig">skai.ui.set_value(id: number, value: number): boolean</pre>
+<p class="meta"><span class="badge tier-T1" title="granted automatically">T1</span><span class="badge thread" title="calls from elsewhere are refused">LVGL thread</span></p>
+<p>Set a slider/bar/arc's number, or tick (1) / untick (0) a checkbox or switch. Does not fire the widget's on_click handler.</p>
+<table><thead><tr><th>parameter</th><th>type</th></tr></thead><tbody>
+<tr><td><code>id</code></td><td><code>number</code></td></tr>
+<tr><td><code>value</code></td><td><code>number</code></td></tr>
+</tbody></table>
+<p class="c"><span>C</span> <code>bool skai_ui_set_value(int32_t id, int32_t value);</code></p>
+</article>
+<article id="ui.set_visible">
+<h3>set_visible</h3>
+<pre class="sig">skai.ui.set_visible(id: number, visible: number): boolean</pre>
+<p class="meta"><span class="badge tier-T1" title="granted automatically">T1</span><span class="badge thread" title="calls from elsewhere are refused">LVGL thread</span></p>
+<p>Show (1) or hide (0) a widget. A hidden widget takes no space in a list or row.</p>
+<table><thead><tr><th>parameter</th><th>type</th></tr></thead><tbody>
+<tr><td><code>id</code></td><td><code>number</code></td></tr>
+<tr><td><code>visible</code></td><td><code>number</code></td></tr>
+</tbody></table>
+<p class="c"><span>C</span> <code>bool skai_ui_set_visible(int32_t id, int32_t visible);</code></p>
+</article>
+<article id="ui.slider">
+<h3>slider</h3>
+<pre class="sig">skai.ui.slider(value: number): number | null</pre>
+<p class="meta"><span class="badge tier-T1" title="granted automatically">T1</span><span class="badge thread" title="calls from elsewhere are refused">LVGL thread</span></p>
+<p>A draggable slider, 0..100 unless ui.set_range says otherwise. skai.ui.on_click on it receives the new value as text while it is dragged.</p>
+<table><thead><tr><th>parameter</th><th>type</th></tr></thead><tbody>
+<tr><td><code>value</code></td><td><code>number</code></td></tr>
+</tbody></table>
+<p class="c"><span>C</span> <code>int32_t skai_ui_slider(int32_t value);</code></p>
+</article>
+<article id="ui.switch">
+<h3>switch</h3>
+<pre class="sig">skai.ui.switch(): number | null</pre>
+<p class="meta"><span class="badge tier-T1" title="granted automatically">T1</span><span class="badge thread" title="calls from elsewhere are refused">LVGL thread</span></p>
+<p>An on/off switch. Same events and value as ui.checkbox.</p>
+<p class="c"><span>C</span> <code>int32_t skai_ui_switch(void);</code></p>
+</article>
+<article id="ui.title">
+<h3>title</h3>
+<pre class="sig">skai.ui.title(text: string): number | null</pre>
+<p class="meta"><span class="badge tier-T1" title="granted automatically">T1</span><span class="badge thread" title="calls from elsewhere are refused">LVGL thread</span></p>
+<p>The page heading: large, centred, one line. Use once, at the top.</p>
+<table><thead><tr><th>parameter</th><th>type</th></tr></thead><tbody>
+<tr><td><code>text</code></td><td><code>string</code></td></tr>
+</tbody></table>
+<p class="c"><span>C</span> <code>int32_t skai_ui_title(const char *text);</code></p>
+</article>
+<article id="ui.value">
+<h3>value</h3>
+<pre class="sig">skai.ui.value(id: number): number | null</pre>
+<p class="meta"><span class="badge tier-T1" title="granted automatically">T1</span><span class="badge thread" title="calls from elsewhere are refused">LVGL thread</span></p>
+<p>Current value: a slider/bar/arc's number, 1/0 for a checkbox or switch.</p>
+<table><thead><tr><th>parameter</th><th>type</th></tr></thead><tbody>
+<tr><td><code>id</code></td><td><code>number</code></td></tr>
+</tbody></table>
+<p class="c"><span>C</span> <code>int32_t skai_ui_value(int32_t id);</code></p>
 </article>
 </section>
 <section id="watchinfo">

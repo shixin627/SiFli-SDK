@@ -2,6 +2,7 @@
 #ifndef SKAI_ALL_H
 #define SKAI_ALL_H
 
+#include "skai/skai_alarm.h"
 #include "skai/skai_app.h"
 #include "skai/skai_battery.h"
 #include "skai/skai_display.h"

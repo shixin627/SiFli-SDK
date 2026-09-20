@@ -23,6 +23,9 @@
 #include "skaiapp_pkg.h"
 #include "skaiapp_store.h"
 #include "skaiapp_render.h"
+#ifdef PKG_USING_QUICKJS
+#include "skai/skai_pkg.h"
+#endif
 
 #define DBG_TAG "app.skaiapp"
 #define DBG_LVL DBG_LOG
@@ -36,6 +39,7 @@ typedef struct
     lv_obj_t *launcher;  /* list view */
     lv_obj_t *page;      /* rendered mini-app view */
     lv_obj_t *back_btn;  /* overlay ‹ on the page view */
+    lv_obj_t *confirm;   /* "remove this app?" sheet over the launcher */
     skaiapp_model_t *model;
     skaiapp_render_ctx_t ctx;
     char open_id[SKAIAPP_ID_MAX];
@@ -51,6 +55,188 @@ static void open_app(const char *id);
 static void close_page(void);
 
 /* ── launcher ── */
+
+#ifdef PKG_USING_QUICKJS
+/* JS apps (signed packages, ADR-0019 Phase 3) sit in the same list as the
+   declarative ones: to the person wearing the watch both are "an app the AI
+   made", and one list is where they look. The row index is looked up again on
+   tap because the package scan order is the filesystem's, not ours. */
+static void js_row_click_cb(lv_event_t *e)
+{
+    static skai_pkg_info_t info;   /* ~1.4 KB: keep it off the GUI stack */
+    int idx = (int)(uintptr_t)lv_event_get_user_data(e);
+
+    if (skai_pkg_at(idx, &info) && info.is_js)
+    {
+        skai_pkg_result_t r = skai_pkg_launch(info.keyid, info.app_id);
+        if (r != SKAI_PKG_OK)
+        {
+            LOG_W("launch %s/%s: %s", info.keyid, info.app_id, skai_pkg_result_name(r));
+        }
+    }
+}
+#endif
+
+/* ── remove an app from the watch itself ──
+ *
+ * Until now an app the AI made could only be taken off from the phone, by
+ * asking the Bot; on the wrist there was no way at all, and the watch holds
+ * 16 (founder 2026-09-20: 「手錶上加上長按可以出現刪除 ai 新增的 app 的選項」).
+ * Long press a row, confirm, and it is gone. A long press cannot be a slip,
+ * and the sheet asks before anything is deleted. */
+
+typedef struct
+{
+    bool is_js;
+    int  idx;
+    char name[SKAIAPP_NAME_MAX];
+} remove_target_t;
+
+static remove_target_t s_target;
+
+static void close_confirm(void)
+{
+    if (ui.confirm != NULL)
+    {
+        lv_obj_del(ui.confirm);
+        ui.confirm = NULL;
+    }
+}
+
+static void confirm_cancel_cb(lv_event_t *e)
+{
+    (void)e;
+    close_confirm();
+}
+
+static void confirm_remove_cb(lv_event_t *e)
+{
+    (void)e;
+    close_confirm();
+    if (s_target.is_js)
+    {
+#ifdef PKG_USING_QUICKJS
+        static skai_pkg_info_t info;
+        if (skai_pkg_at(s_target.idx, &info) && info.is_js)
+        {
+            skai_pkg_result_t r = skai_pkg_remove(info.keyid, info.app_id);
+            LOG_I("remove %s/%s: %s", info.keyid, info.app_id,
+                  skai_pkg_result_name(r));
+        }
+#endif
+    }
+    else
+    {
+        char id[SKAIAPP_ID_MAX];
+        if (skaiapp_store_meta(s_target.idx, id, NULL, NULL))
+        {
+            skaiapp_store_remove(id);
+        }
+    }
+    build_launcher();
+}
+
+static lv_obj_t *sheet_button(lv_obj_t *parent, const char *text,
+                              uint32_t bg, uint32_t fg, lv_event_cb_t cb)
+{
+    lv_obj_t *b = lv_btn_create(parent);
+    lv_obj_set_size(b, 130, 56);
+    lv_obj_set_style_radius(b, 28, 0);
+    lv_obj_set_style_bg_color(b, lv_color_hex(bg), 0);
+    lv_obj_set_style_shadow_width(b, 0, 0);
+    lv_obj_add_event_cb(b, cb, LV_EVENT_CLICKED, NULL);
+    lv_obj_t *l = lv_label_create(b);
+    lv_obj_set_style_text_font(l, LV_EXT_FONT_GET(get_system_font_size(0)), 0);
+    lv_obj_set_style_text_color(l, lv_color_hex(fg), 0);
+    lv_label_set_text(l, text);
+    lv_obj_center(l);
+    return b;
+}
+
+static void ask_remove(bool is_js, int idx, const char *name)
+{
+    close_confirm();
+    s_target.is_js = is_js;
+    s_target.idx = idx;
+    rt_strncpy(s_target.name, name ? name : "", sizeof(s_target.name) - 1);
+    s_target.name[sizeof(s_target.name) - 1] = '\0';
+
+    /* Dim the launcher so the question owns the screen. */
+    ui.confirm = lv_obj_create(ui.root);
+    lv_obj_remove_style_all(ui.confirm);
+    lv_obj_set_size(ui.confirm, LV_PCT(100), LV_PCT(100));
+    lv_obj_set_style_bg_color(ui.confirm, lv_color_black(), 0);
+    lv_obj_set_style_bg_opa(ui.confirm, LV_OPA_80, 0);
+    lv_obj_clear_flag(ui.confirm, LV_OBJ_FLAG_SCROLLABLE);
+
+    lv_obj_t *card = lv_obj_create(ui.confirm);
+    lv_obj_remove_style_all(card);
+    lv_obj_set_size(card, 330, 240);
+    lv_obj_center(card);
+    lv_obj_set_style_radius(card, 24, 0);
+    lv_obj_set_style_bg_color(card, lv_color_hex(0x1C1C1E), 0);
+    lv_obj_set_style_bg_opa(card, LV_OPA_COVER, 0);
+    lv_obj_set_style_pad_all(card, 20, 0);
+    lv_obj_set_flex_flow(card, LV_FLEX_FLOW_COLUMN);
+    lv_obj_set_flex_align(card, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER,
+                          LV_FLEX_ALIGN_CENTER);
+    lv_obj_set_style_pad_row(card, 12, 0);
+    lv_obj_clear_flag(card, LV_OBJ_FLAG_SCROLLABLE);
+
+    lv_obj_t *q = lv_label_create(card);
+    lv_obj_set_style_text_font(q, LV_EXT_FONT_GET(get_system_font_size(0)), 0);
+    lv_obj_set_style_text_color(q, lv_color_hex(0xFFFFFF), 0);
+    lv_obj_set_style_text_align(q, LV_TEXT_ALIGN_CENTER, 0);
+    lv_label_set_long_mode(q, LV_LABEL_LONG_WRAP);
+    lv_obj_set_width(q, 280);
+    lv_label_set_text(q, s_target.name);
+
+    lv_obj_t *sub = lv_label_create(card);
+    lv_obj_set_style_text_font(sub, LV_EXT_FONT_GET(get_system_font_size(-2)), 0);
+    lv_obj_set_style_text_color(sub, lv_color_hex(0x8E8E93), 0);
+    lv_obj_set_style_text_align(sub, LV_TEXT_ALIGN_CENTER, 0);
+    lv_label_set_long_mode(sub, LV_LABEL_LONG_WRAP);
+    lv_obj_set_width(sub, 280);
+    lv_label_set_text(sub, LV_EXT_STR_GET_BY_KEY(skaiapp_remove_q,
+                      "Remove this app from the watch?"));
+
+    lv_obj_t *row = lv_obj_create(card);
+    lv_obj_remove_style_all(row);
+    lv_obj_set_size(row, 280, 56);
+    lv_obj_set_flex_flow(row, LV_FLEX_FLOW_ROW);
+    lv_obj_set_flex_align(row, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER,
+                          LV_FLEX_ALIGN_CENTER);
+    lv_obj_set_style_pad_column(row, 12, 0);
+    lv_obj_clear_flag(row, LV_OBJ_FLAG_SCROLLABLE);
+
+    sheet_button(row, LV_EXT_STR_GET_BY_KEY(skaiapp_cancel, "Cancel"),
+                 0x2C2C2E, 0xFFFFFF, confirm_cancel_cb);
+    sheet_button(row, LV_EXT_STR_GET_BY_KEY(skaiapp_remove, "Remove"),
+                 0xFF453A, 0xFFFFFF, confirm_remove_cb);
+}
+
+static void row_long_cb(lv_event_t *e)
+{
+    int idx = (int)(uintptr_t)lv_event_get_user_data(e);
+    char id[SKAIAPP_ID_MAX], name[SKAIAPP_NAME_MAX];
+    if (skaiapp_store_meta(idx, id, name, NULL))
+    {
+        ask_remove(false, idx, name);
+    }
+}
+
+#ifdef PKG_USING_QUICKJS
+static void js_row_long_cb(lv_event_t *e)
+{
+    static skai_pkg_info_t info;
+    int idx = (int)(uintptr_t)lv_event_get_user_data(e);
+
+    if (skai_pkg_at(idx, &info) && info.is_js)
+    {
+        ask_remove(true, idx, info.name);
+    }
+}
+#endif
 
 static void row_click_cb(lv_event_t *e)
 {
@@ -89,7 +275,11 @@ static void build_launcher(void)
     lv_label_set_text(title, LV_EXT_STR_GET_BY_KEY(skaiapp, "AI Apps"));
 
     int n = skaiapp_store_count();
-    if (n == 0)
+    int n_js = 0;
+#ifdef PKG_USING_QUICKJS
+    n_js = skai_pkg_count();
+#endif
+    if (n == 0 && n_js == 0)
     {
         lv_obj_t *empty = lv_label_create(ui.launcher);
         lv_obj_set_style_text_font(empty,
@@ -121,7 +311,12 @@ static void build_launcher(void)
                               LV_FLEX_ALIGN_CENTER);
         lv_obj_set_style_pad_hor(row, 20, 0);
         lv_obj_set_style_pad_column(row, 16, 0);
-        lv_obj_add_event_cb(row, row_click_cb, LV_EVENT_CLICKED,
+        /* SHORT_CLICKED, not CLICKED: LVGL sends CLICKED on release even when the
+           press was long, so opening on CLICKED would open the app the moment the
+           person lifted their finger off the remove sheet (2026-09-20). */
+        lv_obj_add_event_cb(row, row_click_cb, LV_EVENT_SHORT_CLICKED,
+                            (void *)(uintptr_t)i);
+        lv_obj_add_event_cb(row, row_long_cb, LV_EVENT_LONG_PRESSED,
                             (void *)(uintptr_t)i);
 
         lv_obj_t *img = lv_img_create(row);
@@ -134,6 +329,40 @@ static void build_launcher(void)
         lv_obj_set_width(lbl, 220);
         lv_label_set_text(lbl, name);
     }
+#ifdef PKG_USING_QUICKJS
+    for (int i = 0; i < n_js; i++)
+    {
+        static skai_pkg_info_t info;
+        if (!skai_pkg_at(i, &info) || !info.is_js)
+        {
+            continue;
+        }
+        lv_obj_t *row = lv_btn_create(ui.launcher);
+        lv_obj_set_size(row, 340, 72);
+        lv_obj_set_style_radius(row, 20, 0);
+        lv_obj_set_style_bg_color(row, lv_color_hex(0x1C1C1E), 0);
+        lv_obj_set_style_shadow_width(row, 0, 0);
+        lv_obj_set_flex_flow(row, LV_FLEX_FLOW_ROW);
+        lv_obj_set_flex_align(row, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_CENTER,
+                              LV_FLEX_ALIGN_CENTER);
+        lv_obj_set_style_pad_hor(row, 20, 0);
+        lv_obj_set_style_pad_column(row, 16, 0);
+        lv_obj_add_event_cb(row, js_row_click_cb, LV_EVENT_SHORT_CLICKED,
+                            (void *)(uintptr_t)i);
+        lv_obj_add_event_cb(row, js_row_long_cb, LV_EVENT_LONG_PRESSED,
+                            (void *)(uintptr_t)i);
+
+        lv_obj_t *img = lv_img_create(row);
+        lv_img_set_src(img, IMG_LOGO);
+
+        lv_obj_t *lbl = lv_label_create(row);
+        lv_obj_set_style_text_font(lbl, LV_EXT_FONT_GET(get_system_font_size(0)), 0);
+        lv_obj_set_style_text_color(lbl, lv_color_hex(0xFFFFFF), 0);
+        lv_label_set_long_mode(lbl, LV_LABEL_LONG_DOT);
+        lv_obj_set_width(lbl, 220);
+        lv_label_set_text(lbl, info.name);
+    }
+#endif
 }
 
 /* ── page ── */
@@ -343,6 +572,7 @@ static void on_stop(void)
     ui.launcher = NULL;
     ui.page = NULL;
     ui.back_btn = NULL;
+    ui.confirm = NULL;   /* deleting the root took the sheet with it */
     ui.open_id[0] = '\0';
 }
 

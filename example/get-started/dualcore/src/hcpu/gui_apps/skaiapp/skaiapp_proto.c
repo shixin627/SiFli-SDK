@@ -12,6 +12,17 @@
  *   0x13 skaiappPush   {"id","seq","n","crc"(seq0),"chunk"(base64 ≤3KB raw)}
  *   0x14 skaiappRemove {"id"}
  *   0x15 skaiappAck    {"id","code"} ← commu_send_skaiapp_ack()
+ *
+ * The same push also carries SIGNED JS apps (ADR-0019 Phase 3). The reassembled
+ * bytes are then not JSON but a small binary envelope, told apart by its magic:
+ *
+ *   "SKJS" | flags u8 | 0 u8 | 0 u16 | manifest_len u32 LE | manifest | payload
+ *
+ * flags bit0 = open the app once it is installed. The manifest and payload go
+ * to skai_pkg_install() untouched — the signature covers those exact bytes —
+ * and the outcome is reported on 0x29 skaiappRun ("install", result name) as
+ * well as the plain 0x15 ack, because "code 2" is not something the AI that
+ * wrote the app can act on and "signature" or "limit" is.
  */
 #include <string.h>
 #include <stdlib.h>
@@ -20,13 +31,28 @@
 #include "skaiapp_pkg.h"
 #include "skaiapp_store.h"
 #include "communicate_task.h"
+#include "mem_section.h"
+#ifdef PKG_USING_QUICKJS
+#include "skai/skai_pkg.h"
+#include "gui_app_fwk.h"
+#include "ui_handler.h"
+#endif
 
 #define DBG_TAG "skaiapp.proto"
 #define DBG_LVL DBG_LOG
 #include <rtdbg.h>
 
 #define CHUNK_RAW_MAX 3072
-#define REASM_CAP     (SKAIAPP_PKG_MAX_BYTES + 64)
+/* A declarative package is <= 8 KB, but a JS app (source + manifest) is up to
+   ~50 KB, so the reassembly buffer is sized for the larger and lives in PSRAM:
+   it used to be an 8 KB rt_malloc from HCPU SRAM for the length of a transfer,
+   and 60 KB there is not on offer. One transfer at a time, same as before. */
+#define CHUNKS_MAX    20
+#define REASM_CAP     (CHUNKS_MAX * CHUNK_RAW_MAX)
+
+L2_RET_BSS_SECT_BEGIN(skaiapp_reasm)
+static uint8_t s_reasm_buf[REASM_CAP] L2_RET_BSS_SECT(skaiapp_reasm);
+L2_RET_BSS_SECT_END
 
 static struct
 {
@@ -41,12 +67,140 @@ static struct
 
 static void session_reset(void)
 {
-    if (s_re.buf != NULL)
-    {
-        rt_free(s_re.buf);
-    }
     memset(&s_re, 0, sizeof(s_re));
 }
+
+#ifdef PKG_USING_QUICKJS
+#define SKJS_HDR 12
+
+/* Map a package result onto the v0 ack codes the phone already understands. */
+static int pkg_ack_code(skai_pkg_result_t r)
+{
+    switch (r)
+    {
+    case SKAI_PKG_OK:          return SKAIAPP_ACK_OK;
+    case SKAI_PKG_ERR_VERSION: return SKAIAPP_ACK_UNSUPPORTED;
+    case SKAI_PKG_ERR_STORAGE: return SKAIAPP_ACK_STORAGE;
+    case SKAI_PKG_ERR_LIMIT:   return SKAIAPP_ACK_LIMIT;
+    case SKAI_PKG_ERR_DIGEST:  return SKAIAPP_ACK_CRC;
+    default:                   return SKAIAPP_ACK_PARSE;
+    }
+}
+
+/* A reassembled "SKJS" envelope: install the signed package, report, and open
+   it if asked. Runs on the BLE parse thread; launching only posts to the GUI
+   thread (gui_app_run), so nothing here touches LVGL. */
+static int install_js(const char *wire_id, const uint8_t *buf, uint32_t len)
+{
+    static skai_pkg_info_t info;   /* ~1.4 KB: not on the BLE thread's stack */
+    uint32_t mlen;
+    uint8_t flags;
+    skai_pkg_result_t r;
+
+    if (len < SKJS_HDR)
+        return SKAIAPP_ACK_PARSE;
+    flags = buf[4];
+    mlen = (uint32_t)buf[8] | ((uint32_t)buf[9] << 8) | ((uint32_t)buf[10] << 16) |
+           ((uint32_t)buf[11] << 24);
+    if (mlen == 0 || mlen > len - SKJS_HDR)
+    {
+        commu_send_skaiapp_run(wire_id, "install", "parse", "bad envelope");
+        return SKAIAPP_ACK_PARSE;
+    }
+
+    r = skai_pkg_install((const char *)buf + SKJS_HDR, mlen,
+                         buf + SKJS_HDR + mlen, len - SKJS_HDR - mlen, &info);
+    commu_send_skaiapp_run(wire_id, "install", skai_pkg_result_name(r), NULL);
+    if (r != SKAI_PKG_OK)
+    {
+        LOG_W("js install %s: %s", wire_id, skai_pkg_result_name(r));
+        return pkg_ack_code(r);
+    }
+    if (strcmp(info.app_id, wire_id) != 0)
+    {
+        /* Installed under the manifest's id, which is what the launcher and
+           every later report use; say so rather than let the phone wait on the
+           wire id forever. */
+        LOG_W("js install: wire id %s, manifest id %s", wire_id, info.app_id);
+    }
+
+    if (flags & 0x01)
+    {
+        /* An older build of this app may be on screen: close it first so the
+           run below starts the new code instead of resuming the old. Both are
+           queued to the GUI task in this order. */
+        gui_app_exit(APP_ID_SKAIJS);
+        r = skai_pkg_launch(info.keyid, info.app_id);
+        if (r != SKAI_PKG_OK)
+            commu_send_skaiapp_run(info.app_id, "start", skai_pkg_result_name(r), NULL);
+    }
+    return SKAIAPP_ACK_OK;
+}
+
+/* A signed install must NOT run on the BLE parse thread. It verifies an ECDSA
+   signature, writes the package to NAND and — the first time after a boot —
+   opens the blocklist KVDB, whose fdb_kvdb_init scans the prefdb region for
+   seconds. With the BLE host thread blocked that long the LCPU gives up
+   ("LCPU Crash triggered") and the watch resets: that is exactly what the first
+   push from the phone after every reboot did on the bench watch. So the
+   reassembled envelope is handed to a short-lived worker and the parse thread
+   returns at once; the worker sends the ack. The reassembly buffer stays owned
+   by the worker until it finishes — a new push meanwhile is refused as busy. */
+static volatile bool s_js_busy;
+static char          s_js_wire_id[SKAIAPP_ID_MAX];
+static uint32_t      s_js_len;
+
+static void js_install_worker(void *arg)
+{
+    (void)arg;
+    int ack = install_js(s_js_wire_id, s_reasm_buf, s_js_len);
+    commu_send_skaiapp_ack(s_js_wire_id, ack);
+    s_js_busy = false;
+}
+
+/* The two KVDB stores a JS app touches — the publisher blocklist (every
+   install/launch) and skai.persist (the app's own saved values) — each cost a
+   multi-second flash scan the FIRST time after a boot. Pay that once, early, on
+   a low-priority thread, rather than inside an install or on the GUI thread the
+   first time an app saves something. */
+static void js_prefs_warm(void *arg)
+{
+    (void)arg;
+    rt_thread_mdelay(20000);   /* after boot's own flash traffic */
+    (void)skai_pkg_blocked("AAAAAAAAAAA");
+    extern int32_t skai_persist_get_int(const char *key, int32_t fallback);
+    (void)skai_persist_get_int("warm", 0);
+}
+
+static int js_prefs_warm_init(void)
+{
+    rt_thread_t t = rt_thread_create("skjsw", js_prefs_warm, RT_NULL, 4096, 29, 10);
+    if (t != RT_NULL)
+        rt_thread_startup(t);
+    return 0;
+}
+INIT_APP_EXPORT(js_prefs_warm_init);
+
+/* Returns the ack to send now, or -1 when the worker will send it. */
+static int install_js_async(const char *wire_id, uint32_t len)
+{
+    rt_thread_t t;
+
+    s_js_busy = true;
+    strncpy(s_js_wire_id, wire_id, sizeof(s_js_wire_id) - 1);
+    s_js_wire_id[sizeof(s_js_wire_id) - 1] = '\0';
+    s_js_len = len;
+    t = rt_thread_create("skjs", js_install_worker, RT_NULL, 8192, 22, 10);
+    if (t == RT_NULL)
+    {
+        s_js_busy = false;
+        commu_send_skaiapp_run(wire_id, "install", "storage", "no memory for the installer");
+        return SKAIAPP_ACK_STORAGE;
+    }
+    rt_thread_startup(t);
+    return -1;
+}
+#endif /* PKG_USING_QUICKJS */
 
 static bool wire_id_ok(const char *id)
 {
@@ -96,7 +250,7 @@ void skaiapp_on_push_chunk(const uint8_t *pValue, uint16_t length)
 
     int ack = -1; /* <0 = no ack yet (mid-transfer) */
 
-    if (!wire_id_ok(id) || seq < 0 || n < 1 || n > 8 || chunk == NULL)
+    if (!wire_id_ok(id) || seq < 0 || n < 1 || n > CHUNKS_MAX || chunk == NULL)
     {
         ack = SKAIAPP_ACK_PARSE;
         session_reset();
@@ -105,6 +259,14 @@ void skaiapp_on_push_chunk(const uint8_t *pValue, uint16_t length)
 
     if (seq == 0)
     {
+#ifdef PKG_USING_QUICKJS
+        if (s_js_busy)
+        {
+            /* The previous JS install still owns the reassembly buffer. */
+            ack = SKAIAPP_ACK_STORAGE;
+            goto out;
+        }
+#endif
         session_reset();
         const cJSON *jcrc = cJSON_GetObjectItem(root, "crc");
         if (jcrc == NULL || !cJSON_IsNumber(jcrc))
@@ -112,12 +274,7 @@ void skaiapp_on_push_chunk(const uint8_t *pValue, uint16_t length)
             ack = SKAIAPP_ACK_PARSE;
             goto out;
         }
-        s_re.buf = rt_malloc(REASM_CAP);
-        if (s_re.buf == NULL)
-        {
-            ack = SKAIAPP_ACK_STORAGE;
-            goto out;
-        }
+        s_re.buf = s_reasm_buf;
         s_re.active = true;
         strncpy(s_re.id, id, sizeof(s_re.id) - 1);
         /* JSON numbers are doubles — u32 crc survives exactly (≤2^53) */
@@ -155,6 +312,16 @@ void skaiapp_on_push_chunk(const uint8_t *pValue, uint16_t length)
             LOG_W("push: crc mismatch (%u bytes)", s_re.used);
             ack = SKAIAPP_ACK_CRC;
         }
+#ifdef PKG_USING_QUICKJS
+        else if (s_re.used >= 4 && memcmp(s_re.buf, "SKJS", 4) == 0)
+        {
+            ack = install_js_async(id, s_re.used);
+        }
+#endif
+        else if (s_re.used > SKAIAPP_PKG_MAX_BYTES)
+        {
+            ack = SKAIAPP_ACK_LIMIT; /* declarative packages keep their 8 KB cap */
+        }
         else
         {
             ack = skaiapp_store_install(s_re.buf, s_re.used, NULL);
@@ -182,10 +349,18 @@ void skaiapp_on_remove(const uint8_t *pValue, uint16_t length)
         return;
     }
     char id[SKAIAPP_ID_MAX] = "";
+    char keyid[16] = "";
     const cJSON *jid = cJSON_GetObjectItem(root, "id");
     if (jid != NULL && cJSON_IsString(jid) && jid->valuestring != NULL)
     {
         strncpy(id, jid->valuestring, sizeof(id) - 1);
+    }
+    /* "k" = publisher keyid: present only for a signed JS app, whose storage
+       key is (keyid, id). */
+    const cJSON *jk = cJSON_GetObjectItem(root, "k");
+    if (jk != NULL && cJSON_IsString(jk) && jk->valuestring != NULL)
+    {
+        strncpy(keyid, jk->valuestring, sizeof(keyid) - 1);
     }
     cJSON_Delete(root);
 
@@ -193,6 +368,14 @@ void skaiapp_on_remove(const uint8_t *pValue, uint16_t length)
     {
         return;
     }
+#ifdef PKG_USING_QUICKJS
+    if (keyid[0] != '\0')
+    {
+        skai_pkg_result_t r = skai_pkg_remove(keyid, id);
+        commu_send_skaiapp_ack(id, r == SKAI_PKG_OK ? SKAIAPP_ACK_OK : SKAIAPP_ACK_PARSE);
+        return;
+    }
+#endif
     int code = skaiapp_store_remove(id);
     commu_send_skaiapp_ack(id, code);
 }
@@ -263,4 +446,77 @@ static void skaiapp_ls(int argc, char **argv)
     }
 }
 MSH_CMD_EXPORT(skaiapp_ls, list installed skaiapps);
+
+#ifdef PKG_USING_QUICKJS
+/* skaijs_install <file> — feed a phone-built "SKJS" envelope through the exact
+   install path the BLE push takes (verify signature, install, open). This is
+   how a package the PHONE signed is checked against the WATCH's verifier
+   without a radio in between. */
+static void skaijs_install(int argc, char **argv)
+{
+    if (argc < 2)
+    {
+        rt_kprintf("usage: skaijs_install <file.skjs>\n");
+        return;
+    }
+    /* skai_fopen/skai_fread: plain open() binds to the host CRT on the
+       simulator and never sees the simulated filesystem (skai_pkg.h). */
+    int fd = skai_fopen(argv[1], O_RDONLY | O_BINARY);
+    if (fd < 0)
+    {
+        rt_kprintf("open %s failed\n", argv[1]);
+        return;
+    }
+    int n = skai_fread(fd, s_reasm_buf, REASM_CAP);
+    skai_fclose(fd);
+    if (n <= 0)
+    {
+        rt_kprintf("read failed (%d)\n", n);
+        return;
+    }
+    rt_kprintf("skaijs_install: %d bytes -> ack %d (0=ok)\n", n,
+               install_js("file", s_reasm_buf, (uint32_t)n));
+}
+MSH_CMD_EXPORT(skaijs_install, install and open a signed JS app envelope from a file);
+#endif
+
+/* b64w <path> <w|a> <base64> — write (w) or append (a) base64-decoded bytes to a
+   file. The console line is 80 characters, so a file arrives as many short
+   appends; this is how a test package reaches a bench watch that has no phone
+   paired to it. Dev console only. */
+static void b64w(int argc, char **argv)
+{
+    uint8_t out[64];
+    if (argc < 4 || (argv[2][0] != 'w' && argv[2][0] != 'a'))
+    {
+        rt_kprintf("usage: b64w <path> <w|a> <base64>\n");
+        return;
+    }
+    int n = skaiapp_b64_decode(argv[3], out, sizeof(out));
+    if (n < 0)
+    {
+        rt_kprintf("b64w: bad base64\n");
+        return;
+    }
+    int flags = O_WRONLY | O_CREAT | O_BINARY | (argv[2][0] == 'a' ? O_APPEND : O_TRUNC);
+#ifdef PKG_USING_QUICKJS
+    int fd = skai_fopen(argv[1], flags);
+#else
+    int fd = open(argv[1], flags);
+#endif
+    if (fd < 0)
+    {
+        rt_kprintf("b64w: open %s failed\n", argv[1]);
+        return;
+    }
+#ifdef PKG_USING_QUICKJS
+    int w = skai_fwrite(fd, out, n);
+    skai_fclose(fd);
+#else
+    int w = write(fd, out, n);
+    close(fd);
+#endif
+    rt_kprintf("b64w %d\n", w);
+}
+MSH_CMD_EXPORT(b64w, append base64 bytes to a file (dev upload));
 #endif /* FINSH_USING_MSH */

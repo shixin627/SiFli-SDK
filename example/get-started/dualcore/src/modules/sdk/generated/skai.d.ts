@@ -5,108 +5,214 @@ declare namespace skai {
   /** False when the firmware lacks this capability, or the manifest did not declare it. */
   function available(capability: string): boolean;
 
+  namespace alarm {
+    /** Stop an alarm before it fires (or forget one that already fired). */
+    function cancel(id: number): boolean;
+    /** Seconds until the alarm fires; 0 once it has fired; null for an unknown id. Read it from a setInterval to draw a countdown — the number stays right across sleep because it comes from the clock, not from counting ticks. */
+    function remaining(id: number): number;
+    /** Fire in `seconds` (1..86400): the watch wakes, vibrates and shows `text` as a notification, even if this app is closed or the screen is off. Returns an alarm id (>0) to cancel or query it, or 0 when all slots are in use. An app can only see and cancel its own alarms. When it fires, a running app's skai.on_change("alarm.remaining", fn) handler runs. */
+    function set(text: string, seconds: number): number;
+  }
+
   namespace app {
+    /** Close this app and go back. T1 with no argument on purpose: an app can only ever close ITSELF, which is strictly less power than staying open, and there is no id to pass that could name someone else's app. Tap-to-dismiss is how several of the built-in screens end, so without this a reproduction can draw the screen and then trap the user on it. */
     function exit(): boolean;
   }
 
   namespace battery {
     function charging(): boolean;
+    /** State of charge, 0..100. SKAI_NO_DATA before the first reading lands. The "%d%%" is the declarative renderer's display format — it lives in the dispatch table so units travel with the capability instead of in a second table the renderer would have to keep in sync. */
     function level(): number;
   }
 
   namespace display {
+    /** Raise the screen to `percent` (3..100) for as long as this app is in front. T2: the screen is shared, and a bright panel is the single biggest battery cost a foreground app can impose. Out-of-range values are refused rather than clamped — a clamp would hide a unit mix-up (0..255 is the other plausible scale) until someone saw the watch. Returns false if refused. */
     function set_brightness(percent: number): boolean;
+    /** Hold the screen awake for as long as this app is in front. The idle timer would otherwise dim and blank the panel mid-use, which is the difference between a torch and a torch that turns itself off. Released by the firmware on pause or stop, exactly like the brightness — an app cannot leave the screen pinned on by crashing or by forgetting. */
     function set_power_save(enabled: number): boolean;
   }
 
   namespace haptic {
     function stop(): boolean;
+    /** Play a built-in pattern by id. Returns false if the id is unknown or the motor is busy; never queues, so a spamming app cannot build a backlog. */
     function vibrate(pattern_id: number): boolean;
   }
 
   namespace health {
     function calories(): number;
     function distance_m(): number;
+    /** Last measured heart rate in bpm. SKAI_NO_DATA when there is no reading — this is a cached value, not a trigger: reading it never starts the PPG. */
     function heart_rate(): number;
+    /** Daily step goal the user set, so apps render progress against the same number the watch does instead of inventing one. */
     function step_goal(): number;
+    /** Steps today. SKAI_NO_DATA until the first reading arrives after a boot. */
     function steps(): number;
+    /** Wear detection. Useful for an app to know its readings are meaningless. */
     function worn(): boolean;
   }
 
   namespace log {
+    /** Unknown levels are logged at INFO rather than dropped — losing a message because a caller passed 7 is worse than logging it at the wrong level. */
     function write(level: number, msg: string): void;
   }
 
   namespace persist {
+    /** SKAI_THREAD_APP, not ANY: these block on flash. Calling them from the LVGL thread stalls rendering, and a janky watch face is the kind of bug that gets blamed on the firmware rather than the app that caused it. */
     function get_int(key: string, fallback: number): number;
+    /** Returns bytes written excluding NUL, or negative if the key is absent or the store is unavailable. Always NUL-terminates when cap > 0. */
     function get_str(key: string): string;
+    /** True if the key is gone afterwards, including when it was never there. */
     function remove(key: string): boolean;
     function set_int(key: string, value: number): boolean;
     function set_str(key: string, value: string): boolean;
   }
 
   namespace time {
+    /** Current date as MM/DD. */
     function date_md(): string;
+    /** strftime-subset format into `out`. Returns bytes written excluding NUL, or negative on failure. Always NUL-terminates when cap > 0. */
     function format(fmt: string): string;
+    /** Current time the way the user chose to see it — honours the 12/24-hour setting. Exists as its own capability because declarative binds cannot pass a format string, and "the clock" is the single most common bind there is. */
     function hhmm(): string;
+    /** Seconds since the Unix epoch, local time already applied. SKAI_NO_DATA when the RTC is not yet valid after a cold boot. */
     function now(): number;
   }
 
   namespace timer {
+    /** Milliseconds since boot. Wraps after ~49 days; compare differences, never absolute values. Distinct from skai_time_now(), which is wall time and can jump when the phone syncs the clock. */
     function uptime_ms(): number;
   }
 
   namespace ui {
+    /** Place a widget explicitly, escaping the default column flow. `anchor` is one of: center, top, bottom, left, right, top_left, top_right, bottom_left, bottom_right. `dx`/`dy` offset from it in pixels. One primitive instead of a layout API: every built-in app positions with lv_obj_align, so this covers what they do without exposing a style system to untrusted code. */
     function align(id: number, anchor: string, dx: number, dy: number): boolean;
+    /** Place a widget relative to ANOTHER widget, which is how every built-in screen is actually laid out. `side` is one of: below, above, left, right, center — each meaning "outside that edge of `ref`, centred on the other axis" — plus below_left, which is "under it, left edges flush" and is what a rule drawn beneath a short label needs. Six of lv_obj_align_to's twelve OUT_* anchors, chosen because they are the ones the built-in screens actually use. `dx`/`dy` offset from there. Why this earns its place next to ui.align: without it a reproduction has to precompute every y from font metrics and icon heights, so the layout is correct for exactly one font size and one icon set and silently drifts the moment either changes. It still takes two opaque slot ids and one name from the closed set above — no LVGL object, no style, no coordinate system. */
     function align_to(id: number, ref_id: number, side: string, dx: number, dy: number): boolean;
+    /** Create a progress arc, 0..100. Returns a widget id (>0), or 0 on failure. */
     function arc(percent: number): number;
+    /** Linear progress bar, 0..100. */
     function bar(percent: number): number;
+    /** A card you lay out yourself: a vertical group (like ui.row, closed by ui.end) already wearing the content-card look - surface fill, hairline, radius 24, padding 16. Size, colours, radius and padding are all yours to change with the set_* calls below; tappable with ui.on_click. */
+    function box(): number;
+    /** Create a button carrying `text`. Wire it up with skai.ui.on_click(id, fn). */
     function button(text: string): number;
+    /** A tick box with a caption. Tapping it toggles it; skai.ui.on_click on it receives "1" (now ticked) or "0". Read it back with ui.value. */
+    function checkbox(text: string): number;
+    /** Delete every widget this app created. */
     function clear(): boolean;
+    /** A horizontal rule. */
     function divider(width: number): number;
+    /** Close the innermost open row. */
     function end(): boolean;
+    /** Show a page. Animated, like a swipe. */
     function goto_page(index: number): boolean;
+    /** A firmware-owned icon, addressed by name from a closed set — the system's glyphs, where ui.image is the app's own assets. The app supplies a string and never pixels, a path or a decoder, so this grants strictly less than ui.image does. A name that is not in the set draws nothing and returns 0, which is also what makes it safe to ship an app that asks for an icon a older firmware does not have yet. */
     function icon(name: string): number;
+    /** App-supplied image, by path RELATIVE to the app's own directory. Decode cost lands on the JS memory quota, so an app that loads something enormous starves itself rather than the watch. */
     function image(rel_path: string): number;
+    /** A full-width tappable row, the natural child of ui.list(). skai.ui.on_click on it receives the row's text. Drawn as the phone app's content card. */
+    function item(text: string): number;
+    /** Keys separated by spaces and ROWS BY \n, never by / or | — a number pad is ui.keypad("7 8 9\n4 5 6\n1 2 3\n 0 C"). A grid of keys as ONE widget. One widget rather than one per key, because that is what the underlying button matrix is: bounded by construction, no per-key slot to exhaust, and a hostile app cannot fabricate a key id. The click handler receives the key's text. */
     function keypad(map: string): number;
+    /** Recolour some keys of a keypad — comma-separated indices in map order, e.g. "3,7,11,15" for a column of operators, in 0xRRGGBB. The colour is a parameter because a reproduction of an existing screen has to match its palette, not the SDK's default one. */
     function keypad_accent(id: number, indices: string, rgb: number): boolean;
+    /** Create a text line. Returns a widget id (>0), or 0 on failure. */
     function label(text: string): number;
+    /** ── lists and controls ── A list is a group, like ui.row: everything created after ui.list() goes into it until ui.end(). It fills the rest of the page and scrolls vertically, so it is the way to show more rows than fit on the round screen. */
+    function list(): number;
+    /** ── pages ── Start a new full-screen page and make it the target for everything created afterwards. Returns its index (>0; page 0 always exists and is where an app starts), or 0 when the budget is spent. Pages stack vertically and the user swipes between them, which is the shape the built-in screens use. The app declares structure and nothing else: no scroll offset, no gesture, no momentum, no snap. */
     function page(): number;
+    /** Delete one widget (and anything inside it). Its id stops working. */
+    function remove(id: number): boolean;
+    /** Horizontal group. Widgets created after it land inside until ui.end(). */
     function row(): number;
+    /** Scroll the list or page holding this widget until it is on screen. */
+    function scroll_to(id: number): boolean;
+    /** A small grey group header above a run of rows ("Ingredients", "Steps"). */
+    function section(text: string): number;
+    /** A small capsule at the right end of a ui.item — a countdown, a count, a state. tone 0 neutral grey, 1 active sky (running/selected), 2 done green, 3 warning orange, 4 alert red. "" hides it. */
+    function set_accessory(id: number, text: string, tone: number): boolean;
     function set_arc(id: number, percent: number): boolean;
+    /** Background colour, as 0xRRGGBB. Also makes the background opaque. */
     function set_bg(id: number, rgb: number): boolean;
+    /** Background opacity 0..100: a tint such as accent at 18 % for a selected chip. */
+    function set_bg_opa(id: number, percent: number): boolean;
+    /** Outline: colour 0xRRGGBB and width 0..8 px (0 removes it). */
+    function set_border(id: number, rgb: number, width: number): boolean;
+    /** Text colour of a label/button, as 0xRRGGBB. */
     function set_color(id: number, rgb: number): boolean;
+    /** A second, grey line under a ui.item's caption. "" hides it. */
+    function set_detail(id: number, text: string): boolean;
+    /** Relative text size, -2..3, on the same scale the rest of the watch uses, so a JS app tracks the user's font-size setting instead of pinning pixels. */
     function set_font(id: number, rel_size: number): boolean;
+    /** Space between the children of a box/row/list, 0..64 px. */
+    function set_gap(id: number, px: number): boolean;
+    /** Repoint an existing icon at another name from the same closed set. The counterpart to ui.set_text, and just as load-bearing: without it a screen that refreshes can update its words but never its pictures, so an app that redraws on a data push has to delete and rebuild everything. */
     function set_icon(id: number, name: string): boolean;
+    /** Inner padding on all sides, 0..64 px. */
+    function set_pad(id: number, px: number): boolean;
+    /** Corner radius in px, 0..240 (240 = fully round / capsule). */
+    function set_radius(id: number, px: number): boolean;
+    /** Change the range of a slider, bar or arc. */
+    function set_range(id: number, min: number, max: number): boolean;
     function set_size(id: number, w: number, h: number): boolean;
+    /** Change the text of a label, a list row (ui.item), a button or a checkbox. */
     function set_text(id: number, text: string): boolean;
+    /** Set a slider/bar/arc's number, or tick (1) / untick (0) a checkbox or switch. Does not fire the widget's on_click handler. */
+    function set_value(id: number, value: number): boolean;
+    /** Show (1) or hide (0) a widget. A hidden widget takes no space in a list or row. */
+    function set_visible(id: number, visible: number): boolean;
+    /** A draggable slider, 0..100 unless ui.set_range says otherwise. skai.ui.on_click on it receives the new value as text while it is dragged. */
+    function slider(value: number): number;
+    /** An on/off switch. Same events and value as ui.checkbox. */
+    function switch(): number;
+    /** The page heading: large, centred, one line. Use once, at the top. */
+    function title(text: string): number;
+    /** Current value: a slider/bar/arc's number, 1/0 for a checkbox or switch. */
+    function value(id: number): number;
   }
 
   namespace watchinfo {
+    /** "major.minor.revision" or "major.minor.revision-dev". */
     function firmware(): string;
     function model(): string;
     function screen_height(): number;
+    /** True for a round display. Third-party layouts need this to avoid drawing into the corners, which on a 466 circle are simply not there. */
     function screen_round(): boolean;
     function screen_width(): number;
   }
 
   namespace weather {
+    /** Condition as a token from a closed set: "sun" "clear" "cloudy" "rain" "thunder" "snow" Chosen to compose with the icon table — ui.icon("weather." + condition()) draws the matching glyph, and a token with no icon yet draws nothing rather than the wrong thing. Empty when the phone has sent no forecast. */
     function condition(): string;
+    /** Same closed token set as condition(). */
     function day_cond(index: number): string;
+    /** ── the daily summaries ── The phone sends five, and day 0 is the nearest. Same nearest-first order as the hourly slots, and the same reason: the store holds them backwards and an app should not have to know that. A daily record has a range rather than a reading, so there is no day_temp() — day_min() and day_max() are the pair the built-in app shows. */
     function day_count(): number;
+    /** "MM/DD", the same form the built-in daily page prints. */
     function day_date(index: number): string;
     function day_max(index: number): number;
     function day_min(index: number): number;
+    /** Chance of precipitation for that day, 0..100. Returned whatever the condition is — the built-in page hides it unless the day is a wet one, but that is a presentation choice, and an app with day_cond() can make it. */
     function day_rain(index: number): number;
+    /** The phone's own wording for the current conditions ("Clear", "Clouds", ...), which is what the built-in screen prints under the temperature. condition() is the normalised token for choosing an icon; this is the human string. */
     function description(): string;
+    /** Same closed token set as condition(). */
     function hour_cond(index: number): string;
+    /** ── the hourly forecast ── Slot i is the i-th forecast AFTER now, nearest first: the phone sends current conditions plus three slots roughly 3 hours apart, so i=0 is about three hours out and hour_count() is at most 3. "Now" is not part of this series — that is temp() / condition() above. Display hour_time(i) rather than computing "now + 3(i+1) hours": the phone aligns the slots to wall-clock boundaries, so the gap to the first one depends on what time it is. Every accessor returns no-data for an index outside 0..hour_count()-1. */
     function hour_count(): number;
     function hour_temp(index: number): number;
+    /** Pre-formatted in the user's 12/24-hour setting, e.g. "3 PM" or "15:00". Formatted here rather than handing out an hour number, so the setting stays a firmware decision and every app honours it without trying. */
     function hour_time(index: number): string;
+    /** The place the forecast is for, as the phone named it. Empty if unknown. */
     function location(): string;
+    /** Chance of precipitation, 0..100. */
     function rain_pct(): number;
+    /** Ask the phone for a fresh forecast. Rate-limited inside bloc_weather (10 s hard, 30 min soft), so this adds no throttle of its own and an app cannot turn it into a radio drain. */
     function refresh(): boolean;
+    /** True when the stored forecast is not for today — the condition the built-in screen shows "please update on the phone" for. */
     function stale(): boolean;
+    /** Current temperature in whole degrees Celsius, rounded. SKAI_NO_DATA until the phone has sent a forecast. */
     function temp(): number;
     function temp_max(): number;
     function temp_min(): number;

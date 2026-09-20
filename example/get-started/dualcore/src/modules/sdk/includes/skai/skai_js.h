@@ -85,6 +85,8 @@ skai_js_result_t skai_js_eval(const char *src, uint32_t len,
 skai_js_result_t skai_js_open(const skai_js_policy_t *policy);
 void             skai_js_close(void);
 bool             skai_js_is_open(void);
+/* The running app's id, or NULL outside a session. */
+const char      *skai_js_current_app_id(void);
 
 /* Fill `policy` with the safe defaults; the caller then narrows it. */
 void skai_js_policy_init(skai_js_policy_t *policy, const char *app_id,
@@ -110,6 +112,12 @@ int  skai_js_log_read(const char *keyid, char out[][SKAI_JS_LOG_LINE], int max);
 /* Lines discarded because the ring was full. Reported to the developer rather
  * than silently swallowed — otherwise they chase a bug that is not there. */
 uint32_t skai_js_log_dropped(void);
+
+/* Every app-log line as it is written, for the host to forward (the phone that
+ * installed the app shows them to whoever — or whatever — wrote it). Called on
+ * the thread that logged, usually the LVGL thread. NULL turns it off. */
+typedef void (*skai_js_log_sink_t)(const char *keyid, const char *line);
+void skai_js_set_log_sink(skai_js_log_sink_t sink);
 void     skai_js_log_reset(void);
 
 #endif /* SKAI_JS_H */

@@ -17,6 +17,7 @@ if GetDepend('BSP_USING_MODEL_WATCH_GLOBAL_DATA') \
     src += Glob("skai_api.c")
     src += Glob("skai_dispatch.c")
     src += Glob("skai_ui.c")
+    src += Glob("skai_alarm.c")
 
     # The sandboxed JS runtime only exists where QuickJS is built. It also
     # supplies gui_qjs_app_list_get_next, which gui_app_fwk.h declares for any

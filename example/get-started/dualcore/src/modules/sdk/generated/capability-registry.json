@@ -3,6 +3,30 @@
   "skai": "1.0",
   "capabilities": [
     {
+      "name": "alarm.cancel",
+      "tier": "SKAI_T1",
+      "thread": "SKAI_THREAD_ANY",
+      "args": "I",
+      "returns": "boolean",
+      "ui": "%d"
+    },
+    {
+      "name": "alarm.remaining",
+      "tier": "SKAI_T1",
+      "thread": "SKAI_THREAD_ANY",
+      "args": "I",
+      "returns": "number",
+      "ui": "%d"
+    },
+    {
+      "name": "alarm.set",
+      "tier": "SKAI_T1",
+      "thread": "SKAI_THREAD_ANY",
+      "args": "SI",
+      "returns": "number",
+      "ui": "%d"
+    },
+    {
       "name": "app.exit",
       "tier": "SKAI_T1",
       "thread": "SKAI_THREAD_LVGL",
@@ -227,7 +251,23 @@
       "ui": "%d"
     },
     {
+      "name": "ui.box",
+      "tier": "SKAI_T1",
+      "thread": "SKAI_THREAD_LVGL",
+      "args": "",
+      "returns": "number",
+      "ui": "%d"
+    },
+    {
       "name": "ui.button",
+      "tier": "SKAI_T1",
+      "thread": "SKAI_THREAD_LVGL",
+      "args": "S",
+      "returns": "number",
+      "ui": "%d"
+    },
+    {
+      "name": "ui.checkbox",
       "tier": "SKAI_T1",
       "thread": "SKAI_THREAD_LVGL",
       "args": "S",
@@ -283,6 +323,14 @@
       "ui": "%d"
     },
     {
+      "name": "ui.item",
+      "tier": "SKAI_T1",
+      "thread": "SKAI_THREAD_LVGL",
+      "args": "S",
+      "returns": "number",
+      "ui": "%d"
+    },
+    {
       "name": "ui.keypad",
       "tier": "SKAI_T1",
       "thread": "SKAI_THREAD_LVGL",
@@ -307,6 +355,14 @@
       "ui": "%d"
     },
     {
+      "name": "ui.list",
+      "tier": "SKAI_T1",
+      "thread": "SKAI_THREAD_LVGL",
+      "args": "",
+      "returns": "number",
+      "ui": "%d"
+    },
+    {
       "name": "ui.page",
       "tier": "SKAI_T1",
       "thread": "SKAI_THREAD_LVGL",
@@ -315,11 +371,43 @@
       "ui": "%d"
     },
     {
+      "name": "ui.remove",
+      "tier": "SKAI_T1",
+      "thread": "SKAI_THREAD_LVGL",
+      "args": "I",
+      "returns": "boolean",
+      "ui": "%d"
+    },
+    {
       "name": "ui.row",
       "tier": "SKAI_T1",
       "thread": "SKAI_THREAD_LVGL",
       "args": "",
       "returns": "number",
+      "ui": "%d"
+    },
+    {
+      "name": "ui.scroll_to",
+      "tier": "SKAI_T1",
+      "thread": "SKAI_THREAD_LVGL",
+      "args": "I",
+      "returns": "boolean",
+      "ui": "%d"
+    },
+    {
+      "name": "ui.section",
+      "tier": "SKAI_T1",
+      "thread": "SKAI_THREAD_LVGL",
+      "args": "S",
+      "returns": "number",
+      "ui": "%d"
+    },
+    {
+      "name": "ui.set_accessory",
+      "tier": "SKAI_T1",
+      "thread": "SKAI_THREAD_LVGL",
+      "args": "ISI",
+      "returns": "boolean",
       "ui": "%d"
     },
     {
@@ -339,10 +427,34 @@
       "ui": "%d"
     },
     {
+      "name": "ui.set_bg_opa",
+      "tier": "SKAI_T1",
+      "thread": "SKAI_THREAD_LVGL",
+      "args": "II",
+      "returns": "boolean",
+      "ui": "%d"
+    },
+    {
+      "name": "ui.set_border",
+      "tier": "SKAI_T1",
+      "thread": "SKAI_THREAD_LVGL",
+      "args": "III",
+      "returns": "boolean",
+      "ui": "%d"
+    },
+    {
       "name": "ui.set_color",
       "tier": "SKAI_T1",
       "thread": "SKAI_THREAD_LVGL",
       "args": "II",
+      "returns": "boolean",
+      "ui": "%d"
+    },
+    {
+      "name": "ui.set_detail",
+      "tier": "SKAI_T1",
+      "thread": "SKAI_THREAD_LVGL",
+      "args": "IS",
       "returns": "boolean",
       "ui": "%d"
     },
@@ -355,10 +467,42 @@
       "ui": "%d"
     },
     {
+      "name": "ui.set_gap",
+      "tier": "SKAI_T1",
+      "thread": "SKAI_THREAD_LVGL",
+      "args": "II",
+      "returns": "boolean",
+      "ui": "%d"
+    },
+    {
       "name": "ui.set_icon",
       "tier": "SKAI_T1",
       "thread": "SKAI_THREAD_LVGL",
       "args": "IS",
+      "returns": "boolean",
+      "ui": "%d"
+    },
+    {
+      "name": "ui.set_pad",
+      "tier": "SKAI_T1",
+      "thread": "SKAI_THREAD_LVGL",
+      "args": "II",
+      "returns": "boolean",
+      "ui": "%d"
+    },
+    {
+      "name": "ui.set_radius",
+      "tier": "SKAI_T1",
+      "thread": "SKAI_THREAD_LVGL",
+      "args": "II",
+      "returns": "boolean",
+      "ui": "%d"
+    },
+    {
+      "name": "ui.set_range",
+      "tier": "SKAI_T1",
+      "thread": "SKAI_THREAD_LVGL",
+      "args": "III",
       "returns": "boolean",
       "ui": "%d"
     },
@@ -376,6 +520,54 @@
       "thread": "SKAI_THREAD_LVGL",
       "args": "IS",
       "returns": "boolean",
+      "ui": "%d"
+    },
+    {
+      "name": "ui.set_value",
+      "tier": "SKAI_T1",
+      "thread": "SKAI_THREAD_LVGL",
+      "args": "II",
+      "returns": "boolean",
+      "ui": "%d"
+    },
+    {
+      "name": "ui.set_visible",
+      "tier": "SKAI_T1",
+      "thread": "SKAI_THREAD_LVGL",
+      "args": "II",
+      "returns": "boolean",
+      "ui": "%d"
+    },
+    {
+      "name": "ui.slider",
+      "tier": "SKAI_T1",
+      "thread": "SKAI_THREAD_LVGL",
+      "args": "I",
+      "returns": "number",
+      "ui": "%d"
+    },
+    {
+      "name": "ui.switch",
+      "tier": "SKAI_T1",
+      "thread": "SKAI_THREAD_LVGL",
+      "args": "",
+      "returns": "number",
+      "ui": "%d"
+    },
+    {
+      "name": "ui.title",
+      "tier": "SKAI_T1",
+      "thread": "SKAI_THREAD_LVGL",
+      "args": "S",
+      "returns": "number",
+      "ui": "%d"
+    },
+    {
+      "name": "ui.value",
+      "tier": "SKAI_T1",
+      "thread": "SKAI_THREAD_LVGL",
+      "args": "I",
+      "returns": "number",
       "ui": "%d"
     },
     {

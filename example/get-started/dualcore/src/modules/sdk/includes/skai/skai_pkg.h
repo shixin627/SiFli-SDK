@@ -44,7 +44,11 @@
  * anyone minifies it. 16 KB against 800 KB of HCPU SRAM is a fair trade for not
  * making "write fewer comments" a packaging constraint. Past this the buffer
  * should move to PSRAM rather than grow again. */
-#define SKAI_PKG_JS_SRC_MAX  16384
+#define SKAI_PKG_JS_SRC_MAX  (48 * 1024)
+/* 16 KB -> 48 KB (2026-09-19): apps the phone's AI writes carry their data
+   inline (a checklist built from a spreadsheet is the list itself), and the
+   buffer moved to PSRAM as the note above asked, so the size no longer costs
+   HCPU SRAM. */
 
 /* How many installed packages the launcher will enumerate. */
 #define SKAI_PKG_SLOTS       16

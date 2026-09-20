@@ -29,6 +29,9 @@
 #include "skai/skai_js.h"
 #include "skai/skai_display.h"
 #include "skai/skai_ui.h"
+#include "skai/skai_alarm.h"
+
+#include "communicate_task.h"
 
 #define DBG_TAG "app.skaijs"
 #define DBG_LVL DBG_INFO
@@ -40,9 +43,61 @@
 #define SKAIJS_SRC_MAX SKAI_PKG_JS_SRC_MAX
 
 static lv_obj_t *s_root;
-static char      s_src[SKAIJS_SRC_MAX];
+/* Polls for fired background alarms (skai_alarm.c fires on its own thread; a JS
+   handler may only run on this one), turning them into on_change("alarm"). */
+static lv_timer_t *s_alarm_poll;
+
+static void alarm_poll_cb(lv_timer_t *t)
+{
+    (void)t;
+    if (skai_alarm_take_fired_event())
+        skai_js_notify_change("alarm");
+}
+/* Borrowed, not copied: the launcher's buffer (PSRAM, skai_pkg.c) or a sim
+   sample's static string, both of which outlive the run. A second 48 KB copy
+   in SRAM is exactly what moving the buffer to PSRAM was meant to avoid. */
+static const char *s_src;
 static char      s_asset_dir[64];
 static skai_js_policy_t s_policy;
+
+/* ── reports to the phone ──
+ * Every app-log line (console.log, an exception and its stack, a watchdog or
+ * quota stop) goes up on 0x29 so whoever wrote the app can see it. Bounded: an
+ * app logging from a 50 ms interval would otherwise own the BLE link. */
+#define SKAIJS_LOG_PER_SEC 8
+static rt_tick_t s_log_window;
+static uint16_t  s_log_in_window;
+static uint32_t  s_log_dropped;
+
+static void log_sink(const char *keyid, const char *line)
+{
+    (void)keyid;
+    rt_tick_t now = rt_tick_get();
+
+    /* Also on the console: the only way to read an app's log on a watch with
+       no phone attached, and on the simulator. */
+    rt_kprintf("[js %s] %s\n", s_policy.app_id, line);
+
+    if (now - s_log_window >= RT_TICK_PER_SECOND)
+    {
+        if (s_log_dropped > 0)
+        {
+            char note[48];
+            rt_snprintf(note, sizeof(note), "(%u log lines dropped)", (unsigned)s_log_dropped);
+            commu_send_skaiapp_run(s_policy.app_id, "log", NULL, note);
+            s_log_dropped = 0;
+        }
+        s_log_window = now;
+        s_log_in_window = 0;
+    }
+    if (s_log_in_window >= SKAIJS_LOG_PER_SEC)
+    {
+        s_log_dropped++;
+        return;
+    }
+    s_log_in_window++;
+    commu_send_skaiapp_run(s_policy.app_id, "log", NULL, line);
+}
 
 /* Loaded before launch (by the phone push path, or skaijs_run on the sim).
  * Capabilities come from the package manifest; the caller owns that array and
@@ -51,8 +106,7 @@ void skaijs_set_source(const char *src, const skai_js_policy_t *policy)
 {
     if (!src || !policy)
         return;
-    rt_strncpy(s_src, src, sizeof(s_src) - 1);
-    s_src[sizeof(s_src) - 1] = '\0';
+    s_src = src;
     s_policy = *policy;
 }
 
@@ -76,11 +130,17 @@ static void on_start(void)
                 s_policy.keyid, s_policy.app_id);
     skai_ui_attach(s_root, s_asset_dir);
 
-    if (s_src[0] == '\0')
+    if (s_src == NULL || s_src[0] == '\0')
     {
         LOG_W("no script loaded");
         return;
     }
+
+    s_log_window = rt_tick_get();
+    s_log_in_window = 0;
+    s_log_dropped = 0;
+    skai_js_set_log_sink(log_sink);
+    s_alarm_poll = lv_timer_create(alarm_poll_cb, 500, NULL);
 
     /* Context stays open for the app's lifetime: click handlers are JS
      * closures, so freeing the runtime after the first eval would leave every
@@ -88,10 +148,12 @@ static void on_start(void)
     if (skai_js_open(&s_policy) != SKAI_JS_OK)
     {
         LOG_E("could not start the JS runtime");
+        commu_send_skaiapp_run(s_policy.app_id, "start", "internal", NULL);
         return;
     }
 
     r = skai_js_eval(s_src, (uint32_t)strlen(s_src), &s_policy);
+    commu_send_skaiapp_run(s_policy.app_id, "start", skai_js_result_name(r), NULL);
     if (r != SKAI_JS_OK)
     {
         /* The app stays on screen showing whatever it managed to draw. A
@@ -106,7 +168,15 @@ static void on_stop(void)
     /* Whatever the script did to the screen stops when the script does. The app
        is never asked to put the brightness back, so it cannot fail to. */
     skai_display_restore();
+    if (s_alarm_poll)
+    {
+        lv_timer_del(s_alarm_poll);
+        s_alarm_poll = NULL;
+    }
     skai_js_close();
+    skai_js_set_log_sink(NULL);
+    if (s_policy.app_id[0] != '\0')
+        commu_send_skaiapp_run(s_policy.app_id, "stop", NULL, NULL);
     skai_ui_detach();
     if (s_root != NULL)
     {

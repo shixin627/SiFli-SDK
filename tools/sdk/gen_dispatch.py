@@ -451,6 +451,12 @@ def render_dts(caps, major, minor):
         lines.append("  namespace %s {" % ns)
         for c in by_ns[ns]:
             member = c["name"].split(".", 1)[1]
+            # The doc comment rides along: this file is also the API reference the
+            # phone's AI reads before writing an app, and a bare signature does not
+            # say that ui.value() is 1/0 for a checkbox. Same text as the HTML page.
+            doc = " ".join((c.get("doc") or "").split())
+            if doc:
+                lines.append("    /** %s */" % doc.replace("*/", "* /"))
             lines.append(
                 "    function %s(%s): %s;" % (member, ", ".join(c["ts_args"]), c["returns"])
             )
@@ -523,6 +529,26 @@ def selftest():
     print("selftest ok")
 
 
+def render_theme(ui_c):
+    """skai.theme as JSON, read off the skai_ui_theme[] table in skai_ui.c.
+
+    The phone's preflight runs programs against a stand-in skai; its theme must be the
+    watch's, value for value, or a program would pass on the phone with a colour the
+    watch does not have. One table, two readers -- not a second copy to keep in step.
+    """
+    text = ui_c.read_text(encoding="utf-8")
+    body = text[text.index("skai_ui_theme[] ="):]
+    body = body[:body.index("};")]
+    defines = dict(re.findall(r"#define\s+(\w+)\s+(-?\d+)", text))
+    out = {}
+    for name, value in re.findall(r'\{\s*"(\w+)",\s*([-\w]+)\s*\}', body):
+        value = defines.get(value, value)
+        out[name] = int(value, 16) if value.lower().startswith("0x") else int(value)
+    if len(out) < 10:
+        raise ExportError("skai_ui_theme[] not found in %s" % ui_c)
+    return json.dumps(out, indent=1, sort_keys=True) + "\n"
+
+
 def main():
     here = Path(__file__).resolve()
     default_src = here.parents[2] / "example/get-started/dualcore/src/modules/sdk/includes/skai"
@@ -573,6 +599,19 @@ def main():
         render_registry(caps, major, minor), encoding="utf-8"
     )
     (out_dir / "skai.d.ts").write_text(render_dts(caps, major, minor), encoding="utf-8")
+    (out_dir / "theme.json").write_text(render_theme(src.parents[1] / "skai_ui.c"), encoding="utf-8")
+
+    # The phone's AI writes watch apps against this exact API, and the phone
+    # derives each app's declared capabilities from the same registry — so both
+    # files are copied into the Android app's assets whenever they change here.
+    # Skipped silently outside the monorepo (the SDK builds on its own too).
+    phone_assets = (out_dir / ".." / ".." / ".." / ".." / ".." / ".." / ".." / ".." /
+                    "SkaiLink" / "android-native" / "app" / "src" / "main" / "assets" /
+                    "watch_sdk").resolve()
+    if phone_assets.parent.is_dir():
+        phone_assets.mkdir(exist_ok=True)
+        for name in ("skai.d.ts", "capability-registry.json", "theme.json"):
+            (phone_assets / name).write_bytes((out_dir / name).read_bytes())
     (out_dir / "skai_all.h").write_text(render_all_header(domain_headers), encoding="utf-8")
     (out_dir / "skai-api.html").write_text(
         render_html(caps, modules, major, minor), encoding="utf-8")

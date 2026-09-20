@@ -429,6 +429,121 @@ static int skaijs_run(int argc, char **argv)
 }
 MSH_CMD_EXPORT(skaijs_run, run the gate-1 JS app (hr + arc + vibrate));
 
+/* ---- a checklist, the way the phone's AI writes one ----
+ * The shape that motivated lists, checkboxes and timers (2026-09-19): a person
+ * hands the AI a spreadsheet of items and asks for a checklist on the watch.
+ * The data travels INSIDE the source, so this is also what a generated app
+ * looks like. Exercises ui.list/checkbox/item/value/set_visible, setInterval,
+ * clearInterval and console.log. */
+static const char *const k_list_caps[] =
+{
+    "ui.label", "ui.list", "ui.checkbox", "ui.item", "ui.end", "ui.value",
+    "ui.set_text", "ui.set_font", "ui.set_color", "ui.set_visible", "ui.button",
+    "time.hhmm",
+};
+
+static const char k_list_src[] =
+    "var items = ['Passport', 'Charger', 'Toothbrush', 'Sunscreen', 'Umbrella',"
+    "             'Headphones', 'Snacks', 'Water bottle'];"
+    "var title = skai.ui.label('Packing 0/' + items.length);"
+    "skai.ui.set_font(title, 1);"
+    "var clock = skai.ui.label(skai.time.hhmm());"
+    "skai.ui.set_color(clock, 0x8E8E93);"
+    "var boxes = [];"
+    "skai.ui.list();"
+    "items.forEach(function (name) {"
+    "  var id = skai.ui.checkbox(name);"
+    "  boxes.push(id);"
+    "  skai.ui.on_click(id, function (v) {"
+    "    var done = boxes.filter(function (b) { return skai.ui.value(b) === 1; }).length;"
+    "    skai.ui.set_text(title, 'Packing ' + done + '/' + items.length);"
+    "    console.log('toggled', name, v, done);"
+    "  });"
+    "});"
+    "var reset = skai.ui.item('Reset all');"
+    "skai.ui.end();"
+    "skai.ui.on_click(reset, function () { console.log('reset tapped'); });"
+    "var ticks = 0;"
+    "var t = setInterval(function () {"
+    "  ticks++;"
+    "  skai.ui.set_text(clock, skai.time.hhmm() + ' · ' + ticks);"
+    "  if (ticks === 3) { clearInterval(t); console.log('interval stopped at', ticks); }"
+    "}, 200);"
+    "setTimeout(function () { console.log('timeout fired', { items: items.length }); }, 100);"
+    "console.log('checklist ready', items.length);";
+
+static int skaijs_list(int argc, char **argv)
+{
+    skai_js_policy_t p;
+
+    (void)argc;
+    (void)argv;
+    skai_js_policy_init(&p, "packing-list", "DEMOKEY");
+    p.caps = k_list_caps;
+    p.n_caps = sizeof(k_list_caps) / sizeof(k_list_caps[0]);
+
+    skaijs_set_source(k_list_src, &p);
+    rt_kprintf("skaijs_list: launching the JS checklist\n");
+    return (int)gui_app_run(APP_ID_SKAIJS);
+}
+MSH_CMD_EXPORT(skaijs_list, run the JS checklist sample (lists + timers + console));
+
+/* skaijs_file <path> — run a JS file from the simulated disk with EVERY
+ * capability granted. For trying a program the phone's AI would write, without
+ * packaging and signing it first. Simulator only. */
+#include <dfs_posix.h>
+#include "skai/skai_dispatch.h"
+static char        s_file_src[48 * 1024];
+static const char *s_all_caps[128];
+
+static int skaijs_file(int argc, char **argv)
+{
+    skai_js_policy_t p;
+    int fd, n;
+
+    if (argc < 2)
+    {
+        rt_kprintf("usage: skaijs_file <path.js>\n");
+        return -1;
+    }
+    fd = rt_open(argv[1], O_RDONLY | O_BINARY, 0);
+    if (fd < 0)
+    {
+        rt_kprintf("open %s failed\n", argv[1]);
+        return -1;
+    }
+    n = rt_read(fd, s_file_src, sizeof(s_file_src) - 1);
+    rt_close(fd);
+    if (n <= 0)
+        return -1;
+    s_file_src[n] = '\0';
+
+    skai_js_policy_init(&p, "file-app", "DEMOKEY");
+    p.n_caps = 0;
+    for (int i = 0; i < skai_cap_count() && p.n_caps < 128; i++)
+        s_all_caps[p.n_caps++] = skai_cap_at(i)->name;
+    p.caps = s_all_caps;
+    skaijs_set_source(s_file_src, &p);
+    rt_kprintf("skaijs_file: %d bytes, %d caps\n", n, (int)p.n_caps);
+    return (int)gui_app_run(APP_ID_SKAIJS);
+}
+MSH_CMD_EXPORT(skaijs_file, run a JS file with all capabilities (sim));
+
+/* skaijs_log — dump the app-scoped log ring, oldest first. */
+static int skaijs_log(int argc, char **argv)
+{
+    static char lines[SKAI_JS_LOG_LINES][SKAI_JS_LOG_LINE];
+    const char *keyid = (argc >= 2) ? argv[1] : "DEMOKEY";
+    int n = skai_js_log_read(keyid, lines, SKAI_JS_LOG_LINES);
+
+    rt_kprintf("skaijs_log %s: %d line(s), %u dropped\n", keyid, n,
+               (unsigned)skai_js_log_dropped());
+    for (int i = 0; i < n; i++)
+        rt_kprintf("  | %s\n", lines[i]);
+    return 0;
+}
+MSH_CMD_EXPORT(skaijs_log, dump the JS app log ring for a keyid);
+
 #endif /* BSP_USING_PC_SIMULATOR && PKG_USING_QUICKJS */
 
 

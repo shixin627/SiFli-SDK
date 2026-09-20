@@ -16,11 +16,44 @@
 
 #include "skai/skai_ui.h"
 
-/* Palette matches skaiapp_render.c so a JS app and a declarative package sit
- * on the same screen without looking like two products. */
+/* The phone app's palette (SkaiLink DESIGN.md), so an app the Bot writes for
+ * the watch reads as the same product as the phone it came from — without the
+ * Bot having to know a single colour. Sky is the ONE "on / selected / running"
+ * signal; systemBlue is the one filled call to action; content sits on solid
+ * #1C1C1E cards with a hairline edge on pure black; secondary text is the
+ * blue-leaning 60 % grey, never plain white. */
 #define SKAI_UI_FG      lv_color_hex(0xFFFFFF)
-#define SKAI_UI_ACCENT  lv_color_hex(0x0A84FF)
+#define SKAI_UI_ACCENT  lv_color_hex(0xA6D3E6)   /* sky: on-state, progress */
+#define SKAI_UI_CTA     lv_color_hex(0x0091FF)   /* systemBlue: primary button */
+#define SKAI_UI_CTA_DN  lv_color_hex(0x0074CC)
 #define SKAI_UI_TRACK   lv_color_hex(0x2C2C2E)
+#define SKAI_UI_SURFACE lv_color_hex(0x1C1C1E)   /* content card */
+#define SKAI_UI_PRESSED lv_color_hex(0x2C2C2E)   /* card pressed wash */
+#define SKAI_UI_LABEL2  lv_color_hex(0x8D8D93)   /* #EBEBF5 @ 60 % on black */
+#define SKAI_UI_GREEN   lv_color_hex(0x30D158)
+#define SKAI_UI_ORANGE  lv_color_hex(0xFF9F0A)
+#define SKAI_UI_RED     lv_color_hex(0xFF453A)
+#define SKAI_UI_RADIUS  24                       /* rCard */
+/* Ring stroke. Bounded by the EPIC round-cap mask pool (see skai_ui_arc). */
+#define SKAI_UI_ARC_WIDTH 14
+
+/* The type scale an app draws with, in the system's font steps (LVSF_FONT_*:
+   20, 24, 28, 36, 40, 64, 90 px on this screen).
+ *
+ * Fixed, NOT the user's font-size setting plus an offset, which is what every
+ * other screen uses. An app is written against a layout the phone checked
+ * before install, and a base that moves would make the same program fit on one
+ * watch and overflow its ring on another — which is exactly what happened
+ * (2026-09-20: the title and the chips overlapped, the countdown spilled out of
+ * its ring). The px values are published in skai_ui_theme so the phone's
+ * preflight measures with the same numbers. */
+static uint8_t font_step(int32_t rel)
+{
+    int step = (int)rel + 2;          /* rel -2..3 -> step 0..5 */
+    if (step < 0) step = 0;
+    if (step > 6) step = 6;
+    return (uint8_t)step;
+}
 
 #define SKAI_UI_ASSET_DIR_MAX 64
 #define SKAI_UI_PATH_MAX      (SKAI_UI_ASSET_DIR_MAX + 64)
@@ -215,6 +248,27 @@ bool skai_ui_goto_page(int32_t index)
 }
 
 
+/* A widget can now die without going through the slot table -- ui.remove on a
+   list takes every row inside it -- so the table learns about deletions from
+   LVGL itself. Without this a removed row's id would keep pointing at freed
+   memory, and a later click on whatever reused that memory would reach the old
+   handler. */
+static struct { int16_t ref; uint8_t side; int16_t dx, dy; } s_alto[SKAI_UI_SLOTS];
+
+static void slot_deleted_cb(lv_event_t *e)
+{
+    int32_t id = (int32_t)(intptr_t)lv_event_get_user_data(e);
+
+    if (id < 1 || id > SKAI_UI_SLOTS)
+        return;
+    if (s_slots[id - 1] != lv_event_get_target(e))
+        return; /* already released (clear/detach), or the slot was reused */
+    s_slots[id - 1] = NULL;
+    s_click_cb[id - 1] = NULL;
+    s_click_arg[id - 1] = NULL;
+    s_alto[id - 1].ref = 0;
+}
+
 static int32_t slot_alloc(lv_obj_t *obj)
 {
     for (int i = 0; i < SKAI_UI_SLOTS; i++)
@@ -222,6 +276,11 @@ static int32_t slot_alloc(lv_obj_t *obj)
         if (s_slots[i] == NULL)
         {
             s_slots[i] = obj;
+            s_click_cb[i] = NULL;   /* a reused id starts with no handler */
+            s_alto[i].ref = 0;
+            s_click_arg[i] = NULL;
+            lv_obj_add_event_cb(obj, slot_deleted_cb, LV_EVENT_DELETE,
+                                (void *)(intptr_t)(i + 1));
             return i + 1; /* ids are 1-based so 0 can mean failure */
         }
     }
@@ -274,6 +333,16 @@ int32_t skai_ui_arc(int32_t percent)
     lv_arc_set_bg_angles(a, 0, 360);
     lv_arc_set_range(a, 0, 100);
     lv_arc_set_value(a, clamp_pct(percent));
+    /* The stroke is set here, never left to the theme: the EPIC renderer builds
+       a round-cap mask of width×width bytes in a 1600-byte pool and ASSERTS
+       when it does not fit (drv_epic_rl_draw.c:703, width <= 40). A full or
+       empty ring skips that path, so a theme-width ring looks fine until a
+       countdown moves it off 0 % — and then the watch resets mid-tick
+       (2026-09-20, a Bot-written timer). 14 px is inside the limit whatever
+       size the app gives the arc. */
+    lv_obj_set_style_arc_width(a, SKAI_UI_ARC_WIDTH, LV_PART_MAIN);
+    lv_obj_set_style_arc_width(a, SKAI_UI_ARC_WIDTH, LV_PART_INDICATOR);
+    lv_obj_set_style_arc_rounded(a, true, LV_PART_INDICATOR);
     /* No knob and no input: an external app draws a gauge, it does not get a
      * control the user can drag into the app's own event handlers. */
     lv_obj_remove_style(a, NULL, LV_PART_KNOB);
@@ -289,10 +358,29 @@ bool skai_ui_set_text(int32_t id, const char *text)
 
     if (!ui_ready("ui.set_text") || o == NULL || text == NULL)
         return false;
-    if (!lv_obj_check_type(o, &lv_label_class))
-        return false; /* wrong widget kind — refuse, do not reinterpret */
-    lv_label_set_text(o, text);
-    return true;
+    if (lv_obj_check_type(o, &lv_label_class))
+    {
+        lv_label_set_text(o, text);
+        return true;
+    }
+    /* A list row or button carries its caption in its child label, and a
+       checkbox owns its own text: a step that shows its countdown in its own
+       row is the ordinary case, not a hack. */
+    if (lv_obj_check_type(o, &lv_checkbox_class))
+    {
+        lv_checkbox_set_text(o, text);
+        return true;
+    }
+    if (lv_obj_check_type(o, &lv_btn_class))
+    {
+        lv_obj_t *l = lv_obj_get_child(o, 0);
+        if (l && lv_obj_check_type(l, &lv_label_class))
+        {
+            lv_label_set_text(l, text);
+            return true;
+        }
+    }
+    return false; /* wrong widget kind — refuse, do not reinterpret */
 }
 
 bool skai_ui_set_arc(int32_t id, int32_t percent)
@@ -558,6 +646,16 @@ static void click_trampoline(lv_event_t *e)
         const char *k = lv_btnmatrix_get_btn_text(o, lv_btnmatrix_get_selected_btn(o));
         text = k ? k : "";
     }
+    else if (lv_obj_check_type(o, &lv_checkbox_class) || lv_obj_check_type(o, &lv_switch_class))
+    {
+        text = lv_obj_has_state(o, LV_STATE_CHECKED) ? "1" : "0";
+    }
+    else if (lv_obj_check_type(o, &lv_slider_class))
+    {
+        static char vbuf[12];
+        rt_snprintf(vbuf, sizeof(vbuf), "%d", (int)lv_slider_get_value(o));
+        text = vbuf;
+    }
     else
     {
         /* A button carries its caption in its child label. */
@@ -579,10 +677,14 @@ int32_t skai_ui_button(const char *text)
     b = lv_btn_create(s_parent);
     if (b == NULL)
         return 0;
-    lv_obj_set_style_bg_color(b, SKAI_UI_ACCENT, 0);
+    lv_obj_set_style_bg_color(b, SKAI_UI_CTA, 0);
+    lv_obj_set_style_bg_color(b, SKAI_UI_CTA_DN, LV_STATE_PRESSED);
     lv_obj_set_style_radius(b, LV_RADIUS_CIRCLE, 0);
-    lv_obj_set_style_pad_hor(b, 20, 0);
-    lv_obj_set_style_pad_ver(b, 10, 0);
+    lv_obj_set_style_shadow_width(b, 0, 0);
+    lv_obj_set_style_min_height(b, 56, 0);
+    lv_obj_set_style_pad_hor(b, 28, 0);
+    lv_obj_set_style_pad_ver(b, 12, 0);
+    lv_obj_set_style_text_color(b, SKAI_UI_FG, 0);
 
     l = lv_label_create(b);
     if (l != NULL)
@@ -600,10 +702,25 @@ int32_t skai_ui_button(const char *text)
 
 bool skai_ui_on_click(int32_t id, skai_ui_click_cb_t cb, void *arg)
 {
-    if (slot_of(id) == NULL)
+    lv_obj_t *o = slot_of(id);
+
+    if (o == NULL)
         return false;
     s_click_cb[id - 1] = cb;
     s_click_arg[id - 1] = arg;
+    /* Anything an app asks to be tappable is tappable. Rows, labels and the like
+       used to take the handler and then never fire it, because only buttons, list
+       rows and boxes were wired for clicks at creation — a Bot-written app put its
+       handler on a ui.row and every tap on the wrist was dead (2026-09-20).
+       Controls with a value keep their VALUE_CHANGED wiring; for the rest the
+       CLICKED trampoline is (re)attached once. */
+    if (!lv_obj_check_type(o, &lv_checkbox_class) && !lv_obj_check_type(o, &lv_switch_class) &&
+            !lv_obj_check_type(o, &lv_slider_class) && !lv_obj_check_type(o, &lv_btnmatrix_class))
+    {
+        lv_obj_add_flag(o, LV_OBJ_FLAG_CLICKABLE);
+        lv_obj_remove_event_cb_with_user_data(o, click_trampoline, (void *)(intptr_t)id);
+        lv_obj_add_event_cb(o, click_trampoline, LV_EVENT_CLICKED, (void *)(intptr_t)id);
+    }
     return true;
 }
 
@@ -658,9 +775,9 @@ bool skai_ui_set_font(int32_t id, int32_t rel_size)
         return false;
     /* Relative to the user's chosen system size, so a JS app scales with the
      * watch instead of pinning a pixel height. */
-    lv_obj_set_style_text_font(o, LV_EXT_FONT_GET(get_system_font_size((int8_t)rel)), 0);
+    lv_obj_set_style_text_font(o, LV_EXT_FONT_GET(font_step(rel)), 0);
     if (lv_obj_check_type(o, &lv_btnmatrix_class))
-        lv_obj_set_style_text_font(o, LV_EXT_FONT_GET(get_system_font_size((int8_t)rel)),
+        lv_obj_set_style_text_font(o, LV_EXT_FONT_GET(font_step(rel)),
                                    LV_PART_ITEMS);
     return true;
 }
@@ -740,6 +857,27 @@ bool skai_ui_align(int32_t id, const char *anchor, int32_t dx, int32_t dy)
     return false;
 }
 
+/* ui.align_to is a relation, not a one-off move: "the number in the middle of
+   the ring" must stay in the middle when the number gets longer. LVGL's own
+   align_to is computed once, so a label aligned while empty and filled a line
+   later sat off-centre. Remember the relation per slot and re-apply it whenever
+   the widget changes size. s_alto is declared beside the slot table. */
+
+static void realign_cb(lv_event_t *e)
+{
+    int32_t id = (int32_t)(intptr_t)lv_event_get_user_data(e);
+    lv_obj_t *o = slot_of(id);
+    lv_obj_t *ref;
+
+    if (o == NULL || o != lv_event_get_target(e) || s_alto[id - 1].ref == 0)
+        return;
+    ref = slot_of(s_alto[id - 1].ref);
+    if (ref == NULL)
+        return;
+    lv_obj_align_to(o, ref, (lv_align_t)s_alto[id - 1].side,
+                    s_alto[id - 1].dx, s_alto[id - 1].dy);
+}
+
 bool skai_ui_align_to(int32_t id, int32_t ref_id, const char *side,
                       int32_t dx, int32_t dy)
 {
@@ -787,10 +925,610 @@ bool skai_ui_align_to(int32_t id, int32_t ref_id, const char *side,
             lv_obj_move_to_index(o, idx);
         }
         lv_obj_align_to(o, ref, k_sides[i].a, (lv_coord_t)dx, (lv_coord_t)dy);
+        if (s_alto[id - 1].ref == 0)
+            lv_obj_add_event_cb(o, realign_cb, LV_EVENT_SIZE_CHANGED, (void *)(intptr_t)id);
+        s_alto[id - 1].ref = (int16_t)ref_id;
+        s_alto[id - 1].side = (uint8_t)k_sides[i].a;
+        s_alto[id - 1].dx = (int16_t)dx;
+        s_alto[id - 1].dy = (int16_t)dy;
         return true;
     }
     LOG_W("ui.align_to: unknown side '%s'", side);
     return false;
+}
+
+/* ── lists and controls ── */
+
+int32_t skai_ui_list(void)
+{
+    lv_obj_t *g;
+    int32_t id;
+
+    if (!ui_ready("ui.list"))
+        return 0;
+    if (s_depth >= SKAI_UI_GROUP_DEPTH)
+    {
+        LOG_W("ui.list nested deeper than %d", SKAI_UI_GROUP_DEPTH);
+        return 0;
+    }
+    g = lv_obj_create(s_parent);
+    if (g == NULL)
+        return 0;
+    lv_obj_remove_style_all(g);
+    /* Fills what is left of the page: the flow column is a fixed-height flex
+       column, so grow takes the remaining height and anything created after
+       ui.end() still has room below. */
+    lv_obj_set_width(g, LV_PCT(100));
+    lv_obj_set_flex_grow(g, 1);
+    lv_obj_set_flex_flow(g, LV_FLEX_FLOW_COLUMN);
+    lv_obj_set_flex_align(g, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_CENTER,
+                          LV_FLEX_ALIGN_CENTER);
+    lv_obj_set_style_pad_row(g, 8, 0);
+    /* Room at the bottom so the last row can scroll clear of the round
+       screen's narrow edge. */
+    lv_obj_set_style_pad_top(g, 4, 0);
+    lv_obj_set_style_pad_bottom(g, 40, 0);
+    lv_obj_add_flag(g, LV_OBJ_FLAG_SCROLLABLE);
+    lv_obj_set_scroll_dir(g, LV_DIR_VER);
+    lv_obj_set_scrollbar_mode(g, LV_SCROLLBAR_MODE_OFF);
+    /* A list inside a page must not hand its vertical drag to the pager. */
+    lv_obj_clear_flag(g, LV_OBJ_FLAG_SCROLL_CHAIN_VER);
+
+    id = slot_alloc(g);
+    if (id == 0)
+        return 0;
+    s_groups[s_depth++] = s_parent;
+    s_parent = g;
+    return id;
+}
+
+/* True while the insertion point is a ui.list(): list rows stretch to its width. */
+static bool in_list(void)
+{
+    return s_depth > 0 && lv_obj_has_flag(s_parent, LV_OBJ_FLAG_SCROLLABLE) &&
+           lv_obj_get_scroll_dir(s_parent) == LV_DIR_VER;
+}
+
+/* A content card as the phone draws one: solid surface, hairline edge, the
+   card radius, a pressed wash instead of a ripple or a shadow. */
+static void card_style(lv_obj_t *o)
+{
+    lv_obj_set_style_min_height(o, 64, 0);
+    lv_obj_set_style_radius(o, SKAI_UI_RADIUS, 0);
+    lv_obj_set_style_bg_color(o, SKAI_UI_SURFACE, 0);
+    lv_obj_set_style_bg_opa(o, LV_OPA_COVER, 0);
+    lv_obj_set_style_bg_color(o, SKAI_UI_PRESSED, LV_STATE_PRESSED);
+    lv_obj_set_style_border_color(o, SKAI_UI_FG, 0);
+    lv_obj_set_style_border_opa(o, LV_OPA_10, 0);
+    lv_obj_set_style_border_width(o, 1, 0);
+    lv_obj_set_style_shadow_width(o, 0, 0);
+    lv_obj_set_style_pad_hor(o, 20, 0);
+    lv_obj_set_style_pad_ver(o, 14, 0);
+}
+
+const skai_ui_token_t skai_ui_theme[] =
+{
+    /* colours, 0xRRGGBB */
+    { "bg",          0x000000 },   /* page: pure black */
+    { "surface",     0x1C1C1E },   /* content card */
+    { "surface2",    0x2C2C2E },   /* raised / pressed / track */
+    { "text",        0xFFFFFF },
+    { "text2",       0x8D8D93 },   /* secondary: #EBEBF5 at 60 % */
+    { "text3",       0x48484A },   /* tertiary / disabled */
+    { "accent",      0xA6D3E6 },   /* sky: THE on / selected / running signal */
+    { "accent_deep", 0x5C9CB8 },
+    { "cta",         0x0091FF },   /* the one filled primary action */
+    { "green",       0x30D158 },   /* done / ok */
+    { "orange",      0xFF9F0A },   /* warning */
+    { "red",         0xFF453A },   /* alert / destructive */
+    { "yellow",      0xFFD600 },
+    { "purple",      0xBF5AF2 },
+    /* metrics, px */
+    { "radius",      SKAI_UI_RADIUS },  /* cards */
+    { "radius_sm",   12 },         /* chips, small tiles */
+    { "pill",        240 },        /* capsule / circle */
+    { "pad",         16 },         /* card inner padding */
+    { "gap",         8 },          /* between siblings (8-pt grid: 4 8 12 16 24 32) */
+    { "tap",         56 },         /* minimum touch target */
+    { "screen",      466 },        /* round, diameter */
+    { "safe",        330 },        /* square fully inside the circle */
+    /* type: the step for ui.set_font, and what that step is in px on the screen
+       (LVSF_FONT_SMALL..SUPER = 20, 24, 28, 36, 40, 64, 90), so the phone can
+       lay a screen out before it is installed. */
+    { "font_px_caption", 24 },
+    { "font_px_body",    28 },
+    { "font_px_title",   40 },
+    { "font_px_display", 64 },
+    /* type, relative sizes for ui.set_font */
+    { "font_display", 3 },         /* one big number */
+    { "font_title",   2 },
+    { "font_body",    0 },
+    { "font_caption", -1 },
+};
+const int skai_ui_theme_count = (int)(sizeof(skai_ui_theme) / sizeof(skai_ui_theme[0]));
+
+int32_t skai_ui_box(void)
+{
+    lv_obj_t *g;
+    int32_t id;
+
+    if (!ui_ready("ui.box"))
+        return 0;
+    if (s_depth >= SKAI_UI_GROUP_DEPTH)
+    {
+        LOG_W("ui.box nested deeper than %d", SKAI_UI_GROUP_DEPTH);
+        return 0;
+    }
+    g = lv_obj_create(s_parent);
+    if (g == NULL)
+        return 0;
+    lv_obj_remove_style_all(g);
+    lv_obj_set_size(g, in_list() ? LV_PCT(100) : LV_SIZE_CONTENT, LV_SIZE_CONTENT);
+    card_style(g);
+    lv_obj_set_style_pad_all(g, 16, 0);
+    lv_obj_set_style_min_height(g, 0, 0);
+    lv_obj_set_flex_flow(g, LV_FLEX_FLOW_COLUMN);
+    lv_obj_set_flex_align(g, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_CENTER,
+                          LV_FLEX_ALIGN_CENTER);
+    lv_obj_set_style_pad_row(g, 8, 0);
+    lv_obj_clear_flag(g, LV_OBJ_FLAG_SCROLLABLE);
+    /* Tappable like a row: the pressed wash is the feedback. A drag that starts
+       on it still scrolls the list it sits in. */
+    lv_obj_add_flag(g, LV_OBJ_FLAG_CLICKABLE);
+    id = slot_alloc(g);
+    if (id == 0)
+        return 0;
+    lv_obj_add_event_cb(g, click_trampoline, LV_EVENT_CLICKED, (void *)(intptr_t)id);
+    s_groups[s_depth++] = s_parent;
+    s_parent = g;
+    return id;
+}
+
+static lv_coord_t clamp_px(int32_t v, int32_t hi)
+{
+    return (lv_coord_t)((v < 0) ? 0 : ((v > hi) ? hi : v));
+}
+
+bool skai_ui_set_radius(int32_t id, int32_t px)
+{
+    lv_obj_t *o = slot_of(id);
+
+    if (!ui_ready("ui.set_radius") || o == NULL)
+        return false;
+    lv_obj_set_style_radius(o, px >= 240 ? LV_RADIUS_CIRCLE : clamp_px(px, 240), 0);
+    return true;
+}
+
+bool skai_ui_set_border(int32_t id, int32_t rgb, int32_t width)
+{
+    lv_obj_t *o = slot_of(id);
+
+    if (!ui_ready("ui.set_border") || o == NULL)
+        return false;
+    lv_obj_set_style_border_color(o, lv_color_hex((uint32_t)rgb & 0xFFFFFFu), 0);
+    lv_obj_set_style_border_opa(o, LV_OPA_COVER, 0);
+    lv_obj_set_style_border_width(o, clamp_px(width, 8), 0);
+    return true;
+}
+
+bool skai_ui_set_pad(int32_t id, int32_t px)
+{
+    lv_obj_t *o = slot_of(id);
+
+    if (!ui_ready("ui.set_pad") || o == NULL)
+        return false;
+    lv_obj_set_style_pad_all(o, clamp_px(px, 64), 0);
+    return true;
+}
+
+bool skai_ui_set_gap(int32_t id, int32_t px)
+{
+    lv_obj_t *o = slot_of(id);
+
+    if (!ui_ready("ui.set_gap") || o == NULL)
+        return false;
+    lv_obj_set_style_pad_row(o, clamp_px(px, 64), 0);
+    lv_obj_set_style_pad_column(o, clamp_px(px, 64), 0);
+    return true;
+}
+
+bool skai_ui_set_bg_opa(int32_t id, int32_t percent)
+{
+    lv_obj_t *o = slot_of(id);
+
+    if (!ui_ready("ui.set_bg_opa") || o == NULL)
+        return false;
+    lv_obj_set_style_bg_opa(o, (lv_opa_t)(clamp_pct(percent) * 255 / 100), 0);
+    return true;
+}
+
+int32_t skai_ui_title(const char *text)
+{
+    lv_obj_t *l;
+
+    if (!ui_ready("ui.title") || text == NULL)
+        return 0;
+    l = lv_label_create(s_parent);
+    if (l == NULL)
+        return 0;
+    lv_label_set_text(l, text);
+    lv_label_set_long_mode(l, LV_LABEL_LONG_DOT);
+    lv_obj_set_style_max_width(l, LV_PCT(100), 0);
+    lv_obj_set_style_text_color(l, SKAI_UI_FG, 0);
+    lv_obj_set_style_text_align(l, LV_TEXT_ALIGN_CENTER, 0);
+    lv_obj_set_style_text_font(l, LV_EXT_FONT_GET(font_step(2)), 0);
+    lv_obj_set_style_pad_bottom(l, 6, 0);
+    /* A title is the top of the page. In a list it scrolls with the list; on the
+       page itself the flow column centres its children vertically, which put a
+       Bot-written focus screen's title in the middle of its ring (2026-09-20) —
+       so out of the flow and pinned near the top edge of the round screen. */
+    if (!in_list())
+    {
+        lv_obj_set_parent(l, s_root);
+        lv_obj_add_flag(l, LV_OBJ_FLAG_IGNORE_LAYOUT);
+        lv_obj_align(l, LV_ALIGN_TOP_MID, 0, 36);
+    }
+    return slot_alloc(l);
+}
+
+int32_t skai_ui_section(const char *text)
+{
+    lv_obj_t *l;
+
+    if (!ui_ready("ui.section") || text == NULL)
+        return 0;
+    l = lv_label_create(s_parent);
+    if (l == NULL)
+        return 0;
+    lv_label_set_text(l, text);
+    lv_label_set_long_mode(l, LV_LABEL_LONG_WRAP);
+    lv_obj_set_width(l, in_list() ? LV_PCT(100) : 320);
+    lv_obj_set_style_text_color(l, SKAI_UI_LABEL2, 0);
+    lv_obj_set_style_text_font(l, LV_EXT_FONT_GET(font_step(-1)), 0);
+    /* The grouped-list header: inset to the card's text, air above, tight below. */
+    lv_obj_set_style_pad_left(l, 20, 0);
+    lv_obj_set_style_pad_top(l, 14, 0);
+    lv_obj_set_style_pad_bottom(l, 2, 0);
+    return slot_alloc(l);
+}
+
+/* The second line of a list row, and the capsule at its end. Found by shape,
+   not by a stored pointer: the detail is the one that starts a new flex track. */
+static lv_obj_t *row_part(lv_obj_t *row, bool detail, bool create)
+{
+    uint32_t n;
+    lv_obj_t *c;
+
+    if (row == NULL || !lv_obj_check_type(row, &lv_btn_class) ||
+            lv_obj_get_style_flex_flow(row, LV_PART_MAIN) != LV_FLEX_FLOW_ROW_WRAP)
+        return NULL;
+    n = lv_obj_get_child_cnt(row);
+    for (uint32_t i = 1; i < n; i++)
+    {
+        c = lv_obj_get_child(row, (int32_t)i);
+        if (lv_obj_has_flag(c, LV_OBJ_FLAG_FLEX_IN_NEW_TRACK) == detail)
+            return c;
+    }
+    if (!create)
+        return NULL;
+    c = lv_label_create(row);
+    if (c == NULL)
+        return NULL;
+    lv_obj_set_style_text_font(c, LV_EXT_FONT_GET(font_step(-1)), 0);
+    if (detail)
+    {
+        lv_label_set_long_mode(c, LV_LABEL_LONG_WRAP);
+        lv_obj_set_width(c, LV_PCT(100));
+        lv_obj_add_flag(c, LV_OBJ_FLAG_FLEX_IN_NEW_TRACK);
+        lv_obj_set_style_text_color(c, SKAI_UI_LABEL2, 0);
+    }
+    else
+    {
+        lv_obj_set_style_radius(c, LV_RADIUS_CIRCLE, 0);
+        lv_obj_set_style_bg_opa(c, LV_OPA_COVER, 0);
+        lv_obj_set_style_pad_hor(c, 14, 0);
+        lv_obj_set_style_pad_ver(c, 6, 0);
+        lv_obj_move_to_index(c, 1);   /* before any detail line */
+    }
+    return c;
+}
+
+bool skai_ui_set_detail(int32_t id, const char *text)
+{
+    lv_obj_t *d;
+
+    if (!ui_ready("ui.set_detail") || text == NULL)
+        return false;
+    d = row_part(slot_of(id), true, text[0] != '\0');
+    if (d == NULL)
+        return text[0] == '\0' && slot_of(id) != NULL;
+    lv_label_set_text(d, text);
+    if (text[0] == '\0') lv_obj_add_flag(d, LV_OBJ_FLAG_HIDDEN);
+    else                  lv_obj_clear_flag(d, LV_OBJ_FLAG_HIDDEN);
+    return true;
+}
+
+bool skai_ui_set_accessory(int32_t id, const char *text, int32_t tone)
+{
+    /* tone: 0 neutral, 1 active (sky — running, selected), 2 done (green),
+       3 warning (orange), 4 alert (red). Fill is the ink at 18 %, the phone's
+       chip language: colour is never the only signal, the words are. */
+    static const uint32_t k_ink[] = { 0x8D8D93, 0xA6D3E6, 0x30D158, 0xFF9F0A, 0xFF453A };
+    lv_obj_t *a;
+    uint32_t ink;
+
+    if (!ui_ready("ui.set_accessory") || text == NULL)
+        return false;
+    a = row_part(slot_of(id), false, text[0] != '\0');
+    if (a == NULL)
+        return text[0] == '\0' && slot_of(id) != NULL;
+    ink = k_ink[(tone < 0 || tone > 4) ? 0 : tone];
+    lv_label_set_text(a, text);
+    lv_obj_set_style_text_color(a, lv_color_hex(ink), 0);
+    lv_obj_set_style_bg_color(a, lv_color_hex(ink), 0);
+    lv_obj_set_style_bg_opa(a, tone == 0 ? LV_OPA_20 : 46, 0);
+    /* A coloured state also gets the chip's rim (ink @ 55 %), as on the phone. */
+    lv_obj_set_style_border_color(a, lv_color_hex(ink), 0);
+    lv_obj_set_style_border_opa(a, 140, 0);
+    lv_obj_set_style_border_width(a, tone == 0 ? 0 : 2, 0);
+    if (text[0] == '\0') lv_obj_add_flag(a, LV_OBJ_FLAG_HIDDEN);
+    else                  lv_obj_clear_flag(a, LV_OBJ_FLAG_HIDDEN);
+    return true;
+}
+
+int32_t skai_ui_item(const char *text)
+{
+    lv_obj_t *b, *l;
+    int32_t id;
+
+    if (!ui_ready("ui.item") || text == NULL)
+        return 0;
+    b = lv_btn_create(s_parent);
+    if (b == NULL)
+        return 0;
+    lv_obj_set_width(b, in_list() ? LV_PCT(100) : 320);
+    lv_obj_set_height(b, LV_SIZE_CONTENT);
+    card_style(b);
+    /* [caption ........ accessory]
+       [detail                    ]   — child 0 is always the caption, which
+       is what ui.set_text and the click text read; the other two are made on
+       first use by ui.set_accessory / ui.set_detail. */
+    lv_obj_set_flex_flow(b, LV_FLEX_FLOW_ROW_WRAP);
+    lv_obj_set_flex_align(b, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_CENTER,
+                          LV_FLEX_ALIGN_CENTER);
+    lv_obj_set_style_pad_column(b, 12, 0);
+    lv_obj_set_style_pad_row(b, 4, 0);
+    l = lv_label_create(b);
+    if (l != NULL)
+    {
+        lv_label_set_long_mode(l, LV_LABEL_LONG_WRAP);
+        lv_obj_set_flex_grow(l, 1);
+        lv_label_set_text(l, text);
+        lv_obj_set_style_text_color(l, SKAI_UI_FG, 0);
+    }
+    id = slot_alloc(b);
+    if (id > 0)
+        lv_obj_add_event_cb(b, click_trampoline, LV_EVENT_CLICKED,
+                            (void *)(intptr_t)id);
+    return id;
+}
+
+/* A white tick inside a checked checkbox's circle, drawn with two lines. */
+static void tick_draw_cb(lv_event_t *e)
+{
+    lv_obj_t *c = lv_event_get_target(e);
+    lv_obj_draw_part_dsc_t *d = lv_event_get_draw_part_dsc(e);
+    lv_draw_line_dsc_t line;
+    lv_point_t p[3];
+    lv_coord_t x, y, w, h;
+
+    if (d == NULL || d->part != LV_PART_INDICATOR || d->draw_area == NULL ||
+            !lv_obj_has_state(c, LV_STATE_CHECKED))
+        return;
+    x = d->draw_area->x1;
+    y = d->draw_area->y1;
+    w = lv_area_get_width(d->draw_area);
+    h = lv_area_get_height(d->draw_area);
+    lv_draw_line_dsc_init(&line);
+    line.color = lv_color_hex(0x000000);   /* dark ink on the sky circle */
+    line.width = (w >= 24) ? 4 : 3;
+    line.round_start = 1;
+    line.round_end = 1;
+    p[0].x = x + w * 27 / 100; p[0].y = y + h * 52 / 100;
+    p[1].x = x + w * 44 / 100; p[1].y = y + h * 68 / 100;
+    p[2].x = x + w * 74 / 100; p[2].y = y + h * 34 / 100;
+    lv_draw_line(d->draw_ctx, &line, &p[0], &p[1]);
+    lv_draw_line(d->draw_ctx, &line, &p[1], &p[2]);
+}
+
+int32_t skai_ui_checkbox(const char *text)
+{
+    lv_obj_t *c;
+    int32_t id;
+
+    if (!ui_ready("ui.checkbox") || text == NULL)
+        return 0;
+    c = lv_checkbox_create(s_parent);
+    if (c == NULL)
+        return 0;
+    lv_checkbox_set_text(c, text); /* copies */
+    lv_obj_set_style_text_color(c, SKAI_UI_FG, 0);
+    lv_obj_set_style_pad_column(c, 14, 0);
+    lv_obj_set_style_radius(c, LV_RADIUS_CIRCLE, LV_PART_INDICATOR);
+    lv_obj_set_style_border_color(c, lv_color_hex(0x8E8E93), LV_PART_INDICATOR);
+    lv_obj_set_style_border_width(c, 3, LV_PART_INDICATOR);
+    lv_obj_set_style_bg_opa(c, LV_OPA_TRANSP, LV_PART_INDICATOR);
+    lv_obj_set_style_bg_color(c, SKAI_UI_ACCENT, LV_PART_INDICATOR | LV_STATE_CHECKED);
+    lv_obj_set_style_bg_opa(c, LV_OPA_COVER, LV_PART_INDICATOR | LV_STATE_CHECKED);
+    lv_obj_set_style_border_color(c, SKAI_UI_ACCENT, LV_PART_INDICATOR | LV_STATE_CHECKED);
+    /* Done items step back, the way a ticked row does on the phone. */
+    lv_obj_set_style_text_color(c, SKAI_UI_LABEL2, LV_STATE_CHECKED);
+    /* The theme's tick is LV_SYMBOL_OK in the indicator's font, and the system
+       font has no symbol glyphs (it drew a box). Linking a symbol font for one
+       glyph cost 16 KB of a nearly full image, so the tick is drawn as two
+       lines instead (tick_draw_cb). */
+    lv_obj_set_style_bg_img_src(c, NULL, LV_PART_INDICATOR | LV_STATE_CHECKED);
+    lv_obj_add_event_cb(c, tick_draw_cb, LV_EVENT_DRAW_PART_END, NULL);
+    /* In a list a checklist row is as wide as the list: a wide tap target is
+       the difference between usable and fiddly on a wrist. */
+    if (in_list())
+    {
+        lv_obj_set_width(c, LV_PCT(100));
+        card_style(c);
+    }
+    id = slot_alloc(c);
+    if (id > 0)
+        lv_obj_add_event_cb(c, click_trampoline, LV_EVENT_VALUE_CHANGED,
+                            (void *)(intptr_t)id);
+    return id;
+}
+
+int32_t skai_ui_switch(void)
+{
+    lv_obj_t *w;
+    int32_t id;
+
+    if (!ui_ready("ui.switch"))
+        return 0;
+    w = lv_switch_create(s_parent);
+    if (w == NULL)
+        return 0;
+    lv_obj_set_size(w, 72, 40);
+    lv_obj_set_style_bg_color(w, SKAI_UI_TRACK, LV_PART_MAIN);
+    lv_obj_set_style_bg_color(w, SKAI_UI_ACCENT, LV_PART_INDICATOR | LV_STATE_CHECKED);
+    lv_obj_set_style_bg_opa(w, 140, LV_PART_INDICATOR | LV_STATE_CHECKED);
+    lv_obj_set_style_bg_color(w, SKAI_UI_FG, LV_PART_KNOB);
+    id = slot_alloc(w);
+    if (id > 0)
+        lv_obj_add_event_cb(w, click_trampoline, LV_EVENT_VALUE_CHANGED,
+                            (void *)(intptr_t)id);
+    return id;
+}
+
+int32_t skai_ui_slider(int32_t value)
+{
+    lv_obj_t *sl;
+    int32_t id;
+
+    if (!ui_ready("ui.slider"))
+        return 0;
+    sl = lv_slider_create(s_parent);
+    if (sl == NULL)
+        return 0;
+    lv_obj_set_size(sl, 240, 14);
+    lv_slider_set_range(sl, 0, 100);
+    lv_slider_set_value(sl, clamp_pct(value), LV_ANIM_OFF);
+    lv_obj_set_style_bg_color(sl, SKAI_UI_TRACK, LV_PART_MAIN);
+    lv_obj_set_style_bg_color(sl, SKAI_UI_ACCENT, LV_PART_INDICATOR);
+    lv_obj_set_style_bg_color(sl, SKAI_UI_FG, LV_PART_KNOB);
+    lv_obj_set_style_pad_all(sl, 8, LV_PART_KNOB);
+    /* Dragging a slider sideways must not also swipe the page. */
+    lv_obj_clear_flag(sl, LV_OBJ_FLAG_SCROLL_CHAIN);
+    lv_obj_set_ext_click_area(sl, 16);
+    id = slot_alloc(sl);
+    if (id > 0)
+        lv_obj_add_event_cb(sl, click_trampoline, LV_EVENT_VALUE_CHANGED,
+                            (void *)(intptr_t)id);
+    return id;
+}
+
+bool skai_ui_set_range(int32_t id, int32_t min, int32_t max)
+{
+    lv_obj_t *o = slot_of(id);
+
+    if (!ui_ready("ui.set_range") || o == NULL)
+        return false;
+    if (min >= max || min < -30000 || max > 30000)
+        return false;   /* arc ranges are int16 in LVGL 8 */
+    if (lv_obj_check_type(o, &lv_slider_class))
+        lv_slider_set_range(o, min, max);
+    else if (lv_obj_check_type(o, &lv_bar_class))
+        lv_bar_set_range(o, min, max);
+    else if (lv_obj_check_type(o, &lv_arc_class))
+        lv_arc_set_range(o, (int16_t)min, (int16_t)max);
+    else
+        return false;
+    return true;
+}
+
+int32_t skai_ui_value(int32_t id)
+{
+    lv_obj_t *o = slot_of(id);
+
+    if (!ui_ready("ui.value") || o == NULL)
+        return SKAI_NO_DATA;
+    if (lv_obj_check_type(o, &lv_slider_class))
+        return lv_slider_get_value(o);
+    if (lv_obj_check_type(o, &lv_bar_class))
+        return lv_bar_get_value(o);
+    if (lv_obj_check_type(o, &lv_arc_class))
+        return lv_arc_get_value(o);
+    if (lv_obj_check_type(o, &lv_checkbox_class) || lv_obj_check_type(o, &lv_switch_class))
+        return lv_obj_has_state(o, LV_STATE_CHECKED) ? 1 : 0;
+    return SKAI_NO_DATA;
+}
+
+bool skai_ui_set_value(int32_t id, int32_t value)
+{
+    lv_obj_t *o = slot_of(id);
+
+    if (!ui_ready("ui.set_value") || o == NULL)
+        return false;
+    if (lv_obj_check_type(o, &lv_slider_class))
+        lv_slider_set_value(o, value, LV_ANIM_OFF);
+    else if (lv_obj_check_type(o, &lv_bar_class))
+        lv_bar_set_value(o, value, LV_ANIM_OFF);
+    else if (lv_obj_check_type(o, &lv_arc_class))
+        lv_arc_set_value(o, (int16_t)value);
+    else if (lv_obj_check_type(o, &lv_checkbox_class) || lv_obj_check_type(o, &lv_switch_class))
+    {
+        if (value)
+            lv_obj_add_state(o, LV_STATE_CHECKED);
+        else
+            lv_obj_clear_state(o, LV_STATE_CHECKED);
+    }
+    else
+        return false;
+    return true;
+}
+
+bool skai_ui_set_visible(int32_t id, int32_t visible)
+{
+    lv_obj_t *o = slot_of(id);
+
+    if (!ui_ready("ui.set_visible") || o == NULL)
+        return false;
+    if (visible)
+        lv_obj_clear_flag(o, LV_OBJ_FLAG_HIDDEN);
+    else
+        lv_obj_add_flag(o, LV_OBJ_FLAG_HIDDEN);
+    return true;
+}
+
+bool skai_ui_remove(int32_t id)
+{
+    lv_obj_t *o = slot_of(id);
+
+    if (!ui_ready("ui.remove") || o == NULL)
+        return false;
+    /* A group still being built must not be removed from under the insertion
+       point: the next create would land in freed memory. */
+    for (lv_obj_t *p = s_parent; p != NULL; p = lv_obj_get_parent(p))
+        if (p == o)
+            return false;
+    /* slot_deleted_cb releases this slot and every slot inside it. */
+    lv_obj_del(o);
+    return true;
+}
+
+bool skai_ui_scroll_to(int32_t id)
+{
+    lv_obj_t *o = slot_of(id);
+
+    if (!ui_ready("ui.scroll_to") || o == NULL)
+        return false;
+    lv_obj_scroll_to_view_recursive(o, LV_ANIM_ON);
+    return true;
 }
 
 /* ── keypad ── */

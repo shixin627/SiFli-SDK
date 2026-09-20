@@ -12,6 +12,7 @@
 #include <stdlib.h>
 
 #include <rtthread.h>
+#include "mem_section.h"
 #include <dfs_posix.h>
 
 #include "cJSON.h"
@@ -29,6 +30,11 @@
 #include <rtdbg.h>
 
 #define PKG_DIR "/skaiapp"
+
+/* Defined below; the install path needs it to see whether this app already has
+   a slot before refusing a new one. */
+static int pkg_walk(int want_idx, skai_pkg_info_t *out,
+                    const char *want_keyid, const char *want_app);
 
 /* ─────────────────────────────── base64url ──────────────────────────────── */
 
@@ -571,6 +577,20 @@ skai_pkg_result_t skai_pkg_install(const char *manifest, uint32_t mlen,
     if (!pkg_dir(dir, sizeof(dir), out->keyid, out->app_id))
         return SKAI_PKG_ERR_STORAGE;
 
+    /* A new app when the slots are full is refused HERE. Writing it would
+       "succeed" and then never launch, because only the first SKAI_PKG_SLOTS
+       are enumerated (2026-09-20). Replacing an app already installed is always
+       allowed: it takes the slot it already has. */
+    {
+        skai_pkg_info_t existing;
+        if (pkg_walk(-1, &existing, out->keyid, out->app_id) != 1 &&
+                skai_pkg_count() >= SKAI_PKG_SLOTS)
+        {
+            LOG_W("%s: %d apps installed, no free slot", out->app_id, skai_pkg_count());
+            return SKAI_PKG_ERR_LIMIT;
+        }
+    }
+
     mkdir(PKG_DIR, 0x777);
     rt_snprintf(path, sizeof(path), PKG_DIR "/%s", out->keyid);
     mkdir(path, 0x777);
@@ -611,7 +631,11 @@ static int pkg_walk(int want_idx, skai_pkg_info_t *out,
     if (!d1)
         return 0;
 
-    while ((e1 = readdir(d1)) != NULL && found < SKAI_PKG_SLOTS)
+    /* The slot cap bounds ENUMERATION. Looking one app up by name must not stop
+       at the 16th directory, or an app past it is "not-installed" at launch
+       while its files sit on disk (2026-09-20: the 17th install reported OK and
+       then refused to start). */
+    while ((e1 = readdir(d1)) != NULL && (want_keyid || found < SKAI_PKG_SLOTS))
     {
         if (e1->d_name[0] == '.')
             continue;
@@ -620,7 +644,7 @@ static int pkg_walk(int want_idx, skai_pkg_info_t *out,
         if (!d2)
             continue;   /* a legacy /skaiapp/<id>.json file, not a keyid dir */
 
-        while ((e2 = readdir(d2)) != NULL && found < SKAI_PKG_SLOTS)
+        while ((e2 = readdir(d2)) != NULL && (want_keyid || found < SKAI_PKG_SLOTS))
         {
             uint32_t mlen = 0;
             skai_pkg_info_t info;
@@ -729,7 +753,12 @@ extern void skaijs_set_source(const char *src, const skai_js_policy_t *policy);
    app is on screen at a time, which is what makes a single static correct. */
 static skai_pkg_info_t s_live;
 static const char     *s_live_caps[SKAI_PKG_CAPS_MAX];
-static char            s_live_src[SKAI_PKG_JS_SRC_MAX];
+/* PSRAM, not SRAM: 48 KB of source has no business in HCPU RAM, and it is read
+   exactly once per launch (by the parser), so uncached PSRAM costs nothing that
+   matters. The JS host reads it in place — see skaijs_set_source. */
+L2_RET_BSS_SECT_BEGIN(skai_js_src)
+static char            s_live_src[SKAI_PKG_JS_SRC_MAX] L2_RET_BSS_SECT(skai_js_src);
+L2_RET_BSS_SECT_END
 
 skai_pkg_result_t skai_pkg_launch(const char *keyid, const char *app_id)
 {

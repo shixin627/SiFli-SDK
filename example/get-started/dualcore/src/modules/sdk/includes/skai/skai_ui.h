@@ -28,8 +28,11 @@
  * more, so pages would arrive dead. Three pointer tables, so the cost of the
  * raise is 48 x 3 x 4 = 576 bytes against a JS heap measured in tens of KB.
  * (40 -> 48 because the daily page's rain figures and row separators put the
- * weather reproduction at 42 in the worst case.) */
-#define SKAI_UI_SLOTS 48
+ * weather reproduction at 42 in the worst case.)
+ * 48 -> 160 (2026-09-19): scrollable lists arrived, and a checklist built from
+ * a spreadsheet is one widget per row — a 60-item shopping list is an ordinary
+ * app, not an abusive one. Still bounded; still ~2 KB. */
+#define SKAI_UI_SLOTS 160
 
 /* Full-screen pages an app may declare. The host owns the swipe, the snap and
  * the scrollbar; an app names a page index and never touches a scroll offset,
@@ -95,6 +98,33 @@ bool skai_ui_set_color(int32_t id, int32_t rgb);
 SKAI_EXPORT("ui.set_bg", SKAI_T1, SKAI_THREAD_LVGL)
 bool skai_ui_set_bg(int32_t id, int32_t rgb);
 
+/* A card you lay out yourself: a vertical group (like ui.row, closed by ui.end)
+ * already wearing the content-card look - surface fill, hairline, radius 24,
+ * padding 16. Size, colours, radius and padding are all yours to change with
+ * the set_* calls below; tappable with ui.on_click. */
+SKAI_EXPORT("ui.box", SKAI_T1, SKAI_THREAD_LVGL)
+int32_t skai_ui_box(void);
+
+/* Corner radius in px, 0..240 (240 = fully round / capsule). */
+SKAI_EXPORT("ui.set_radius", SKAI_T1, SKAI_THREAD_LVGL)
+bool skai_ui_set_radius(int32_t id, int32_t px);
+
+/* Outline: colour 0xRRGGBB and width 0..8 px (0 removes it). */
+SKAI_EXPORT("ui.set_border", SKAI_T1, SKAI_THREAD_LVGL)
+bool skai_ui_set_border(int32_t id, int32_t rgb, int32_t width);
+
+/* Inner padding on all sides, 0..64 px. */
+SKAI_EXPORT("ui.set_pad", SKAI_T1, SKAI_THREAD_LVGL)
+bool skai_ui_set_pad(int32_t id, int32_t px);
+
+/* Space between the children of a box/row/list, 0..64 px. */
+SKAI_EXPORT("ui.set_gap", SKAI_T1, SKAI_THREAD_LVGL)
+bool skai_ui_set_gap(int32_t id, int32_t px);
+
+/* Background opacity 0..100: a tint such as accent at 18 % for a selected chip. */
+SKAI_EXPORT("ui.set_bg_opa", SKAI_T1, SKAI_THREAD_LVGL)
+bool skai_ui_set_bg_opa(int32_t id, int32_t percent);
+
 /* Relative text size, -2..3, on the same scale the rest of the watch uses, so
  * a JS app tracks the user's font-size setting instead of pinning pixels. */
 SKAI_EXPORT("ui.set_font", SKAI_T1, SKAI_THREAD_LVGL)
@@ -132,8 +162,8 @@ SKAI_EXPORT("ui.align_to", SKAI_T1, SKAI_THREAD_LVGL)
 bool skai_ui_align_to(int32_t id, int32_t ref_id, const char *side,
                       int32_t dx, int32_t dy);
 
-/* A grid of keys as ONE widget, laid out from a map: keys separated by spaces,
- * rows by "\n" — e.g. "7 8 9 +\n4 5 6 -\n1 2 3 x\n  0 . /".
+/* Keys separated by spaces and ROWS BY \n, never by / or | — a number pad is
+ * ui.keypad("7 8 9\n4 5 6\n1 2 3\n  0 C"). A grid of keys as ONE widget.
  *
  * One widget rather than one per key, because that is what the underlying
  * button matrix is: bounded by construction, no per-key slot to exhaust, and a
@@ -157,6 +187,7 @@ int32_t skai_ui_divider(int32_t width);
 SKAI_EXPORT("ui.arc", SKAI_T1, SKAI_THREAD_LVGL)
 int32_t skai_ui_arc(int32_t percent);
 
+/* Change the text of a label, a list row (ui.item), a button or a checkbox. */
 SKAI_EXPORT("ui.set_text", SKAI_T1, SKAI_THREAD_LVGL)
 bool skai_ui_set_text(int32_t id, const char *text);
 
@@ -182,6 +213,75 @@ int32_t skai_ui_page(void);
 SKAI_EXPORT("ui.goto_page", SKAI_T1, SKAI_THREAD_LVGL)
 bool skai_ui_goto_page(int32_t index);
 
+/* ── lists and controls ──
+ * A list is a group, like ui.row: everything created after ui.list() goes into
+ * it until ui.end(). It fills the rest of the page and scrolls vertically, so it
+ * is the way to show more rows than fit on the round screen. */
+SKAI_EXPORT("ui.list", SKAI_T1, SKAI_THREAD_LVGL)
+int32_t skai_ui_list(void);
+
+/* A full-width tappable row, the natural child of ui.list(). skai.ui.on_click
+ * on it receives the row's text. Drawn as the phone app's content card. */
+SKAI_EXPORT("ui.item", SKAI_T1, SKAI_THREAD_LVGL)
+int32_t skai_ui_item(const char *text);
+
+/* The page heading: large, centred, one line. Use once, at the top. */
+SKAI_EXPORT("ui.title", SKAI_T1, SKAI_THREAD_LVGL)
+int32_t skai_ui_title(const char *text);
+
+/* A small grey group header above a run of rows ("Ingredients", "Steps"). */
+SKAI_EXPORT("ui.section", SKAI_T1, SKAI_THREAD_LVGL)
+int32_t skai_ui_section(const char *text);
+
+/* A second, grey line under a ui.item's caption. "" hides it. */
+SKAI_EXPORT("ui.set_detail", SKAI_T1, SKAI_THREAD_LVGL)
+bool skai_ui_set_detail(int32_t id, const char *text);
+
+/* A small capsule at the right end of a ui.item — a countdown, a count, a state.
+ * tone 0 neutral grey, 1 active sky (running/selected), 2 done green, 3 warning
+ * orange, 4 alert red. "" hides it. */
+SKAI_EXPORT("ui.set_accessory", SKAI_T1, SKAI_THREAD_LVGL)
+bool skai_ui_set_accessory(int32_t id, const char *text, int32_t tone);
+
+/* A tick box with a caption. Tapping it toggles it; skai.ui.on_click on it
+ * receives "1" (now ticked) or "0". Read it back with ui.value. */
+SKAI_EXPORT("ui.checkbox", SKAI_T1, SKAI_THREAD_LVGL)
+int32_t skai_ui_checkbox(const char *text);
+
+/* An on/off switch. Same events and value as ui.checkbox. */
+SKAI_EXPORT("ui.switch", SKAI_T1, SKAI_THREAD_LVGL)
+int32_t skai_ui_switch(void);
+
+/* A draggable slider, 0..100 unless ui.set_range says otherwise. skai.ui.on_click
+ * on it receives the new value as text while it is dragged. */
+SKAI_EXPORT("ui.slider", SKAI_T1, SKAI_THREAD_LVGL)
+int32_t skai_ui_slider(int32_t value);
+
+/* Change the range of a slider, bar or arc. */
+SKAI_EXPORT("ui.set_range", SKAI_T1, SKAI_THREAD_LVGL)
+bool skai_ui_set_range(int32_t id, int32_t min, int32_t max);
+
+/* Current value: a slider/bar/arc's number, 1/0 for a checkbox or switch. */
+SKAI_EXPORT("ui.value", SKAI_T1, SKAI_THREAD_LVGL)
+int32_t skai_ui_value(int32_t id);
+
+/* Set a slider/bar/arc's number, or tick (1) / untick (0) a checkbox or switch.
+ * Does not fire the widget's on_click handler. */
+SKAI_EXPORT("ui.set_value", SKAI_T1, SKAI_THREAD_LVGL)
+bool skai_ui_set_value(int32_t id, int32_t value);
+
+/* Show (1) or hide (0) a widget. A hidden widget takes no space in a list or row. */
+SKAI_EXPORT("ui.set_visible", SKAI_T1, SKAI_THREAD_LVGL)
+bool skai_ui_set_visible(int32_t id, int32_t visible);
+
+/* Delete one widget (and anything inside it). Its id stops working. */
+SKAI_EXPORT("ui.remove", SKAI_T1, SKAI_THREAD_LVGL)
+bool skai_ui_remove(int32_t id);
+
+/* Scroll the list or page holding this widget until it is on screen. */
+SKAI_EXPORT("ui.scroll_to", SKAI_T1, SKAI_THREAD_LVGL)
+bool skai_ui_scroll_to(int32_t id);
+
 /* ── host side, not exported ──
  * The app host owns the container and hands it over for the lifetime of a run.
  * Detaching invalidates every id, so a stale id from a previous run cannot
@@ -206,5 +306,14 @@ bool skai_ui_on_click(int32_t id, skai_ui_click_cb_t cb, void *arg);
  * the self-check — path confinement is the whole security story for images,
  * so it gets tested directly rather than only through LVGL. */
 bool skai_ui_path_ok(const char *rel_path);
+
+/* The design tokens every app draws with: the phone app's palette and
+ * metrics, adapted to the watch. Exposed to JS as the frozen object skai.theme
+ * (skai.theme.accent, skai.theme.radius, ...), so an app designs its own layout
+ * and still reads as the same product. Change a value here and every app
+ * follows. */
+typedef struct { const char *name; int32_t value; } skai_ui_token_t;
+extern const skai_ui_token_t skai_ui_theme[];
+extern const int skai_ui_theme_count;
 
 #endif /* SKAI_UI_H */
