@@ -7183,7 +7183,10 @@ void instruction_list_on_bot_avatar_file(const char *path)
 void set_instruction_service_icon(const char *id, const char *svc)
 {
     const char *icon = service_icon(svc);
-    if (icon == NULL)
+    /* The logos are files now (ui_img_helper.h): one the phone has not copied down
+       yet is the same as an unknown service — keep the default frame rather than
+       point the dot at a file LVGL would draw as nothing. */
+    if (icon == NULL || ui_fs_img_or(icon, NULL) == NULL)
         return;
     int idx = find_instruction_by_id(id);
     if (idx >= 0)

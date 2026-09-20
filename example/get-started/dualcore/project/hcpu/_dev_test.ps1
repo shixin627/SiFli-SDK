@@ -75,8 +75,9 @@ function Read-Console {
     $reader = @'
 import ctypes, sys, subprocess
 from ctypes import wintypes
-out = subprocess.check_output(["wmic","process","where","name='main.exe'","get","ProcessId"], text=True)
-pid = next((int(l.strip()) for l in out.splitlines() if l.strip().isdigit()), None)
+# tasklist, not wmic: wmic is gone from current Windows 11 builds.
+out = subprocess.check_output(["tasklist","/FI","IMAGENAME eq main.exe","/FO","CSV","/NH"], text=True, errors="replace")
+pid = next((int(l.split('","')[1]) for l in out.splitlines() if l.startswith('"main.exe"')), None)
 if not pid: sys.exit(1)
 k = ctypes.WinDLL("kernel32", use_last_error=True)
 k.FreeConsole()

@@ -702,6 +702,10 @@ void resolve_skailink_command(uint8_t key, uint8_t *pValue, uint16_t length)
         /* phone→watch (DOWNLINK): uninstall one AI mini-app. */
         skaiapp_on_remove(pValue, length);
         break;
+    case KEY_SKAIAPP_RUN:
+        /* Uplink-only (watch→phone); never received here. */
+        LOG_W("skailink: KEY_SKAIAPP_RUN is uplink-only");
+        break;
     case KEY_SKAIAPP_ACK:
         /* Uplink-only (watch→phone); never received here. */
         LOG_W("skailink: KEY_SKAIAPP_ACK is uplink-only");

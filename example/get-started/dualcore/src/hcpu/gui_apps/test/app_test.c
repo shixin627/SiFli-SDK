@@ -1485,6 +1485,7 @@ static bool wake_cycle_wait(uint32_t milliseconds)
     return !wake_cycle_stop_requested;
 }
 
+#if !defined(BSP_USING_PC_SIMULATOR)
 static void wake_cycle_alarm_cb(rt_alarm_t alarm, time_t timestamp)
 {
     (void)alarm;
@@ -1496,6 +1497,7 @@ static void wake_cycle_alarm_cb(rt_alarm_t alarm, time_t timestamp)
         rt_sem_release(wake_cycle_sem);
     }
 }
+#endif
 
 /* Stay asleep for `seconds`, then come back.
  *
@@ -1513,6 +1515,16 @@ static void wake_cycle_alarm_cb(rt_alarm_t alarm, time_t timestamp)
  * sleep than the real thing, but better than a watch that never comes back. */
 static bool wake_cycle_sleep_for(uint32_t seconds)
 {
+#if defined(BSP_USING_PC_SIMULATOR)
+    /* The simulator has no RTC alarm and no PM framework; a plain wait keeps
+       the test app building there (it broke the whole sim build otherwise). */
+    if (seconds < 2U)
+    {
+        seconds = 2U;
+    }
+    wake_cycle_alarm_wake = false;
+    return wake_cycle_wait(seconds * 1000U);
+#else
     struct rt_alarm_setup setup;
     rt_alarm_t alarm;
     time_t when;
@@ -1560,6 +1572,7 @@ static bool wake_cycle_sleep_for(uint32_t seconds)
     completed = wake_cycle_wait(seconds * 1000U);
     rt_pm_release(PM_SLEEP_MODE_IDLE);
     return completed;
+#endif
 }
 
 static void wake_cycle_buzz(void)

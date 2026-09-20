@@ -199,6 +199,7 @@ bool commu_send_tv_key(const char *verb);
 bool commu_send_skaiapp_ack(const char *id, int code);                       /* -> KEY_SKAIAPP_ACK (0x15) install/remove result */
 bool commu_send_skaiapp_voice(const char *app_id, const char *memo_id);      /* -> KEY_SKAIAPP_VOICE (0x16) 🎤 voice-fill a memo */
 bool commu_send_skaiapp_action(const char *app_id, const char *action_id);   /* -> KEY_SKAIAPP_ACTION (0x28) run one of the user's phone Actions */
+bool commu_send_skaiapp_run(const char *app_id, const char *ev, const char *r, const char *line); /* -> KEY_SKAIAPP_RUN (0x29) JS app install/run/log report */
 
 /* Sensor */
 bool commu_send_linear_acce_buffer(const uint8_t *acce, uint16_t length);

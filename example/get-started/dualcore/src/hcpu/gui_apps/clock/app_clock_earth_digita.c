@@ -8,6 +8,7 @@
 #include "app_mem.h"
 #include "common_widget.h"
 #include "watch_system_interact.h"
+#include "ui_img_helper.h"
 #include "ui_helper.h"
 #include "lv_ext_resource_manager.h"
 
@@ -186,7 +187,13 @@ lv_obj_t *lv_earth_digital_layout_create(lv_obj_t *parent)
     lv_obj_set_style_bg_opa(m_1, LV_OPA_TRANSP, 0);
 
     p_clk_earth_digital->earth_img = lv_img_create(p_clk_earth_digital->bg);
-    lv_img_set_src(p_clk_earth_digital->earth_img, &img_earth_digital_bg);
+    /* The earth picture is a file now (ui_img_helper.h, IMG_EARTH_DIGITAL_BG): a
+       watch that has not received it yet shows the digits on plain black. */
+    {
+        const void *earth = ui_fs_img_or(IMG_EARTH_DIGITAL_BG, NULL);
+        if (earth != NULL)
+            lv_img_set_src(p_clk_earth_digital->earth_img, earth);
+    }
     lv_obj_align(p_clk_earth_digital->earth_img, LV_ALIGN_BOTTOM_MID, 0, -30);
 
     /* AM/PM tag at the bottom-right corner of the minutes — small and

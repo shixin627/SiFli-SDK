@@ -243,11 +243,20 @@ const char *const icon_list[NOTIFICATION_APP_QUANTITY] = {
 /* Bound-guard icon_list[] against an out-of-range notification type pushed
    from the phone. Valid indices are 0..NOTIFICATION_APP_QUANTITY-1; anything
    else falls back to the default icon instead of reading past the array. */
-static const char *notif_icon_src(uint8_t type)
+static const void *notif_icon_src(uint8_t type)
+{
+    return ui_notif_icon(type);
+}
+
+/* The one way to get a notification app's logo, for this file and the call /
+   message screens. Most logos are files under /assets/icons/ now
+   (ui_img_helper.h), so a watch the phone has not synced yet gets the built-in
+   generic glyph instead of an empty box. */
+const void *ui_notif_icon(uint8_t type)
 {
     if (type >= NOTIFICATION_APP_QUANTITY)
         type = Notify_others;
-    return icon_list[type];
+    return ui_fs_img_or(icon_list[type], ICON_OTHER);
 }
 
 #ifdef BSP_USING_PC_SIMULATOR

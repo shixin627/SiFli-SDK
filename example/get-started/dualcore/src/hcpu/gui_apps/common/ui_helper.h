@@ -124,6 +124,8 @@ extern "C"
     extern void calendar_today_refresh(void);
 
     extern const char *const icon_list[NOTIFICATION_APP_QUANTITY];
+    /* Logo for a notification app type, with the built-in fallback when its file is missing. */
+    extern const void *ui_notif_icon(uint8_t type);
     extern const char *get_app_icon(uint8_t app_id);
 
     extern void ui_show_hint_toast(const char *hint, ...);

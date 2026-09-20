@@ -290,12 +290,7 @@ static lv_obj_t *create_incoming_call_screen(lv_obj_t *scr)
 
     /* App icon from notification type (same mapping as message list) */
     lv_obj_t *icon = lv_img_create(bg);
-    uint8_t type = s_caller_type;
-    if (type >= NOTIFICATION_APP_QUANTITY)
-    {
-        type = Notify_others;
-    }
-    lv_img_set_src(icon, icon_list[type]);
+    lv_img_set_src(icon, ui_notif_icon(s_caller_type));
     lv_obj_align(icon, LV_ALIGN_CENTER, 0, -20);
 
     /* Accept button */

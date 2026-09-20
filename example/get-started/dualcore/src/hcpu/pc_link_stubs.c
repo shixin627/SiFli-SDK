@@ -293,6 +293,10 @@ bool ble_hid_mouse_app_route(void) { return false; }
 /* communicate_task.h */ bool commu_send_sleep_diag(uint32_t ts, uint16_t score, uint8_t hr, uint8_t hr_std, uint8_t stage, uint8_t veto, uint8_t rhr, uint8_t worn, uint8_t rest, uint8_t fresh, uint16_t total, uint16_t deep, uint16_t rem, uint16_t light, uint16_t pi_e3, uint16_t frame_pct, uint16_t rate_info) { (void)ts; (void)score; (void)hr; (void)hr_std; (void)stage; (void)veto; (void)rhr; (void)worn; (void)rest; (void)fresh; (void)total; (void)deep; (void)rem; (void)light; (void)pi_e3; (void)frame_pct; (void)rate_info; return false; }
 /* communicate_task.h */ bool commu_send_skaiapp_ack(const char *id, int code) { (void)id; (void)code; return false; }
 /* communicate_task.h */ bool commu_send_skaiapp_voice(const char *app_id, const char *memo_id) { (void)app_id; (void)memo_id; return false; }
+/* communicate_task.h */ bool commu_send_skaiapp_action(const char *app_id, const char *action_id) { (void)app_id; (void)action_id; return false; }
+/* communicate_task.h */ bool commu_send_skaiapp_run(const char *app_id, const char *ev, const char *r, const char *line) { (void)app_id; (void)ev; (void)r; (void)line; return false; }
+/* communicate_task.h */ bool commu_send_device_drag(int permille, const char *to_device_id) { (void)permille; (void)to_device_id; return false; }
+/* hid_mouse (watch-only) */ bool get_switch_freehand_mode(void) { return false; }
 /* ui_handler batch apply — owning TU excluded on PC */ void apply_pending_instruction_batch(void) { }
 /* instruction-op queue — owning TU excluded on PC */ void instruction_op_enqueue_image(const char *id, const char *path) { (void)id; (void)path; }
 /* instruction-op queue — owning TU excluded on PC */ void instruction_op_enqueue_avatar(const char *av) { (void)av; }

@@ -1028,7 +1028,9 @@ static int bloc_notification_test(int argc, char *argv[])
         {
             notification_t notification;
             notification.sec_time = SkaiWatchSys.SecondCountRTC;
-            notification.type = Notify_others;
+            /* optional 3rd arg = notification app type, so the per-app logo
+               path (files under /assets/icons/) can be exercised too */
+            notification.type = (argc >= 3) ? (uint8_t)atoi(argv[2]) : Notify_others;
             notification.state = true;
             strcpy(notification.id, "ota_start");
             strcpy(notification.title, "OTA Update hint");

@@ -237,7 +237,7 @@ extern char *replace_nbsp(const char *str);
 static lv_obj_t *app_icon_builder(lv_obj_t *parent, uint8_t app_index)
 {
     lv_obj_t *icon = lv_img_create(parent);
-    lv_img_set_src(icon, icon_list[app_index]);
+    lv_img_set_src(icon, ui_notif_icon(app_index));
     return icon;
 }
 

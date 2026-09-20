@@ -45,14 +45,14 @@ class INPUT_RECORD(ctypes.Structure):
 def find_main_pid():
     import subprocess
 
+    # tasklist, not wmic: wmic is gone from current Windows 11 builds.
     out = subprocess.check_output(
-        ["wmic", "process", "where", "name='main.exe'", "get", "ProcessId"],
-        text=True,
+        ["tasklist", "/FI", "IMAGENAME eq main.exe", "/FO", "CSV", "/NH"],
+        text=True, errors="replace",
     )
     for line in out.splitlines():
-        line = line.strip()
-        if line.isdigit():
-            return int(line)
+        if line.startswith('"main.exe"'):
+            return int(line.split('","')[1])
     return None
 
 

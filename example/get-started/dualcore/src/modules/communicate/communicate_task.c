@@ -16,6 +16,7 @@
 #include "communicate_protocol.h"
 #include "communicate_parse.h"
 #include "communicate_parse_skailink.h"
+#include "cJSON.h"
 #include "watch_global_data.h"
 #include "watch_system_interact.h"
 #include "gesture_model_loader.h"
@@ -788,6 +789,31 @@ bool commu_send_skaiapp_voice(const char *app_id, const char *memo_id)
     if (n <= 0 || n >= (int)sizeof(json)) return false;
     bool ok = commu_send_string(SKAI_LINK_COMMAND_ID, KEY_SKAIAPP_VOICE, json);
     LOG_I("send skaiapp voice app=%s memo=%s -> %s", app_id, memo_id, ok ? "ok" : "FAILED");
+    return ok;
+}
+
+/* watch→phone (SKAI_LINK): what happened to a JS app (install result, first-run
+   result, one log line, closed). Built with cJSON because `line` is arbitrary
+   app text — console.log output, an exception message — and must be escaped. */
+bool commu_send_skaiapp_run(const char *app_id, const char *ev, const char *r, const char *line)
+{
+    if (app_id == NULL || app_id[0] == '\0' || ev == NULL)
+        return false;
+    cJSON *o = cJSON_CreateObject();
+    if (o == NULL)
+        return false;
+    cJSON_AddStringToObject(o, "id", app_id);
+    cJSON_AddStringToObject(o, "ev", ev);
+    if (r != NULL)
+        cJSON_AddStringToObject(o, "r", r);
+    if (line != NULL)
+        cJSON_AddStringToObject(o, "line", line);
+    char *json = cJSON_PrintUnformatted(o);
+    cJSON_Delete(o);
+    if (json == NULL)
+        return false;
+    bool ok = commu_send_string(SKAI_LINK_COMMAND_ID, KEY_SKAIAPP_RUN, json);
+    cJSON_free(json);
     return ok;
 }
 

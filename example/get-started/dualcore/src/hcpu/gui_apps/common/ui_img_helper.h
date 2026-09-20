@@ -189,6 +189,21 @@ LV_IMG_DECLARE(gaus_clock1_bg);
 LV_IMG_DECLARE(icon_sleep_mode);
 LV_IMG_DECLARE(notification_img);
 
+/* ── Notification / service logos live on the FILESYSTEM, not in the image ──
+   (2026-09-19) The 28 third-party logos below were ~320 KB of the 2.5 MB `main`
+   partition, and the Skai script runtime (ADR-0019 Phase 3, QuickJS) needs
+   ~256 KB of it. The partition cannot grow without breaking OTA for watches
+   already in the field, so the logos moved out instead: they are files under
+   /assets/icons/ (same names the FLASH_IMG build always used), shipped in the
+   FS image for new watches and copied down by the phone for existing ones.
+
+   A file can be missing (a watch the phone has not synced yet), so NOTHING may
+   hand one of these paths straight to lv_img_set_src: go through
+   ui_fs_img_or() / ui_notif_icon(), which fall back to the built-in
+   ICON_OTHER glyph instead of drawing an empty box. */
+#define UI_FS_ICON(name) ("/assets/icons/" name ".bin")
+const void *ui_fs_img_or(const void *src, const void *fallback);
+
 #define BTN_FLASHLIGHT btn_flashlight
 #define IMG_FLASHLIGHT ((const void *)&img_flashlight)
 #define IMG_ACTIVITY ((const void *)&img_activity)
@@ -215,41 +230,43 @@ LV_IMG_DECLARE(notification_img);
 #define DOWN_ARROW ((const void *)&down_arrow)
 #define PREVIOUS_ARROW ((const void *)&previous_arrow)
 #define NEXT_ARROW ((const void *)&next_arrow)
-#define ICON_APPLE_FACETIME ((const void *)&icon_apple_facetime)
-#define ICON_GOOGLE_CALENDAR ((const void *)&icon_google_calendar)
-#define ICON_FACEBOOK ((const void *)&icon_facebook)
-#define ICON_INSTAGRAM ((const void *)&icon_instagram)
-#define ICON_KAKAOTALK ((const void *)&icon_kakaotalk)
-#define ICON_LINE ((const void *)&icon_line)
-#define ICON_LINKEDIN ((const void *)&icon_linkedin)
-#define ICON_APPLE_MAIL ((const void *)&icon_apple_mail)
-#define ICON_MESSENGER ((const void *)&icon_messenger)
+#define ICON_APPLE_FACETIME UI_FS_ICON("icon_apple_facetime")
+#define ICON_GOOGLE_CALENDAR UI_FS_ICON("icon_google_calendar")
+#define ICON_FACEBOOK UI_FS_ICON("icon_facebook")
+#define ICON_INSTAGRAM UI_FS_ICON("icon_instagram")
+#define ICON_KAKAOTALK UI_FS_ICON("icon_kakaotalk")
+#define ICON_LINE UI_FS_ICON("icon_line")
+#define ICON_LINKEDIN UI_FS_ICON("icon_linkedin")
+#define ICON_APPLE_MAIL UI_FS_ICON("icon_apple_mail")
+#define ICON_MESSENGER UI_FS_ICON("icon_messenger")
 #define ICON_OTHER ((const void *)&icon_other)
-#define ICON_QQ ((const void *)&icon_qq)
-#define ICON_SKYPE ((const void *)&icon_skype)
-#define ICON_TWITCH ((const void *)&icon_twitch)
-#define ICON_TIKTOK ((const void *)&icon_tiktok)
-#define ICON_TELEGRAM ((const void *)&icon_telegram)
-#define ICON_SMS ((const void *)&icon_sms)
-#define ICON_SNAP ((const void *)&icon_snap)
-#define ICON_TWITTER ((const void *)&icon_twitter)
-#define ICON_WECHAT ((const void *)&icon_wechat)
-#define ICON_WHATSAPP ((const void *)&icon_whatsapp)
-#define ICON_GMAIL ((const void *)&icon_gmail)
-#define ICON_DINGTALK ((const void *)&icon_dingtalk)
-#define ICON_GOOGLE_CHAT ((const void *)&icon_google_chat)
-#define ICON_DISCORD ((const void *)&icon_discord)
-#define ICON_YOUTUBE ((const void *)&icon_youtube)
+#define ICON_QQ UI_FS_ICON("icon_qq")
+#define ICON_SKYPE UI_FS_ICON("icon_skype")
+#define ICON_TWITCH UI_FS_ICON("icon_twitch")
+#define ICON_TIKTOK UI_FS_ICON("icon_tiktok")
+#define ICON_TELEGRAM UI_FS_ICON("icon_telegram")
+#define ICON_SMS UI_FS_ICON("icon_sms")
+#define ICON_SNAP UI_FS_ICON("icon_snap")
+#define ICON_TWITTER UI_FS_ICON("icon_twitter")
+#define ICON_WECHAT UI_FS_ICON("icon_wechat")
+#define ICON_WHATSAPP UI_FS_ICON("icon_whatsapp")
+#define ICON_GMAIL UI_FS_ICON("icon_gmail")
+#define ICON_DINGTALK UI_FS_ICON("icon_dingtalk")
+#define ICON_GOOGLE_CHAT UI_FS_ICON("icon_google_chat")
+#define ICON_DISCORD UI_FS_ICON("icon_discord")
+#define ICON_YOUTUBE UI_FS_ICON("icon_youtube")
 #define ICON_PROHIBIT ((const void *)&icon_prohibit)
 #define ICON_SAND ((const void *)&icon_send)
 #define ICON_TRASH ((const void *)&icon_trash)
 #define ICON_QRCODE ((const void *)&icon_qrcode)
 #define ICON_DND_MODE ((const void *)&icon_dnd_mode)
 #define ICON_SLEEP_MODE ((const void *)&icon_sleep_mode)
-#define ICON_SLACK ((const void *)&icon_slack)
-#define ICON_LARK ((const void *)&icon_lark)
-#define ICON_REDDIT ((const void *)&icon_reddit)
-#define ICON_SKAIWALK ((const void *)&icon_skaiwalk)
+#define ICON_SLACK UI_FS_ICON("icon_slack")
+#define ICON_LARK UI_FS_ICON("icon_lark")
+#define ICON_REDDIT UI_FS_ICON("icon_reddit")
+#define ICON_SKAIWALK UI_FS_ICON("icon_skaiwalk")
+/* earth watch face background (app_clock_earth_digita.c) — also on the FS */
+#define IMG_EARTH_DIGITAL_BG UI_FS_ICON("img_earth_digital_bg")
 #define ICON_ACT_MUSIC ((const void *)&icon_act_music)
 #define ICON_ACT_NAVIGATION ((const void *)&icon_act_navigation)
 #define ICON_ACT_DRIVE ((const void *)&icon_act_drive)

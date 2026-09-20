@@ -273,6 +273,17 @@ extern "C"
            This is the platform's escape hatch: a generated mini-app reaches
            anything the phone can do without any firmware change. */
         KEY_SKAIAPP_ACTION = 0x28,
+        /* watch→phone (UPLINK): {"id":"<appId>","ev":"install|start|log|stop",
+           "r":"<result name>","line":"<text>"} — what happened to a JS app the phone
+           pushed (ADR-0019 Phase 3). "install" answers a signed-package push with
+           skai_pkg_result_name() (ok / signature / digest / limit / ...), "start"
+           reports how the first run of the script ended (skai_js_result_name(),
+           ok = it drew and is running), "log" carries one app-log line — console.log
+           output, an exception with its stack, a watchdog or quota stop — and
+           "stop" says the app was closed. This is how whoever wrote the app (a
+           person or the AI on the phone) finds out WHY it did not work.
+           Keep in lockstep with WatchProtocol.kt SKAILINK_KEY_SKAIAPP_RUN. */
+        KEY_SKAIAPP_RUN = 0x29,
         /* watch→phone (UPLINK): {"p":<permille>,"to":"<device_id>"} — 底部設備藥丸拖曳中的
            進度。p 是位移/螢幕寬的千分比,負=往下一台(同手機 dragX 的正負),0=靜止或彈回,
            ±1000=落地;to 是正拖向那台的 registry id(橡皮筋/沒有鄰居時為空)。
