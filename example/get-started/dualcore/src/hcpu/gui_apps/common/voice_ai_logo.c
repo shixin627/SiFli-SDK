@@ -34,6 +34,12 @@ extern bool commu_send_voice_ai(int id, const char *op, const char *text);
 #define VAI_MIN_INSTRUCTION_MS 700
 /* 手機沒回(斷線/模型掛了)時,多久後放棄等待、讓 logo 回到可用。 */
 #define VAI_REPLY_TIMEOUT_MS 20000
+/* 開麥克風到真的有聲音送出去的時間。真機 2026-09-23 量到第一包音訊在 START 之後 0.5~1.5s
+   才到手機;一按下就顯示「說出要怎麼改…」,人會馬上開口,前半句就沒錄到(那次只錄到 6 包,
+   指示是空的)。所以先顯示「準備中…」,這段時間過了才換成請你說話 + 輕震一下。 */
+#define VAI_MIC_READY_MS 900
+/* 沒改到時字泡停留多久。 */
+#define VAI_NOTICE_MS 1800
 
 typedef enum
 {
@@ -49,8 +55,10 @@ static const voice_ai_ops_t *s_ops = NULL; /* 這次動作是哪個畫面的 */
 static lv_obj_t *s_btn = NULL;             /* 這次動作的那顆 logo */
 static bool s_pressed = false;             /* 手指還按在 logo 上 */
 static int s_req_id = 0;
+static bool s_last_amend = false; /* 在等的那個請求是按住修改(不是點一下潤色) */
 static rt_tick_t s_dictation_stopped_at = 0; /* 最近一次停掉語音(畫面的或按住的)的時刻 */
 static rt_tick_t s_instr_started_at = 0;
+static bool s_instr_heard = false; /* 按住期間已經收到指示逐字稿(字泡就別再蓋回提示) */
 
 /* BLE 執行緒會讀:按住中或剛放開(遲到的指示逐字稿也要攔下,不能掉進畫面)。 */
 static volatile bool s_capturing = false;
@@ -58,6 +66,8 @@ static volatile bool s_capturing = false;
 static lv_timer_t *s_settle_timer = NULL;
 static lv_timer_t *s_mic_timer = NULL;
 static lv_timer_t *s_timeout_timer = NULL;
+static lv_timer_t *s_ready_timer = NULL;
+static lv_timer_t *s_notice_timer = NULL;
 
 static lv_obj_t *s_caption = NULL; /* logo 上方的小字泡:提示 / 指示逐字稿 / 整理中 */
 
@@ -127,8 +137,37 @@ static void vai_caption_show(const char *text)
 
 static void vai_caption_hide(void)
 {
+    if (s_notice_timer != NULL)
+    {
+        lv_timer_del(s_notice_timer);
+        s_notice_timer = NULL;
+    }
     if (s_caption != NULL && lv_obj_is_valid(s_caption))
         lv_obj_add_flag(s_caption, LV_OBJ_FLAG_HIDDEN);
+}
+
+static void vai_notice_cb(lv_timer_t *t)
+{
+    (void)t;
+    s_notice_timer = NULL;
+    if (s_caption != NULL && lv_obj_is_valid(s_caption))
+        lv_obj_add_flag(s_caption, LV_OBJ_FLAG_HIDDEN);
+}
+
+/* 字泡短暫說一句話就收起(沒改到的原因)。要在 vai_reset 之後呼叫,且要趁 s_btn 還能對位時
+   先擺好 —— 所以呼叫端傳 logo 進來。 */
+static void vai_notice(lv_obj_t *btn, const char *text)
+{
+    if (btn == NULL || !lv_obj_is_valid(btn))
+        return;
+    lv_obj_t *keep = s_btn;
+    s_btn = btn;
+    vai_caption_show(text);
+    s_btn = keep;
+    if (s_notice_timer != NULL)
+        lv_timer_del(s_notice_timer);
+    s_notice_timer = lv_timer_create(vai_notice_cb, VAI_NOTICE_MS, NULL);
+    lv_timer_set_repeat_count(s_notice_timer, 1);
 }
 
 /* logo 本身的三種樣子:平常(淡框)/ 按住錄音中(亮框+漣漪)/ 等手機(轉圈)。
@@ -203,6 +242,7 @@ static void vai_reset(void)
     vai_timer_kill(&s_settle_timer);
     vai_timer_kill(&s_mic_timer);
     vai_timer_kill(&s_timeout_timer);
+    vai_timer_kill(&s_ready_timer);
     vai_caption_hide();
     s_capturing = false;
     vai_set_phase(VAI_IDLE);
@@ -236,6 +276,7 @@ static void vai_send(const char *op)
         return;
     }
     s_req_id++;
+    s_last_amend = !polish;
 #ifndef BSP_USING_PC_SIMULATOR
     bool sent = commu_send_voice_ai(s_req_id, op, text);
 #else
@@ -267,10 +308,14 @@ void voice_ai_logo_on_result(int id, bool ok, const char *text)
     LOG_W("[voice_ai] result id=%d ok=%d", id, (int)ok);
     const voice_ai_ops_t *ops = s_ops;
     bool owner_alive = vai_btn_valid();
+    lv_obj_t *btn = s_btn;
+    bool was_amend = s_last_amend;
     vai_reset();
     if (!ok || text == NULL || text[0] == '\0')
     {
         vai_reject(); /* 原文不動,震一下讓人知道沒改到 */
+        if (owner_alive)
+            vai_notice(btn, was_amend ? "沒聽到要怎麼改，再按住說一次" : "沒有需要修改的地方");
         return;
     }
     if (owner_alive && ops && ops->set_text)
@@ -311,6 +356,8 @@ static void vai_tap(lv_obj_t *btn, const voice_ai_ops_t *ops)
 
 /* ── 按住:修改指示 ───────────────────────────────────────────────────── */
 
+static void vai_ready_cb(lv_timer_t *t);
+
 static void vai_mic_start(void)
 {
 #ifndef BSP_USING_PC_SIMULATOR
@@ -326,9 +373,26 @@ static void vai_mic_start(void)
 #endif
     s_capturing = true;
     s_instr_started_at = rt_tick_get();
+    s_instr_heard = false;
     vai_set_phase(VAI_INSTRUCTING);
-    vai_caption_show("說出要怎麼改…");
+    vai_caption_show("準備中…");
+    vai_timer_kill(&s_ready_timer);
+    s_ready_timer = lv_timer_create(vai_ready_cb, VAI_MIC_READY_MS, NULL);
+    lv_timer_set_repeat_count(s_ready_timer, 1);
     LOG_W("[voice_ai] %s: instruction START", s_ops ? s_ops->tag : "?");
+}
+
+/* 麥克風應該已經在送聲音了:請使用者開口 + 輕震一下(他正盯著字泡,震動讓他不必看)。 */
+static void vai_ready_cb(lv_timer_t *t)
+{
+    (void)t;
+    s_ready_timer = NULL;
+    if (s_phase != VAI_INSTRUCTING)
+        return;
+    if (!s_instr_heard)
+        vai_caption_show("說出要怎麼改…");
+    extern void motor_pattern_key_tick(void);
+    motor_pattern_key_tick();
 }
 
 static void vai_mic_timer_cb(lv_timer_t *t)
@@ -354,7 +418,7 @@ static void vai_hold_start(lv_obj_t *btn, const voice_ai_ops_t *ops)
     if (ops->stop_dictation && ops->stop_dictation())
         s_dictation_stopped_at = rt_tick_get();
     vai_set_phase(VAI_WAIT_MIC);
-    vai_caption_show("說出要怎麼改…");
+    vai_caption_show("準備中…");
     uint32_t since = s_dictation_stopped_at ? vai_ms_since(s_dictation_stopped_at) : VAI_MIC_COOLDOWN_MS;
     uint32_t wait = since >= VAI_MIC_COOLDOWN_MS ? 1 : VAI_MIC_COOLDOWN_MS - since + 20;
     vai_timer_kill(&s_mic_timer);
@@ -379,10 +443,13 @@ static void vai_hold_end(void)
 #endif
     s_dictation_stopped_at = rt_tick_get();
     LOG_W("[voice_ai] instruction STOP held=%ums", (unsigned)held_ms);
-    if (held_ms < VAI_MIN_INSTRUCTION_MS)
+    if (held_ms < VAI_MIC_READY_MS + VAI_MIN_INSTRUCTION_MS / 2)
     {
+        /* 麥克風還沒暖好就放開了,裡面不會有一句完整的話。 */
+        lv_obj_t *btn = s_btn;
         vai_reject();
         vai_reset();
+        vai_notice(btn, "按住久一點，震一下後再說");
         return;
     }
     /* s_capturing 留著:指示的最後幾個字還在路上,到之前不能掉進畫面。收到結果才放。 */
@@ -426,7 +493,10 @@ void voice_ai_logo_apply_instruction(void)
     if (buf == NULL)
         return;
     if (s_phase == VAI_INSTRUCTING && buf[0] != '\0')
+    {
+        s_instr_heard = true;
         vai_caption_show(buf);
+    }
     rt_free(buf);
 }
 

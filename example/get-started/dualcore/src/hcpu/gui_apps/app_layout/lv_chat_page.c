@@ -1505,9 +1505,10 @@ void chat_page_open(const char *title, const char *icon_src)
     lv_obj_add_flag(send, LV_OBJ_FLAG_HIDDEN);
     s_send_btn = send;
 
-    /* 語音 AI logo:送出鈕左邊,跟著輸入框出現。 */
+    /* 語音 AI logo:浮在輸入框頂端的正上方、置中(founder 2026-09-23:放在麥克風左邊很奇怪,
+       要在上面 —— 跟手機輸入框上方那顆同一個位置)。框開著時露出 252-75=177px,再往上留 10px。 */
     s_vai_logo = voice_ai_logo_create(panel, &s_chat_vai_ops, 52);
-    lv_obj_align(s_vai_logo, LV_ALIGN_BOTTOM_MID, -92, -14);
+    lv_obj_align(s_vai_logo, LV_ALIGN_BOTTOM_MID, 0, -(252 - 75) - 10);
     lv_obj_add_flag(s_vai_logo, LV_OBJ_FLAG_HIDDEN);
     s_reviewing = false;
     s_review_override = false;

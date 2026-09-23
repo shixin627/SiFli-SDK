@@ -432,9 +432,9 @@ lv_obj_t *app_message_init(lv_obj_t *parent)
         lv_obj_add_event_cb(send_btn, message_send_btn_cb, LV_EVENT_CLICKED, NULL);
         lv_obj_add_flag(voice_send_icon, LV_OBJ_FLAG_HIDDEN);
 
-        /* 語音 AI logo:送出鈕左邊。 */
+        /* 語音 AI logo:送出鈕(麥克風)正上方(founder 2026-09-23:放左邊很奇怪,要在上面)。 */
         lv_obj_t *vai = voice_ai_logo_create(parent, &s_message_vai_ops, 52);
-        lv_obj_align(vai, LV_ALIGN_BOTTOM_MID, -86, -5);
+        lv_obj_align(vai, LV_ALIGN_BOTTOM_MID, 0, -(62 + 10));
 
         lv_obj_t *footer_obj = lv_obj_create(p_window);
         lv_obj_set_size(footer_obj, 400, 106);

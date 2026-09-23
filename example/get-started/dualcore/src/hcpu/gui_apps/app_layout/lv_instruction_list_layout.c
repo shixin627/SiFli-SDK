@@ -8757,10 +8757,13 @@ lv_obj_t *lv_instruction_list_layout_create(lv_obj_t *parent)
         lv_obj_align(s_voice_transcript_clip, LV_ALIGN_TOP_MID, 0, 60 - (lh + ls));
     }
 
-    /* 語音 AI logo(founder 2026-09-23):逐字稿下面。點 = 停錄 + AI 潤色,按住說話 = 修改指示。
-       是框的子物件,跟著框開關/淡出;自己吃掉點擊,不會觸發框的「點一下收起」。 */
-    s_ai_box_vai_logo = voice_ai_logo_create(ai_box, &s_ai_box_vai_ops, 48);
-    lv_obj_align(s_ai_box_vai_logo, LV_ALIGN_TOP_MID, 0, 104);
+    /* 語音 AI logo(founder 2026-09-23):浮在框頂正上方、置中(與聊天室、手機輸入框同一個位置)。
+       是框的子物件,跟著框開關/淡出/變形;框設 OVERFLOW_VISIBLE 才畫得出、點得到框外那一截
+       (lv_indev_search_obj 對 OVERFLOW_VISIBLE 的父物件會往框外的子物件找)。
+       自己吃掉點擊,不會觸發框的「點一下收起」。 */
+    lv_obj_add_flag(ai_box, LV_OBJ_FLAG_OVERFLOW_VISIBLE);
+    s_ai_box_vai_logo = voice_ai_logo_create(ai_box, &s_ai_box_vai_ops, 52);
+    lv_obj_align(s_ai_box_vai_logo, LV_ALIGN_TOP_MID, 0, -(52 + 10));
 
     /* No separate voice button — the box matches device_pager (frame + label
        only). The VAD-pulse / re-ask handlers are all null-guarded, so leaving
