@@ -369,6 +369,7 @@ static bool s_recording = false;
    修改,再按送出才送。s_reviewing = 這個「錄完、還沒送」的狀態。AI 的結果存在 s_review_text
    (s_review_override),送出時取代 V2T 緩衝。 */
 static bool s_reviewing = false;
+static bool s_split = false; /* 底部已經是「左 logo、右送出」兩顆 */
 static bool s_review_override = false;
 static char s_review_text[512];
 static lv_obj_t *s_vai_logo = NULL;
@@ -427,6 +428,8 @@ static void chat_set_mic_visual(bool recording)
 /* LVGL-thread update of the live mic transcript — called via the shared voice router
    (refresh_ai_chat_input_message → chat branch), which delivers the live PARTIAL text the watch-face
    skaibar voice box uses. [text] is the running transcript (empty → keep the listening hint). */
+static void chat_split_to_review(void);
+
 void chat_page_set_transcript(const char *text)
 {
     if (!(s_recording || s_reviewing) || s_transcript_label == NULL || !lv_obj_is_valid(s_transcript_label))
@@ -435,6 +438,9 @@ void chat_page_set_transcript(const char *text)
         return; /* AI 改過的字不讓遲到的轉錄蓋掉 */
     bool has = (text != NULL && text[0] != '\0');
     lv_label_set_text(s_transcript_label, has ? text : "聆聽中…");
+    /* 一有字就分成兩顆 —— 不必先點「說完了」(founder 2026-09-24)。麥克風照樣繼續聽。 */
+    if (has && !s_split)
+        chat_split_to_review();
     /* Dim the send glyph until there are words to send (desktop CanSend parity) — only once it IS
        the send glyph (review); while recording it is the mic, and a dim mic reads as "not listening". */
     if (s_reviewing && s_send_btn != NULL && lv_obj_is_valid(s_send_btn))
@@ -533,6 +539,7 @@ static void chat_box_grow_cb(void *var, int32_t f)
 
 static void chat_bottom_as_mic(void)
 {
+    s_split = false;
     if (s_send_btn == NULL || !lv_obj_is_valid(s_send_btn))
         return;
     lv_anim_del(s_send_btn, NULL);
@@ -570,6 +577,7 @@ static void chat_split_to_review(void)
 {
     if (s_send_btn == NULL || !lv_obj_is_valid(s_send_btn))
         return;
+    s_split = true;
     lv_img_set_src(s_send_btn, &icon_send);
     lv_img_set_zoom(s_send_btn, 256);
     lv_obj_set_style_img_recolor_opa(s_send_btn, LV_OPA_TRANSP, 0);
@@ -790,11 +798,20 @@ static void chat_mic_toggle(void)
         chat_play_open_morph();
         LOG_I("chat mic: recording start");
     }
+    else if (s_split)
+    {
+        /* 右邊那顆 = 送出:停錄並送出框裡的字(原文)。要潤色的話點左邊的 logo。 */
+        LOG_I("chat mic: stop + send");
+        s_recording = false;
+        voice_provider.stop_v2t();
+        chat_play_close_morph();
+        chat_send_text(get_combined_voice2text());
+    }
     else
     {
-        LOG_I("chat mic: done talking -> send | polish");
-        chat_vai_stop_dictation();
-        chat_split_to_review();
+        /* 還沒聽到任何字:繼續聽,震一下讓人知道按到了。 */
+        extern void motor_pattern_unlocked(void);
+        motor_pattern_unlocked();
     }
 }
 

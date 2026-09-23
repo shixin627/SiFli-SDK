@@ -72,6 +72,8 @@ static bool voice_reply_active = false;
 /* 語音 AI logo(founder 2026-09-23)。這頁一進來就一直在錄;logo 點/按住時停下來,文字留著
    給 AI 改,改完再按送出。改過的字寫回 V2T 緩衝(送出讀的就是它),綁定的標籤自己會更新。 */
 static bool s_msg_listening = false;
+static bool s_msg_split = false; /* 底部已經是「左 logo、右送出」兩顆 */
+static void message_split(void);
 
 static void voice_text_label_set_text(lv_obj_t *label, const char *text)
 {
@@ -128,6 +130,9 @@ static void voice_text_label_set_text(lv_obj_t *label, const char *text)
             lv_obj_clear_flag(voice_send_icon, LV_OBJ_FLAG_HIDDEN);
         }
     }
+    /* 一有字就分成兩顆(founder 2026-09-24:「應該要一有文字就變成兩個」)—— 麥克風照樣繼續聽。 */
+    if (text != NULL && text[0] != '\0' && !s_msg_split)
+        message_split();
 }
 
 static const char *message_vai_get_text(void)
@@ -227,8 +232,10 @@ static void message_split_exec(void *var, int32_t v)
 
 static void message_split(void)
 {
+    LOG_W("[msg] split btn=%d logo=%d", (int)(voice_send_btn != NULL), (int)(s_msg_vai_logo != NULL));
     if (!voice_send_btn || !lv_obj_is_valid(voice_send_btn))
         return;
+    s_msg_split = true;
     if (s_msg_vai_logo && lv_obj_is_valid(s_msg_vai_logo))
     {
         lv_obj_clear_flag(s_msg_vai_logo, LV_OBJ_FLAG_HIDDEN);
@@ -244,22 +251,34 @@ static void message_split(void)
     lv_anim_start(&a);
 }
 
-/* 底部那顆(與點擊手勢)的單一入口:還在聽 = 說完了 → 分成兩顆;已經分開 = 送出。 */
+/* 底部那顆(與點擊手勢)的單一入口:還在聽 = 說完了 → 分成兩顆;已經分開 = 送出。
+   同一下點擊可能同時走到按鈕的 CLICKED 與手勢的 tap indicator(真機 2026-09-24:0.36s 內
+   兩次 STOP)—— 第二下會把剛分開的直接送出,所以 600ms 內只算一次。 */
+static rt_tick_t s_msg_last_tap = 0;
 static void message_primary_tap(void)
 {
-    if (voice_ai_logo_busy())
-        return;
-    if (s_msg_listening)
+    /* TEMP DIAG(2026-09-24 通知回覆點了不分開):手錶只印 W、LOG_W ≤2 參數。 */
+    LOG_W("[msg] tap listening=%d busy=%d", (int)s_msg_listening, (int)voice_ai_logo_busy());
+    if (s_msg_last_tap != 0 &&
+        rt_tick_get() - s_msg_last_tap < rt_tick_from_millisecond(600))
     {
-    #ifdef BSP_USING_BLOC_V2T
-        if (isTextEmpty())
-            return; /* 還沒聽到任何字:繼續聽,沒有東西可以送或潤色 */
-    #endif
-        message_vai_stop_dictation();
-        message_split();
+        LOG_W("[msg] tap ignored (double fire)");
         return;
     }
-    message_voice_send();
+    s_msg_last_tap = rt_tick_get();
+    if (voice_ai_logo_busy())
+        return;
+    #ifdef BSP_USING_BLOC_V2T
+    LOG_W("[msg] tap text_empty=%d", (int)isTextEmpty());
+    if (isTextEmpty())
+    {
+        /* 還沒聽到任何字:繼續聽。震一下,別讓這一下看起來像沒按到。 */
+        extern void motor_pattern_unlocked(void);
+        motor_pattern_unlocked();
+        return;
+    }
+    #endif
+    message_voice_send(); /* 已經分成兩顆了:右邊這顆就是送出 */
 }
 
 static void message_send_btn_cb(lv_event_t *event)
@@ -492,6 +511,7 @@ lv_obj_t *app_message_init(lv_obj_t *parent)
         lv_obj_add_flag(voice_send_icon, LV_OBJ_FLAG_HIDDEN);
 
         /* 語音 AI logo:說完之後底部那顆分成兩顆時,從中間滑到左邊(見 message_split)。 */
+        s_msg_split = false;
         s_msg_vai_logo = voice_ai_logo_create(parent, &s_message_vai_ops, MSG_LOGO_D);
         lv_obj_align(s_msg_vai_logo, LV_ALIGN_BOTTOM_MID, 0, -(MSG_SEND_D - MSG_LOGO_D) / 2);
         lv_obj_add_flag(s_msg_vai_logo, LV_OBJ_FLAG_HIDDEN);
@@ -541,6 +561,7 @@ static void on_resume(void)
         start_voice_recognition(V2T_INTENT_REMOTE_INPUT);
         #endif
         s_msg_listening = true;
+        LOG_W("[msg] resume: listening");
     }
     else
     {
