@@ -435,8 +435,9 @@ void chat_page_set_transcript(const char *text)
         return; /* AI 改過的字不讓遲到的轉錄蓋掉 */
     bool has = (text != NULL && text[0] != '\0');
     lv_label_set_text(s_transcript_label, has ? text : "聆聽中…");
-    /* Dim the send glyph until there are words to send (desktop CanSend parity). */
-    if (s_send_btn != NULL && lv_obj_is_valid(s_send_btn))
+    /* Dim the send glyph until there are words to send (desktop CanSend parity) — only once it IS
+       the send glyph (review); while recording it is the mic, and a dim mic reads as "not listening". */
+    if (s_reviewing && s_send_btn != NULL && lv_obj_is_valid(s_send_btn))
         lv_obj_set_style_img_opa(s_send_btn, has ? LV_OPA_COVER : LV_OPA_40, 0);
 }
 
@@ -460,6 +461,8 @@ static void chat_vai_set_text(const char *text)
     if (s_send_btn != NULL && lv_obj_is_valid(s_send_btn))
         lv_obj_set_style_img_opa(s_send_btn, LV_OPA_COVER, 0);
 }
+
+static void chat_split_to_review(void);
 
 static bool chat_vai_stop_dictation(void)
 {
@@ -521,6 +524,72 @@ static void chat_box_grow_cb(void *var, int32_t f)
         lv_obj_set_style_opa(s_mic_backplate, (lv_opa_t)(255 - f), 0);
 }
 
+/* ── 底部那一顆 → 兩顆(founder 2026-09-23:「點一下變成兩顆,右邊送出左邊潤色」) ──
+   錄音中底部只有一顆亮著的麥克風(點 = 說完了)。點下去停錄但不送,這顆滑到右邊變成送出,
+   左邊滑出 Skai logo(點 = AI 潤色、按住說話 = 用說的修改)。送出的仍然可以是原文。 */
+#define CHAT_SPLIT_DX 52
+#define CHAT_SPLIT_MS 200
+#define CHAT_LOGO_D 52
+
+static void chat_bottom_as_mic(void)
+{
+    if (s_send_btn == NULL || !lv_obj_is_valid(s_send_btn))
+        return;
+    lv_anim_del(s_send_btn, NULL);
+    lv_img_set_src(s_send_btn, &micro_icon);
+    lv_img_set_pivot(s_send_btn, micro_icon.header.w / 2, micro_icon.header.h / 2);
+    lv_obj_add_flag(s_send_btn, LV_OBJ_FLAG_OVERFLOW_VISIBLE);
+    lv_img_set_zoom(s_send_btn, 128); /* 與閒置時的麥克風同尺寸 */
+    lv_obj_set_style_img_opa(s_send_btn, LV_OPA_COVER, 0);
+    lv_obj_set_style_img_recolor(s_send_btn, lv_color_hex(0x5DA8FF), 0);
+    lv_obj_set_style_img_recolor_opa(s_send_btn, LV_OPA_60, 0); /* 亮著 = 正在聽 */
+    lv_obj_align(s_send_btn, LV_ALIGN_BOTTOM_MID, 0, -8);
+    if (s_vai_logo != NULL && lv_obj_is_valid(s_vai_logo))
+    {
+        lv_anim_del(s_vai_logo, NULL);
+        lv_obj_add_flag(s_vai_logo, LV_OBJ_FLAG_HIDDEN);
+    }
+}
+
+static void chat_split_exec(void *var, int32_t v)
+{
+    (void)var;
+    /* v 0..256:送出往右、logo 往左,logo 同時淡入。兩顆的中心線對齊。 */
+    lv_coord_t dx = (lv_coord_t)(CHAT_SPLIT_DX * v / 256);
+    if (s_send_btn != NULL && lv_obj_is_valid(s_send_btn))
+        lv_obj_align(s_send_btn, LV_ALIGN_BOTTOM_MID, dx, -8);
+    if (s_vai_logo != NULL && lv_obj_is_valid(s_vai_logo))
+    {
+        lv_coord_t send_h = (lv_coord_t)icon_send.header.h;
+        lv_obj_align(s_vai_logo, LV_ALIGN_BOTTOM_MID, -dx, -8 - (CHAT_LOGO_D - send_h) / 2);
+        lv_obj_set_style_opa(s_vai_logo, (lv_opa_t)(v > 255 ? 255 : v), 0);
+    }
+}
+
+static void chat_split_to_review(void)
+{
+    if (s_send_btn == NULL || !lv_obj_is_valid(s_send_btn))
+        return;
+    lv_img_set_src(s_send_btn, &icon_send);
+    lv_img_set_zoom(s_send_btn, 256);
+    lv_obj_set_style_img_recolor_opa(s_send_btn, LV_OPA_TRANSP, 0);
+    const char *t = s_review_override ? s_review_text : get_combined_voice2text();
+    lv_obj_set_style_img_opa(s_send_btn, (t && t[0]) ? LV_OPA_COVER : LV_OPA_40, 0);
+    if (s_vai_logo != NULL && lv_obj_is_valid(s_vai_logo))
+    {
+        lv_obj_clear_flag(s_vai_logo, LV_OBJ_FLAG_HIDDEN);
+        lv_obj_move_foreground(s_vai_logo);
+    }
+    lv_anim_t a;
+    lv_anim_init(&a);
+    lv_anim_set_var(&a, s_send_btn);
+    lv_anim_set_values(&a, 0, 256);
+    lv_anim_set_time(&a, CHAT_SPLIT_MS);
+    lv_anim_set_path_cb(&a, lv_anim_path_ease_out);
+    lv_anim_set_exec_cb(&a, chat_split_exec);
+    lv_anim_start(&a);
+}
+
 /* Phase 2 (open): the box finished growing → hide the now-faded mic, then fade the pill frame +
    transcript + send in over the backdrop (mirrors lmic_open_reveal_cb). */
 static void chat_open_reveal_cb(lv_anim_t *a)
@@ -537,11 +606,9 @@ static void chat_open_reveal_cb(lv_anim_t *a)
         lv_obj_set_style_text_opa(s_transcript_label, LV_OPA_80, 0);
     if (s_send_btn != NULL && lv_obj_is_valid(s_send_btn))
     {
+        chat_bottom_as_mic();
         lv_obj_clear_flag(s_send_btn, LV_OBJ_FLAG_HIDDEN);
-        lv_obj_set_style_img_opa(s_send_btn, LV_OPA_40, 0); /* dim until words arrive */
     }
-    if (s_vai_logo != NULL && lv_obj_is_valid(s_vai_logo))
-        lv_obj_clear_flag(s_vai_logo, LV_OBJ_FLAG_HIDDEN);
     if (s_transcript_pill != NULL && lv_obj_is_valid(s_transcript_pill))
     {
         chat_pill_fade_cb(NULL, 0); /* start invisible */
@@ -648,16 +715,6 @@ static void chat_play_close_morph(void)
 
 static void chat_send_text(const char *text);
 
-static void chat_stop_recording_and_send(void)
-{
-    if (!s_recording)
-        return;
-    s_recording = false;
-    voice_provider.auto_stop_listening(); /* finalize (mirror app_skai's send_to_ai) */
-    chat_play_close_morph();
-    chat_send_text(get_combined_voice2text());
-}
-
 /* 錄完、給 AI 看過之後按送出:送的是框裡看到的那一段(AI 改過的優先)。 */
 static void chat_send_review(void)
 {
@@ -735,8 +792,9 @@ static void chat_mic_toggle(void)
     }
     else
     {
-        LOG_I("chat mic: stop + send");
-        chat_stop_recording_and_send();
+        LOG_I("chat mic: done talking -> send | polish");
+        chat_vai_stop_dictation();
+        chat_split_to_review();
     }
 }
 
@@ -1505,10 +1563,9 @@ void chat_page_open(const char *title, const char *icon_src)
     lv_obj_add_flag(send, LV_OBJ_FLAG_HIDDEN);
     s_send_btn = send;
 
-    /* 語音 AI logo:浮在輸入框頂端的正上方、置中(founder 2026-09-23:放在麥克風左邊很奇怪,
-       要在上面 —— 跟手機輸入框上方那顆同一個位置)。框開著時露出 252-75=177px,再往上留 10px。 */
-    s_vai_logo = voice_ai_logo_create(panel, &s_chat_vai_ops, 52);
-    lv_obj_align(s_vai_logo, LV_ALIGN_BOTTOM_MID, 0, -(252 - 75) - 10);
+    /* 語音 AI logo:說完之後底部那顆分成兩顆時,從中間滑到左邊(見 chat_split_to_review)。 */
+    s_vai_logo = voice_ai_logo_create(panel, &s_chat_vai_ops, CHAT_LOGO_D);
+    lv_obj_align(s_vai_logo, LV_ALIGN_BOTTOM_MID, 0, -8);
     lv_obj_add_flag(s_vai_logo, LV_OBJ_FLAG_HIDDEN);
     s_reviewing = false;
     s_review_override = false;

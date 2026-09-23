@@ -170,7 +170,7 @@ static void vai_notice(lv_obj_t *btn, const char *text)
     lv_timer_set_repeat_count(s_notice_timer, 1);
 }
 
-/* logo 本身的三種樣子:平常(淡框)/ 按住錄音中(亮框+漣漪)/ 等手機(轉圈)。
+/* logo 本身的三種樣子:平常(只有 logo)/ 按住錄音中(放大 + 外圈漣漪)/ 等手機(外圈轉圈)。
    漣漪與轉圈是 logo 的子物件,存在 user_data 裡找得到。 */
 typedef struct
 {
@@ -197,7 +197,6 @@ static void vai_visual(lv_obj_t *btn, vai_phase_t phase)
     vai_parts_t *p = (vai_parts_t *)lv_obj_get_user_data(btn);
     bool instructing = phase == VAI_WAIT_MIC || phase == VAI_INSTRUCTING;
     bool working = phase == VAI_SETTLING || phase == VAI_AWAIT_REPLY;
-    lv_obj_set_style_border_opa(btn, instructing ? LV_OPA_COVER : LV_OPA_50, 0);
     lv_obj_set_style_transform_zoom(btn, instructing ? 282 : 256, 0); /* 按住時放大一點 */
     if (p == NULL)
         return;
@@ -568,15 +567,14 @@ static void vai_bind(lv_obj_t *obj, const voice_ai_ops_t *ops, lv_obj_t *ring, l
 
 lv_obj_t *voice_ai_logo_create(lv_obj_t *parent, const voice_ai_ops_t *ops, lv_coord_t size)
 {
+    /* 只有 logo,沒有底圓、沒有框(founder 2026-09-23:原本藍框圓鈕浮在框上很難看,選了「只有
+       logo、說話時外圈波紋」—— 跟手機輸入框上方那顆同一套)。這個透明的圓只是觸控範圍與
+       漣漪/轉圈的定位基準。 */
     lv_obj_t *btn = lv_obj_create(parent);
     lv_obj_remove_style_all(btn);
     lv_obj_set_size(btn, size, size);
     lv_obj_set_style_radius(btn, LV_RADIUS_CIRCLE, 0);
-    lv_obj_set_style_bg_color(btn, lv_color_hex(VAI_BG), 0);
-    lv_obj_set_style_bg_opa(btn, LV_OPA_COVER, 0);
-    lv_obj_set_style_border_color(btn, lv_color_hex(VAI_ACCENT), 0);
-    lv_obj_set_style_border_width(btn, 2, 0);
-    lv_obj_set_style_border_opa(btn, LV_OPA_50, 0);
+    lv_obj_set_style_bg_opa(btn, LV_OPA_TRANSP, 0);
     lv_obj_set_style_transform_pivot_x(btn, size / 2, 0);
     lv_obj_set_style_transform_pivot_y(btn, size / 2, 0);
     lv_obj_add_flag(btn, LV_OBJ_FLAG_OVERFLOW_VISIBLE);
@@ -585,8 +583,8 @@ lv_obj_t *voice_ai_logo_create(lv_obj_t *parent, const voice_ai_ops_t *ops, lv_c
 
     lv_obj_t *img = lv_img_create(btn);
     lv_img_set_src(img, &img_logo);
-    /* img_logo 是 80px;縮到圓的 62%。 */
-    lv_img_set_zoom(img, (uint16_t)((size * 62 / 100) * 256 / 80));
+    /* img_logo 是 80px;沒有底圓了,logo 本身撐滿圓的 80%。 */
+    lv_img_set_zoom(img, (uint16_t)((size * 80 / 100) * 256 / 80));
     lv_obj_add_flag(img, LV_OBJ_FLAG_OVERFLOW_VISIBLE);
     lv_obj_clear_flag(img, LV_OBJ_FLAG_CLICKABLE);
     lv_obj_center(img);

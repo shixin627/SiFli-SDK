@@ -203,11 +203,70 @@ static void message_voice_clear(void)
     #endif
 }
 
+/* ── 底部那一顆 → 兩顆(founder 2026-09-23:「點一下變成兩顆,右邊送出左邊潤色」) ──
+   這頁一進來就在聽。第一次點底部那顆 = 說完了:停止聆聽(不送),這顆滑到右邊當送出,
+   左邊滑出 Skai logo(點 = AI 潤色、按住說話 = 用說的修改)。之後點右邊才送出 —— 原文也能直接送。 */
+#define MSG_SEND_D 62
+#define MSG_LOGO_D 52
+#define MSG_SPLIT_DX 45
+#define MSG_SPLIT_MS 200
+static lv_obj_t *s_msg_vai_logo = NULL;
+
+static void message_split_exec(void *var, int32_t v)
+{
+    (void)var;
+    lv_coord_t dx = (lv_coord_t)(MSG_SPLIT_DX * v / 256);
+    if (voice_send_btn && lv_obj_is_valid(voice_send_btn))
+        lv_obj_align(voice_send_btn, LV_ALIGN_BOTTOM_MID, dx, 0);
+    if (s_msg_vai_logo && lv_obj_is_valid(s_msg_vai_logo))
+    {
+        lv_obj_align(s_msg_vai_logo, LV_ALIGN_BOTTOM_MID, -dx, -(MSG_SEND_D - MSG_LOGO_D) / 2);
+        lv_obj_set_style_opa(s_msg_vai_logo, (lv_opa_t)(v > 255 ? 255 : v), 0);
+    }
+}
+
+static void message_split(void)
+{
+    if (!voice_send_btn || !lv_obj_is_valid(voice_send_btn))
+        return;
+    if (s_msg_vai_logo && lv_obj_is_valid(s_msg_vai_logo))
+    {
+        lv_obj_clear_flag(s_msg_vai_logo, LV_OBJ_FLAG_HIDDEN);
+        lv_obj_move_foreground(s_msg_vai_logo);
+    }
+    lv_anim_t a;
+    lv_anim_init(&a);
+    lv_anim_set_var(&a, s_msg_vai_logo);
+    lv_anim_set_values(&a, 0, 256);
+    lv_anim_set_time(&a, MSG_SPLIT_MS);
+    lv_anim_set_path_cb(&a, lv_anim_path_ease_out);
+    lv_anim_set_exec_cb(&a, message_split_exec);
+    lv_anim_start(&a);
+}
+
+/* 底部那顆(與點擊手勢)的單一入口:還在聽 = 說完了 → 分成兩顆;已經分開 = 送出。 */
+static void message_primary_tap(void)
+{
+    if (voice_ai_logo_busy())
+        return;
+    if (s_msg_listening)
+    {
+    #ifdef BSP_USING_BLOC_V2T
+        if (isTextEmpty())
+            return; /* 還沒聽到任何字:繼續聽,沒有東西可以送或潤色 */
+    #endif
+        message_vai_stop_dictation();
+        message_split();
+        return;
+    }
+    message_voice_send();
+}
+
 static void message_send_btn_cb(lv_event_t *event)
 {
     if (LV_EVENT_CLICKED == event->code)
     {
-        message_voice_send();
+        message_primary_tap();
     }
 }
 
@@ -216,7 +275,7 @@ static void message_tap_send(uint8_t gesture)
 {
     if (gesture == 1)
     {
-        message_voice_send();
+        message_primary_tap();
     }
 }
 
@@ -432,9 +491,10 @@ lv_obj_t *app_message_init(lv_obj_t *parent)
         lv_obj_add_event_cb(send_btn, message_send_btn_cb, LV_EVENT_CLICKED, NULL);
         lv_obj_add_flag(voice_send_icon, LV_OBJ_FLAG_HIDDEN);
 
-        /* 語音 AI logo:送出鈕(麥克風)正上方(founder 2026-09-23:放左邊很奇怪,要在上面)。 */
-        lv_obj_t *vai = voice_ai_logo_create(parent, &s_message_vai_ops, 52);
-        lv_obj_align(vai, LV_ALIGN_BOTTOM_MID, 0, -(62 + 10));
+        /* 語音 AI logo:說完之後底部那顆分成兩顆時,從中間滑到左邊(見 message_split)。 */
+        s_msg_vai_logo = voice_ai_logo_create(parent, &s_message_vai_ops, MSG_LOGO_D);
+        lv_obj_align(s_msg_vai_logo, LV_ALIGN_BOTTOM_MID, 0, -(MSG_SEND_D - MSG_LOGO_D) / 2);
+        lv_obj_add_flag(s_msg_vai_logo, LV_OBJ_FLAG_HIDDEN);
 
         lv_obj_t *footer_obj = lv_obj_create(p_window);
         lv_obj_set_size(footer_obj, 400, 106);
@@ -533,6 +593,7 @@ static void on_stop(void)
         voice_reply_active = false;
         voice_text_label = NULL;
         voice_send_btn = NULL;
+        s_msg_vai_logo = NULL;
         voice_send_icon = NULL;
         voice_reply_window = NULL;
     }
