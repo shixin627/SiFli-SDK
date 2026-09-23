@@ -597,6 +597,55 @@ static void handle_gesture_click_ack(uint8_t *pValue, uint16_t length)
     gesture_click_mode_ack(on, ok);
 }
 
+/* 語音 AI logo 結果(0x2b)。同 tv_state 的單槽 raw 模式:BLE 執行緒只搬位元組,cJSON 與
+   LVGL 都在 GUI 執行緒(voice_ai_result_apply_pending)。新的一筆蓋掉還沒消化的舊的 ——
+   logo 同時只會有一個請求在等,舊的那筆本來就過期了。 */
+static char *s_voice_ai_pending = NULL;
+
+static void handle_voice_ai_result(uint8_t *pValue, uint16_t length)
+{
+    if (pValue == NULL || length == 0) return;
+    char *buf = (char *)rt_malloc((rt_size_t)length + 1);
+    if (buf == NULL) return;
+    memcpy(buf, pValue, length);
+    buf[length] = '\0';
+    rt_base_t level = rt_hw_interrupt_disable();
+    char *old = s_voice_ai_pending;
+    s_voice_ai_pending = buf;
+    rt_hw_interrupt_enable(level);
+    if (old != NULL) rt_free(old);
+    lvgl_msg_t msg;
+    msg.type = LVGL_MSG_TYPE_VOICE_AI_RESULT_RAW;
+    lvgl_send_msg(msg);
+}
+
+/* GUI thread(ui_handler LVGL_MSG_TYPE_VOICE_AI_RESULT_RAW)。 */
+void voice_ai_result_apply_pending(void)
+{
+    rt_base_t level = rt_hw_interrupt_disable();
+    char *buf = s_voice_ai_pending;
+    s_voice_ai_pending = NULL;
+    rt_hw_interrupt_enable(level);
+    if (buf == NULL) return;
+
+    extern void voice_ai_logo_on_result(int id, bool ok, const char *text);
+    cJSON *root = cJSON_Parse(buf);
+    if (root == NULL)
+    {
+        LOG_W("skailink: voiceAiResult malformed payload");
+        rt_free(buf);
+        return;
+    }
+    cJSON *j_id = cJSON_GetObjectItem(root, "id");
+    cJSON *j_ok = cJSON_GetObjectItem(root, "ok");
+    cJSON *j_text = cJSON_GetObjectItem(root, "text");
+    voice_ai_logo_on_result(cJSON_IsNumber(j_id) ? j_id->valueint : -1,
+                            cJSON_IsNumber(j_ok) && j_ok->valueint == 1,
+                            cJSON_IsString(j_text) ? j_text->valuestring : "");
+    cJSON_Delete(root);
+    rt_free(buf);
+}
+
 static void handle_tv_state(uint8_t *pValue, uint16_t length)
 {
     if (pValue == NULL || length == 0) return;
@@ -737,6 +786,11 @@ void resolve_skailink_command(uint8_t key, uint8_t *pValue, uint16_t length)
     case KEY_TV_STATE:
         /* phone→watch (DOWNLINK): bound TV + pairing state for the TV remote app. */
         handle_tv_state(pValue, length);
+        break;
+    case KEY_VOICE_AI_RESULT:
+        /* phone→watch (DOWNLINK): {"id","ok","text"} 語音 AI logo 的潤色/修改結果。
+           BLE 執行緒 → 單槽暫存 → GUI 執行緒套用(voice_ai_result_apply_pending)。 */
+        handle_voice_ai_result(pValue, length);
         break;
     case KEY_GESTURE_CLICK:
         /* phone→watch (DOWNLINK): {"on","ok"} 手機武裝手勢點擊模式的回執。 */

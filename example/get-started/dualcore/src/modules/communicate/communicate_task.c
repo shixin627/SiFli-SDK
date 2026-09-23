@@ -987,6 +987,26 @@ bool commu_send_lift_input_caret(int pos, const char *text)
 }
 
 /* 立起輸入面板的刪除鍵(見 KEY_LIFT_INPUT_DELETE 契約)。一次一個字;長按由手錶端 timer 重送。 */
+/* 語音 AI logo(0x2a)。text 太長會超過單一 L2 上行(MAX_PACKET_PAYLOAD_SIZE),回 false 讓
+   呼叫端提示 —— 截斷送出等於只潤色前半段,再把後半段整個蓋掉。 */
+bool commu_send_voice_ai(int id, const char *op, const char *text)
+{
+    if (!op || !text) return false;
+    cJSON *root = cJSON_CreateObject();
+    if (!root) return false;
+    cJSON_AddNumberToObject(root, "id", id);
+    cJSON_AddStringToObject(root, "op", op);
+    cJSON_AddStringToObject(root, "text", text);
+    char *json = cJSON_PrintUnformatted(root);
+    cJSON_Delete(root);
+    if (!json) return false;
+    bool ok = strlen(json) <= MAX_PACKET_PAYLOAD_SIZE &&
+              commu_send_string(SKAI_LINK_COMMAND_ID, KEY_VOICE_AI, json);
+    LOG_W("send voiceAi id=%d ok=%d", id, (int)ok);
+    cJSON_free(json);
+    return ok;
+}
+
 bool commu_send_lift_input_delete(void)
 {
     return commu_send_string(SKAI_LINK_COMMAND_ID, KEY_LIFT_INPUT_DELETE, "{}");

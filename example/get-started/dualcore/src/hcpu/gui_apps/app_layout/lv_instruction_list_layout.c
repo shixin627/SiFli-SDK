@@ -57,6 +57,7 @@
 #include "ui_img_helper.h"
 #include "lv_chat_page.h"
 #include "lv_session_pager.h"
+#include "voice_ai_logo.h"
 
 #ifndef M_PI
     #define M_PI 3.14159265358979323846
@@ -1102,6 +1103,56 @@ static void voice_transcript_scroll_to_bottom(void)
     else
         lv_obj_scroll_to_y(s_voice_transcript_clip, 0, LV_ANIM_OFF);
 }
+
+/* ── 語音 AI logo:skaibar 語音框(錶盤左頁 / 滑鼠抽屜 / 按住 bar 講話都是這個框) ──
+   文字真相 = 手錶的語音緩衝(問 Skai 送的是它);查詢由手機依轉錄即時推給電腦/手機 launcher,
+   AI 改過的字手機會再推一次(BleWatchConnection.handleVoiceAiRequest)。 */
+static lv_obj_t *s_ai_box_vai_logo = NULL;
+void instruction_list_set_voice_transcript(const char *text);
+static bool is_open_instruction_list_ai; /* 定義在下面 */
+
+static const char *ai_box_vai_get_text(void)
+{
+    const char *t = get_combined_voice2text();
+    if (t == NULL)
+        return "";
+    const char *placeholder = LV_EXT_STR_GET_BY_KEY(listening, "Listening");
+    if (placeholder != NULL && strcmp(t, placeholder) == 0)
+        return "";
+    return t;
+}
+
+static void ai_box_vai_set_text(const char *text)
+{
+    if (!is_open_instruction_list_ai)
+        return; /* 框已經收了 */
+    voice_ai_logo_replace_v2t(text);
+    instruction_list_set_voice_transcript(text);
+}
+
+static bool ai_box_vai_stop_dictation(void)
+{
+    if (!is_open_instruction_list_ai)
+        return false;
+    /* 只停麥克風、框留著(close_ai_widget 的三段拆除,不收框)。 */
+#ifndef BSP_USING_PC_SIMULATOR
+    extern void set_ai_open_mic(bool is_open);
+    voice_provider.stop_v2t();
+    stop_voice_recognition(V2T_INTENT_NOTHING);
+    set_voice_recognition_started(false);
+    set_ai_open_mic(false);
+#endif
+    LOG_I("[ai_box] mic stopped for the voice-AI logo");
+    return true;
+}
+
+static const voice_ai_ops_t s_ai_box_vai_ops = {
+    .tag = "skaibar",
+    .get_text = ai_box_vai_get_text,
+    .set_text = ai_box_vai_set_text,
+    .stop_dictation = ai_box_vai_stop_dictation,
+    .on_tap = NULL,
+};
 
 void instruction_list_set_voice_transcript(const char *text)
 {
@@ -3118,10 +3169,8 @@ static void lift_send_btn_event_cb(lv_event_t *evt)
    叫出同一份清單(先用 registry placeholder 墊著,push 一到就換成電腦的即時選項)。
    刻意清掉 s_opened_by_lift:清單開出來之後手腕放下不該把它一起收掉(那個 close 路徑
    只服務「舉起帶出的面板」)。 */
-static void lift_logo_btn_event_cb(lv_event_t *evt)
+static void lift_logo_tap(void)
 {
-    if (lv_event_get_code(evt) != LV_EVENT_CLICKED)
-        return;
     if (!lift_input_has_text() && !lift_input_voice_just_ended())
     {
         LOG_I("[lift_input] logo tapped with no text — ignored");
@@ -3137,6 +3186,38 @@ static void lift_logo_btn_event_cb(lv_event_t *evt)
     instruction_list_bar_set_blur(false); /* 非錶盤、不模糊 */
     instruction_list_open_browse();
 }
+
+/* 語音 AI logo 的畫面接口(立起面板)。文字真相在手機的暫存稿;修改的結果手機會自己套到
+   暫存稿,這裡只換畫面。 */
+static const char *lift_vai_get_text(void)
+{
+    if (!lift_input_has_text())
+        return "";
+    return lv_label_get_text(s_lift_input_label);
+}
+
+void instruction_list_lift_input_set_text(const char *text); /* 定義在下面 */
+
+static void lift_vai_set_text(const char *text)
+{
+    instruction_list_lift_input_set_text(text);
+}
+
+static bool lift_vai_stop_dictation(void)
+{
+    if (!s_lift_voice_active)
+        return false;
+    lift_input_voice_stop();
+    return true;
+}
+
+static const voice_ai_ops_t s_lift_voice_ai_ops = {
+    .tag = "lift",
+    .get_text = lift_vai_get_text,
+    .set_text = lift_vai_set_text,
+    .stop_dictation = lift_vai_stop_dictation,
+    .on_tap = lift_logo_tap,
+};
 
 static void ensure_lift_input_view(void)
 {
@@ -3258,8 +3339,10 @@ static void ensure_lift_input_view(void)
        兩顆都在時 logo 在左、send 在右(iOS 慣例:主要動作在右);只有 logo 時置中。 */
     s_lift_logo_btn = lv_img_create(s_lift_input_view);
     lv_img_set_src(s_lift_logo_btn, &img_logo);
-    lv_obj_add_flag(s_lift_logo_btn, LV_OBJ_FLAG_CLICKABLE);
-    lv_obj_add_event_cb(s_lift_logo_btn, lift_logo_btn_event_cb, LV_EVENT_CLICKED, NULL);
+    /* 語音 AI logo(founder 2026-09-23):點一下照舊送去 skaibar(這裡的文字放開麥克風時手機
+       已自動整理過);**按住說話 = 修改指示**,跟手機輸入框那顆一樣。點擊改由 voice_ai_logo
+       轉進 lift_logo_tap —— LVGL 8 長按放開後照樣發 CLICKED,自己再掛一個會在修改完順手送出。 */
+    voice_ai_logo_attach(s_lift_logo_btn, &s_lift_voice_ai_ops);
 
     s_lift_send_btn = lv_img_create(s_lift_input_view);
     lv_img_set_src(s_lift_send_btn, &icon_send);
@@ -8673,6 +8756,11 @@ lv_obj_t *lv_instruction_list_layout_create(lv_obj_t *parent)
         lv_obj_set_size(s_voice_transcript_clip, 360, 2 * lh + ls);
         lv_obj_align(s_voice_transcript_clip, LV_ALIGN_TOP_MID, 0, 60 - (lh + ls));
     }
+
+    /* 語音 AI logo(founder 2026-09-23):逐字稿下面。點 = 停錄 + AI 潤色,按住說話 = 修改指示。
+       是框的子物件,跟著框開關/淡出;自己吃掉點擊,不會觸發框的「點一下收起」。 */
+    s_ai_box_vai_logo = voice_ai_logo_create(ai_box, &s_ai_box_vai_ops, 48);
+    lv_obj_align(s_ai_box_vai_logo, LV_ALIGN_TOP_MID, 0, 104);
 
     /* No separate voice button — the box matches device_pager (frame + label
        only). The VAD-pulse / re-ask handlers are all null-guarded, so leaving

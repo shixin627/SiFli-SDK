@@ -52,6 +52,7 @@
 #include "lv_ex_data.h"
 #include "app_speech.h"
 #include "common_widget.h"
+#include "voice_ai_logo.h"
 #include "app_mainmenu.h"
 #ifdef BSP_USING_MODEL_WATCH_SYS_INTERACT
 #include "watch_system_interact.h"
@@ -118,9 +119,43 @@ static void send_message(char *message)
     handle_user_speech_intent(incoming_intent, message);
 }
 
+/* 語音 AI logo(founder 2026-09-23)。這頁 on_resume 就開始錄;logo 點/按住時停下來,文字留著
+   給 AI 改,改完再按送出。改過的字寫回 V2T 緩衝,綁定的內容標籤自己會更新。 */
+static bool s_speech_listening = false;
+
+static const char *speech_vai_get_text(void)
+{
+    const char *t = get_combined_voice2text();
+    return t ? t : "";
+}
+
+static void speech_vai_set_text(const char *text)
+{
+    voice_ai_logo_replace_v2t(text);
+}
+
+static bool speech_vai_stop_dictation(void)
+{
+    if (!s_speech_listening)
+        return false;
+    s_speech_listening = false;
+    stop_voice_recognition(V2T_INTENT_NOTHING);
+    return true;
+}
+
+static const voice_ai_ops_t s_speech_vai_ops = {
+    .tag = "speech",
+    .get_text = speech_vai_get_text,
+    .set_text = speech_vai_set_text,
+    .stop_dictation = speech_vai_stop_dictation,
+    .on_tap = NULL,
+};
+
 static void check_and_send_v2t_result_for_reply(void)
 {
     LOG_D("check_and_send_v2t_result_for_reply");
+    if (voice_ai_logo_busy())
+        return; /* logo 在錄修改指示 / 等 AI:送出會送到還沒改好的字 */
     if (isTextEmpty() == false)
     {
         stop_voice_recognition(V2T_INTENT_NOTHING);
@@ -238,6 +273,10 @@ lv_obj_t *app_speech_main_init(lv_obj_t *parent)
     lvgl_msg_handler.handle_back_event = handle_back_for_reply;
     lv_obj_align_to(send_button, p_window, LV_ALIGN_BOTTOM_RIGHT, -30, -20);
 
+    /* 語音 AI logo:垃圾桶與送出之間。 */
+    lv_obj_t *vai = voice_ai_logo_create(p_window, &s_speech_vai_ops, 56);
+    lv_obj_align(vai, LV_ALIGN_BOTTOM_MID, 0, -22);
+
     return p_window;
 }
 
@@ -289,6 +328,7 @@ static void on_resume(void)
 {
     // switch_watch_motion_control_mode(true, true);
     start_voice_recognition(incoming_intent);
+    s_speech_listening = true;
 #ifdef BSP_USING_UI_HANDLER
     lvgl_msg_handler.handle_mic = handle_mic_status;
 #endif
@@ -297,6 +337,7 @@ static void on_resume(void)
 static void on_pause(void)
 {
     stop_voice_recognition(V2T_INTENT_NOTHING);
+    s_speech_listening = false;
 #ifdef BSP_USING_UI_HANDLER
     lvgl_msg_handler.handle_mic = NULL;
 #endif

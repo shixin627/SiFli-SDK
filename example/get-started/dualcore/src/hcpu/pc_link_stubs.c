@@ -310,3 +310,4 @@ bool ble_hid_mouse_app_route(void) { return false; }
 /* communicate_task.h */ bool commu_send_hr_burst(uint32_t ts, uint32_t dur_ms, uint32_t samples, uint16_t reads, uint16_t readfail, uint16_t frame_pct, uint16_t rate_info, uint8_t extends, uint8_t best, uint8_t reason, uint8_t power_veto) { (void)ts; (void)dur_ms; (void)samples; (void)reads; (void)readfail; (void)frame_pct; (void)rate_info; (void)extends; (void)best; (void)reason; (void)power_veto; return false; }
 /* communicate_task.h */ bool commu_send_hr_window_raw(uint32_t ts, int64_t fit_a_q16, int64_t fit_b_q16, uint8_t shift, uint16_t first_index, uint16_t count, const int16_t *win) { (void)ts; (void)fit_a_q16; (void)fit_b_q16; (void)shift; (void)first_index; (void)count; (void)win; return false; }
 /* communicate_parse_skailink.c — owning TU excluded on PC */ void tv_state_apply_pending(void) { }
+/* communicate_parse_skailink.c — owning TU excluded on PC */ void voice_ai_result_apply_pending(void) { }

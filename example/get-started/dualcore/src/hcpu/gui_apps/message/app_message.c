@@ -20,6 +20,7 @@
 #include "bloc_v2t.h"
 #include "bloc_setting.h"
 #include "app_speech.h"
+#include "voice_ai_logo.h"
 #ifdef BSP_USING_MODEL_WATCH_SYS_INTERACT
     #include "watch_system_interact.h"
 #endif
@@ -68,6 +69,9 @@ static lv_obj_t *voice_send_icon = NULL;
 static lv_obj_t *voice_reply_window = NULL;
 static void *voice_text_bind_handle = NULL;
 static bool voice_reply_active = false;
+/* 語音 AI logo(founder 2026-09-23)。這頁一進來就一直在錄;logo 點/按住時停下來,文字留著
+   給 AI 改,改完再按送出。改過的字寫回 V2T 緩衝(送出讀的就是它),綁定的標籤自己會更新。 */
+static bool s_msg_listening = false;
 
 static void voice_text_label_set_text(lv_obj_t *label, const char *text)
 {
@@ -126,9 +130,45 @@ static void voice_text_label_set_text(lv_obj_t *label, const char *text)
     }
 }
 
+static const char *message_vai_get_text(void)
+{
+    #ifdef BSP_USING_BLOC_V2T
+    const char *t = get_combined_voice2text();
+    return t ? t : "";
+    #else
+    return "";
+    #endif
+}
+
+static void message_vai_set_text(const char *text)
+{
+    voice_ai_logo_replace_v2t(text);
+}
+
+static bool message_vai_stop_dictation(void)
+{
+    if (!s_msg_listening)
+        return false;
+    s_msg_listening = false;
+    #ifdef BSP_USING_BLOC_V2T
+    stop_voice_recognition(V2T_INTENT_NOTHING);
+    #endif
+    return true;
+}
+
+static const voice_ai_ops_t s_message_vai_ops = {
+    .tag = "message_reply",
+    .get_text = message_vai_get_text,
+    .set_text = message_vai_set_text,
+    .stop_dictation = message_vai_stop_dictation,
+    .on_tap = NULL,
+};
+
 /* Voice reply: send transcribed text as notification reply */
 static void message_voice_send(void)
 {
+    if (voice_ai_logo_busy())
+        return; /* logo 在錄修改指示 / 等 AI:送出會送到還沒改好的字 */
     #ifdef BSP_USING_BLOC_V2T
     if (isTextEmpty() == false)
     {
@@ -392,6 +432,10 @@ lv_obj_t *app_message_init(lv_obj_t *parent)
         lv_obj_add_event_cb(send_btn, message_send_btn_cb, LV_EVENT_CLICKED, NULL);
         lv_obj_add_flag(voice_send_icon, LV_OBJ_FLAG_HIDDEN);
 
+        /* 語音 AI logo:送出鈕左邊。 */
+        lv_obj_t *vai = voice_ai_logo_create(parent, &s_message_vai_ops, 52);
+        lv_obj_align(vai, LV_ALIGN_BOTTOM_MID, -86, -5);
+
         lv_obj_t *footer_obj = lv_obj_create(p_window);
         lv_obj_set_size(footer_obj, 400, 106);
         lv_obj_align_to(footer_obj, voice_container, LV_ALIGN_OUT_BOTTOM_MID, 0, 0);
@@ -436,6 +480,7 @@ static void on_resume(void)
         #ifdef BSP_USING_BLOC_V2T
         start_voice_recognition(V2T_INTENT_REMOTE_INPUT);
         #endif
+        s_msg_listening = true;
     }
     else
     {
@@ -454,6 +499,7 @@ static void on_pause(void)
         #ifdef BSP_USING_BLOC_V2T
         stop_voice_recognition(V2T_INTENT_NOTHING);
         #endif
+        s_msg_listening = false;
         lvgl_msg_handler.handle_vad_status = NULL;
     }
     lvgl_msg_handler.handle_back_event = NULL;

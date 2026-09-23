@@ -415,6 +415,26 @@ void interact_memo_v2t_input(void)
     start_voice_recognition(V2T_INTENT_MEMO);
 }
 
+/* 語音 AI logo 按住那段錄音(founder 2026-09-23)。與 memo 同一條直接路徑(不走 start_v2t 的
+   事件 —— 那條會 clearVoice2Text() 並裝上畫面的輸入 handler,把畫面的逐字稿洗掉);
+   stop 帶 NOTHING:手機對 intent 0 的 STOP 不送 RECOGNITION_END,那個 END(0) 會讓某些畫面
+   直接回首頁。 */
+void interact_amend_v2t_input(bool start)
+{
+    if (start)
+    {
+        LOG_D("[interact_amend_v2t_input] start amend dictation");
+        voice_provider.vad_init();
+        start_voice_recognition(V2T_INTENT_AMEND);
+    }
+    else
+    {
+        LOG_D("[interact_amend_v2t_input] stop amend dictation");
+        stop_voice_recognition(V2T_INTENT_NOTHING);
+        voice_provider.vad_deinit();
+    }
+}
+
 void interact_bat_low_level(bool enable)
 {
     if (enable)
@@ -472,6 +492,18 @@ void interact_voice_recognition(VOICE_RECOGNITION_PAYLOAD *msgData)
               (int)chat_page_is_open(), (int)check_if_user_speaking_to_ai(),
               (int)instruction_list_lift_input_view_open(),
               (int)get_is_open_instruction_list_ai());
+    }
+    /* 語音 AI logo 按住中:這筆是「修改指示」,只給 logo 顯示,不進任何畫面的逐字稿。
+       放在 coding 檢查之前:按住那段是 start_voice_recognition() 開的,coding 歸零,
+       而畫面原本那段可能已被 count_speech_coding() 推到別的值。 */
+    {
+        extern bool voice_ai_logo_capturing(void);
+        extern void voice_ai_logo_post_instruction(const uint8_t *text, uint16_t len);
+        if (voice_ai_logo_capturing())
+        {
+            voice_ai_logo_post_instruction(msgData->p_msg_value, msgData->length);
+            return;
+        }
     }
     if (get_speech_coding() != msgData->header)
     {

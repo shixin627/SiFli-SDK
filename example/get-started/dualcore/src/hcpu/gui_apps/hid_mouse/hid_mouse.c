@@ -71,6 +71,7 @@
 
 #ifdef BSP_USING_MODEL_WATCH_SYS_INTERACT
     #include "watch_system_interact.h"
+#include "voice_ai_logo.h"
 #endif
 
 #include "communicate_protocol.h"
@@ -6453,6 +6454,51 @@ void mouse_apply_v2t_input(const char *text)
     }
 }
 
+/* ── 語音 AI logo(founder 2026-09-23):語音站的文字真相是本地 input_buffer ── */
+static lv_obj_t *s_voice_ai_logo = NULL;
+
+static const char *voice_station_vai_get_text(void)
+{
+    return input_buffer;
+}
+
+static void voice_station_vai_set_text(const char *text)
+{
+    if (text == NULL)
+        return;
+    /* input_buffer 只有 128 bytes:截在 UTF-8 字的邊界,別切出半個中文字。 */
+    size_t n = strlen(text);
+    if (n >= sizeof(input_buffer))
+    {
+        n = sizeof(input_buffer) - 1;
+        while (n > 0 && ((unsigned char)text[n] & 0xC0) == 0x80)
+            n--;
+    }
+    memset(input_buffer, 0, sizeof(input_buffer));
+    memcpy(input_buffer, text, n);
+    input_length = (int)n;
+    s_voice_caret = -1;         /* 整段換了,插入點回到最後 */
+    s_voice_ins_armed = false;  /* 舊的前後文快照指的是舊字 */
+    if (input_display_label != NULL)
+        update_input_display(); /* 也會把新字推給電腦那條輸入框(voice_preview_schedule) */
+}
+
+static bool voice_station_vai_stop_dictation(void)
+{
+    if (!mouse_v2t_active)
+        return false;
+    mouse_v2t_close_and_paste(); /* 關 mic,字留著 */
+    return true;
+}
+
+static const voice_ai_ops_t s_voice_station_vai_ops = {
+    .tag = "voice_station",
+    .get_text = voice_station_vai_get_text,
+    .set_text = voice_station_vai_set_text,
+    .stop_dictation = voice_station_vai_stop_dictation,
+    .on_tap = NULL,
+};
+
 /**
  * @brief V2T 結果通知入口：仿 append_text_to_input_message 的方式，
  *        從 V2T 模組拿合併文字、透過 LVGL message queue 切到 LVGL thread 套用
@@ -8178,6 +8224,12 @@ static void create_kbd_mic_section(lv_obj_t *parent)
     lv_obj_add_event_cb(kbd_voice_del_btn, kbd_voice_del_event_cb, LV_EVENT_RELEASED, NULL);
     lv_obj_add_event_cb(kbd_voice_del_btn, kbd_voice_del_event_cb, LV_EVENT_PRESS_LOST, NULL);
 
+    /* 語音 AI logo(founder 2026-09-23):大框上方置中(2026-08-07 拿掉的「送 AI」logo 原本的位置,
+       但這顆是另一件事)。點 = AI 潤色框裡的字;按住說話 = 用說的修改。「送 AI」仍然是長按
+       麥克風時浮出的那顆拖曳 logo,兩者不衝突。 */
+    s_voice_ai_logo = voice_ai_logo_create(kbd_mic_section, &s_voice_station_vai_ops, 52);
+    lv_obj_align(s_voice_ai_logo, LV_ALIGN_CENTER, 0, VOICE_ICON_DY);
+
     /* 上方兩顆送出:logo = 當 skaibar 查詢送出(送查詢不自動執行)、
        icon_send = 打進電腦剛剛點的那個輸入框(只有電腦有聚焦欄位時才出現)。 */
     /* 常駐的「送 AI」logo 已移除(founder 2026-08-07):改成長按錄音時在手指上方
@@ -9889,6 +9941,10 @@ static void kbd_exit_btn_event_cb(lv_event_t *e)
    原本是 tap toggle —— 對講機式的按住在手錶上更不會忘記關。 */
 static void kbd_mic_btn_event_cb(lv_event_t *e)
 {
+    /* 語音 AI logo 正在錄修改指示 / 等 AI:麥克風這時不能再開一段(同一時間只能有一段語音,
+       而且 AI 的結果回來會整段換掉框裡的字)。 */
+    if (voice_ai_logo_busy())
+        return;
     switch (lv_event_get_code(e))
     {
     case LV_EVENT_PRESSED:

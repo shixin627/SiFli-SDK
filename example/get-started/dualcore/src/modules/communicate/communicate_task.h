@@ -177,6 +177,7 @@ bool commu_send_lift_input_caret(int pos, const char *text); /* -> KEY_LIFT_INPU
 bool commu_send_voice_station_commit(const char *dest, const char *text); /* -> KEY_LIFT_INPUT_COMMIT (0x1d) {"dest":...,"text":"..."} 滑鼠 app 語音站:文字真相在手錶本地,故一併帶上 */
 bool commu_send_voice_station_preview(const char *text); /* -> KEY_LIFT_INPUT_CARET (0x1e) {"preview":"..."} 語音站:把手錶當下的文字推給電腦顯示 */
 bool commu_send_lift_input_cancel_segment(void); /* -> KEY_LIFT_INPUT_CARET (0x1e) {"cancel":true} 丟掉這次按住錄到的那一段(長按講話中途改成框選) */
+bool commu_send_voice_ai(int id, const char *op, const char *text); /* -> KEY_VOICE_AI (0x2a) 語音 AI logo 潤色/修改請求 */
 bool commu_send_lift_input_delete(void); /* -> KEY_LIFT_INPUT_DELETE (0x1f) {} 刪掉插入點前一個字(長按由手錶 timer 重送) */
 bool commu_send_lift_input_delete_range(int from, int to); /* -> KEY_LIFT_INPUT_DELETE (0x1f) {"from":N,"to":M} 刪掉框選的那一段(字元索引,半開區間) */
 

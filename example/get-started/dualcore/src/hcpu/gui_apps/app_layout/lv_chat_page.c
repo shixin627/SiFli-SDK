@@ -13,6 +13,7 @@
 #include "ui_handler.h"
 #include "ui_helper.h"
 #include "bloc_v2t.h"
+#include "voice_ai_logo.h"
 #include <cJSON.h>
 #include <string.h>
 
@@ -364,6 +365,13 @@ static lv_obj_t *s_transcript_label = NULL;
 static lv_obj_t *s_transcript_pill = NULL;  /* message_widget_bg frame image inside the box (faded in on open) */
 static lv_obj_t *s_input_scrim = NULL;      /* full-screen tap-catcher (recording only): tap OUTSIDE the box → cancel */
 static bool s_recording = false;
+/* 語音 AI logo(founder 2026-09-23):點 logo = 停錄但**不送出**,輸入框留著讓 AI 潤色 / 用說的
+   修改,再按送出才送。s_reviewing = 這個「錄完、還沒送」的狀態。AI 的結果存在 s_review_text
+   (s_review_override),送出時取代 V2T 緩衝。 */
+static bool s_reviewing = false;
+static bool s_review_override = false;
+static char s_review_text[512];
+static lv_obj_t *s_vai_logo = NULL;
 
 static void chat_set_mic_visual(bool recording)
 {
@@ -421,14 +429,57 @@ static void chat_set_mic_visual(bool recording)
    skaibar voice box uses. [text] is the running transcript (empty → keep the listening hint). */
 void chat_page_set_transcript(const char *text)
 {
-    if (!s_recording || s_transcript_label == NULL || !lv_obj_is_valid(s_transcript_label))
+    if (!(s_recording || s_reviewing) || s_transcript_label == NULL || !lv_obj_is_valid(s_transcript_label))
         return;
+    if (s_review_override)
+        return; /* AI 改過的字不讓遲到的轉錄蓋掉 */
     bool has = (text != NULL && text[0] != '\0');
     lv_label_set_text(s_transcript_label, has ? text : "聆聽中…");
     /* Dim the send glyph until there are words to send (desktop CanSend parity). */
     if (s_send_btn != NULL && lv_obj_is_valid(s_send_btn))
         lv_obj_set_style_img_opa(s_send_btn, has ? LV_OPA_COVER : LV_OPA_40, 0);
 }
+
+/* ── 語音 AI logo 的畫面接口 ── */
+static const char *chat_vai_get_text(void)
+{
+    if (s_review_override)
+        return s_review_text;
+    const char *t = get_combined_voice2text();
+    return t ? t : "";
+}
+
+static void chat_vai_set_text(const char *text)
+{
+    if (!s_reviewing || text == NULL)
+        return; /* 框已經關了(送出/取消),結果沒地方放 */
+    chat_copy_utf8(s_review_text, sizeof(s_review_text), text);
+    s_review_override = true;
+    if (s_transcript_label != NULL && lv_obj_is_valid(s_transcript_label))
+        lv_label_set_text(s_transcript_label, s_review_text);
+    if (s_send_btn != NULL && lv_obj_is_valid(s_send_btn))
+        lv_obj_set_style_img_opa(s_send_btn, LV_OPA_COVER, 0);
+}
+
+static bool chat_vai_stop_dictation(void)
+{
+    if (!s_recording)
+        return false;
+    /* 停錄但不送:stop_v2t 走 VOICE_RECOGNITION_STOP(不像 auto_stop 會送 0x44 開 AI 對話)。 */
+    s_recording = false;
+    s_reviewing = true;
+    voice_provider.stop_v2t();
+    LOG_I("chat mic: stopped for the voice-AI logo (review)");
+    return true;
+}
+
+static const voice_ai_ops_t s_chat_vai_ops = {
+    .tag = "chat",
+    .get_text = chat_vai_get_text,
+    .set_text = chat_vai_set_text,
+    .stop_dictation = chat_vai_stop_dictation,
+    .on_tap = NULL,
+};
 
 /* ── mic → input-box MORPH (mirrors the @-list's lmic_grow_cb so the chat box opens with the SAME
    grow-and-slide-up transition, not a hard pop — founder 2026-06-29). Phase 1: the dark box grows from
@@ -489,6 +540,8 @@ static void chat_open_reveal_cb(lv_anim_t *a)
         lv_obj_clear_flag(s_send_btn, LV_OBJ_FLAG_HIDDEN);
         lv_obj_set_style_img_opa(s_send_btn, LV_OPA_40, 0); /* dim until words arrive */
     }
+    if (s_vai_logo != NULL && lv_obj_is_valid(s_vai_logo))
+        lv_obj_clear_flag(s_vai_logo, LV_OBJ_FLAG_HIDDEN);
     if (s_transcript_pill != NULL && lv_obj_is_valid(s_transcript_pill))
     {
         chat_pill_fade_cb(NULL, 0); /* start invisible */
@@ -567,6 +620,8 @@ static void chat_play_close_morph(void)
         return;
     }
     lv_anim_del(s_transcript_pill, chat_pill_fade_cb);
+    if (s_vai_logo != NULL && lv_obj_is_valid(s_vai_logo))
+        lv_obj_add_flag(s_vai_logo, LV_OBJ_FLAG_HIDDEN);
     if (s_transcript_pill != NULL && lv_obj_is_valid(s_transcript_pill))
         lv_obj_set_style_img_opa(s_transcript_pill, LV_OPA_TRANSP, 0);
     if (s_transcript_label != NULL && lv_obj_is_valid(s_transcript_label))
@@ -591,6 +646,8 @@ static void chat_play_close_morph(void)
     lv_anim_start(&g);
 }
 
+static void chat_send_text(const char *text);
+
 static void chat_stop_recording_and_send(void)
 {
     if (!s_recording)
@@ -598,7 +655,22 @@ static void chat_stop_recording_and_send(void)
     s_recording = false;
     voice_provider.auto_stop_listening(); /* finalize (mirror app_skai's send_to_ai) */
     chat_play_close_morph();
-    const char *text = get_combined_voice2text();
+    chat_send_text(get_combined_voice2text());
+}
+
+/* 錄完、給 AI 看過之後按送出:送的是框裡看到的那一段(AI 改過的優先)。 */
+static void chat_send_review(void)
+{
+    if (!s_reviewing)
+        return;
+    s_reviewing = false;
+    chat_play_close_morph();
+    chat_send_text(s_review_override ? s_review_text : get_combined_voice2text());
+    s_review_override = false;
+}
+
+static void chat_send_text(const char *text)
+{
     /* 「文字出現一瞬間就消失、也沒送出去」(founder 2026-08-17):轉錄確實到了手錶
        (`[v2t] rx len=15` 等),chat 分支也認領了,但送出這一刻拿到空的。V2T 緩衝是**單一
        全域**、有六個 app 都會 clearVoice2Text(),沒有任何所有權概念 —— 所以要先知道
@@ -621,10 +693,13 @@ static void chat_stop_recording_and_send(void)
    stop the mic, drop the partial transcript, restore the idle mic glyph (founder 2026-06-29). */
 static void chat_cancel_recording(void)
 {
-    if (!s_recording)
+    if (!s_recording && !s_reviewing)
         return;
+    if (s_recording)
+        voice_provider.auto_stop_listening();
     s_recording = false;
-    voice_provider.auto_stop_listening();
+    s_reviewing = false;
+    s_review_override = false;
     clearVoice2Text();
     chat_play_close_morph();
     LOG_I("chat mic: cancel (tap outside)");
@@ -638,6 +713,14 @@ static void chat_scrim_cb(lv_event_t *e)
 
 static void chat_mic_toggle(void)
 {
+    if (voice_ai_logo_busy())
+        return; /* logo 正在錄修改指示 / 等 AI:這時送出或再開麥克風都會搶掉它 */
+    if (s_reviewing)
+    {
+        LOG_I("chat mic: send reviewed text");
+        chat_send_review();
+        return;
+    }
     if (!s_recording)
     {
         clearVoice2Text();
@@ -1422,6 +1505,13 @@ void chat_page_open(const char *title, const char *icon_src)
     lv_obj_add_flag(send, LV_OBJ_FLAG_HIDDEN);
     s_send_btn = send;
 
+    /* 語音 AI logo:送出鈕左邊,跟著輸入框出現。 */
+    s_vai_logo = voice_ai_logo_create(panel, &s_chat_vai_ops, 52);
+    lv_obj_align(s_vai_logo, LV_ALIGN_BOTTOM_MID, -92, -14);
+    lv_obj_add_flag(s_vai_logo, LV_OBJ_FLAG_HIDDEN);
+    s_reviewing = false;
+    s_review_override = false;
+
     s_chat_panel = panel;
 
     /* SWIPE-BACK: the watch's native left-edge back detector + its drag hint are created at boot as
@@ -1468,6 +1558,8 @@ void chat_page_close(void)
         voice_provider.auto_stop_listening();
         clearVoice2Text();
     }
+    s_reviewing = false;
+    s_review_override = false;
     /* Kill any in-flight morph anims before the objects are freed (their ready cbs touch these). */
     lv_anim_del(s_transcript_box, chat_box_grow_cb);
     lv_anim_del(s_transcript_pill, chat_pill_fade_cb);
@@ -1481,6 +1573,7 @@ void chat_page_close(void)
     s_mic_img = NULL;
     s_mic_backplate = NULL;
     s_send_btn = NULL;
+    s_vai_logo = NULL;
     s_transcript_box = NULL;
     s_transcript_label = NULL;
     s_transcript_pill = NULL;

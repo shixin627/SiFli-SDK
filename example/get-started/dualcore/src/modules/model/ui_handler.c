@@ -609,6 +609,20 @@ static void process_lvgl_message(lvgl_msg_t *msg)
         tv_state_apply_pending();
         break;
 
+    case LVGL_MSG_TYPE_VOICE_AI_RESULT_RAW:
+    {
+        extern void voice_ai_result_apply_pending(void);
+        voice_ai_result_apply_pending();
+        break;
+    }
+
+    case LVGL_MSG_TYPE_VOICE_AI_INSTRUCTION:
+    {
+        extern void voice_ai_logo_apply_instruction(void);
+        voice_ai_logo_apply_instruction();
+        break;
+    }
+
     case LVGL_MSG_TYPE_MOUSE_INPUT_TEXT:
         mouse_apply_v2t_input(msg->data.message);
         break;

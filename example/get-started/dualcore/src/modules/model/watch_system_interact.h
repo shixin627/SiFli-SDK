@@ -102,6 +102,10 @@ extern void BLE_LOG_E(const char *format, ...);
         V2T_INTENT_MEMO = 0x05,     /* SkaiApp memo voice fill (ADR-0037): the phone
                                        routes the transcript to setMemoText for the
                                        memo named in the preceding KEY_SKAIAPP_VOICE. */
+        V2T_INTENT_AMEND = 0x06,    /* 語音 AI logo 按住(founder 2026-09-23):這段話是對畫面上
+                                       文字的「修改指示」,不是文字本身 —— 手機不把它送進
+                                       skaibar/備忘錄/launcher,手錶這邊由 voice_ai_logo 接走,
+                                       不進畫面的逐字稿。Lockstep WatchProtocol.kt V2T_INTENT_AMEND。 */
     } V2T_INTENT;
 
     extern rt_sem_t go_to_sleep_sem;
@@ -134,6 +138,7 @@ extern void BLE_LOG_E(const char *format, ...);
     extern void interact_mic_listen(bool enable);
     extern void interact_mic_v2t_input(void);
     extern void interact_memo_v2t_input(void);  /* SkaiApp memo 🎤 voice fill (ADR-0037) */
+    extern void interact_amend_v2t_input(bool start); /* 語音 AI logo 按住=修改指示的錄音 */
     extern void interact_voice_recognition(VOICE_RECOGNITION_PAYLOAD *msgData);
     extern void interact_chat_result(MSG_DATA_PAYLOAD *msgData);
     extern void interact_cancel_bond(void);

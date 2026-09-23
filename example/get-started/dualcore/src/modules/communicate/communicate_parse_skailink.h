@@ -300,6 +300,17 @@ extern "C"
            手機沒帶模型,手錶自己退出模式,免得畫著一隻手卻什麼都不會發生。
            Keep in lockstep with WatchProtocol.kt SKAILINK_KEY_GESTURE_CLICK. */
         KEY_GESTURE_CLICK = 0x27,
+        /* ── 語音 AI logo(founder 2026-09-23)。手錶上每個用到語音輸入的畫面都有一顆 Skai logo,
+           跟手機輸入框那顆一樣:點 = 用 AI 潤色畫面上的文字;按住說話 = 這段話是「修改指示」
+           (「林是新」+「森林的林士兵的士心臟的心」→「林士心」)。文字在手錶,模型在手機。
+           watch→phone (UPLINK) 0x2a {"id":N,"op":"polish"|"amend","text":"…"}:
+             amend 在**放開**時送,按住那段錄音(intent V2T_INTENT_AMEND)已經 STOP;手機拿它剛
+             轉出的指示套到 text 上。id 原樣回傳,過期的回覆手錶丟掉。
+           phone→watch (DOWNLINK) 0x2b {"id":N,"ok":1|0,"text":"…"}:ok=0 = 保持原文
+             (沒有模型/失敗/沒聽到指示),此時 text 就是原文。
+           Keep in lockstep with WatchProtocol.kt SKAILINK_KEY_VOICE_AI(_RESULT)。 ── */
+        KEY_VOICE_AI = 0x2a,
+        KEY_VOICE_AI_RESULT = 0x2b,
     } SKAI_LINK_KEY;
 
     /* Dispatched from communicate_parse.c for cmd_id == SKAI_LINK_COMMAND_ID.
