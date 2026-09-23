@@ -8757,13 +8757,12 @@ lv_obj_t *lv_instruction_list_layout_create(lv_obj_t *parent)
         lv_obj_align(s_voice_transcript_clip, LV_ALIGN_TOP_MID, 0, 60 - (lh + ls));
     }
 
-    /* 語音 AI logo(founder 2026-09-23):浮在框頂正上方、置中(與聊天室、手機輸入框同一個位置)。
-       是框的子物件,跟著框開關/淡出/變形;框設 OVERFLOW_VISIBLE 才畫得出、點得到框外那一截
-       (lv_indev_search_obj 對 OVERFLOW_VISIBLE 的父物件會往框外的子物件找)。
-       自己吃掉點擊,不會觸發框的「點一下收起」。 */
-    lv_obj_add_flag(ai_box, LV_OBJ_FLAG_OVERFLOW_VISIBLE);
+    /* 語音 AI logo:框內、置中、貼著螢幕下緣(founder 2026-09-24:「錶盤左邊那個列表開啟麥克風後
+       潤色按鈕要在中間下面」)。框高 LBOX_H、往螢幕外沉 LBOX_Y,露出來的是上面 LBOX_H-LBOX_Y;
+       logo 底邊離露出區下緣 12px。是框的子物件,跟著框開關/淡出/變形;自己吃掉點擊,
+       不會觸發框的「點一下收起」。 */
     s_ai_box_vai_logo = voice_ai_logo_create(ai_box, &s_ai_box_vai_ops, 52);
-    lv_obj_align(s_ai_box_vai_logo, LV_ALIGN_TOP_MID, 0, -(52 + 10));
+    lv_obj_align(s_ai_box_vai_logo, LV_ALIGN_TOP_MID, 0, (LBOX_H - LBOX_Y) - 52 - 12);
 
     /* No separate voice button — the box matches device_pager (frame + label
        only). The VAD-pulse / re-ask handlers are all null-guarded, so leaving
