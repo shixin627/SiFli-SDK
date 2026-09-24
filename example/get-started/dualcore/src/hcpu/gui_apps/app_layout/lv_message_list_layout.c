@@ -1835,6 +1835,20 @@ static void media_card_bubble_subtree(lv_obj_t *node)
 
 static void update_notification_card_visibility(void)
 {
+    /* selected_message 要跟著 selected_message_index 走。scroll_list 只在
+       old != selected 時才改它，但換頁路徑（scroll_message_list_to_index）
+       會先把 old 同步成新 index 再捲 —— scroll_list 看不到差異，
+       selected_message 就一直停在 refresh_list 設的最後一張卡。點擊回覆與
+       右滑刪除都靠「selected_message 停在中央」判定，結果只有最下面那則
+       點得進去（founder 2026-09-24）。每個改 index 的路徑都會呼叫這裡，
+       在這裡同步。 */
+    if (p_app_notification != NULL && p_app_notification->list != NULL &&
+        lv_obj_is_valid(p_app_notification->list) &&
+        selected_message_index < lv_obj_get_child_cnt(p_app_notification->list))
+    {
+        selected_message =
+            lv_obj_get_child(p_app_notification->list, selected_message_index);
+    }
     // if (p_app_notification == NULL)
     //     return;
     // for (uint8_t i = 0; i < notification_count && i < ITEM_AMOUNT_NOTIFICATION;
