@@ -6456,6 +6456,8 @@ void mouse_apply_v2t_input(const char *text)
 
 /* ── 語音 AI logo(founder 2026-09-23):語音站的文字真相是本地 input_buffer ── */
 static lv_obj_t *s_voice_ai_logo = NULL;
+#define VOICE_AI_LOGO_D 52
+#define VOICE_AI_LOGO_INSET 12 /* logo 底邊離輸入框下緣 */
 
 static const char *voice_station_vai_get_text(void)
 {
@@ -8224,11 +8226,12 @@ static void create_kbd_mic_section(lv_obj_t *parent)
     lv_obj_add_event_cb(kbd_voice_del_btn, kbd_voice_del_event_cb, LV_EVENT_RELEASED, NULL);
     lv_obj_add_event_cb(kbd_voice_del_btn, kbd_voice_del_event_cb, LV_EVENT_PRESS_LOST, NULL);
 
-    /* 語音 AI logo(founder 2026-09-23):大框上方置中(2026-08-07 拿掉的「送 AI」logo 原本的位置,
-       但這顆是另一件事)。點 = AI 潤色框裡的字;按住說話 = 用說的修改。「送 AI」仍然是長按
-       麥克風時浮出的那顆拖曳 logo,兩者不衝突。 */
-    s_voice_ai_logo = voice_ai_logo_create(kbd_mic_section, &s_voice_station_vai_ops, 52);
-    lv_obj_align(s_voice_ai_logo, LV_ALIGN_CENTER, 0, VOICE_ICON_DY);
+    /* 語音 AI logo:輸入框內、底部置中(founder 2026-09-24:「點麥克風出現的輸入框下面也要有那個
+       潤色功能」;與錶盤左側列表的語音框同一個位置)。點 = AI 潤色框裡的字、按住說話 = 用說的修改。
+       掛在輸入框(text_input_bar_bg,語音站/鍵盤站共用)上,只在語音站顯示 —— 見 kbd_bar_set_voice_box。 */
+    s_voice_ai_logo = voice_ai_logo_create(text_input_bar_bg, &s_voice_station_vai_ops, VOICE_AI_LOGO_D);
+    lv_obj_align(s_voice_ai_logo, LV_ALIGN_BOTTOM_MID, 0, -VOICE_AI_LOGO_INSET);
+    lv_obj_add_flag(s_voice_ai_logo, LV_OBJ_FLAG_HIDDEN);
 
     /* 上方兩顆送出:logo = 當 skaibar 查詢送出(送查詢不自動執行)、
        icon_send = 打進電腦剛剛點的那個輸入框(只有電腦有聚焦欄位時才出現)。 */
@@ -8844,6 +8847,12 @@ static void ai_drag_logo_hide(void)
 
 static void ai_drag_logo_show(lv_point_t at, lv_obj_t *src)
 {
+    /* 退役(founder 2026-09-24:「本來長按往上拖動給 AI 那個應該可以不用了」)—— 語音站框內
+       底部有語音 AI logo(點 = 潤色、按住說 = 修改)取代它。直接不出現 = 手勢永遠不會 arm
+       (s_ai_drag_armed 恆 false),放開也不會誤送;兩個入口(按住麥克風 / 按住輸入框)一起失效。 */
+    (void)at;
+    (void)src;
+    return;
     if (kbd_mic_section == NULL || !lv_obj_is_valid(kbd_mic_section))
         return;
     /* 直打模式沒有「送去 skaibar」這個去處：電腦端此刻是 direct-typing latch，送出去的
@@ -9112,6 +9121,18 @@ static void voice_ball_event_cb(lv_event_t *e)
 static void kbd_bar_set_voice_box(bool voice)
 {
     s_voice_box_on = voice;
+    if (s_voice_ai_logo && lv_obj_is_valid(s_voice_ai_logo))
+    {
+        if (voice)
+        {
+            lv_obj_clear_flag(s_voice_ai_logo, LV_OBJ_FLAG_HIDDEN);
+            lv_obj_move_foreground(s_voice_ai_logo);
+        }
+        else
+        {
+            lv_obj_add_flag(s_voice_ai_logo, LV_OBJ_FLAG_HIDDEN);
+        }
+    }
     if (!voice)
     {
         voice_sel_clear();
@@ -9166,7 +9187,9 @@ static void kbd_bar_set_voice_box(bool voice)
                (框 442 寬、內容欄置中 360 → 右邊只剩 41px 邊距,不夠讓一顆圖示)。 */
             extern bool instruction_list_remote_target_has_focus(void);
             lv_coord_t cw = instruction_list_remote_target_has_focus() ? 312 : 360;
-            lv_obj_set_size(input_content_container, cw, VOICE_BOX_H - 40);
+            /* 底部讓出語音 AI logo 那一條,長文字才不會從 logo 底下穿過去。 */
+            lv_obj_set_size(input_content_container, cw,
+                            VOICE_BOX_H - 40 - (VOICE_AI_LOGO_D + VOICE_AI_LOGO_INSET));
             lv_obj_align(input_content_container, LV_ALIGN_TOP_MID, 0, 10);
         }
         if (input_display_label && lv_obj_is_valid(input_display_label))
