@@ -208,57 +208,42 @@ static void message_voice_clear(void)
     #endif
 }
 
-/* ── 底部那一顆 → 兩顆(founder 2026-09-23:「點一下變成兩顆,右邊送出左邊潤色」) ──
-   這頁一進來就在聽。第一次點底部那顆 = 說完了:停止聆聽(不送),這顆滑到右邊當送出,
-   左邊滑出 Skai logo(點 = AI 潤色、按住說話 = 用說的修改)。之後點右邊才送出 —— 原文也能直接送。 */
-#define MSG_SEND_D 62
+/* ── 版面(founder 2026-09-24):送出鈕固定在螢幕右邊中間;有說話之後,底部中間浮出語音 AI logo
+   (點 = 停止聆聽並 AI 潤色、按住說話 = 用說的修改)。麥克風照樣繼續聽,右邊隨時可以送出原文。 */
 #define MSG_LOGO_D 52
-#define MSG_SPLIT_DX 45
-#define MSG_SPLIT_MS 200
+#define MSG_LOGO_FADE_MS 200
 static lv_obj_t *s_msg_vai_logo = NULL;
 
-static void message_split_exec(void *var, int32_t v)
+static void message_logo_fade_exec(void *var, int32_t v)
 {
-    (void)var;
-    lv_coord_t dx = (lv_coord_t)(MSG_SPLIT_DX * v / 256);
-    if (voice_send_btn && lv_obj_is_valid(voice_send_btn))
-        lv_obj_align(voice_send_btn, LV_ALIGN_BOTTOM_MID, dx, 0);
-    if (s_msg_vai_logo && lv_obj_is_valid(s_msg_vai_logo))
-    {
-        lv_obj_align(s_msg_vai_logo, LV_ALIGN_BOTTOM_MID, -dx, -(MSG_SEND_D - MSG_LOGO_D) / 2);
-        lv_obj_set_style_opa(s_msg_vai_logo, (lv_opa_t)(v > 255 ? 255 : v), 0);
-    }
+    if (var && lv_obj_is_valid((lv_obj_t *)var))
+        lv_obj_set_style_opa((lv_obj_t *)var, (lv_opa_t)v, 0);
 }
 
+/* 有字了:底部中間浮出 logo(只做一次)。 */
 static void message_split(void)
 {
-    LOG_W("[msg] split btn=%d logo=%d", (int)(voice_send_btn != NULL), (int)(s_msg_vai_logo != NULL));
-    if (!voice_send_btn || !lv_obj_is_valid(voice_send_btn))
+    if (!s_msg_vai_logo || !lv_obj_is_valid(s_msg_vai_logo))
         return;
     s_msg_split = true;
-    if (s_msg_vai_logo && lv_obj_is_valid(s_msg_vai_logo))
-    {
-        lv_obj_clear_flag(s_msg_vai_logo, LV_OBJ_FLAG_HIDDEN);
-        lv_obj_move_foreground(s_msg_vai_logo);
-    }
+    lv_obj_set_style_opa(s_msg_vai_logo, LV_OPA_TRANSP, 0);
+    lv_obj_clear_flag(s_msg_vai_logo, LV_OBJ_FLAG_HIDDEN);
+    lv_obj_move_foreground(s_msg_vai_logo);
     lv_anim_t a;
     lv_anim_init(&a);
     lv_anim_set_var(&a, s_msg_vai_logo);
-    lv_anim_set_values(&a, 0, 256);
-    lv_anim_set_time(&a, MSG_SPLIT_MS);
+    lv_anim_set_values(&a, LV_OPA_TRANSP, LV_OPA_COVER);
+    lv_anim_set_time(&a, MSG_LOGO_FADE_MS);
     lv_anim_set_path_cb(&a, lv_anim_path_ease_out);
-    lv_anim_set_exec_cb(&a, message_split_exec);
+    lv_anim_set_exec_cb(&a, message_logo_fade_exec);
     lv_anim_start(&a);
 }
 
-/* 底部那顆(與點擊手勢)的單一入口:還在聽 = 說完了 → 分成兩顆;已經分開 = 送出。
-   同一下點擊可能同時走到按鈕的 CLICKED 與手勢的 tap indicator(真機 2026-09-24:0.36s 內
-   兩次 STOP)—— 第二下會把剛分開的直接送出,所以 600ms 內只算一次。 */
+/* 送出鈕(與點擊手勢)的單一入口。同一下點擊可能同時走到按鈕的 CLICKED 與手勢的 tap indicator
+   (真機 2026-09-24:0.36s 內兩次 STOP),所以 600ms 內只算一次。 */
 static rt_tick_t s_msg_last_tap = 0;
 static void message_primary_tap(void)
 {
-    /* TEMP DIAG(2026-09-24 通知回覆點了不分開):手錶只印 W、LOG_W ≤2 參數。 */
-    LOG_W("[msg] tap listening=%d busy=%d", (int)s_msg_listening, (int)voice_ai_logo_busy());
     if (s_msg_last_tap != 0 &&
         rt_tick_get() - s_msg_last_tap < rt_tick_from_millisecond(600))
     {
@@ -269,7 +254,6 @@ static void message_primary_tap(void)
     if (voice_ai_logo_busy())
         return;
     #ifdef BSP_USING_BLOC_V2T
-    LOG_W("[msg] tap text_empty=%d", (int)isTextEmpty());
     if (isTextEmpty())
     {
         /* 還沒聽到任何字:繼續聽。震一下,別讓這一下看起來像沒按到。 */
@@ -278,7 +262,7 @@ static void message_primary_tap(void)
         return;
     }
     #endif
-    message_voice_send(); /* 已經分成兩顆了:右邊這顆就是送出 */
+    message_voice_send();
 }
 
 static void message_send_btn_cb(lv_event_t *event)
@@ -496,7 +480,7 @@ lv_obj_t *app_message_init(lv_obj_t *parent)
         lv_obj_set_style_radius(send_btn, 31, 0);
         lv_obj_set_style_bg_color(send_btn, lv_color_hex(0x00AAFF), 0);
         lv_obj_set_style_bg_opa(send_btn, 10, 0);
-        lv_obj_align(send_btn, LV_ALIGN_BOTTOM_MID, 0, 0);
+        lv_obj_align(send_btn, LV_ALIGN_RIGHT_MID, -6, 0); /* 固定在右邊中間(founder 2026-09-24) */
 
         lv_obj_t *voice_btn_img = lv_img_create(send_btn);
         lv_img_set_src(voice_btn_img, &voice_group);
@@ -510,10 +494,10 @@ lv_obj_t *app_message_init(lv_obj_t *parent)
         lv_obj_add_event_cb(send_btn, message_send_btn_cb, LV_EVENT_CLICKED, NULL);
         lv_obj_add_flag(voice_send_icon, LV_OBJ_FLAG_HIDDEN);
 
-        /* 語音 AI logo:說完之後底部那顆分成兩顆時,從中間滑到左邊(見 message_split)。 */
+        /* 語音 AI logo:底部中間,有說話之後才浮出(見 message_split)。 */
         s_msg_split = false;
         s_msg_vai_logo = voice_ai_logo_create(parent, &s_message_vai_ops, MSG_LOGO_D);
-        lv_obj_align(s_msg_vai_logo, LV_ALIGN_BOTTOM_MID, 0, -(MSG_SEND_D - MSG_LOGO_D) / 2);
+        lv_obj_align(s_msg_vai_logo, LV_ALIGN_BOTTOM_MID, 0, -6);
         lv_obj_add_flag(s_msg_vai_logo, LV_OBJ_FLAG_HIDDEN);
 
         lv_obj_t *footer_obj = lv_obj_create(p_window);
@@ -561,7 +545,6 @@ static void on_resume(void)
         start_voice_recognition(V2T_INTENT_REMOTE_INPUT);
         #endif
         s_msg_listening = true;
-        LOG_W("[msg] resume: listening");
     }
     else
     {
