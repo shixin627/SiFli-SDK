@@ -895,12 +895,16 @@ void set_imu_rawdata_collection(bool enable)
      * via watch_sensor.ppg_data): force the sensor ON for the whole session
      * — every other hr_set_power request is vetoed while the flag is set —
      * and hand power management back when the session ends. Ordering vs the
-     * flag is load-bearing both ways: power-on must run BEFORE the flag is
-     * raised and power-off AFTER it is cleared, or the veto blocks us. */
+     * flag is load-bearing both ways: power-off must run AFTER the flag is
+     * cleared, or the veto blocks us; power-on raises the flag FIRST and
+     * bypasses hr_set_power, because a bg_hr burst in flight would veto
+     * hr_set_power(1) and leave the whole session at 25 Hz (see
+     * hr_service_raw_collection_power_on). */
     if (enable && !was)
     {
-        hr_set_power(1);
+        extern void hr_service_raw_collection_power_on(void);
         imu_rawdata_collection = true;
+        hr_service_raw_collection_power_on();
     }
     else if (!enable && was)
     {

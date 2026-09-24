@@ -1878,6 +1878,27 @@ bool hr_service_bg_burst_active(void)
     return bg_hr_bursting == RT_TRUE;
 }
 
+/* Raw collection's power-on. It CANNOT go through hr_set_power(1): a bg_hr
+ * burst in flight vetoes it, the sensor stays in the burst's 25 Hz HR mode,
+ * and the burst's own power-down at the end is then vetoed by collection --
+ * so the whole session streams 25 Hz PPG (visible LED flicker) instead of
+ * NORMAL = HRV 100 Hz. Caller raises the collection flag first, so every
+ * other power request (wear_detect, a racing burst teardown) is already
+ * vetoed; here we abandon the burst the same way the continuous diag does
+ * and open NORMAL directly. */
+void hr_service_raw_collection_power_on(void)
+{
+    if (bg_hr_bursting)
+    {
+        if (bg_hr_sample_timer) rt_timer_stop(bg_hr_sample_timer);
+        extern int bmi270_set_hr_accel_stream(int en);
+        (void)bmi270_set_hr_accel_stream(0);   /* pairs with bg_hr_start_burst */
+        bg_hr_bursting = RT_FALSE;
+        LOG_I("bg_hr burst abandoned: raw collection takes the sensor");
+    }
+    hr_control_mode(RT_SENSOR_POWER_NORMAL);
+}
+
 /* Have we seen a real pulse recently? This replaces wear_detect as the trigger
    for extending a failing burst (@ref BGHR_EXTEND_MAX) -- it is self-evidencing
    rather than inferred, and it bounds the battery cost that removing the wear
