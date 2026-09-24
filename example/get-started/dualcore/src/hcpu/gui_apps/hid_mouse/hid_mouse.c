@@ -11890,6 +11890,12 @@ static void set_active_device_by_index(int idx)
     const char *id = (const char *)SkaiWatchSys.device_registry.devices[idx].id;
     if (!id || !id[0])
         return;
+    /* 0x17 焦點旗標屬於「回報它的那台」:換台就作廢,不然右緣鍵盤/手寫鈕跟著殘留。 */
+    if (strncmp(id, s_dev_active_id, SYNCED_DEVICE_ID_LEN) != 0)
+    {
+        extern void instruction_list_set_remote_target_focus(bool focused);
+        instruction_list_set_remote_target_focus(false);
+    }
     commu_send_active_device(id);
     ble_hid_mouse_set_app_route(true);
     ble_hid_mouse_set_web_route(false);
@@ -11970,6 +11976,10 @@ void hid_mouse_clear_active_device(void)
     if (s_dev_active_id[0] == '\0')
         return;
     s_dev_active_id[0] = '\0';
+    {
+        extern void instruction_list_set_remote_target_focus(bool focused);
+        instruction_list_set_remote_target_focus(false); /* 焦點是那台電腦的,換回手機就作廢 */
+    }
     LOG_W("[active] mouse clear");
     mouse_media_now_clear(); /* R47:控制目標換回手機,遠端那台的曲名作廢 */
     commu_send_active_device("");
