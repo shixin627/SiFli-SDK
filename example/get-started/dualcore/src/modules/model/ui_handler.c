@@ -609,6 +609,13 @@ static void process_lvgl_message(lvgl_msg_t *msg)
         tv_state_apply_pending();
         break;
 
+    case LVGL_MSG_TYPE_PHONE_TABS_RAW:
+    {
+        extern void phone_tabs_apply_pending(void);
+        phone_tabs_apply_pending();
+        break;
+    }
+
     case LVGL_MSG_TYPE_VOICE_AI_RESULT_RAW:
     {
         extern void voice_ai_result_apply_pending(void);

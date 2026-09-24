@@ -11889,16 +11889,18 @@ static void switch_active_device(int dir)
     set_active_device_by_index(next);
 }
 
+static void switch_channel(int dir); /* 手機分頁模式感知的版本,定義在下方 */
+
 static void dev_arrow_prev_cb(lv_event_t *e)
 {
     (void)e;
-    switch_active_device(-1);
+    switch_channel(-1);
 }
 
 static void dev_arrow_next_cb(lv_event_t *e)
 {
     (void)e;
-    switch_active_device(+1);
+    switch_channel(+1);
 }
 
 /* === 對外的「控制中設備」API（錶盤頂部面板 lv_top_panel.c 用）====================
@@ -11937,9 +11939,116 @@ void hid_mouse_clear_active_device(void)
     LOG_I("[dev_switch] active -> phone (cleared)");
 }
 
+/* === 手機分頁模式(KEY_PHONE_TABS 0x2c,founder 2026-09-24)========================
+   手機 app 開在前台時會推它的分頁(網頁+設備,手機的順序),滑鼠模式的左右切換就改走
+   這份清單並叫手機跟著翻(0x2d);app 不在前台時手機推空清單 → 回到只換設備。
+   控制目標照舊由 active-select 決定:設備頁=那台,網頁=清掉(控制連著的手機本身)。 */
+#define PTAB_MAX 12
+typedef struct
+{
+    char name[32];
+    char dev[SYNCED_DEVICE_ID_LEN]; /* "" = 網頁 */
+} ptab_t;
+static ptab_t s_ptabs[PTAB_MAX];
+static int s_ptab_n = 0; /* 0 = 手機 app 不在前台 */
+static int s_ptab_cur = 0;
+
+static bool mouse_mode_on(void)
+{
+    extern bool app_control_get_mouse_mode(void);
+    extern bool gui_app_is_actived(char *id);
+    return app_control_get_mouse_mode() || gui_app_is_actived(APP_ID_MOUSE);
+}
+
+/* 把控制目標對到目前這一頁。force=false 時同一台不重送(手機每次改標題都會重推清單,
+   不該每次都把媒體 header 洗掉)。 */
+static void ptab_apply_target(bool force)
+{
+    const char *dev = s_ptabs[s_ptab_cur].dev;
+    if (dev[0] == '\0')
+    {
+        hid_mouse_clear_active_device();
+    }
+    else if (force || strncmp(dev, s_dev_active_id, SYNCED_DEVICE_ID_LEN) != 0)
+    {
+        int idx = -1;
+        for (int i = 0; i < hid_mouse_device_count(); i++)
+            if (strncmp(SkaiWatchSys.device_registry.devices[i].id, dev,
+                        SYNCED_DEVICE_ID_LEN) == 0)
+                idx = i;
+        if (idx >= 0)
+            set_active_device_by_index(idx);
+        else
+            hid_mouse_clear_active_device(); /* 手機有、手錶 registry 還沒有:先控手機 */
+    }
+    update_ctrl_dev_label();
+    devbar_update_name();
+}
+
+/* 左右切換的唯一入口(底部 bar 拖曳、頂部箭頭)。手機分頁模式走分頁,否則走設備。 */
+static void switch_channel(int dir)
+{
+    if (s_ptab_n == 0)
+    {
+        switch_active_device(dir);
+        return;
+    }
+    if (s_ptab_n < 2)
+        return;
+    s_ptab_cur = (s_ptab_cur + dir + s_ptab_n) % s_ptab_n;
+    commu_send_phone_tab_pick(s_ptab_cur);
+    ptab_apply_target(false);
+    LOG_W("[dev_switch] phone tab -> %d/%d (%s)", s_ptab_cur, s_ptab_n,
+          s_ptabs[s_ptab_cur].name);
+}
+
+/* GUI thread(phone_tabs_apply_pending)。{"c":N,"t":[["name","dev"],…]} */
+void hid_mouse_set_phone_tabs_json(const char *json)
+{
+    cJSON *root = cJSON_Parse(json);
+    if (root == NULL)
+    {
+        LOG_W("[ptab] malformed payload");
+        return;
+    }
+    int was = s_ptab_n;
+    int n = 0;
+    cJSON *arr = cJSON_GetObjectItem(root, "t");
+    cJSON *it;
+    cJSON_ArrayForEach(it, arr)
+    {
+        if (n >= PTAB_MAX)
+            break;
+        cJSON *jn = cJSON_GetArrayItem(it, 0);
+        cJSON *jd = cJSON_GetArrayItem(it, 1);
+        ptab_t *t = &s_ptabs[n++];
+        strncpy(t->name, cJSON_IsString(jn) ? jn->valuestring : "", sizeof(t->name) - 1);
+        t->name[sizeof(t->name) - 1] = '\0';
+        strncpy(t->dev, cJSON_IsString(jd) ? jd->valuestring : "", sizeof(t->dev) - 1);
+        t->dev[sizeof(t->dev) - 1] = '\0';
+    }
+    cJSON *jc = cJSON_GetObjectItem(root, "c");
+    int cur = cJSON_IsNumber(jc) ? jc->valueint : 0;
+    cJSON_Delete(root);
+    s_ptab_n = n;
+    s_ptab_cur = (cur >= 0 && cur < n) ? cur : 0;
+    LOG_W("[ptab] n=%d cur=%d", n, s_ptab_cur);
+    if (!mouse_mode_on())
+        return; /* 進滑鼠模式時 hid_mouse_ensure_active_device 會對上 */
+    if (n > 0)
+        ptab_apply_target(false);
+    else if (was > 0)
+        hid_mouse_ensure_active_device(); /* 手機 app 收起來了 → 回到設備 */
+}
+
 static const char *active_device_name(void); /* 定義在下方 */
 void hid_mouse_ensure_active_device(void)
 {
+    if (s_ptab_n > 0)
+    {
+        ptab_apply_target(true); /* 手機 app 在前台:目標跟著手機目前那一頁 */
+        return;
+    }
     if (active_device_name() != NULL)
     {
         /* 上次控制的那台還在 → 接回 relay(獨立 app 的 ONSTART 同一條路)。
@@ -12229,6 +12338,8 @@ static lv_opa_t devbar_content_opa(float w)
 /* registry 第 idx 台的名字;超出範圍/沒名字回 NULL。 */
 static const char *devbar_name_at(int idx)
 {
+    if (s_ptab_n > 0)
+        return (idx >= 0 && idx < s_ptab_n && s_ptabs[idx].name[0]) ? s_ptabs[idx].name : NULL;
     uint8_t n = SkaiWatchSys.device_registry.count;
     if (n > MAX_SYNCED_DEVICES)
         n = MAX_SYNCED_DEVICES;
@@ -12241,6 +12352,8 @@ static const char *devbar_name_at(int idx)
 /* 往 dir 方向的鄰居 index(循環,跟 switch_active_device 同一套算法);不足兩台回 -1。 */
 static int devbar_neighbour_index(int dir)
 {
+    if (s_ptab_n > 0)
+        return (s_ptab_n < 2 || dir == 0) ? -1 : (s_ptab_cur + dir + s_ptab_n) % s_ptab_n;
     uint8_t n = SkaiWatchSys.device_registry.count;
     if (n > MAX_SYNCED_DEVICES)
         n = MAX_SYNCED_DEVICES;
@@ -12271,7 +12384,12 @@ static void devbar_report_progress(float prog, int dir)
     if (!endpoint && (now - s_devbar_sent_ms) < 40)
         return;
     const char *to = "";
-    if (pm != 0 && dir != 0)
+    int ti = -1;
+    if (pm != 0 && dir != 0 && s_ptab_n > 0)
+    {
+        ti = devbar_neighbour_index(dir); /* 手機分頁模式:手機用頁號對 */
+    }
+    else if (pm != 0 && dir != 0)
     {
         int idx = devbar_neighbour_index(dir);
         uint8_t n = SkaiWatchSys.device_registry.count;
@@ -12282,7 +12400,7 @@ static void devbar_report_progress(float prog, int dir)
     }
     s_devbar_sent_pm = pm;
     s_devbar_sent_ms = now;
-    commu_send_device_drag((int)pm, to);
+    commu_send_device_drag((int)pm, to, ti);
 }
 
 /* 靜止時 bar 上的字:控制中那台的名字,沒有目標就講「沒有設備」。只在真的變了才寫,
@@ -12292,6 +12410,8 @@ static void devbar_update_name(void)
     if (!s_devbar_label || !lv_obj_is_valid(s_devbar_label))
         return;
     const char *name = active_device_name();
+    if (s_ptab_n > 0 && s_ptabs[s_ptab_cur].name[0])
+        name = s_ptabs[s_ptab_cur].name; /* 手機分頁模式:講手機那一頁的名字 */
     if (!name || !name[0])
     {
         /* 沒有遠端目標 = 控制目標就是**連著的那支手機**(ble_hid_mouse_set_app_route(false)),
@@ -12502,7 +12622,7 @@ static void devbar_commit_pending(void)
     s_devbar_landing = false;
     s_devbar_drag_px = 0;
     if (dir != 0)
-        switch_active_device(dir);   /* 內含 commu_send_active_device + 名稱刷新 */
+        switch_channel(dir);   /* 內含 commu_send_active_device + 名稱刷新 */
     devbar_rest();
 }
 
@@ -13568,7 +13688,11 @@ static void msg_handler(gui_app_msg_type_t msg, void *param)
         /* 丙：記住上次控制的設備 — 重入時若它還在 registry 就自動接回 relay 控制；
            否則(沒記憶/設備已不在)回到 BLE HID 直連。s_dev_active_id 跨 app 重入保留
            (destroy 不清)，reboot 才隨 static 歸零。 */
-        if (active_device_name() != NULL)
+        if (s_ptab_n > 0)
+        {
+            ptab_apply_target(true); /* 手機 app 在前台:跟著手機目前那一頁 */
+        }
+        else if (active_device_name() != NULL)
         {
             /* 上次控制的設備還在 → 接回 relay 控制 */
             LOG_W("[active] mouse reenter");

@@ -693,6 +693,39 @@ void tv_state_apply_pending(void)
     rt_free(buf);
 }
 
+/* ── 0x2c: 手機分頁清單(phone→watch) ── 同 tv_state 單槽交接;只留最新一筆。 */
+static char *s_phone_tabs_pending = NULL;
+
+static void handle_phone_tabs(uint8_t *pValue, uint16_t length)
+{
+    if (pValue == NULL || length == 0) return;
+    char *buf = (char *)rt_malloc((rt_size_t)length + 1);
+    if (buf == NULL) return;
+    memcpy(buf, pValue, length);
+    buf[length] = '\0';
+    rt_base_t level = rt_hw_interrupt_disable();
+    char *old = s_phone_tabs_pending;
+    s_phone_tabs_pending = buf;
+    rt_hw_interrupt_enable(level);
+    if (old != NULL) rt_free(old);
+    lvgl_msg_t msg;
+    msg.type = LVGL_MSG_TYPE_PHONE_TABS_RAW;
+    lvgl_send_msg(msg);
+}
+
+/* GUI thread(ui_handler LVGL_MSG_TYPE_PHONE_TABS_RAW)。 */
+void phone_tabs_apply_pending(void)
+{
+    rt_base_t level = rt_hw_interrupt_disable();
+    char *buf = s_phone_tabs_pending;
+    s_phone_tabs_pending = NULL;
+    rt_hw_interrupt_enable(level);
+    if (buf == NULL) return;
+    extern void hid_mouse_set_phone_tabs_json(const char *json);
+    hid_mouse_set_phone_tabs_json(buf);
+    rt_free(buf);
+}
+
 void resolve_skailink_command(uint8_t key, uint8_t *pValue, uint16_t length)
 {
     switch ((SKAI_LINK_KEY)key)
@@ -795,6 +828,10 @@ void resolve_skailink_command(uint8_t key, uint8_t *pValue, uint16_t length)
     case KEY_GESTURE_CLICK:
         /* phone→watch (DOWNLINK): {"on","ok"} 手機武裝手勢點擊模式的回執。 */
         handle_gesture_click_ack(pValue, length);
+        break;
+    case KEY_PHONE_TABS:
+        /* phone→watch (DOWNLINK): 手機前台的分頁清單,滑鼠模式左右切換跟著它走。 */
+        handle_phone_tabs(pValue, length);
         break;
     default:
         LOG_W("skailink: unknown key 0x%02x", key);

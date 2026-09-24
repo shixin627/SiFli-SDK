@@ -92,6 +92,8 @@ extern "C"
         LVGL_MSG_TYPE_HANDWRITE_CAND_RAW,
         /* TV 綁定狀態(0x23)下行:同上單槽 raw,GUI 端 tv_state_apply_pending()。 */
         LVGL_MSG_TYPE_TV_STATE_RAW,
+        /* 手機分頁清單(0x2c)下行:同上單槽 raw,GUI 端 phone_tabs_apply_pending()。 */
+        LVGL_MSG_TYPE_PHONE_TABS_RAW,
         /* 語音 AI logo 結果(0x2b)下行:同上單槽 raw,GUI 端 voice_ai_result_apply_pending()。 */
         LVGL_MSG_TYPE_VOICE_AI_RESULT_RAW,
         /* 語音 AI logo 按住時的修改指示逐字稿:單槽,GUI 端 voice_ai_logo_apply_instruction()。 */

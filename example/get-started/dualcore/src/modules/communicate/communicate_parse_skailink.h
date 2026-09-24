@@ -311,6 +311,16 @@ extern "C"
            Keep in lockstep with WatchProtocol.kt SKAILINK_KEY_VOICE_AI(_RESULT)。 ── */
         KEY_VOICE_AI = 0x2a,
         KEY_VOICE_AI_RESULT = 0x2b,
+        /* ── 手機分頁同步(founder 2026-09-24):手機 app 開在前台時,滑鼠模式左右切換走的是
+           **手機的分頁**(網頁+設備,手機的順序),不在前台時照舊只在設備之間換。
+           phone→watch (DOWNLINK) 0x2c {"c":<目前頁>,"t":[["<名稱>","<device_id 或空=網頁>"],…]}:
+             app 回到前台、分頁增減/改名、手機上翻頁時都推;app 離開前台推 {"c":0,"t":[]}
+             = 回到設備模式。重連時手機會補推最後一筆。
+           watch→phone (UPLINK) 0x2d {"i":<頁>}:手錶翻到第幾頁,手機跟著翻。控制目標仍由
+             KEY_ACTIVE_SELECT 決定(設備頁=那台,網頁="" = 手機本身)。
+           Keep in lockstep with WatchProtocol.kt SKAILINK_KEY_PHONE_TABS / _PHONE_TAB_PICK。 ── */
+        KEY_PHONE_TABS = 0x2c,
+        KEY_PHONE_TAB_PICK = 0x2d,
     } SKAI_LINK_KEY;
 
     /* Dispatched from communicate_parse.c for cmd_id == SKAI_LINK_COMMAND_ID.

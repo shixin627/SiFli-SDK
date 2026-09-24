@@ -899,15 +899,27 @@ bool commu_send_dial_dir(const char *phase, int dir, int mag)
 /* watch→phone (SKAI_LINK): 底部設備藥丸的拖曳進度 (see KEY_DEVICE_DRAG contract)。
    千分比 + 正拖向那台的 id;節流由 caller (hid_mouse devbar) 做,無 per-frame log,
    同 mouse move / dial 防洗版。 */
-bool commu_send_device_drag(int permille, const char *to_device_id)
+bool commu_send_device_drag(int permille, const char *to_device_id, int to_tab)
 {
     if (permille > 1000) permille = 1000;
     if (permille < -1000) permille = -1000;
     if (to_device_id == NULL) to_device_id = "";
-    char json[24 + SYNCED_DEVICE_ID_LEN]; /* {"p":-1000,"to":"<uuid>"} */
-    int n = rt_snprintf(json, sizeof(json), "{\"p\":%d,\"to\":\"%s\"}", permille, to_device_id);
+    /* ti = 手機分頁模式(0x2c)下正拖向的那一頁;設備模式 -1(手機照舊用 to 對)。 */
+    char json[36 + SYNCED_DEVICE_ID_LEN]; /* {"p":-1000,"to":"<uuid>","ti":11} */
+    int n = rt_snprintf(json, sizeof(json), "{\"p\":%d,\"to\":\"%s\",\"ti\":%d}",
+                        permille, to_device_id, to_tab);
     if (n <= 0 || n >= (int)sizeof(json)) return false;
     return commu_send_string(SKAI_LINK_COMMAND_ID, KEY_DEVICE_DRAG, json);
+}
+/* watch→phone (SKAI_LINK): 手機分頁模式下翻到第幾頁 (see KEY_PHONE_TAB_PICK)。 */
+bool commu_send_phone_tab_pick(int index)
+{
+    char json[16];
+    int n = rt_snprintf(json, sizeof(json), "{\"i\":%d}", index);
+    if (n <= 0 || n >= (int)sizeof(json)) return false;
+    bool ok = commu_send_string(SKAI_LINK_COMMAND_ID, KEY_PHONE_TAB_PICK, json);
+    LOG_I("send phone tab pick %d -> %s", index, ok ? "ok" : "FAIL");
+    return ok;
 }
 /* watch→phone (SKAI_LINK): 側立手寫 ink 串流 (see KEY_HANDWRITE contract)。點批次是
    變長度陣列,固定欄位 builder 不合用 — caller (bloc_motion_tracking / hid_mouse) 自組

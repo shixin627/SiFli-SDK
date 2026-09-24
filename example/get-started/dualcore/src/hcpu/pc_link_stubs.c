@@ -295,7 +295,8 @@ bool ble_hid_mouse_app_route(void) { return false; }
 /* communicate_task.h */ bool commu_send_skaiapp_voice(const char *app_id, const char *memo_id) { (void)app_id; (void)memo_id; return false; }
 /* communicate_task.h */ bool commu_send_skaiapp_action(const char *app_id, const char *action_id) { (void)app_id; (void)action_id; return false; }
 /* communicate_task.h */ bool commu_send_skaiapp_run(const char *app_id, const char *ev, const char *r, const char *line) { (void)app_id; (void)ev; (void)r; (void)line; return false; }
-/* communicate_task.h */ bool commu_send_device_drag(int permille, const char *to_device_id) { (void)permille; (void)to_device_id; return false; }
+/* communicate_task.h */ bool commu_send_device_drag(int permille, const char *to_device_id, int to_tab) { (void)permille; (void)to_device_id; (void)to_tab; return false; }
+/* communicate_task.h */ bool commu_send_phone_tab_pick(int index) { (void)index; return false; }
 /* hid_mouse (watch-only) */ bool get_switch_freehand_mode(void) { return false; }
 /* ui_handler batch apply — owning TU excluded on PC */ void apply_pending_instruction_batch(void) { }
 /* instruction-op queue — owning TU excluded on PC */ void instruction_op_enqueue_image(const char *id, const char *path) { (void)id; (void)path; }
@@ -311,3 +312,4 @@ bool ble_hid_mouse_app_route(void) { return false; }
 /* communicate_task.h */ bool commu_send_hr_window_raw(uint32_t ts, int64_t fit_a_q16, int64_t fit_b_q16, uint8_t shift, uint16_t first_index, uint16_t count, const int16_t *win) { (void)ts; (void)fit_a_q16; (void)fit_b_q16; (void)shift; (void)first_index; (void)count; (void)win; return false; }
 /* communicate_parse_skailink.c — owning TU excluded on PC */ void tv_state_apply_pending(void) { }
 /* communicate_parse_skailink.c — owning TU excluded on PC */ void voice_ai_result_apply_pending(void) { }
+/* communicate_parse_skailink.c — owning TU excluded on PC */ void phone_tabs_apply_pending(void) { }
