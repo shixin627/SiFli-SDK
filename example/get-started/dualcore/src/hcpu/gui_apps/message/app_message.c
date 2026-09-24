@@ -456,8 +456,9 @@ lv_obj_t *app_message_init(lv_obj_t *parent)
 
         voice_text_label = lv_label_create(voice_text_container);
         lv_label_set_long_mode(voice_text_label, LV_LABEL_LONG_WRAP);
-        lv_obj_set_width(voice_text_label, 380);
-        lv_obj_align(voice_text_label, LV_ALIGN_TOP_MID, 0, 10);
+        /* 右邊讓給框內的送出鈕(founder 2026-09-24):文字欄縮窄、往左靠。 */
+        lv_obj_set_width(voice_text_label, 320);
+        lv_obj_align(voice_text_label, LV_ALIGN_TOP_MID, -30, 10);
         lv_obj_set_style_text_font(voice_text_label,
                                    LV_EXT_FONT_GET(get_system_font_size(0)), 0);
         lv_obj_set_style_text_color(voice_text_label, lv_color_white(), 0);
@@ -474,13 +475,15 @@ lv_obj_t *app_message_init(lv_obj_t *parent)
             voice_text_bind_handle = lv_ex_bind_data(speech_content, &binding);
         }
 
-        voice_send_btn = lv_obj_create(parent);
+        /* 送出鈕在**輸入框**的右邊中間(founder 2026-09-24),是框的子物件,跟著框一起捲。 */
+        voice_send_btn = lv_obj_create(voice_container);
         lv_obj_t *send_btn = voice_send_btn;
         lv_obj_set_size(send_btn, 62, 62);
         lv_obj_set_style_radius(send_btn, 31, 0);
         lv_obj_set_style_bg_color(send_btn, lv_color_hex(0x00AAFF), 0);
         lv_obj_set_style_bg_opa(send_btn, 10, 0);
-        lv_obj_align(send_btn, LV_ALIGN_RIGHT_MID, -6, 0); /* 固定在右邊中間(founder 2026-09-24) */
+        lv_obj_align(send_btn, LV_ALIGN_RIGHT_MID, -24, 0);
+        lv_obj_clear_flag(send_btn, LV_OBJ_FLAG_SCROLLABLE);
 
         lv_obj_t *voice_btn_img = lv_img_create(send_btn);
         lv_img_set_src(voice_btn_img, &voice_group);
