@@ -266,6 +266,8 @@ void set_voice_recognition_notified_from_mouse(bool status) { (void)status; }
    Called by device_pager.c (set) and hid_mouse.c (get, back routing). */
 void ble_hid_mouse_set_app_route(bool on) { (void)on; }
 bool ble_hid_mouse_app_route(void) { return false; }
+void ble_hid_mouse_set_web_route(bool on) { (void)on; }
+bool ble_hid_mouse_relay_route(void) { return false; }
 
 /* ---- 2026-06-25: symbols added by recent WIP whose owning TUs are excluded
    from the PC sim (BLE communicate send-path, audio mic HAL, instruction-op

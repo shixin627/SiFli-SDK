@@ -243,6 +243,10 @@ void ble_hid_mouse_set_app_route(bool on);
 
 /** @brief Is the device-page mouse→phone relay currently active? */
 bool ble_hid_mouse_app_route(void);
+/* 網頁頁:滑鼠轉送給手機 app 自己操作網頁(不算遠端目標)。 */
+void ble_hid_mouse_set_web_route(bool on);
+/* 滑鼠事件要不要走 SKAI_LINK 轉送(遠端目標或網頁頁)。 */
+bool ble_hid_mouse_relay_route(void);
 
 #ifdef HID_MOUSE
 /* Mouse Control Functions */

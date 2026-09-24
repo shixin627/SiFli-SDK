@@ -92,6 +92,9 @@ static ble_hid_data_t *g_hid_data = NULL;
    Lives outside #ifdef HID_MOUSE so the setter is always linkable (device_pager
    is built in the PC sim too, where the mouse primitives aren't registered). */
 static bool s_mouse_app_route = false;
+/* 手機分頁模式的網頁頁:滑鼠一樣轉送給手機 app(它在網頁上自己畫游標),但這不是
+   「遠端目標」—— ble_hid_mouse_app_route() 維持 false,媒體等照舊走手機本身。 */
+static bool s_mouse_web_route = false;
 
 /**********************HID Report Map
  * ****************************************************/
@@ -989,6 +992,16 @@ bool ble_hid_mouse_app_route(void)
     return s_mouse_app_route;
 }
 
+void ble_hid_mouse_set_web_route(bool on)
+{
+    s_mouse_web_route = on;
+}
+
+bool ble_hid_mouse_relay_route(void)
+{
+    return s_mouse_app_route || s_mouse_web_route;
+}
+
 void ble_hid_reset_on_disconnect(void)
 {
     if (!g_hid_data)
@@ -1017,35 +1030,35 @@ void ble_hid_reset_on_disconnect(void)
 #ifdef HID_MOUSE
 void BLE_HID_Mouse_Move(int8_t dx, int8_t dy)
 {
-    if (s_mouse_app_route) { commu_send_mouse_move(dx, dy); return; }
+    if (ble_hid_mouse_relay_route()) { commu_send_mouse_move(dx, dy); return; }
     hid_mouse_state_set(hid_mouse_state.buttons, dx, dy, 0, 0);
     mouse_report_send((uint8_t *)&hid_mouse_state, sizeof(hid_mouse_state));
 }
 
 void BLE_HID_Mouse_Wheel_Scroll(int8_t delta)
 {
-    if (s_mouse_app_route) { commu_send_mouse_scroll(0, delta); return; }
+    if (ble_hid_mouse_relay_route()) { commu_send_mouse_scroll(0, delta); return; }
     hid_mouse_state_set(hid_mouse_state.buttons, 0, 0, delta, 0);
     mouse_report_send((uint8_t *)&hid_mouse_state, sizeof(hid_mouse_state));
 }
 
 void BLE_HID_Mouse_Pan_Scroll(int8_t delta)
 {
-    if (s_mouse_app_route) { commu_send_mouse_scroll(delta, 0); return; }
+    if (ble_hid_mouse_relay_route()) { commu_send_mouse_scroll(delta, 0); return; }
     hid_mouse_state_set(hid_mouse_state.buttons, 0, 0, 0, delta);
     mouse_report_send((uint8_t *)&hid_mouse_state, sizeof(hid_mouse_state));
 }
 
 static void BLE_HID_Mouse_LeftPress(void)
 {
-    if (s_mouse_app_route) { commu_send_mouse_button(0, 1); return; }
+    if (ble_hid_mouse_relay_route()) { commu_send_mouse_button(0, 1); return; }
     hid_mouse_state_set(1, 0, 0, 0, 0);
     mouse_report_send((uint8_t *)&hid_mouse_state, sizeof(hid_mouse_state));
 }
 
 static void BLE_HID_Mouse_LeftRelease(void)
 {
-    if (s_mouse_app_route) { commu_send_mouse_button(0, 0); return; }
+    if (ble_hid_mouse_relay_route()) { commu_send_mouse_button(0, 0); return; }
     hid_mouse_state_set(0, 0, 0, 0, 0);
     mouse_report_send((uint8_t *)&hid_mouse_state, sizeof(hid_mouse_state));
     hid_mouse_state_clear();
@@ -1054,7 +1067,7 @@ static void BLE_HID_Mouse_LeftRelease(void)
 void BLE_HID_Mouse_LeftClick(void)
 {
     /* Relay a single click event (no 200ms BLE hold) when routing to the app. */
-    if (s_mouse_app_route) { commu_send_mouse_button(0, 2); return; }
+    if (ble_hid_mouse_relay_route()) { commu_send_mouse_button(0, 2); return; }
     BLE_HID_Mouse_LeftPress();
     rt_thread_mdelay(200);
     BLE_HID_Mouse_LeftRelease();
@@ -1062,7 +1075,7 @@ void BLE_HID_Mouse_LeftClick(void)
 
 static void BLE_HID_Mouse_RightPress(void)
 {
-    if (s_mouse_app_route) { commu_send_mouse_button(1, 1); return; }
+    if (ble_hid_mouse_relay_route()) { commu_send_mouse_button(1, 1); return; }
     hid_mouse_state_set(2, 0, 0, 0, 0);
     mouse_report_send((uint8_t *)&hid_mouse_state, sizeof(hid_mouse_state));
     hid_mouse_state_clear();
@@ -1070,7 +1083,7 @@ static void BLE_HID_Mouse_RightPress(void)
 
 static void BLE_HID_Mouse_RightRelease(void)
 {
-    if (s_mouse_app_route) { commu_send_mouse_button(1, 0); return; }
+    if (ble_hid_mouse_relay_route()) { commu_send_mouse_button(1, 0); return; }
     hid_mouse_state_set(0, 0, 0, 0, 0);
     mouse_report_send((uint8_t *)&hid_mouse_state, sizeof(hid_mouse_state));
     hid_mouse_state_clear();
@@ -1078,7 +1091,7 @@ static void BLE_HID_Mouse_RightRelease(void)
 
 void BLE_HID_Mouse_RightClick(void)
 {
-    if (s_mouse_app_route) { commu_send_mouse_button(1, 2); return; }
+    if (ble_hid_mouse_relay_route()) { commu_send_mouse_button(1, 2); return; }
     BLE_HID_Mouse_RightPress();
     rt_thread_mdelay(200);
     BLE_HID_Mouse_RightRelease();

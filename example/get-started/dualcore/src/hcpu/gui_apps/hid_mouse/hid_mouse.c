@@ -3891,7 +3891,7 @@ static void handle_released_event(lv_indev_t *indev)
             // 設備頁的 mouse 走 SKAI_LINK 轉送給 APP（back 是 consumer report，
             // 不經 mouse_report_send，所以在呼叫點 route，不能改 GoBack 本體）；
             // 獨立 mouse app 仍走 BLE HID 的 ble_hid_mouse_back。
-            if (ble_hid_mouse_app_route())
+            if (ble_hid_mouse_relay_route())
             {
                 commu_send_mouse_back();
             }
@@ -11856,6 +11856,7 @@ static void set_active_device_by_index(int idx)
         return;
     commu_send_active_device(id);
     ble_hid_mouse_set_app_route(true);
+    ble_hid_mouse_set_web_route(false);
     strncpy(s_dev_active_id, id, sizeof(s_dev_active_id) - 1);
     s_dev_active_id[sizeof(s_dev_active_id) - 1] = '\0';
     update_ctrl_dev_label();
@@ -11929,6 +11930,7 @@ void hid_mouse_switch_active_device(int dir) { switch_active_device(dir); }
    當前連線的手機」）。 */
 void hid_mouse_clear_active_device(void)
 {
+    ble_hid_mouse_set_web_route(false);
     if (s_dev_active_id[0] == '\0')
         return;
     s_dev_active_id[0] = '\0';
@@ -11968,6 +11970,7 @@ static void ptab_apply_target(bool force)
     if (dev[0] == '\0')
     {
         hid_mouse_clear_active_device();
+        ble_hid_mouse_set_web_route(true); /* 網頁頁:app 在網頁上自己畫游標 */
     }
     else if (force || strncmp(dev, s_dev_active_id, SYNCED_DEVICE_ID_LEN) != 0)
     {
@@ -12038,7 +12041,10 @@ void hid_mouse_set_phone_tabs_json(const char *json)
     if (n > 0)
         ptab_apply_target(false);
     else if (was > 0)
-        hid_mouse_ensure_active_device(); /* 手機 app 收起來了 → 回到設備 */
+    {
+        ble_hid_mouse_set_web_route(false);
+        hid_mouse_ensure_active_device();
+    } /* 手機 app 收起來了 → 回到設備 */
 }
 
 static const char *active_device_name(void); /* 定義在下方 */
