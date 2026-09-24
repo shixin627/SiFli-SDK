@@ -11123,6 +11123,19 @@ static void mouse_media_header_sync(void)
     }
 }
 
+/* 手機推的專輯圖(0x46 → media_header_img.bin)傳完了(GUI thread,ui_handler)。
+   曲名常比圖先到:header 那時讀到的是正在被覆寫的半個檔,解不開就畫成白色方塊,
+   而檔案寫完後只有錶盤會重畫 —— 這裡讓滑鼠頁的那格也重讀一次。 */
+void hid_mouse_media_header_img_arrived(void)
+{
+    if (!s_media_hdr_art || !lv_obj_is_valid(s_media_hdr_art) || ble_hid_mouse_app_route())
+        return;
+    lv_img_cache_invalidate_src(MEDIA_HEADER_IMG);
+    lv_img_set_src(s_media_hdr_art, MEDIA_HEADER_IMG);
+    lv_img_set_zoom(s_media_hdr_art, 254);
+    lv_obj_set_size(s_media_hdr_art, 100, 100);
+}
+
 /* 目前控制中那台的 now-playing 快取。title 為空 = 沒有在播 → header 收起來。 */
 static void mouse_media_now_set(const char *title, const char *artist, bool playing)
 {

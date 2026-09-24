@@ -233,6 +233,10 @@ static void process_lvgl_message(lvgl_msg_t *msg)
             lvgl_msg_handler.handle_dial_media_header_img(
                 msg->data.media_data.title);
         }
+        {
+            extern void hid_mouse_media_header_img_arrived(void);
+            hid_mouse_media_header_img_arrived(); /* 滑鼠頁頂部 header 的專輯圖也重讀 */
+        }
         LOG_D("REMOVE PREV MEDIA HEADER IMG: %s",
               msg->data.media_data.img_path);
         // lv_img_cache_invalidate_src(msg->data.media_data.img_path);
