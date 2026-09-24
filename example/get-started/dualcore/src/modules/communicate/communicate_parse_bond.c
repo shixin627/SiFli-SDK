@@ -53,6 +53,11 @@ void resolve_private_bond_command(uint8_t key, const uint8_t *pValue, uint16_t l
             break;
         }
         LOG_I("[KEY_BOND_REQUEST]Bond Request");
+        /* 送 bond 回覆前先記下這條連線。phone_device_idx 開機時是 0xFF、原本
+           只在 LOGIN 才設 —— 手錶剛重開、手機的 login 逾時後改走 bond，
+           bond_success 的 notify 就送往 0xFF 永遠失敗，手機再逾時、再 bond，
+           永遠連不上（founder 2026-09-24，刷完韌體後手機一直連不到錶）。 */
+        set_main_phonepeer_addr();
         commu_send_bond_success();
         interact_bonded(pValue);
     }
