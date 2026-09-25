@@ -28,7 +28,9 @@ extern "C"
 #define ITEM_AMOUNT_NOTIFICATION 10
 #define NOTIFICATION_ID_LEN 48
 #define NOTIFICATION_TITLE_LEN 64
-#define NOTIFICATION_MESSAGE_LEN 128
+/* UTF-8 bytes (~250 CJK chars). Phone caps own/replyable notifications at
+   700 bytes so the full AI text fits; other apps stay at 128 chars. */
+#define NOTIFICATION_MESSAGE_LEN 768
 #define NOTIFICATION_OPTION_MAX 3
 #define NOTIFICATION_OPTION_LEN 36
 	typedef struct _st_notification_item
@@ -48,6 +50,10 @@ extern "C"
 		char options[NOTIFICATION_OPTION_MAX][NOTIFICATION_OPTION_LEN];
 		uint8_t option_count;
 	} notification_t;
+
+	/* Collapse newlines/tabs/whitespace runs to single spaces (for one-line
+	   labels: list card, dial-header marquee). Force-terminates `buf`. */
+	void notification_flatten_line(char *buf, size_t cap);
 
 	typedef struct
 	{
@@ -69,7 +75,7 @@ extern "C"
 	extern notification_t *get_notification(int index);
 	extern notification_t *get_notification_in_reversed_ui(int index);
 	extern notification_t *get_cur_notification(void);
-	extern void set_notification(notification_t notification, int index);
+	extern void set_notification(const notification_t *notification, int index);
 	extern void handle_notification(uint8_t notify_id, char *json_string);
 	extern void navigate_notification_info(notification_t *notification);
 	extern void receive_notificaiton_process(bool replyAvailable);

@@ -190,10 +190,10 @@ notification_t *get_notification_in_reversed_ui(int index)
     return &_notification_list[real_index];
 }
 
-void set_notification(notification_t notification, int index)
+void set_notification(const notification_t *notification, int index)
 {
-    notification.index = index + 1;
-    _notification_list[index] = notification;
+    _notification_list[index] = *notification;
+    _notification_list[index].index = index + 1;
     notifyNotification(index);
 }
 
@@ -202,15 +202,15 @@ notification_t *get_cur_notification(void)
     return &_notification_list[selected_notification_index];
 }
 
-static void update_notification(notification_t newNotification)
+static void update_notification(const notification_t *newNotification)
 {
     /* If the user already dismissed this notification (within the persisted
      * ring), drop it silently. Covers the BLE-reconnect re-sync case where
      * the phone re-pushes ids we've already processed but locally removed. */
-    if (bloc_notification_is_dismissed(newNotification.id))
+    if (bloc_notification_is_dismissed(newNotification->id))
     {
         LOG_I("update_notification: id=%s previously dismissed, skipping",
-              newNotification.id);
+              newNotification->id);
         return;
     }
 
@@ -226,10 +226,10 @@ static void update_notification(notification_t newNotification)
     bool dup = false;
     for (int i = notification_items_amount - 1; i >= 0; i--)
     {
-        dup = (strcmp(_notification_list[i].id, newNotification.id) == 0);
+        dup = (strcmp(_notification_list[i].id, newNotification->id) == 0);
         if (dup &&
-            strcmp(_notification_list[i].title, newNotification.title) == 0 &&
-            strcmp(_notification_list[i].message, newNotification.message) == 0)
+            strcmp(_notification_list[i].title, newNotification->title) == 0 &&
+            strcmp(_notification_list[i].message, newNotification->message) == 0)
         {
             /* Identical reconnect re-push (the phone re-sends its whole
                active list on every reconnect): entry is already exactly
@@ -243,22 +243,22 @@ static void update_notification(notification_t newNotification)
            delivered) or across a bridge process restart. Adopt the phone's
            current id in place so watch-side dismiss/reply keep addressing
            the live notification — position, sec_time and seq untouched. */
-        if (!dup && _notification_list[i].type == newNotification.type &&
-            strcmp(_notification_list[i].title, newNotification.title) == 0 &&
-            strcmp(_notification_list[i].message, newNotification.message) == 0)
+        if (!dup && _notification_list[i].type == newNotification->type &&
+            strcmp(_notification_list[i].title, newNotification->title) == 0 &&
+            strcmp(_notification_list[i].message, newNotification->message) == 0)
         {
             LOG_I("update_notification: content-dup, adopting id=%s in place (was %s)",
-                  newNotification.id, _notification_list[i].id);
-            strncpy(_notification_list[i].id, newNotification.id,
+                  newNotification->id, _notification_list[i].id);
+            strncpy(_notification_list[i].id, newNotification->id,
                     sizeof(_notification_list[i].id) - 1);
             _notification_list[i].id[sizeof(_notification_list[i].id) - 1] = '\0';
-            _notification_list[i].can_reply = newNotification.can_reply;
-            memcpy(_notification_list[i].options, newNotification.options,
-                   sizeof(newNotification.options));
-            _notification_list[i].option_count = newNotification.option_count;
+            _notification_list[i].can_reply = newNotification->can_reply;
+            memcpy(_notification_list[i].options, newNotification->options,
+                   sizeof(newNotification->options));
+            _notification_list[i].option_count = newNotification->option_count;
             return;
         }
-        if (!dup && newNotification.type == Notify_Skaiwalk &&
+        if (!dup && newNotification->type == Notify_Skaiwalk &&
             _notification_list[i].type == Notify_Skaiwalk)
         {
             dup = true;
@@ -289,9 +289,8 @@ static void update_notification(notification_t newNotification)
         }
         for (; i <= notification_items_amount - 1; i++)
         {
-            notification_t prev_notification =
-                *get_notification(notification_items_amount - i - 1);
-            set_notification(prev_notification, notification_items_amount - i);
+            set_notification(get_notification(notification_items_amount - i - 1),
+                             notification_items_amount - i);
         }
     }
 
@@ -532,7 +531,7 @@ void navigate_notification_info(notification_t *notification)
  * strncpy(dst, src, sizeof(dst) - 1) into an uninitialised stack struct, which
  * leaves no NUL when the source is over-long.
  */
-static void notification_flatten_line(char *buf, size_t cap)
+void notification_flatten_line(char *buf, size_t cap)
 {
     if (buf == NULL || cap == 0)
     {
@@ -561,6 +560,35 @@ static void notification_flatten_line(char *buf, size_t cap)
     buf[w] = '\0'; /* pending_space left unwritten == trailing trim */
 }
 
+/* Message body keeps its line breaks for the detail page: \r\n / \r -> \n,
+   tab -> space, other ASCII control bytes dropped, force-terminated. One-line
+   consumers (list card, dial header) flatten a copy at display time. */
+static void notification_clean_block(char *buf, size_t cap)
+{
+    if (buf == NULL || cap == 0)
+    {
+        return;
+    }
+    buf[cap - 1] = '\0';
+    size_t w = 0;
+    for (size_t r = 0; r < cap - 1 && buf[r] != '\0'; r++)
+    {
+        unsigned char c = (unsigned char)buf[r];
+        if (c == '\r')
+        {
+            if (buf[r + 1] != '\n')
+                buf[w++] = '\n';
+            continue;
+        }
+        if (c == '\t')
+            c = ' ';
+        if (c < 0x20 && c != '\n')
+            continue;
+        buf[w++] = (char)c;
+    }
+    buf[w] = '\0';
+}
+
 /* Single choke point for everything that reaches the notification centre.
    Every ingestion path (iOS ANCS, Android/SkaiLink JSON, SkaiApp, OTA hint)
    funnels through interact_with_notification()/trigger_incoming_call_ui(), so
@@ -572,8 +600,8 @@ static void notification_sanitize(notification_t *notification)
         return;
     }
     notification_flatten_line(notification->title, sizeof(notification->title));
-    notification_flatten_line(notification->message,
-                              sizeof(notification->message));
+    notification_clean_block(notification->message,
+                             sizeof(notification->message));
 }
 
 static bool need_wakeup = false;
@@ -586,7 +614,7 @@ void interact_with_notification(notification_t *notification)
     uint32_t seq_before = notification_center_get_arrival_seq();
     if (!notification->calling)
     {
-        update_notification(*notification);
+        update_notification(notification);
     }
     if (myLancher[app_index_instruction_list].reset_list != NULL &&
         !is_at_instruction_list())

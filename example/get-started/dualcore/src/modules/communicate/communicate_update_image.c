@@ -687,7 +687,7 @@ void init_ble_dfu_thread(dfu_img_id_t id, uint32_t dest_addr, uint32_t size)
 {
 	if (!dfu_started_mark)
 	{
-		notification_t notification;
+		static notification_t notification; /* 1KB: keep off the BLE RX stack */
 		notification.sec_time = SkaiWatchSys.SecondCountRTC;
 		notification.type = Notify_others;
 		notification.state = true;

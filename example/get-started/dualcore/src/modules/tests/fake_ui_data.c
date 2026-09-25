@@ -234,14 +234,32 @@ static int notif_inject(int argc, char *argv[])
     rt_snprintf(notif.id,     NOTIFICATION_ID_LEN,     "fake_%u_%d",
                 (unsigned)rt_tick_get(), slot);
     rt_strncpy(notif.title,   argv[1], NOTIFICATION_TITLE_LEN - 1);
-    rt_strncpy(notif.message, argv[2], NOTIFICATION_MESSAGE_LEN - 1);
+    /* FINSH_CMD_SIZE is 80, so a long body can't come from the command line:
+       "@long" expands to a multi-paragraph fixture (detail-page scroll check). */
+    rt_strncpy(notif.message,
+               strcmp(argv[2], "@long") == 0
+                   ? "This is a long AI reply used to check that the detail page "
+                     "shows the whole text instead of cutting it with an ellipsis."
+                     "\n\nSecond paragraph: the watch must wrap and scroll, and the "
+                     "option chips must be pushed below the full text.\nThird line "
+                     "adds more words so the body grows past the old 165 px cap and "
+                     "the page has to scroll before the chips come into view. More "
+                     "filler text keeps going here until the end."
+                   : argv[2],
+               NOTIFICATION_MESSAGE_LEN - 1);
+    /* msh can't carry a newline: literal "\n" in the arg becomes one. */
+    for (char *p = notif.message; (p = strstr(p, "\\n")) != NULL;)
+    {
+        *p = '\n';
+        memmove(p + 1, p + 2, strlen(p + 2) + 1);
+    }
     /* Extra args = option chip titles (implies can_reply), e.g.
        notif_inject Alice "lunch?" 16 Yes No */
     for (int a = 4; a < argc && notif.option_count < NOTIFICATION_OPTION_MAX; a++)
         rt_strncpy(notif.options[notif.option_count++], argv[a], NOTIFICATION_OPTION_LEN - 1);
     notif.can_reply = notif.option_count > 0;
 
-    set_notification(notif, slot);
+    set_notification(&notif, slot);
     if (notification_items_amount < ITEM_AMOUNT_NOTIFICATION)
         notification_items_amount++;
 
@@ -350,7 +368,7 @@ static int notif_clear(int argc, char *argv[])
     notification_t empty;
     memset(&empty, 0, sizeof(empty));
     for (int i = 0; i < ITEM_AMOUNT_NOTIFICATION; i++)
-        set_notification(empty, i);
+        set_notification(&empty, i);
     notification_items_amount = 0;
     /* Same crash caveat as notif_inject — no live refresh. */
     rt_kprintf("notifications cleared\n");

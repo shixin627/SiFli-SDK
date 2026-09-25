@@ -432,8 +432,8 @@ static lv_obj_t *message_title_builder(lv_obj_t *parent)
 static lv_obj_t *message_content_builder(lv_obj_t *parent)
 {
     lv_obj_t *label = lv_label_create(parent);
-    lv_label_set_long_mode(label, LV_LABEL_LONG_DOT);
-    // lv_obj_set_size(label, 400, 165);
+    /* Full text, wrapped; the page (p_window) scrolls vertically. */
+    lv_label_set_long_mode(label, LV_LABEL_LONG_WRAP);
     lv_obj_set_width(label, 400);
     lv_obj_align(label, LV_ALIGN_TOP_MID, 0, 10);
     char *content = replace_nbsp(p_app_message_ctx->content->value.s);
@@ -459,6 +459,7 @@ lv_obj_t *app_message_init(lv_obj_t *parent)
     lv_obj_t *p_window = common_black_bg(parent);
     lv_obj_set_style_bg_opa(p_window, LV_OPA_0, 0);
     lv_obj_set_scrollbar_mode(p_window, LV_SCROLLBAR_MODE_OFF);
+    lv_obj_set_scroll_dir(p_window, LV_DIR_VER);
     voice_reply_window = p_window;
     lv_obj_t *icon_bg = lv_obj_create(p_window);
     lv_obj_set_size(icon_bg, 67, 67);
@@ -483,14 +484,8 @@ lv_obj_t *app_message_init(lv_obj_t *parent)
     lv_obj_align_to(message_widget, message_title, LV_ALIGN_OUT_BOTTOM_MID, 0,
                     0);
     lv_obj_t *message_lable = message_content_builder(message_widget);
-    if (lv_obj_get_height(message_lable) + 5 < 160)
-    {
-        lv_obj_set_height(message_widget, lv_obj_get_height(message_lable) + 5);
-    }
-    else
-    {
-        lv_obj_set_height(message_widget, 165);
-    }
+    /* Grow with the text so chips / voice box anchored below get pushed down. */
+    lv_obj_set_height(message_widget, lv_obj_get_height(message_lable) + 15);
 
     lv_obj_t *chips_anchor = message_widget;
     s_msg_widget = message_widget;
