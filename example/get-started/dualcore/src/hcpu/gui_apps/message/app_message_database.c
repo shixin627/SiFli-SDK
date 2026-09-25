@@ -61,7 +61,7 @@ static int app_ble_callback(data_callback_arg_t *arg)
 {
     if (MSG_SERVICE_DATA_NTF_IND == arg->msg_id)
     {
-        notification_t notification;
+        static notification_t notification; /* 1KB: keep off the BLE stack */
         rt_memset(&notification, 0, sizeof(notification));
         notification.state = true;
         notification.type = Notify_others;

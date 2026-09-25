@@ -441,7 +441,7 @@ void resolve_Notify_command(uint8_t key, uint8_t *pValue, uint16_t length)
                afford 1KB, and this switch already keeps its big payloads
                static (see `payload` above). Only ever touched from this one
                RX thread. */
-            static char msg_buf[1024];
+            static char msg_buf[2048]; /* L2 reassembly caps at 8192 */
             uint16_t json_len = length - 1;
             /* A truncated JSON body is NOT recoverable, and feeding it to
                handle_notification() used to replay the PREVIOUS notification

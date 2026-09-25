@@ -1944,6 +1944,16 @@ char *replace_nbsp(const char *str)
     return result;
 }
 
+/* Stored messages keep '\n' for the detail page; one-line labels here
+   (card preview, dial-header marquee) get a flattened copy. */
+static char *replace_nbsp_oneline(const char *str)
+{
+    char *r = replace_nbsp(str);
+    if (r)
+        notification_flatten_line(r, strlen(r) + 1);
+    return r;
+}
+
 static void refresh_list(uint8_t new_item_count)
 {
     /* 卡片重新綁定內容、拖曳刪除的 fade-in 也會動到子物件透明度 —
@@ -1991,7 +2001,7 @@ static void refresh_list(uint8_t new_item_count)
                 char *clean_title = replace_nbsp(notification->title);
                 lv_label_set_text(notification_widgets[i].title, clean_title);
                 lv_mem_free(clean_title);
-                char *clean_message = replace_nbsp(notification->message);
+                char *clean_message = replace_nbsp_oneline(notification->message);
                 lv_label_set_text(notification_widgets[i].content,
                                   clean_message);
                 lv_mem_free(clean_message);
@@ -2949,7 +2959,7 @@ static void refresh_new_message_widget(void)
         char *clean_title = replace_nbsp(notification->title);
         lv_label_set_text(new_notification_widgets.title, clean_title);
         lv_mem_free(clean_title);
-        char *clean_message = replace_nbsp(notification->message);
+        char *clean_message = replace_nbsp_oneline(notification->message);
         lv_label_set_text(new_notification_widgets.content, clean_message);
         lv_mem_free(clean_message);
         lv_img_set_src(new_notification_widgets.icon,
@@ -3116,7 +3126,11 @@ static void dial_header_show_notification(void)
                notification->message is a char array, so pass it directly —
                an empty message is already an empty C string. */
             lv_label_set_text(dial_header_title, notification->title);
-            lv_label_set_text(dial_header_content, notification->message);
+            {
+                char *m = replace_nbsp_oneline(notification->message);
+                lv_label_set_text(dial_header_content, m ? m : "");
+                lv_mem_free(m);
+            }
             lv_img_set_src(dial_header_img, msg_icon_src(notification->type));
             lv_obj_set_size(dial_header_img, 100, 100);
             lv_img_set_zoom(dial_header_img, 254);
