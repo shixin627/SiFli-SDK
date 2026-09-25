@@ -253,6 +253,9 @@ static void update_notification(notification_t newNotification)
                     sizeof(_notification_list[i].id) - 1);
             _notification_list[i].id[sizeof(_notification_list[i].id) - 1] = '\0';
             _notification_list[i].can_reply = newNotification.can_reply;
+            memcpy(_notification_list[i].options, newNotification.options,
+                   sizeof(newNotification.options));
+            _notification_list[i].option_count = newNotification.option_count;
             return;
         }
         if (!dup && newNotification.type == Notify_Skaiwalk &&
@@ -361,6 +364,24 @@ static bool parse_notification(const char *json_str,
     #undef COPY_STR_OR_DEF
 
     notification->can_reply = reply_json ? cJSON_IsTrue(reply_json) : false;
+
+    /* Optional "options": ["Yes","No",...] -- absent on most notifications. */
+    notification->option_count = 0;
+    cJSON *options_json = cJSON_GetObjectItem(root, "options");
+    if (options_json && cJSON_IsArray(options_json))
+    {
+        cJSON *opt;
+        cJSON_ArrayForEach(opt, options_json)
+        {
+            if (notification->option_count >= NOTIFICATION_OPTION_MAX)
+                break;
+            if (!opt->valuestring || opt->valuestring[0] == '\0')
+                continue;
+            char *dst = notification->options[notification->option_count++];
+            strncpy(dst, opt->valuestring, NOTIFICATION_OPTION_LEN - 1);
+            dst[NOTIFICATION_OPTION_LEN - 1] = '\0';
+        }
+    }
 
     LOG_D("id:%s", notification->id);
     LOG_D("title:%s", notification->title);

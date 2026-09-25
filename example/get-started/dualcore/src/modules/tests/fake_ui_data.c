@@ -235,6 +235,11 @@ static int notif_inject(int argc, char *argv[])
                 (unsigned)rt_tick_get(), slot);
     rt_strncpy(notif.title,   argv[1], NOTIFICATION_TITLE_LEN - 1);
     rt_strncpy(notif.message, argv[2], NOTIFICATION_MESSAGE_LEN - 1);
+    /* Extra args = option chip titles (implies can_reply), e.g.
+       notif_inject Alice "lunch?" 16 Yes No */
+    for (int a = 4; a < argc && notif.option_count < NOTIFICATION_OPTION_MAX; a++)
+        rt_strncpy(notif.options[notif.option_count++], argv[a], NOTIFICATION_OPTION_LEN - 1);
+    notif.can_reply = notif.option_count > 0;
 
     set_notification(notif, slot);
     if (notification_items_amount < ITEM_AMOUNT_NOTIFICATION)
@@ -267,6 +272,19 @@ static int notif_inject(int argc, char *argv[])
     return 0;
 }
 MSH_CMD_EXPORT(notif_inject, notif_inject title msg [type] - add fake notification);
+
+/* Open the message detail page for the newest notification (what tapping a
+ * row does), so the sim can show the options chips without the list UI. */
+static int notif_open(int argc, char *argv[])
+{
+    (void)argc;
+    (void)argv;
+    notification_t *n = get_notification(0);
+    if (!n) return -1;
+    navigate_notification_info(n);
+    return 0;
+}
+MSH_CMD_EXPORT(notif_open, notif_open - open message page for newest notification);
 
 /* Fire the refresh the injection path deliberately skips. Kept separate so
  * notif_inject stays crash-free: this one exercises the icon_list path that
