@@ -331,6 +331,76 @@ static void switch_selected_timer_cb(void *param)
 
 
 static bool messagr_can_reply = false;
+/* Phone-supplied option chips (notification.options). Chips + "自己輸入" replace the
+   auto-started mic; the voice box stays built but hidden until "自己輸入" is tapped. */
+static lv_obj_t *s_opt_box = NULL;
+static lv_obj_t *s_voice_objs[3] = {NULL, NULL, NULL}; /* container, bg, footer */
+static lv_obj_t *s_msg_widget = NULL;
+static void on_resume(void);
+
+static void message_option_chip_cb(lv_event_t *e)
+{
+    if (lv_event_get_code(e) != LV_EVENT_CLICKED)
+        return;
+    int idx = (int)(intptr_t)lv_event_get_user_data(e);
+    if (idx < 0 || idx >= notification.option_count)
+        return;
+    LOG_D("message option tap idx=%d", idx);
+    /* Same path as message_voice_send: 0x20 {"id","m"} then drop + exit. */
+    strcpy(replying_notification_id, notification.id);
+    handle_user_speech_intent(V2T_INTENT_REMOTE_INPUT, notification.options[idx]);
+    remove_notification_by_id(notification.id);
+    gui_app_self_exit();
+}
+
+static void message_self_input_chip_cb(lv_event_t *e)
+{
+    if (lv_event_get_code(e) != LV_EVENT_CLICKED)
+        return;
+    if (s_opt_box)
+    {
+        lv_obj_del_async(s_opt_box); /* we are inside a child chip's event */
+        s_opt_box = NULL;
+    }
+    for (int i = 0; i < 3; i++)
+        if (s_voice_objs[i])
+            lv_obj_clear_flag(s_voice_objs[i], LV_OBJ_FLAG_HIDDEN);
+    /* Close the gap the chips left: voice box goes right under the message. */
+    if (s_voice_objs[0] && s_msg_widget)
+    {
+        lv_obj_align_to(s_voice_objs[0], s_msg_widget, LV_ALIGN_OUT_BOTTOM_MID, 0, 5);
+        lv_obj_align_to(s_voice_objs[1], s_voice_objs[0], LV_ALIGN_CENTER, 0, 0);
+        lv_obj_align_to(s_voice_objs[2], s_voice_objs[0], LV_ALIGN_OUT_BOTTOM_MID, 0, 0);
+    }
+    voice_reply_active = true;
+    on_resume(); /* wires back/tap handlers + start_voice_recognition(REMOTE_INPUT) */
+}
+
+static lv_obj_t *message_chip(lv_obj_t *parent, const char *text, lv_event_cb_t cb, int idx)
+{
+    /* Outlined pill, same look as lv_chat_page chat_render_pending_approval. */
+    lv_obj_t *chip = lv_obj_create(parent);
+    lv_obj_set_width(chip, lv_pct(100));
+    lv_obj_set_height(chip, LV_SIZE_CONTENT);
+    lv_obj_set_style_pad_hor(chip, 14, 0);
+    lv_obj_set_style_pad_ver(chip, 9, 0);
+    lv_obj_set_style_radius(chip, 21, 0);
+    lv_obj_set_style_border_width(chip, 1, 0);
+    lv_obj_set_style_border_color(chip, lv_color_hex(0x5C9CB8), 0);
+    lv_obj_set_style_bg_color(chip, lv_color_hex(0x5C9CB8), 0);
+    lv_obj_set_style_bg_opa(chip, LV_OPA_20, 0);
+    lv_obj_clear_flag(chip, LV_OBJ_FLAG_SCROLLABLE);
+    lv_obj_add_flag(chip, LV_OBJ_FLAG_CLICKABLE);
+    lv_obj_add_event_cb(chip, cb, LV_EVENT_CLICKED, (void *)(intptr_t)idx);
+    lv_obj_t *lbl = lv_label_create(chip);
+    lv_label_set_long_mode(lbl, LV_LABEL_LONG_WRAP);
+    lv_obj_set_width(lbl, lv_pct(100));
+    lv_obj_set_style_text_font(lbl, LV_EXT_FONT_GET(get_system_font_size(0)), 0);
+    lv_obj_set_style_text_align(lbl, LV_TEXT_ALIGN_CENTER, 0);
+    lv_obj_set_style_text_color(lbl, lv_color_white(), 0);
+    lv_label_set_text(lbl, text);
+    return chip;
+}
 
 static lv_obj_t *icon_standby = NULL;
 
@@ -422,6 +492,26 @@ lv_obj_t *app_message_init(lv_obj_t *parent)
         lv_obj_set_height(message_widget, 165);
     }
 
+    lv_obj_t *chips_anchor = message_widget;
+    s_msg_widget = message_widget;
+    s_opt_box = NULL;
+    if (messagr_can_reply && notification.option_count > 0)
+    {
+        s_opt_box = lv_obj_create(p_window);
+        lv_obj_set_size(s_opt_box, 360, LV_SIZE_CONTENT);
+        lv_obj_set_style_bg_opa(s_opt_box, LV_OPA_TRANSP, 0);
+        lv_obj_set_style_border_width(s_opt_box, 0, 0);
+        lv_obj_set_style_pad_all(s_opt_box, 0, 0);
+        lv_obj_set_style_pad_row(s_opt_box, 8, 0);
+        lv_obj_set_flex_flow(s_opt_box, LV_FLEX_FLOW_COLUMN);
+        lv_obj_clear_flag(s_opt_box, LV_OBJ_FLAG_SCROLLABLE);
+        for (int i = 0; i < notification.option_count; i++)
+            message_chip(s_opt_box, notification.options[i], message_option_chip_cb, i);
+        message_chip(s_opt_box, "自己輸入", message_self_input_chip_cb, -1);
+        lv_obj_align_to(s_opt_box, message_widget, LV_ALIGN_OUT_BOTTOM_MID, 0, 10);
+        chips_anchor = s_opt_box;
+    }
+
     if (messagr_can_reply)
     {
         /* Voice reply UI: text container + speech indicator + send/cancel
@@ -435,7 +525,7 @@ lv_obj_t *app_message_init(lv_obj_t *parent)
         // lv_obj_set_style_border_color(voice_container, lv_color_hex(0xFFFFFF),
         //                               0);
         // lv_obj_set_style_border_opa(voice_container, LV_OPA_TRANSP, 0);
-        lv_obj_align_to(voice_container, message_widget,
+        lv_obj_align_to(voice_container, chips_anchor,
                         LV_ALIGN_OUT_BOTTOM_MID, 0, 5);
         lv_obj_set_scrollbar_mode(voice_container, LV_SCROLLBAR_MODE_OFF);
 
@@ -507,6 +597,13 @@ lv_obj_t *app_message_init(lv_obj_t *parent)
         lv_obj_set_size(footer_obj, 400, 106);
         lv_obj_align_to(footer_obj, voice_container, LV_ALIGN_OUT_BOTTOM_MID, 0, 0);
         lv_obj_set_style_bg_opa(footer_obj, LV_OPA_TRANSP, 0);
+
+        s_voice_objs[0] = voice_container;
+        s_voice_objs[1] = voice_container_bg;
+        s_voice_objs[2] = footer_obj;
+        if (s_opt_box) /* chips first; "自己輸入" reveals the voice box */
+            for (int i = 0; i < 3; i++)
+                lv_obj_add_flag(s_voice_objs[i], LV_OBJ_FLAG_HIDDEN);
     }
 
     return p_window;
@@ -517,10 +614,22 @@ static void on_start(void)
     RT_ASSERT(NULL == p_app_message);
     p_app_message = (app_message_t *)lv_mem_alloc(sizeof(app_message_t));
     memset(p_app_message, 0, sizeof(app_message_t));
+    /* Pull the full entry (options etc.) for the id the intent gave us. */
+    notification.option_count = 0;
+    for (int i = 0; i < notification_items_amount; i++)
+    {
+        notification_t *n = get_notification(i);
+        if (n && strcmp(n->id, notification.id) == 0)
+        {
+            notification = *n;
+            break;
+        }
+    }
     /* Init voice recognition for inline reply */
     if (messagr_can_reply)
     {
-        voice_reply_active = true;
+        /* With option chips the mic waits for "自己輸入". */
+        voice_reply_active = (notification.option_count == 0);
     #ifdef BSP_USING_BLOC_V2T
         voice_provider.vad_init();
         clearVoice2Text();
@@ -604,6 +713,9 @@ static void on_stop(void)
         voice_send_icon = NULL;
         voice_reply_window = NULL;
     }
+    s_opt_box = NULL;
+    s_msg_widget = NULL;
+    memset(s_voice_objs, 0, sizeof(s_voice_objs));
     if (p_app_message_ctx->content_handle)
     {
         lv_ex_unbind_data(p_app_message_ctx->content,

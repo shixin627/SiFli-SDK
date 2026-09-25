@@ -29,6 +29,8 @@ extern "C"
 #define NOTIFICATION_ID_LEN 48
 #define NOTIFICATION_TITLE_LEN 64
 #define NOTIFICATION_MESSAGE_LEN 128
+#define NOTIFICATION_OPTION_MAX 3
+#define NOTIFICATION_OPTION_LEN 36
 	typedef struct _st_notification_item
 	{
 		uint8_t index;
@@ -40,6 +42,11 @@ extern "C"
 		uint16_t type; // app type
 		bool can_reply;
 		bool calling;
+		/* Titles of the phone notification's non-RemoteInput action buttons
+		   (e.g. "Yes"/"No"); shown as chips on the message page, tapping one
+		   answers through the same 0x20 remote-input channel. */
+		char options[NOTIFICATION_OPTION_MAX][NOTIFICATION_OPTION_LEN];
+		uint8_t option_count;
 	} notification_t;
 
 	typedef struct
