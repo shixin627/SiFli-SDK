@@ -298,14 +298,14 @@ static rt_err_t init(void)
         }
         rt_thread_mdelay(5);
     }
-    while (++g_tries < 20);
+    while (++g_tries < 100); /* ~500 ms; see co5300.c — same shared rail */
     if (RT_EOK != err)
     {
         LOG_E("G_MODE set fail (after %d retries)\n", g_tries);
     }
     else if (g_tries > 0)
     {
-        LOG_I("ft3168 rail settled after %d retries", g_tries);
+        LOG_W("ft3168 rail settled after %d retries", g_tries);
     }
     err = set_power_mode(0x01);
 

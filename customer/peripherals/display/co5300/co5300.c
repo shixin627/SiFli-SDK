@@ -171,17 +171,25 @@ static void LCD_Drv_Init(LCDC_HandleTypeDef *hlcdc)
      * — the driver returned early, leaving the panel un-initialised (no sleep-
      * out / display-on) for the whole wake. RETRY-ONLY: a healthy wake reads the
      * real ID on the first pass (zero added latency); a slow-rail wake re-reads
-     * a few ms later once the rail is up. Bounded (~100 ms) so a real fault
-     * still falls through to the early return below. */
+     * a few ms later once the rail is up. Bounded (~500 ms; was 100 ms — in the
+     * field a wake that lost this race left the panel dark AND the touch chip
+     * dead until the next sleep/wake cycle, so waiting longer on the rare slow
+     * wake beats giving up) so a real fault still falls through to the early
+     * return below. */
     int lcd_tries = 0;
     while (module_id != LCD_ID_TT151AMC60C && module_id != LCD_ID_DO0143FMST08
-           && ++lcd_tries < 20)
+           && ++lcd_tries < 100)
     {
         rt_thread_delay(5);
         module_id = LCD_ReadID(hlcdc);
     }
+    if (lcd_tries > 0)
+    {
+        LOG_W("co5300 rail settled after %d retries (id=0x%x)", lcd_tries, module_id);
+    }
     if (module_id != LCD_ID_TT151AMC60C && module_id != LCD_ID_DO0143FMST08)
     {
+        LOG_E("co5300 ReadID failed after %d retries — panel stays dark this wake", lcd_tries);
         return;
     }
 
