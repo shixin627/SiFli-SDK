@@ -769,7 +769,7 @@ void watch_system_sleep(void)
      * reason -- e.g. power save off -- would spam the log continuously.
      * Log only on the first call that hits a given reason. */
     enum { SKIP_NONE, SKIP_POWER_SAVE, SKIP_DEV_PAUSE, SKIP_MOTOR, SKIP_ALARM,
-           SKIP_MOUSE };
+           SKIP_MOUSE, SKIP_QRCODE };
     static int last_skip = SKIP_NONE;
 
     if (!setting_provider.get_power_save_mode())
@@ -822,6 +822,19 @@ void watch_system_sleep(void)
         {
             LOG_D("Sleep skipped: mouse mode");
             last_skip = SKIP_MOUSE;
+        }
+        return;
+    }
+
+    /* Pairing QR page (Control Center -> QR Code) stays lit while the user
+     * fumbles for their phone camera. Gated here, not via a power_save hold,
+     * for the same reason as mouse mode above. Tap the QR to close it. */
+    if (gui_app_is_actived(APP_ID_QRCODE))
+    {
+        if (last_skip != SKIP_QRCODE)
+        {
+            LOG_W("Sleep skipped: qrcode page"); /* W: proj.conf filters D */
+            last_skip = SKIP_QRCODE;
         }
         return;
     }
