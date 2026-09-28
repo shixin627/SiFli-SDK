@@ -40,6 +40,7 @@
  * OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 #include "board.h"
+#include <rtdevice.h> /* rt_pm_request */
 #include <string.h>
 #include "watch_global_data.h"
 #include "communicate_parse.h"
@@ -137,8 +138,9 @@ void mark_ota_started(void)
 {
 	LOG_I("[OTA]mark OTA start");
 	dfu_started_mark = true;
-	watch_system_wakeup();
-	setting_provider.set_power_save_mode(0);
+	/* No wakeup / power_save hold: OTA is silent (no UI), so the screen may
+	   sleep as usual. Throughput is kept by ble_dfu_flash_write() instead —
+	   BLE pinned at ULTRA + HCPU held out of deep sleep. */
 }
 
 uint32_t get_cur_watch_image_size(void)
@@ -507,6 +509,12 @@ static void ble_dfu_flash_write()
 	}
 	skaiwatch_ble_set_performance(BLE_PERF_ULTRA);
 	peripheral_provider.subscribe_accelerometer_sensor(false);
+#ifdef RT_USING_PM
+	/* Screen may sleep mid-OTA; keep HCPU out of deep sleep so each incoming
+	   chunk doesn't pay a deep-sleep wake (flash re-init) and slow the stream.
+	   set_performance() already refuses to drop below ULTRA while we run. */
+	rt_pm_request(PM_SLEEP_MODE_IDLE);
+#endif
 
 	LOG_I("ble_dfu_flash_write thread started");
 
@@ -669,7 +677,9 @@ static void ble_dfu_flash_write()
 
 	skaiwatch_ble_set_performance(BLE_PERF_SLOW);
 	peripheral_provider.subscribe_accelerometer_sensor(true);
-	setting_provider.set_power_save_mode(1);
+#ifdef RT_USING_PM
+	rt_pm_release(PM_SLEEP_MODE_IDLE);
+#endif
 }
 static rt_thread_t ble_dfu_flash_write_thread_start()
 {
