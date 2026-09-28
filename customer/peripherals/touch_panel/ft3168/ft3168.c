@@ -301,6 +301,8 @@ static rt_err_t init(void)
     while (++g_tries < 100); /* ~500 ms; see co5300.c — same shared rail */
     if (RT_EOK != err)
     {
+        extern void log_file_report_crash_evidence(void);
+        log_file_report_crash_evidence(); /* touch dead this wake: push the log */
         LOG_E("G_MODE set fail (after %d retries)\n", g_tries);
     }
     else if (g_tries > 0)

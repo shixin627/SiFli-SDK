@@ -177,6 +177,7 @@ void open_display(void)
 #endif  /* RT_USING_PM */
     if (s_gui_ctx.lcd && !s_gui_ctx.lcd_opened)
     {
+        LOG_W("[wake] open_display");
 
         if (s_gui_ctx.idle_mode)
         {

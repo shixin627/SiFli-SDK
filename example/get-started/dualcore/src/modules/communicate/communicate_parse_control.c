@@ -45,6 +45,15 @@ void resolve_Control_command(uint8_t key, const uint8_t *pValue,
             {
                 interact_find_watch();
             }
+            else if (value == 0x7E)
+            {
+                /* Phone-triggered log dump (debug tool): seal the current log
+                   ring and push it to the phone. Lets the founder hand over a
+                   sealed unit's recent log without a UART. */
+                extern void log_file_report_crash_evidence(void);
+                LOG_W("[log] dump requested by phone");
+                log_file_report_crash_evidence();
+            }
             else
             {
                 peripheral_provider.control_motor(false, NULL);

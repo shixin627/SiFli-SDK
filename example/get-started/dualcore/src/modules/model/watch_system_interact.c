@@ -729,6 +729,10 @@ void interact_language_set(const char *language)
 
 void watch_system_wakeup(void)
 {
+    /* W-level on purpose: release builds only keep W and up, and "buzzed but
+       the screen stayed dark" is only diagnosable if the wake request itself
+       is in the log ring the phone receives. */
+    LOG_W("[wake] request gui_active=%d", (int)gui_is_active());
     if (!gui_is_active())
     {
         LOG_D("Exiting sleep mode");

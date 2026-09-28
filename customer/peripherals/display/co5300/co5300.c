@@ -190,6 +190,11 @@ static void LCD_Drv_Init(LCDC_HandleTypeDef *hlcdc)
     if (module_id != LCD_ID_TT151AMC60C && module_id != LCD_ID_DO0143FMST08)
     {
         LOG_E("co5300 ReadID failed after %d retries — panel stays dark this wake", lcd_tries);
+        /* Field evidence: seal the log ring and push it to the phone (weak
+           no-op where log_file_backend isn't linked). A sealed unit can't show
+           its UART, and this is exactly the "buzzed but stayed dark" wake. */
+        extern void log_file_report_crash_evidence(void);
+        log_file_report_crash_evidence();
         return;
     }
 
