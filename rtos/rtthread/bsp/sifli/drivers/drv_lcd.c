@@ -819,10 +819,30 @@ static rt_err_t lcd_hw_close(void)
     return RT_EOK;
 }
 
+/* [wake] field timing: tick of the last open, and whether this wake has
+   already reported a skipped draw / a lit panel. */
+static rt_tick_t wake_open_tick;
+static uint8_t wake_skip_logged;
+
+/* Push the log ring to the phone, at most once a minute. */
+static void wake_report_evidence(void)
+{
+    extern void log_file_report_crash_evidence(void);
+    static rt_tick_t last_report;
+    rt_tick_t now = rt_tick_get();
+    if (last_report == 0 || (now - last_report) > rt_tick_from_millisecond(60000))
+    {
+        last_report = now;
+        log_file_report_crash_evidence();
+    }
+}
+
 static rt_err_t api_lcd_open(rt_device_t dev, rt_uint16_t oflag)
 {
     LCD_MsgTypeDef msg;
 
+    wake_open_tick = rt_tick_get();
+    wake_skip_logged = 0;
     set_drv_lcd_state(LCD_STATUS_OPENING);
 
     msg.id = LCD_MSG_OPEN;
@@ -1203,6 +1223,9 @@ static rt_err_t api_lcd_control(rt_device_t dev, int cmd, void *args)
     {
     case RTGRAPHIC_CTRL_POWERON:
         msg.id = LCD_MSG_POWER_ON;
+        /* a wake powers the panel on through here, not through api_lcd_open */
+        wake_open_tick = rt_tick_get();
+        wake_skip_logged = 0;
         break;
 
     case RTGRAPHIC_CTRL_POWEROFF:
@@ -1542,6 +1565,14 @@ static rt_err_t draw_core(LCD_DrvTypeDef *p_drvlcd, const uint8_t *pixels, int x
 #ifdef SKIP_GPU_ERROR_FRAME
         gpu_timeout_cnt = 0;
 #endif /* SKIP_GPU_ERROR_FRAME */
+        if (!wake_skip_logged)
+        {
+            /* A frame thrown away here is never redrawn by itself: the panel
+               stays dark until a later frame reaches the last line. */
+            wake_skip_logged = 1;
+            LOG_W("[wake] draw skipped status=%d skip=%d", (int)drv_lcd.status,
+                  (int)p_drvlcd->skip_draw_core);
+        }
         err = RT_EOK;//Do nothing if LCD ERROR.
     }
     else if (p_drvlcd->p_drv_ops->p_ops->WriteMultiplePixels)
@@ -1700,6 +1731,16 @@ static rt_err_t draw_core(LCD_DrvTypeDef *p_drvlcd, const uint8_t *pixels, int x
                 LOG_I("Auto turn on display.");
                 lcd_set_brightness(p_drvlcd->brightness);
                 lcd_display_on();
+                {
+                    /* The moment the user actually sees light. Slow = evidence,
+                       whatever the cause turns out to be. */
+                    rt_tick_t lit_ms = (rt_tick_get() - wake_open_tick) * 1000 / RT_TICK_PER_SECOND;
+                    LOG_W("[wake] panel lit %d ms after open", (int)lit_ms);
+                    if (lit_ms > 1000)
+                    {
+                        wake_report_evidence();
+                    }
+                }
             }
 
             if ((p_drvlcd->end_tick - p_drvlcd->start_tick) > p_drvlcd->statistics.draw_core_max)
@@ -1711,19 +1752,7 @@ static rt_err_t draw_core(LCD_DrvTypeDef *p_drvlcd, const uint8_t *pixels, int x
         else if (-RT_ETIMEOUT == err)
         {
             LOG_E("draw_core timeout");
-            {
-                /* Field evidence for "buzzed but the screen stayed dark": push
-                   the log ring to the phone, at most once a minute (a bad wake
-                   times out up to MAX_TIMEOUT_RETRY times in a row). */
-                extern void log_file_report_crash_evidence(void);
-                static rt_tick_t last_report;
-                rt_tick_t now = rt_tick_get();
-                if (last_report == 0 || (now - last_report) > rt_tick_from_millisecond(60000))
-                {
-                    last_report = now;
-                    log_file_report_crash_evidence();
-                }
-            }
+            wake_report_evidence(); /* "buzzed but the screen stayed dark" */
 
             /*Reset 'draw_sem' in case of 'XferCpltCallback' invoked after timeout*/
             rt_err_t err2 = rt_sem_control(&p_drvlcd->draw_sem, RT_IPC_CMD_RESET, 0);
