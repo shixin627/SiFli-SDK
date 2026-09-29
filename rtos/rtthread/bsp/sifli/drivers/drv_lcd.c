@@ -1711,6 +1711,19 @@ static rt_err_t draw_core(LCD_DrvTypeDef *p_drvlcd, const uint8_t *pixels, int x
         else if (-RT_ETIMEOUT == err)
         {
             LOG_E("draw_core timeout");
+            {
+                /* Field evidence for "buzzed but the screen stayed dark": push
+                   the log ring to the phone, at most once a minute (a bad wake
+                   times out up to MAX_TIMEOUT_RETRY times in a row). */
+                extern void log_file_report_crash_evidence(void);
+                static rt_tick_t last_report;
+                rt_tick_t now = rt_tick_get();
+                if (last_report == 0 || (now - last_report) > rt_tick_from_millisecond(60000))
+                {
+                    last_report = now;
+                    log_file_report_crash_evidence();
+                }
+            }
 
             /*Reset 'draw_sem' in case of 'XferCpltCallback' invoked after timeout*/
             rt_err_t err2 = rt_sem_control(&p_drvlcd->draw_sem, RT_IPC_CMD_RESET, 0);

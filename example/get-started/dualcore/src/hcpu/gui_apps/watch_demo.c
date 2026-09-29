@@ -1078,7 +1078,11 @@ void app_watch_entry(void *parameter)
                 sleep_fade_done = false;
                 LOG_I("no input:%d", lv_disp_get_inactive_time(NULL));
                 gui_suspend();
-                LOG_I("ui resume");
+                /* [wake] marks are W-level so a release build keeps them in the
+                   log ring: together they time every stage of a wake, which is
+                   the only way to see where a "buzzed, screen lit 3 s later"
+                   wake spent its time on a sealed unit. */
+                LOG_W("[wake] ui resume");
 #if SLEEP_RESET_TO_HOME_MS
                 /* Woke from a LONG sleep: the pre-sleep page is stale, come back
                  * on the watch face. Runs here — after gui_suspend() returns but
@@ -1088,6 +1092,7 @@ void app_watch_entry(void *parameter)
                         SLEEP_RESET_TO_HOME_MS)
                 {
                     reset_ui_to_watchface();
+                    LOG_W("[wake] ui reset to watchface done");
                 }
 #endif /* SLEEP_RESET_TO_HOME_MS */
                 /* force screen to redraw */
@@ -1105,6 +1110,7 @@ void app_watch_entry(void *parameter)
                     lv_obj_del(sleep_wake_overlay);
                     sleep_wake_overlay = NULL;
                 }
+                LOG_W("[wake] warm-up frame done, overlay off");
             }
             else if (ms > 0)
             {

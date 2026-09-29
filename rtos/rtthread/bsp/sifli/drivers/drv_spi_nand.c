@@ -738,7 +738,16 @@ int rt_nand_init()
     res = HAL_FLASH_Init(&spi_nand_handle, &flash_cfg, &spi_nand_dma_handle, &flash_dma, div);
     if (res == HAL_OK)
     {
-     rt_kprintf("NAND ID 0x%x\n", spi_nand_handle.dev_id);
+     {
+         /* Once per boot: this runs on every resume, and the repeat flooded
+            the 8 KB field log ring so the wake we wanted was gone in minutes. */
+         static uint8_t id_printed;
+         if (!id_printed)
+         {
+             id_printed = 1;
+             rt_kprintf("NAND ID 0x%x\n", spi_nand_handle.dev_id);
+         }
+     }
      if(spi_nand_handle.dev_id == 0xb034b0)
      {
         nand_pagesize = 4096;

@@ -894,7 +894,7 @@ int sif_bbm_init(uint32_t total, uint8_t *cache)
 
     if (gbbm_init_flag == 1)
     {
-        BBM_INFO("BBM initialized before, do not init any more\n");
+        /* silent: hit on every resume, it flooded the field log ring */
         return 0;
     }
     gbbm_init_flag = 1;

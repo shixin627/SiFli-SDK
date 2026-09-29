@@ -3131,6 +3131,7 @@ static void dial_header_show_notification(void)
         LOG_D("Dial header show notification: %s", notification->title);
         if (notification)
         {
+            LOG_W("[wake] header pop + buzz");
             motor_pattern_notification();
             /* Hide red dot when showing full header */
             if (lv_obj_is_valid(dial_header_red_dot))

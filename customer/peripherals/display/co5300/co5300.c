@@ -183,10 +183,9 @@ static void LCD_Drv_Init(LCDC_HandleTypeDef *hlcdc)
         rt_thread_delay(5);
         module_id = LCD_ReadID(hlcdc);
     }
-    if (lcd_tries > 0)
-    {
-        LOG_W("co5300 rail settled after %d retries (id=0x%x)", lcd_tries, module_id);
-    }
+    /* Every wake, not only the retried ones: one line that says the panel
+       init ran and how long the rail took. */
+    LOG_W("[wake] co5300 id=0x%x tries=%d", module_id, lcd_tries);
     if (module_id != LCD_ID_TT151AMC60C && module_id != LCD_ID_DO0143FMST08)
     {
         LOG_E("co5300 ReadID failed after %d retries — panel stays dark this wake", lcd_tries);
@@ -232,6 +231,7 @@ static void LCD_Drv_Init(LCDC_HandleTypeDef *hlcdc)
     rt_thread_delay(120);
     LCD_WriteReg(hlcdc, 0x29, (uint8_t *)NULL, 0);
     rt_thread_delay(70);
+    LOG_W("[wake] co5300 init done");
 }
 
 /**
