@@ -69,6 +69,12 @@ void touch_state_update(uint8_t event, uint16_t x, uint16_t y);
 bool is_user_touching_screen(void);
 
 /**
+ * @brief Touching now, or lifted the finger less than `ms` ago
+ * (手勢視窗在峰值後 250ms 才送到,放手那一下的震動要靠這個才擋得到)
+ */
+bool touch_active_within_ms(uint32_t ms);
+
+/**
  * @brief Register a callback for gesture detection
  * @param callback Callback function to be called on gesture detected
  * @return RT_EOK on success, error code otherwise

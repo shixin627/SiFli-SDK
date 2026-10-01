@@ -231,6 +231,7 @@ extern void ppg_unsubscribe(void);
 extern void audio_subscribe(void);
 extern void audio_unsubscribe(void);
 extern bool get_motor_status(void);
+extern bool motor_buzzed_within_ms(uint32_t ms);
 extern time_t get_current_time(void);
 extern void drv_reboot(void);
 

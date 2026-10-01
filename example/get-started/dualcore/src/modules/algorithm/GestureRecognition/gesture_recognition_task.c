@@ -502,6 +502,13 @@ static void gesture_recognition_algorithm(gesture_data_t *gesture)
 #define IMU_THREAD_PRIORITY RT_THREAD_PRIORITY_MIDDLE - 1
 #define IMU_THREAD_TIMESLICE 10
 extern bool get_motor_status(void);
+extern bool touch_active_within_ms(uint32_t ms);
+
+/* 觸控/馬達閘門要蓋住「整個視窗」,不是只看送達當下。視窗 35 筆 = 350ms,峰值在前段,
+   送到這裡已是峰值後 250ms —— 捲動時最後一下震動(馬達 tick、手指離開螢幕)的
+   motor_on 約 110ms 就清掉、touching 在手放開那刻就是 false,兩個閘門都早就放行,
+   那一下震動就被判成 tap。再多 50ms 給排程延遲。 */
+#define GESTURE_WINDOW_GUARD_MS (GESTURE_TAP_TIME_STEP * 10 + 50)
 
 /**
  * @brief Report what stage 2 did with a window that stage 1 handed over.
@@ -603,7 +610,8 @@ static void gesture_recognition_thread_entry(void *parameter)
             }
         }
 
-        if (!is_user_touching_screen() && !get_motor_status())
+        bool touch_recent = touch_active_within_ms(GESTURE_WINDOW_GUARD_MS);
+        if (!touch_recent && !motor_buzzed_within_ms(GESTURE_WINDOW_GUARD_MS))
         {
             gesture_stage2_report("run");
             gesture_recognition_algorithm(&watch_sensor.gesture_data);
@@ -612,10 +620,10 @@ static void gesture_recognition_thread_entry(void *parameter)
         {
             /* The tail condition had no else — a window blocked by the motor
                (haptic feedback still running) vanished silently. */
-            gesture_stage2_report("drop=motor");
-            gesture_led_notify_gate(is_user_touching_screen()
-                                        ? GESTURE_LED_GATE_TOUCHING
-                                        : GESTURE_LED_GATE_MOTOR);
+            gesture_stage2_report(touch_recent ? "drop=touch-recent"
+                                               : "drop=motor");
+            gesture_led_notify_gate(touch_recent ? GESTURE_LED_GATE_TOUCHING
+                                                 : GESTURE_LED_GATE_MOTOR);
         }
     }
 }

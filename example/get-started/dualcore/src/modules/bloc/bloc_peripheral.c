@@ -260,6 +260,16 @@ bool get_motor_status(void)
 {
     return motor_on;
 }
+// Last time a haptic command went out. motor_on above clears ~100 ms after a
+// short pulse, but the gesture window that pulse polluted is only delivered
+// ~250 ms after its peak, so the gesture gate asks this instead.
+static rt_tick_t last_motor_cmd_tick = 0;
+bool motor_buzzed_within_ms(uint32_t ms)
+{
+    return motor_on ||
+           (last_motor_cmd_tick != 0 &&
+            (rt_tick_get() - last_motor_cmd_tick) < rt_tick_from_millisecond(ms));
+}
 // For marking the motor as on without actually sending a command, e.g. when the
 // haptic plays continuously, we use a timer to automatically turn it off after
 // a certain duration.
@@ -317,6 +327,7 @@ static void control_motor_vibration(bool enable, motor_params_t *params)
     if (enable && params)
     {
         motor_on = true;
+        last_motor_cmd_tick = rt_tick_get();
         if (params->repeat_times == 0)
         {
             /* Continuous vibration until an explicit stop: hold the flag and

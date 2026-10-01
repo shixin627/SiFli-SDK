@@ -154,12 +154,12 @@ void touch_state_update(uint8_t event, uint16_t x, uint16_t y)
         bool was_touching = g_touch_ctx.is_touching;
 
         g_touch_ctx.is_touching = false;
-        g_touch_ctx.last_up_tick = now;
 
         /* Detect gesture only on first UP event (transition from touching to
          * not touching) */
         if (was_touching)
         {
+            g_touch_ctx.last_up_tick = now; /* 重複 UP 不算,touch_active_within_ms 吃它 */
             detect_gesture(event, x, y);
             LOG_D("Touch UP at (%d, %d), tick=%u", x, y, now);
         }
@@ -210,6 +210,27 @@ bool is_user_touching_screen(void)
     rt_mutex_release(&g_touch_ctx.mutex);
 
     return touching;
+}
+
+/**
+ * @brief Touching now, or lifted the finger less than `ms` ago
+ */
+bool touch_active_within_ms(uint32_t ms)
+{
+    if (!g_touch_ctx.initialized)
+    {
+        return false;
+    }
+
+    bool active;
+    rt_mutex_take(&g_touch_ctx.mutex, RT_WAITING_FOREVER);
+    active = g_touch_ctx.is_touching ||
+             (g_touch_ctx.last_up_tick != 0 &&
+              (rt_tick_get() - g_touch_ctx.last_up_tick) <
+                  rt_tick_from_millisecond(ms));
+    rt_mutex_release(&g_touch_ctx.mutex);
+
+    return active;
 }
 
 /**
