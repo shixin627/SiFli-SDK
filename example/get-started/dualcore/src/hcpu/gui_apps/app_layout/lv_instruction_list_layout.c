@@ -741,8 +741,12 @@ static void update_indicator_dots_position(int input_value)
      * dots 上下散開比較廣，視覺上跟 exercise 不一樣。
      * center_x 往左偏 30 px：中央 dot zoom 到 1.3x（130 px 寬）時，沒偏的話
      * 右邊會跑出螢幕；偏 30 後最右邊大約在 448，剛好在 466 螢幕內 */
-    const int circle_radius = 200;
-    const int center_x = LV_HOR_RES / 2 - 20;
+    /* 卡片模式(s_dot_scale<1)圖示縮成一半後要貼著錶盤邊緣(founder 2026-10-01:「要貼著錶盤邊緣」):
+       圖示中心 = center_x + R*cos - 15(dot_bg 的位移),所以 center_x = 螢幕中心 + 15 才會跟螢幕同心;
+       半徑 = 螢幕半徑 233 - 最大那顆圖示的半徑 26 - 3px 留白 = 204。 */
+    const bool compact = (s_dot_scale < 1.0f);
+    const int circle_radius = compact ? 204 : 200;
+    const int center_x = compact ? (LV_HOR_RES / 2 + 15) : (LV_HOR_RES / 2 - 20);
     const int center_y = LV_VER_RES / 2;
 
     const float angle_per_dot = 36.0f * s_dot_scale; /* 跟 app_exercise.c 的 ICON_SLOT_ANGLE_DEG=36 對齊 */
@@ -6811,15 +6815,27 @@ static void lc_tap_cb(uint8_t card)
 
 /* 翻頁途中每一幀:把「捲到第幾頁(×256)」換成原本點點輪盤吃的 input 值(第 i 項 = 100*N-63-100*i,
    見 gesture_starting_value),輪盤就跟著手連續轉,不是停下來才跳。 */
+static void lc_tick(void)
+{
+    if (get_scrolling_motor_vibrate_status() && open_scroll_motor)
+        motor_pattern_scrolling_app();
+}
+
 static void lc_scroll_cb(int32_t page_x256)
 {
+    if (arc_drag_is_live())
+        return; /* 圓弧撥動中輪盤跟手指走,別被卡片自己的捲動動畫拉回去 */
     update_indicator_dots_position(100 * (int)list_item_count - 63 - (int)((100 * page_x256) / 256));
 }
 
 static void lc_page_cb(uint8_t card)
 {
     if (card < s_lc_n && s_lc_item[card] < list_item_count)
+    {
+        if (selected_item_index != s_lc_item[card])
+            lc_tick(); /* 手指上下翻頁換了一張:跟列清單一樣震一下(圓弧撥動那條已先震過、這裡不會重複) */
         selected_item_index = s_lc_item[card]; /* 讓「目前選中的項目」跟著卡片走 */
+    }
 }
 
 /* 卡片顯示時把列清單、右緣指示點、右緣弧形拖曳帶都讓開(它們會搶直向滑動,或畫在卡片上面)。 */
@@ -6854,8 +6870,13 @@ static void lc_set_rows_hidden(bool hide)
     }
     update_indicator_dots_position(100 * (int)list_item_count - 63 -
                                    100 * (int)(hide ? left_cards_current() : selected_item_index));
+    /* 原本的右緣圓弧撥動(arc_scroll)照舊啟用,而且要浮在卡片與點點上面才接得到弧帶內的 press:
+       弧帶內上下撥動 = 輪盤轉、卡片換頁(inst_arc_drag_cb);弧帶外的上下滑照舊由卡片自己的捲動接。 */
     if (p_instruction_list_layout->arc_handle != NULL)
-        arc_scroll_set_enabled(p_instruction_list_layout->arc_handle, !hide);
+    {
+        arc_scroll_set_enabled(p_instruction_list_layout->arc_handle, true);
+        arc_scroll_bring_to_front(p_instruction_list_layout->arc_handle);
+    }
     s_lc_rows_hidden = hide;
 }
 
@@ -8823,7 +8844,8 @@ static void inst_arc_drag_cb(lv_coord_t scroll_delta_px, void *ctx)
     /* d_input = -d_scroll * 100 / pitch；instruction_list 的 pitch =
      * LIST_ITEM_SLOT_HEIGHT，dots_value 公式裡是 1:1（因為 SLOT_HEIGHT=100），
      * 寫成 generic 式更安全 */
-    const int pitch = LIST_ITEM_SLOT_HEIGHT;
+    /* 輪盤縮小時每格角度也縮小(s_dot_scale),手指滑過同樣角度要轉過更多格,圖示才會跟著手 */
+    const int pitch = (int)(LIST_ITEM_SLOT_HEIGHT * s_dot_scale);
     int target_input = s_inst_drag_input - ((int)scroll_delta_px * 100) / pitch;
 
     int min_input = 100 - 63;             /* idx=N-1 */
@@ -8866,7 +8888,16 @@ static void inst_arc_drag_cb(lv_coord_t scroll_delta_px, void *ctx)
     if (closest_idx != s_inst_drag_last_idx)
     {
         s_inst_drag_last_idx = closest_idx;
-        scroll_list_to_index((uint16_t)closest_idx, true); /* arc 圓形滾動：保留動畫平滑切換（founder 要的效果）*/
+        if (left_cards_visible())
+        {
+            /* 整頁卡片:換到最靠近中央的那一張(跟列清單同一個手感:輪盤連續轉、頁在跨過一格時動畫切換、有震動點) */
+            selected_item_index = (uint16_t)closest_idx;
+            app_scroll_target_item = (uint8_t)closest_idx;
+            lc_tick();
+            left_cards_scroll_to((uint8_t)closest_idx, true);
+        }
+        else
+            scroll_list_to_index((uint16_t)closest_idx, true); /* arc 圓形滾動：保留動畫平滑切換（founder 要的效果）*/
     }
 }
 

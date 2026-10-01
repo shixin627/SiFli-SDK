@@ -42,6 +42,8 @@ lv_obj_t *left_cards_show(lv_obj_t *parent, const left_card_t *cards, uint8_t n,
 void left_cards_hide(void);
 bool left_cards_visible(void);
 uint8_t left_cards_current(void);
+/* 捲到第 idx 張(右緣圓弧撥動換到另一張時用);anim=true 走 LVGL 的捲動動畫,停穩時照常觸發換頁回呼。 */
+void left_cards_scroll_to(uint8_t idx, bool anim);
 /* 手指正按著或還在慣性捲動 —— 呼叫端要重建資料時先等它停,否則畫面會抖。 */
 bool left_cards_busy(void);
 /* 浮層水平滑入/滑出時呼叫(tx = 浮層的 translate_x,0 = 完全就位):滑動中把翻頁容器裁成圓形,

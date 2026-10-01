@@ -347,6 +347,13 @@ uint8_t left_cards_current(void)
     return s_cur;
 }
 
+void left_cards_scroll_to(uint8_t idx, bool anim)
+{
+    if (!left_cards_visible() || idx >= s_n)
+        return;
+    lv_obj_scroll_to_y(s_pager, (lv_coord_t)idx * CARD_H, anim ? LV_ANIM_ON : LV_ANIM_OFF);
+}
+
 bool left_cards_busy(void)
 {
     if (!left_cards_visible())
