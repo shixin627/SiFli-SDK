@@ -1243,6 +1243,46 @@ static uint32_t sub_key_of(const char *id)
     return h ? h : 1u; /* 0 保留給空槽 */
 }
 
+/* Bot 那句主動提醒的「長版」(founder 2026-10-01:「字沒有顯示完,我只看到『...下午降』」):旁表一格只有 95B,
+   手機推來的 preview 其實有 127B(SESSION_PREVIEW_LEN-1)。只有 Bot 的代表列有 glance,所以另開**一格** 128B
+   (鍵=id 雜湊),不放大 30 格的旁表。比旁表短的(<96B)不存,由旁表照舊負責。 */
+static uint32_t s_sub_long_key; /* 0 = 空 */
+static char s_sub_long_txt[128];
+
+static const char *sub_long_of(const char *id)
+{
+    return (s_sub_long_key != 0 && s_sub_long_key == sub_key_of(id)) ? s_sub_long_txt : "";
+}
+
+/* 回傳「存的內容真的變了」(呼叫端據此決定要不要重建)。永遠在 LVGL 執行緒。 */
+bool set_instruction_sub_long(const char *id, const char *text)
+{
+    if (id == NULL || id[0] == '\0')
+        return false;
+    uint32_t k = sub_key_of(id);
+    if (text == NULL || strlen(text) < LIST_SUB_LEN)
+    {
+        if (s_sub_long_key != k)
+            return false;
+        s_sub_long_key = 0;
+        s_sub_long_txt[0] = '\0';
+        return true;
+    }
+    size_t n = strlen(text);
+    if (n > sizeof(s_sub_long_txt) - 1)
+    {
+        n = sizeof(s_sub_long_txt) - 1;
+        while (n > 0 && ((uint8_t)text[n] & 0xC0) == 0x80) /* 別把 UTF-8 字切在中間 */
+            n--;
+    }
+    if (s_sub_long_key == k && strlen(s_sub_long_txt) == n && memcmp(s_sub_long_txt, text, n) == 0)
+        return false;
+    s_sub_long_key = k;
+    memcpy(s_sub_long_txt, text, n);
+    s_sub_long_txt[n] = '\0';
+    return true;
+}
+
 static const char *sub_of(const char *id)
 {
     uint32_t k = sub_key_of(id);
@@ -6831,6 +6871,9 @@ static const char *lc_sub_for(char *buf, const list_item_t *it, uint8_t ai)
     buf[0] = '\0';
     if (lc_live_sub(it, ai, buf, LIST_SUB_LEN))
         return buf;
+    const char *lg = sub_long_of(it->id); /* 長版優先:旁表那份是它被截成 95B 的樣子 */
+    if (lg[0] != '\0')
+        return lg;
     const char *pushed = sub_of(it->id);
     if (pushed[0] != '\0')
         return pushed;
@@ -10577,6 +10620,19 @@ void instruction_list_sim_select(uint8_t idx)
 }
 
 /* PC sim only: 最後一個 '@' 列(= 落點那張 Bot 卡)的說明文字,給 sim_bot_notif 做出一則內文以它開頭的通知。 */
+/* PC sim only: 把最後一個 '@' 列(落點那張 Bot 卡)的「長版 headline」設成 text,驗卡片顯示得完整。 */
+void instruction_list_sim_set_long_bot(const char *text)
+{
+    for (int i = (int)list_item_count - 1; i >= 0; i--)
+        if (list_items[i].category == '@' && strncmp(list_items[i].id, "conv:", 5) != 0)
+        {
+            set_instruction_sub_long(list_items[i].id, text);
+            selected_item_index = (uint16_t)i; /* 卡片落點跟著選中項 */
+            refresh_custom_instructions();
+            return;
+        }
+}
+
 const char *instruction_list_sim_bot_sub(void)
 {
     for (int i = (int)list_item_count - 1; i >= 0; i--)

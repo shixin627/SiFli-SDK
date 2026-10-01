@@ -842,7 +842,11 @@ static void sp_inject_sessions_into_actions(void)
            內容變了要重建清單,label 才會補建。 */
         {
             extern bool set_instruction_sub(const char *id, const char *sub);
+            extern bool set_instruction_sub_long(const char *id, const char *text);
             if (set_instruction_sub(s->id, s->preview))
+                changed = true;
+            /* 超過旁表 95B 的那句 headline 另存一份長的,卡片才顯示得完整 */
+            if (set_instruction_sub_long(s->id, s->glance ? s->preview : ""))
                 changed = true;
         }
     }

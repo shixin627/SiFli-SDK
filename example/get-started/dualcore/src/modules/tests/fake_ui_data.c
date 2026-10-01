@@ -243,6 +243,36 @@ static int sim_bot_notif(int argc, char *argv[])
 }
 MSH_CMD_EXPORT(sim_bot_notif, sim_bot_notif - inject a replyable notification matching the Bot card (sim));
 
+/* sim_long_glance:模擬手機推來 127B 的長 headline(不靠通知),驗 Bot 卡不被 95B 旁表截斷。 */
+extern void instruction_list_sim_set_long_bot(const char *text);
+static void sim_long_glance_async_cb(void *arg)
+{
+    (void)arg;
+    instruction_list_sim_set_long_bot(
+        "\xE6\x97\xA9" "\xE5\xAE\x89" "\xEF\xBC\x81" "\xE5\x8F\xB0" "\xE5\x8C\x97" "\xE6\x99\xB4" "\xEF\xBC\x8C" "\xE7\x8F\xBE" "\xE5\x9C\xA8" " 32" "\xC2\xB0" "C" "\xEF\xBC\x88" "\xE9\xAB\x94" "\xE6\x84\x9F" " 38" "\xC2\xB0" "C" "\xEF\xBC\x89" "\xEF\xBC\x8C" "\xE6\x9C\x80" "\xE9\xAB\x98" " 35" "\xC2\xB0" "C" "\xE3\x80\x81" "\xE6\x9C\x80" "\xE4\xBD\x8E" " 25" "\xC2\xB0" "C" "\xE3\x80\x82" "\xE4\xB8\x8B" "\xE5\x8D\x88" "\xE9\x99\x8D" "\xE9\x9B\xA8" "\xE6\xA9\x9F" "\xE7\x8E\x87" " 53%" "\xEF\xBC\x8C" "\xE5\xBB\xBA" "\xE8\xAD\xB0" "\xE5\xB8\xB6" "\xE5\x82\x98" "\xE3\x80\x82" "\xE7\x99\xBD" "\xE5\xA4\xA9" "\xE6\xB3\xA8" "\xE6\x84\x8F" "\xE9\x98\xB2" "\xE6\x9B\xAC" "\xE8\xA3\x9C" "\xE6\xB0\xB4" "\xEF\xBC\x8C" "\xE5\xAE\xA4" "\xE5\x85\xA7" "\xE5\x82\x99" "\xE8\x96\x84" "\xE5\xA4\x96" "\xE5\xA5\x97" "\xE3\x80\x82");
+}
+static int sim_long_glance(int argc, char *argv[])
+{
+    (void)argc;
+    (void)argv;
+    lv_async_call(sim_long_glance_async_cb, NULL);
+    return 0;
+}
+MSH_CMD_EXPORT(sim_long_glance, sim_long_glance - set the Bot card long headline (sim));
+
+/* sim_card_goto N:把整頁卡片捲到第 N 張(sim 的手指滑動一次不一定剛好一頁)。 */
+#include "lv_left_cards.h"
+static void sim_card_goto_async_cb(void *arg)
+{
+    left_cards_scroll_to((uint8_t)(uintptr_t)arg, false);
+}
+static int sim_card_goto(int argc, char *argv[])
+{
+    lv_async_call(sim_card_goto_async_cb, (void *)(uintptr_t)((argc > 1) ? atoi(argv[1]) : 0));
+    return 0;
+}
+MSH_CMD_EXPORT(sim_card_goto, sim_card_goto N - scroll the left cards to card N (sim));
+
 static int notif_inject(int argc, char *argv[])
 {
     if (argc < 3)
