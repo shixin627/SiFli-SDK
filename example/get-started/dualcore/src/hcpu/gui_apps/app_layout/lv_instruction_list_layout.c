@@ -9749,6 +9749,23 @@ static void scroll_list_to_index(uint16_t page, bool animate)
         return;
     }
 
+    /* 整頁卡片模式:體感手勢(handle_nav_bar_control → instruction_list_scroll_to_app)走的是這支,
+       但它捲的是被藏起來的列清單 —— 右邊輪盤跟著轉了、卡片卻沒人推(founder 2026-10-01:「用手勢去控制列表時
+       右邊已經切換 icon 了,畫面還沒有切」)。卡片顯示時改推卡片:輪盤與選中圈由卡片的捲動回呼
+       (lc_scroll_cb)連續更新,震動點在這裡補(跟手指/圓弧換頁同一個 lc_tick)。 */
+    if (left_cards_visible())
+    {
+        if (page < list_item_count)
+        {
+            if (selected_item_index != page)
+                lc_tick();
+            selected_item_index = page;
+        }
+        app_scroll_target_item = (uint8_t)page;
+        left_cards_scroll_to((uint8_t)page, animate);
+        return;
+    }
+
     app_scroll_target_item = page;
     LOG_D("scroll_list_to_index: %d", page);
     lv_obj_t *child = lv_obj_get_child(p_instruction_list_layout->list, page);

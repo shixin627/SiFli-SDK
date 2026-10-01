@@ -273,6 +273,19 @@ static int sim_card_goto(int argc, char *argv[])
 }
 MSH_CMD_EXPORT(sim_card_goto, sim_card_goto N - scroll the left cards to card N (sim));
 
+/* sim_nav N:走體感手勢翻頁的那條入口(lvgl_msg_handler.handle_nav_bar_control),驗卡片模式下手勢也推卡片。 */
+static void sim_nav_async_cb(void *arg)
+{
+    if (lvgl_msg_handler.handle_nav_bar_control != NULL)
+        lvgl_msg_handler.handle_nav_bar_control((int8_t)(intptr_t)arg);
+}
+static int sim_nav(int argc, char *argv[])
+{
+    lv_async_call(sim_nav_async_cb, (void *)(intptr_t)((argc > 1) ? atoi(argv[1]) : 0));
+    return 0;
+}
+MSH_CMD_EXPORT(sim_nav, sim_nav N - drive the list nav the way a motion gesture does (sim));
+
 static int notif_inject(int argc, char *argv[])
 {
     if (argc < 3)
