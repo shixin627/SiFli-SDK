@@ -34,7 +34,16 @@ static lv_obj_t *s_card[LEFT_CARDS_MAX];
 static bool s_filled[LEFT_CARDS_MAX];
 static lv_obj_t *s_dot[RAIL_MAX];
 static uint8_t s_dot_n = 0;
-static bool s_rounded = false; /* 滑動中:翻頁容器裁成圓形 */
+static bool s_rounded = false; /* 滑動中:目前那張卡是圓盤,後面疊光暈 */
+
+/* 柔邊光暈(founder 2026-09-30 給的小米照片:滑入那一頁的前緣是一圈柔化的漸層,不是清楚的線)。
+   真機 EPIC 沒有模糊硬體、漸層兩端的透明度又是同一個值(lv_gpu_new_api.c draw_bg 兩個 stop 都用 bg_opa),
+   做不出「實心淡到透明」的漸層邊;但圓角+半透明的矩形是 EPIC 原生支援的,所以在卡片後面疊幾層
+   由大到小、由淡到濃的同色圓盤,疊出光暈式的柔邊。只在水平滑動時才顯示(靜止與垂直翻頁不付合成成本)。 */
+#define HALO_N 6
+static lv_obj_t *s_halo[HALO_N];
+static const uint8_t s_halo_grow[HALO_N] = {60, 50, 40, 30, 20, 10}; /* 由外而內:比卡片大幾 px */
+#define HALO_OPA LV_OPA_10 /* 每層同樣很淡,疊起來才平順(層數少、每層濃就會有年輪般的階梯) */
 static left_cards_tap_cb_t s_on_tap = NULL;
 static left_cards_page_cb_t s_on_page = NULL;
 
@@ -189,9 +198,19 @@ static uint8_t page_from_scroll(void)
     return (uint8_t)idx;
 }
 
+static void halo_set_color(void)
+{
+    if (s_cur >= s_n || s_cards == NULL)
+        return;
+    for (uint8_t i = 0; i < HALO_N; i++)
+        if (s_halo[i] != NULL)
+            lv_obj_set_style_bg_color(s_halo[i], lv_color_hex(s_cards[s_cur].accent), 0);
+}
+
 static void settle_page(uint8_t idx)
 {
     s_cur = idx;
+    halo_set_color();
     for (uint8_t i = 0; i < s_n; i++)
     {
         if (i + 1 >= idx && i <= idx + 1)
@@ -230,6 +249,23 @@ lv_obj_t *left_cards_show(lv_obj_t *parent, const left_card_t *cards, uint8_t n,
     memset(s_card, 0, sizeof(s_card));
     memset(s_filled, 0, sizeof(s_filled));
     s_rounded = false;
+
+    memset(s_halo, 0, sizeof(s_halo));
+    /* 光暈比浮層大:預設子物件會被父物件的範圍裁掉,光暈在浮層邊界就被切成一條直線 */
+    lv_obj_add_flag(parent, LV_OBJ_FLAG_OVERFLOW_VISIBLE);
+    for (uint8_t i = 0; i < HALO_N; i++)
+    {
+        lv_coord_t g = s_halo_grow[i];
+        s_halo[i] = lv_obj_create(parent);
+        lv_obj_remove_style_all(s_halo[i]);
+        lv_obj_set_size(s_halo[i], CARD_W + 2 * g, CARD_H + 2 * g);
+        lv_obj_set_pos(s_halo[i], -g, -g);
+        lv_obj_set_style_radius(s_halo[i], (CARD_W + 2 * g) / 2, 0);
+        lv_obj_set_style_bg_opa(s_halo[i], HALO_OPA, 0);
+        lv_obj_set_style_bg_color(s_halo[i], lv_color_hex(cards[start].accent), 0);
+        lv_obj_clear_flag(s_halo[i], LV_OBJ_FLAG_CLICKABLE | LV_OBJ_FLAG_SCROLLABLE);
+        lv_obj_add_flag(s_halo[i], LV_OBJ_FLAG_HIDDEN);
+    }
 
     s_pager = lv_obj_create(parent);
     lv_obj_remove_style_all(s_pager);
@@ -284,6 +320,9 @@ lv_obj_t *left_cards_show(lv_obj_t *parent, const left_card_t *cards, uint8_t n,
 void left_cards_hide(void)
 {
     /* 先把指標清掉再刪:刪除回呼裡任何人回頭問「還在嗎」都要得到否 */
+    lv_obj_t *halo[HALO_N];
+    memcpy(halo, s_halo, sizeof(halo));
+    memset(s_halo, 0, sizeof(s_halo));
     lv_obj_t *pager = s_pager;
     lv_obj_t *rail = s_rail;
     s_pager = NULL;
@@ -296,6 +335,9 @@ void left_cards_hide(void)
     s_cards = NULL;
     memset(s_card, 0, sizeof(s_card));
     memset(s_filled, 0, sizeof(s_filled));
+    for (uint8_t i = 0; i < HALO_N; i++)
+        if (halo[i] != NULL && lv_obj_is_valid(halo[i]))
+            lv_obj_del(halo[i]);
     if (rail != NULL && lv_obj_is_valid(rail))
         lv_obj_del(rail);
     if (pager != NULL && lv_obj_is_valid(pager))
@@ -316,6 +358,15 @@ void left_cards_set_slide(lv_coord_t tx)
        水平滑動途中視窗裡只有目前這一張,圓盤形的底板不會在垂直翻頁時露出縫。 */
     if (s_cur < s_n && s_card[s_cur] != NULL)
         lv_obj_set_style_radius(s_card[s_cur], sliding ? CARD_W / 2 : 0, 0);
+    for (uint8_t i = 0; i < HALO_N; i++)
+    {
+        if (s_halo[i] == NULL)
+            continue;
+        if (sliding)
+            lv_obj_clear_flag(s_halo[i], LV_OBJ_FLAG_HIDDEN);
+        else
+            lv_obj_add_flag(s_halo[i], LV_OBJ_FLAG_HIDDEN);
+    }
 }
 
 bool left_cards_visible(void)
