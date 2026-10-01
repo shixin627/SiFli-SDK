@@ -127,14 +127,21 @@ static void fill_card(uint8_t i)
     }
 
     /* 大標題:單行,超寬用 DOT 截斷 */
+    /* 標題最多 2 行(founder 2026-10-01:「播放 sterben音樂 的標題文字重疊到下面了」):以前只設寬度、高度跟內容走,
+       長標題折成 3 行就往下長進說明。現在先量出折行後的高度,夾在 2 行以內(再多就 … 收尾),並對著圖示垂直置中;
+       2 行(約 60px)置中在 52px 的圖示上,下緣還在說明(SUB_Y)上面。 */
     lv_obj_t *title = lv_label_create(card);
     lv_label_set_text(title, c->title != NULL ? c->title : "");
     lv_label_set_long_mode(title, LV_LABEL_LONG_DOT);
-    lv_obj_set_width(title, CARD_W - tx - X0 + 14);
+    lv_coord_t tw = CARD_W - tx - X0 + 14;
     lv_obj_set_style_text_font(title, f_title, 0);
     lv_obj_set_style_text_color(title, lv_color_white(), 0);
     lv_coord_t th = lv_font_get_line_height(f_title);
-    lv_obj_set_pos(title, tx, row_y + (ICON_PX - th) / 2);
+    lv_point_t tsz;
+    lv_txt_get_size(&tsz, c->title != NULL ? c->title : "", f_title, 0, 0, tw, LV_TEXT_FLAG_NONE);
+    lv_coord_t title_h = (tsz.y > th * 2) ? th * 2 : (tsz.y > th ? tsz.y : th);
+    lv_obj_set_size(title, tw, title_h);
+    lv_obj_set_pos(title, tx, row_y + (ICON_PX - title_h) / 2);
     lv_obj_add_flag(title, LV_OBJ_FLAG_EVENT_BUBBLE);
 
     /* 說明:最多三行,DOT 收尾。色用 label 階層的次要色(bluish #EBEBF5),不是純白半透明。 */

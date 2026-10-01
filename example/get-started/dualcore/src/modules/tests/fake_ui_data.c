@@ -874,7 +874,8 @@ static void sim_cards_async_cb(void *arg)
     static const left_card_t cards[] = {
         {"SkaiBot", "今天 AI 與科技新品重點：1. OpenAI 發布 GPT-6，價格只有旗艦的五分之一 2. 另一家暫緩新模型", NULL, 0x1F6F5C,
          {"展開第一項", "全部念給我聽", "晚點再說"}, 3},
-        {"播放音樂", "上次：夜空中最亮的星", NULL, 0x6B3FA0, {NULL, NULL, NULL}, 0},
+        {"播放 sterben音樂", "YouTube Music — sterben音樂", NULL, 0x6B3FA0, {NULL, NULL, NULL}, 0},
+        {"這是一個非常非常長的標題用來檢查超過兩行會不會被截斷收尾", "標題超過兩行時最多只留兩行，後面用刪節號", NULL, 0xB5601C, {NULL, NULL, NULL}, 0},
         {"看天氣", "台北 27° 多雲，下午可能有雨，記得帶傘出門", NULL, 0x2F6FB5, {NULL, NULL, NULL}, 0},
         {"鎖定電腦", "", NULL, 0x4A5B78, {NULL, NULL, NULL}, 0},
     };
