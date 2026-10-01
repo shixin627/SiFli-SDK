@@ -6690,6 +6690,14 @@ static const char *lc_blurb(const char *app)
     if (strcmp(app, APP_ID_PHOTO) == 0)
         return "遙控手機拍照";
 #endif
+#ifdef APP_ID_CAMERA
+    if (strcmp(app, APP_ID_CAMERA) == 0)
+        return "遙控手機拍照";
+#endif
+#ifdef APP_ID_MOUSE
+    if (strcmp(app, APP_ID_MOUSE) == 0)
+        return "把手錶當滑鼠用";
+#endif
     return NULL;
 }
 
