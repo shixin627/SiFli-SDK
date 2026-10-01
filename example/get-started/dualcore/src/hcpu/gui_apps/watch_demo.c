@@ -1100,17 +1100,24 @@ void app_watch_entry(void *parameter)
                 /* reset activity timer */
                 lv_disp_trig_activity(NULL);
 
-                /* Wake fade-in disabled: flush one frame so the dial is
-                 * redrawn underneath, then drop the black overlay in one shot.
-                 * The previous 20-step manual ramp stuttered under the 1 Hz
-                 * refresh governor. */
-                lv_timer_handler(); /* warm-up: flush stale timer timestamps */
+                /* Drop the black overlay FIRST, then paint one frame directly.
+                 * This used to be lv_timer_handler() with the overlay still up
+                 * and the overlay deleted afterwards. lv_timer_handler() also
+                 * runs the LVGL message pump, so a wake caused by a notification
+                 * rebuilt the whole notification list (measured 1.5 s on a full
+                 * list) UNDER the overlay: the panel was lit at ~240 ms but
+                 * showed black, the header buzz fired at ~310 ms, and the dial
+                 * only appeared at ~1.9 s — "it buzzed, the screen came on a
+                 * second or two later". lv_refr_now() paints without running
+                 * timers or messages; the queued work is left to the normal
+                 * loop below, with the dial already on screen. */
                 if (sleep_wake_overlay)
                 {
                     lv_obj_del(sleep_wake_overlay);
                     sleep_wake_overlay = NULL;
                 }
-                LOG_W("[wake] warm-up frame done, overlay off");
+                lv_refr_now(NULL);
+                LOG_W("[wake] first frame painted, overlay off");
             }
             else if (ms > 0)
             {
