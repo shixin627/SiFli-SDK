@@ -4742,6 +4742,7 @@ static void inst_list_slide_anim_cb(void *var, int32_t v)
     if (lv_obj_is_valid((lv_obj_t *)var))
         lv_obj_set_style_translate_x((lv_obj_t *)var, (lv_coord_t)v, 0);
     left_cards_set_slide((lv_coord_t)v); /* 滑出(關閉)時前緣同樣是圓弧 */
+    page_dim_track((lv_coord_t)v);       /* 且底下同樣跟著亮回來 */
 }
 
 /* Full-close slide-out finished: the list has parked off-screen right — hide it
@@ -4936,6 +4937,18 @@ static void page_dim_track(lv_coord_t tx)
         return;
     if (!s_bar_single_device)
     {
+        /* 整頁卡片滑入/滑出途中:底下再壓一層暗,配合錶盤模糊就是小米那種「糊+暗」(founder 2026-09-30:
+           小米會把下層的東西模糊)。就位(tx==0)後卡片不透明、全蓋住,歸零省掉整層合成。 */
+        if (left_cards_visible() && tx != 0)
+        {
+            lv_coord_t pulled = LV_HOR_RES - LV_ABS(tx);
+            if (pulled < 0) pulled = 0;
+            if (pulled > LV_HOR_RES) pulled = LV_HOR_RES;
+            lv_obj_set_style_bg_color(s_global_bar_layer, lv_color_black(), 0);
+            lv_obj_set_style_bg_opa(s_global_bar_layer, (lv_opa_t)((pulled * LV_OPA_60) / LV_HOR_RES), 0);
+            lv_obj_invalidate(s_global_bar_layer);
+            return;
+        }
         lv_obj_set_style_bg_opa(s_global_bar_layer, LV_OPA_0, 0);
         return;
     }

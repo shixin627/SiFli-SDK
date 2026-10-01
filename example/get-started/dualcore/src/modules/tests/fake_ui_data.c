@@ -770,6 +770,7 @@ MSH_CMD_EXPORT(pager_seed, pager_seed [N] - seed N fake devices into device_page
 /* Seed the left-page list the way the phone does -- actions ('/') and a Bot row ('@') --
    each with a preview line (founder 2026-09-30). Then `sim_open_list` and screenshot. */
 static int s_seed_sel; /* row to park on after seeding */
+static bool s_seed_open = true; /* false: seed only, leave the list closed (so a real drag can open it) */
 
 static void seed_left_async_cb(void *arg)
 {
@@ -804,6 +805,8 @@ static void seed_left_async_cb(void *arg)
     }
     refresh_custom_instructions();
     rt_kprintf("sim_seed_left: %u rows seeded\n", (unsigned)(sizeof(rows) / sizeof(rows[0])));
+    if (!s_seed_open)
+        return;
     extern void instruction_list_open_browse(void);
     instruction_list_open_browse();
     extern void instruction_list_sim_select(uint8_t idx);
@@ -815,6 +818,7 @@ static void seed_left_async_cb(void *arg)
 static int sim_seed_left(int argc, char *argv[])
 {
     s_seed_sel = (argc > 1) ? atoi(argv[1]) : 0;
+    s_seed_open = !(argc > 2 && strcmp(argv[2], "noopen") == 0);
     lv_async_call(seed_left_async_cb, NULL);
     return 0;
 }

@@ -310,8 +310,12 @@ void left_cards_set_slide(lv_coord_t tx)
     if (sliding == s_rounded)
         return;
     s_rounded = sliding;
-    lv_obj_set_style_radius(s_pager, sliding ? LV_RADIUS_CIRCLE : 0, 0);
-    lv_obj_set_style_clip_corner(s_pager, sliding, 0);
+    /* 用卡片「自己的圓角」,不用 clip_corner:真機的 EPIC 繪圖路徑(lv_gpu_new_api.c)只認圖片遮罩,
+       clip_corner 那種圓角遮罩根本不會套用,前緣照舊是直邊(founder 2026-09-30 真機實測「一模一樣」)。
+       矩形的圓角+漸層是 EPIC 驅動原生畫的(drv_epic_rl_draw.c 的 rectangle radius),按鈕/聊天氣泡都這樣。
+       水平滑動途中視窗裡只有目前這一張,圓盤形的底板不會在垂直翻頁時露出縫。 */
+    if (s_cur < s_n && s_card[s_cur] != NULL)
+        lv_obj_set_style_radius(s_card[s_cur], sliding ? CARD_W / 2 : 0, 0);
 }
 
 bool left_cards_visible(void)
