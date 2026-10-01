@@ -6652,6 +6652,9 @@ static uint8_t s_lc_n = 0;
 static uint32_t s_lc_sig = 0;
 static uint32_t s_lc_ssig = 0; /* 說明文字的雜湊(單獨一個,內容變了只重畫不重建) */
 static bool s_lc_rows_hidden = false;
+/* 這次開著左頁之後,使用者動過卡片嗎(翻頁/撥輪盤)。沒動過 = 資料晚到重建卡片時要照列清單的落點規則走
+   (selected_item_index:最新的 session 在最下面,晚到的 Bot 要補正過去);動過了就留在他看的那一張。 */
+static bool s_lc_moved = false;
 
 static bool left_cards_wanted(void)
 {
@@ -6871,6 +6874,7 @@ static void lc_tick(void)
 
 static void lc_scroll_cb(int32_t page_x256)
 {
+    s_lc_moved = true;
     if (arc_drag_is_live())
         return; /* 圓弧撥動中輪盤跟手指走,別被卡片自己的捲動動畫拉回去 */
     update_indicator_dots_position(100 * (int)list_item_count - 63 - (int)((100 * page_x256) / 256));
@@ -6936,6 +6940,7 @@ static void left_cards_release(void)
     s_lc_sig = 0;
     s_lc_ssig = 0;
     s_lc_n = 0;
+    s_lc_moved = false;
     if (s_lc_rows_hidden)
         lc_set_rows_hidden(false);
 }
@@ -6999,9 +7004,10 @@ static void left_cards_sync(void)
     if (shown && left_cards_busy())
         return; /* 手指正在翻頁:等下一輪 refresh(5s 輪詢)再換資料,不然畫面會抖 */
 
-    /* 停在哪張:已經在看就留原位;剛進場就停在「選中的那一列」(進場落點規則 = 最新的 session) */
+    /* 停在哪張:使用者動過就留在他看的那張;沒動過(剛進場、或資料晚到重建)就停在「選中的那一列」
+       (進場落點規則 = 最新的 session,Bot 晚到幾秒也要補正過去,不是留在重建前那一張) */
     uint8_t start = (uint8_t)(n - 1);
-    if (shown)
+    if (shown && s_lc_moved)
         start = left_cards_current();
     else
     {
@@ -7015,6 +7021,7 @@ static void left_cards_sync(void)
     s_lc_sig = sig;
     s_lc_ssig = ssig;
     left_cards_show(bg, s_lc_cards, n, start, lc_tap_cb, lc_page_cb, lc_scroll_cb);
+    s_lc_moved = false; /* show 自己的定位捲動也會觸發 scroll 回呼,不算使用者動 */
     lc_set_rows_hidden(true);
     LOG_W("[cards] show n=%u start=%u", (unsigned)n, (unsigned)start);
 }
