@@ -5060,6 +5060,11 @@ void instruction_list_reveal_drag_begin(void)
        was set by the caller — the edge overlay at lock, or open_browse to 0 (all). */
     instruction_list_set_category_filter(s_pending_reveal_filter);
     s_reveal_drag_active = true;
+    /* 整頁卡片要在「浮層被掀開」的這一刻就建好(founder 2026-09-30:「一開始劃進去看到的還是本來的 UI,
+       滑動才變卡片」)。原本只掛在 refresh_custom_instructions 尾端,而 refresh 有 500ms 去抖,進場那
+       一連串刷新常被延後 → 使用者先看到舊列清單,等到下一次刷新(手機推資料/5 秒輪詢)才換成卡片。
+       這裡浮層已 un-hide 但還停在畫面外(尚未滑進來),建好再滑進來,第一眼就是卡片。 */
+    left_cards_sync();
     /* The list is now shown — surface the bottom mic pill with it (the bar that
        used to sit on the bare watch face). */
     instruction_list_refresh_home_bar();
