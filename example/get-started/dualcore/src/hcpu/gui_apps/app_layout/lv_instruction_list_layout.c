@@ -6620,97 +6620,6 @@ static bool left_cards_wanted(void)
            !is_open_instruction_list_ai && list_item_count > 0;
 }
 
-/* 錶自己產生的 app 卡片(founder 2026-09-30:「所有的 app 都要像小米的 UI」):左頁的內容原本只有手機推來的
-   Bot / action,帳號沒有 action 時整頁只剩一張卡 —— 沒有點點、也沒有下一張可翻。這幾張卡的資料
-   全在錶上(計步、天氣、鬧鐘、電量),不靠手機,斷線也在;點了開對應的錶上 app。空狀態也照出卡
-   (「尚未設定」「尚無資料」),跟小米一樣不因為沒資料就隱藏。排在手機來的卡片前面:進場落點是最新的
-   session(最後一張),往下翻(手指往下)才是這些。 */
-#define LC_LOCAL_MAX 4
-typedef struct
-{
-    const char *title;
-    char sub[64];
-    const char *btn;
-    const char *app;
-    uint32_t accent;
-} lc_local_t;
-static lc_local_t s_lc_local[LC_LOCAL_MAX];
-static uint8_t s_lc_local_n = 0;
-
-static uint8_t lc_build_local(void)
-{
-    uint8_t n = 0;
-    lc_local_t *c;
-
-    /* 活動:今天的步數,有目標就帶目標 */
-    c = &s_lc_local[n++];
-    c->title = "今日活動";
-    {
-        uint32_t steps = SkaiWatchSys.gPedoData.global_steps;
-        uint32_t target = SkaiWatchSys.gPedoData.daily_step_target;
-        if (target > 0)
-            rt_snprintf(c->sub, sizeof(c->sub), "步數 %u / %u", (unsigned)steps, (unsigned)target);
-        else
-            rt_snprintf(c->sub, sizeof(c->sub), "步數 %u", (unsigned)steps);
-    }
-    c->btn = "去運動";
-    c->app = APP_ID_EXERCISE;
-    c->accent = 0x2F7D3A;
-
-#ifdef BSP_USING_BLOC
-    /* 天氣:目前這一筆(get_weather(0)),沒資料就顯示空狀態 */
-    c = &s_lc_local[n++];
-    c->title = "天氣";
-    {
-        weather_t *w = get_weather(0);
-        if (w != NULL && w->description[0] != '\0')
-            rt_snprintf(c->sub, sizeof(c->sub), "%d° %s", (int)w->temperature, w->description);
-        else
-            rt_snprintf(c->sub, sizeof(c->sub), "尚無天氣資料");
-    }
-    c->btn = "查看天氣";
-    c->app = APP_ID_WEATHER;
-    c->accent = s_accent_rgb[ACC_WEATHER];
-#endif
-
-    /* 鬧鐘:設了哪幾個時間 */
-    c = &s_lc_local[n++];
-    c->title = "鬧鐘";
-    {
-        char *p = c->sub;
-        size_t left = sizeof(c->sub);
-        int shown = 0;
-        for (uint8_t i = 0; i < MAX_ALARM_NUM && i < SkaiWatchSys.alarm_num; i++)
-        {
-            if (SkaiWatchSys.alarms[i].data == 0)
-                continue;
-            int w = rt_snprintf(p, left, "%s%02u:%02u", shown ? "、" : "",
-                                (unsigned)SkaiWatchSys.alarms[i].alarm.hour,
-                                (unsigned)SkaiWatchSys.alarms[i].alarm.minute);
-            if (w < 0 || (size_t)w >= left)
-                break;
-            p += w;
-            left -= (size_t)w;
-            shown++;
-        }
-        if (shown == 0)
-            rt_snprintf(c->sub, sizeof(c->sub), "尚未設定鬧鐘");
-    }
-    c->btn = "設定鬧鐘";
-    c->app = APP_ID_ALARM;
-    c->accent = s_accent_rgb[ACC_NOTIFY];
-
-    /* 電量 */
-    c = &s_lc_local[n++];
-    c->title = "電量";
-    rt_snprintf(c->sub, sizeof(c->sub), "%u%%", (unsigned)SkaiWatchSys.battery_level_value);
-    c->btn = "查看電量";
-    c->app = APP_ID_BATTERY;
-    c->accent = 0x3B6B8F;
-
-    return n;
-}
-
 static const char *lc_btn_for(const list_item_t *it)
 {
     if (it->category == '@')
@@ -6737,22 +6646,7 @@ static void lc_tap_cb(uint8_t card)
 {
     if (s_list_horiz_swipe) /* 橫滑(右滑返回)放手時也會落一個 CLICKED,別當成點擊 */
         return;
-    if (card >= s_lc_n)
-        return;
-    if (s_lc_item[card] == 0xFF) /* 錶自己的 app 卡:開對應的錶上 app(同 openApp 那一支) */
-    {
-        if (card >= s_lc_local_n)
-            return;
-        const char *app = s_lc_local[card].app;
-        LOG_W("[cards] open app %s", app);
-        rt_err_t r = gui_app_run(app);
-        if (r == RT_EOK)
-            animate_to_home_from_instruction_list();
-        else
-            LOG_E("[cards] gui_app_run('%s') failed (%d)", app, (int)r);
-        return;
-    }
-    if (s_lc_item[card] >= list_item_count)
+    if (card >= s_lc_n || s_lc_item[card] >= list_item_count)
         return;
     list_item_activate(&list_items[s_lc_item[card]]);
 }
@@ -6818,22 +6712,6 @@ static void left_cards_sync(void)
 
     uint8_t n = 0;
     uint32_t sig = 2166136261u;
-    /* 錶自己的卡先排。簽章只算「有幾張、是哪幾張」,不算步數/氣溫這種一直在變的數字 ——
-       否則每次 refresh 都重建、畫面閃;文字在卡片下次被建出來(開左頁)時取當下的值。 */
-    s_lc_local_n = lc_build_local();
-    for (uint8_t i = 0; i < s_lc_local_n && n < LEFT_CARDS_MAX; i++)
-    {
-        left_card_t *c = &s_lc_cards[n];
-        c->title = s_lc_local[i].title;
-        c->sub = s_lc_local[i].sub;
-        c->icon = NULL;
-        c->btn = s_lc_local[i].btn;
-        c->accent = s_lc_local[i].accent;
-        s_lc_item[n] = 0xFF;
-        sig = lc_hash(sig, s_lc_local[i].title);
-        sig ^= (uint32_t)(n + 1) * 7919u;
-        n++;
-    }
     for (uint8_t i = 0; i < list_item_count && n < LEFT_CARDS_MAX; i++)
     {
         const list_item_t *it = &list_items[i];
