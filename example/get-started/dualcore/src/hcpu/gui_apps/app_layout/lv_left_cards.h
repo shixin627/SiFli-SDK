@@ -40,6 +40,9 @@ bool left_cards_visible(void);
 uint8_t left_cards_current(void);
 /* 手指正按著或還在慣性捲動 —— 呼叫端要重建資料時先等它停,否則畫面會抖。 */
 bool left_cards_busy(void);
+/* 浮層水平滑入/滑出時呼叫(tx = 浮層的 translate_x,0 = 完全就位):滑動中把翻頁容器裁成圓形,
+   前緣就是一道圓弧(小米的進場長這樣,不是一條直邊);就位後還原成不裁,省掉靜止時的遮罩成本。 */
+void left_cards_set_slide(lv_coord_t tx);
 /* obj 是翻頁容器本身或它底下的物件(事件濾除用)。 */
 bool left_cards_owns(lv_obj_t *obj);
 

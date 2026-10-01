@@ -4741,6 +4741,7 @@ static void inst_list_slide_anim_cb(void *var, int32_t v)
 {
     if (lv_obj_is_valid((lv_obj_t *)var))
         lv_obj_set_style_translate_x((lv_obj_t *)var, (lv_coord_t)v, 0);
+    left_cards_set_slide((lv_coord_t)v); /* 滑出(關閉)時前緣同樣是圓弧 */
 }
 
 /* Full-close slide-out finished: the list has parked off-screen right — hide it
@@ -4905,6 +4906,9 @@ static void reveal_settle_browse_done_cb(lv_anim_t *a)
    list both ways. */
 static void dial_blur_track(lv_coord_t tx)
 {
+    /* 整頁卡片:滑動中把前緣裁成圓弧,就位後還原(founder 2026-09-30:「進來看到一條直邊,
+       小米的是圓弧邊,而且會把下層的東西模糊」)。每條移動浮層的路徑都會經過這裡。 */
+    left_cards_set_slide(tx);
     extern bool clock_main_page_is_home(void);
     if (!clock_main_page_is_home())
         return;
@@ -4913,8 +4917,12 @@ static void dial_blur_track(lv_coord_t tx)
     if (pulled > LV_HOR_RES) pulled = LV_HOR_RES;
     {
         extern void instruction_list_bar_set_blur_amount(uint8_t opa);
-        instruction_list_bar_set_blur_amount(
-            (uint8_t)((pulled * LV_OPA_COVER) / LV_HOR_RES));
+        uint32_t amount = ((uint32_t)pulled * LV_OPA_COVER) / LV_HOR_RES;
+        /* 整頁卡片是不透明的,只有滑入途中露出的那一條看得到底下的錶盤 —— 濃度要在滑到一半時就到位,
+           而不是跟著位移線性慢慢淡入(那樣整段滑入途中都幾乎沒糊)。 */
+        if (left_cards_visible())
+            amount = LV_MIN(amount * 2, (uint32_t)LV_OPA_COVER);
+        instruction_list_bar_set_blur_amount((uint8_t)amount);
     }
 }
 
@@ -10079,6 +10087,21 @@ bool instruction_list_ui_is_released(void)
 
 /************************ (C) COPYRIGHT Skaiwalk Technology *******END OF
  * FILE****/
+
+#ifdef BSP_USING_PC_SIMULATOR
+/* PC sim only: freeze the overlay at translate_x = tx (e.g. -233 = half way in from the left)
+   so a screenshot can show the slide edge and the blur behind it. */
+void instruction_list_sim_slide(int tx)
+{
+    if (p_instruction_list_layout == NULL || p_instruction_list_layout->p_instruction_list_bg == NULL)
+        return;
+    lv_obj_t *bg = p_instruction_list_layout->p_instruction_list_bg;
+    lv_anim_del(bg, inst_list_slide_anim_cb);
+    lv_anim_del(bg, reveal_settle_anim_cb);
+    lv_obj_set_style_translate_x(bg, (lv_coord_t)tx, 0);
+    dial_blur_track((lv_coord_t)tx);
+}
+#endif
 
 #ifdef BSP_USING_PC_SIMULATOR
 /* PC sim only: park the browse list on row [idx] so a screenshot can show that row

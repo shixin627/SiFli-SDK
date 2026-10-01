@@ -867,3 +867,19 @@ static int sim_fonts(int argc, char *argv[])
     return 0;
 }
 MSH_CMD_EXPORT(sim_fonts, sim_fonts - print line height per font-size index);
+
+/* Freeze the left overlay part-way through its slide: `sim_slide -233` (half way in from the left). */
+static int s_sim_slide_tx;
+static void sim_slide_async_cb(void *arg)
+{
+    (void)arg;
+    extern void instruction_list_sim_slide(int tx);
+    instruction_list_sim_slide(s_sim_slide_tx);
+}
+static int sim_slide(int argc, char *argv[])
+{
+    s_sim_slide_tx = (argc > 1) ? atoi(argv[1]) : -233;
+    lv_async_call(sim_slide_async_cb, NULL);
+    return 0;
+}
+MSH_CMD_EXPORT(sim_slide, sim_slide [tx] - freeze the left overlay at translate_x (sim));

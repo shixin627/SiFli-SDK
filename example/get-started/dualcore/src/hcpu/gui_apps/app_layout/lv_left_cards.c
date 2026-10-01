@@ -34,6 +34,7 @@ static lv_obj_t *s_card[LEFT_CARDS_MAX];
 static bool s_filled[LEFT_CARDS_MAX];
 static lv_obj_t *s_dot[RAIL_MAX];
 static uint8_t s_dot_n = 0;
+static bool s_rounded = false; /* 滑動中:翻頁容器裁成圓形 */
 static left_cards_tap_cb_t s_on_tap = NULL;
 static left_cards_page_cb_t s_on_page = NULL;
 
@@ -228,6 +229,7 @@ lv_obj_t *left_cards_show(lv_obj_t *parent, const left_card_t *cards, uint8_t n,
     s_on_page = on_page;
     memset(s_card, 0, sizeof(s_card));
     memset(s_filled, 0, sizeof(s_filled));
+    s_rounded = false;
 
     s_pager = lv_obj_create(parent);
     lv_obj_remove_style_all(s_pager);
@@ -298,6 +300,18 @@ void left_cards_hide(void)
         lv_obj_del(rail);
     if (pager != NULL && lv_obj_is_valid(pager))
         lv_obj_del(pager);
+}
+
+void left_cards_set_slide(lv_coord_t tx)
+{
+    if (!left_cards_visible())
+        return;
+    bool sliding = (tx != 0);
+    if (sliding == s_rounded)
+        return;
+    s_rounded = sliding;
+    lv_obj_set_style_radius(s_pager, sliding ? LV_RADIUS_CIRCLE : 0, 0);
+    lv_obj_set_style_clip_corner(s_pager, sliding, 0);
 }
 
 bool left_cards_visible(void)
