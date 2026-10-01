@@ -25,8 +25,11 @@ typedef struct
     const char *title;  /* 大標題 */
     const char *sub;    /* 說明,"" = 沒有(標題會往下置中一點) */
     const void *icon;   /* lv_img 來源(檔案路徑或 dsc);NULL = 不畫圖示 */
-    const char *btn;    /* 底部膠囊按鈕文字 */
     uint32_t accent;    /* 0xRRGGBB:這張卡的底色(頂端);底端自動壓暗 */
+    /* AI 通知帶來的選項(最多 3 個):直接畫成卡片上的選項晶片,點了回覆那則通知。卡片沒有底部按鈕
+       (founder 2026-10-01:「app 字卡下面不需要有開啟的按鈕」)—— 點卡片本身就是進 app / 執行。 */
+    const char *opts[3];
+    uint8_t n_opts;
 } left_card_t;
 
 typedef void (*left_cards_tap_cb_t)(uint8_t idx);
@@ -34,11 +37,13 @@ typedef void (*left_cards_page_cb_t)(uint8_t idx);
 /* 翻頁途中每一幀回報捲動位置:page_x256 = 目前捲到第幾頁 × 256(定點小數,第 2.5 頁 = 640)。
    停穩時也會用整數頁再回報一次。右緣的點點輪盤靠它連續轉動。 */
 typedef void (*left_cards_scroll_cb_t)(int32_t page_x256);
+/* 點了第 card 張卡上的第 opt 個選項晶片。 */
+typedef void (*left_cards_option_cb_t)(uint8_t card, uint8_t opt);
 
 /* 在 parent 底下建立(或重建)整組卡片,停在第 start 張。已存在則先拆掉。 */
 lv_obj_t *left_cards_show(lv_obj_t *parent, const left_card_t *cards, uint8_t n, uint8_t start,
                           left_cards_tap_cb_t on_tap, left_cards_page_cb_t on_page,
-                          left_cards_scroll_cb_t on_scroll);
+                          left_cards_scroll_cb_t on_scroll, left_cards_option_cb_t on_option);
 void left_cards_hide(void);
 bool left_cards_visible(void);
 uint8_t left_cards_current(void);

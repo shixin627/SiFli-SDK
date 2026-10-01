@@ -58,6 +58,10 @@
 #include "lv_chat_page.h"
 #include "lv_session_pager.h"
 #include "lv_left_cards.h"
+#include <ctype.h>
+#ifdef BSP_USING_BLOC_NOTIFY
+    #include "bloc_notification.h"
+#endif
 #include "voice_ai_logo.h"
 
 #ifndef M_PI
@@ -6710,16 +6714,6 @@ static uint32_t lc_accent_of(const list_item_t *it, uint8_t ai)
     return s_accent_rgb[ai];
 }
 
-static const char *lc_btn_for(const list_item_t *it)
-{
-    if (it->category == '@')
-        return "進入聊天";
-    if (it->is_interval)
-        return "切換";
-    if (it->open_app[0] != '\0')
-        return "開啟";
-    return "執行";
-}
 
 /* 每一列都要有一行「大概內容」(founder 2026-10-01:「所有的 app 都要」)。來源依序:
    ① 錶上現成的即時資料(步數/天氣/鬧鐘/電量/現在播放)—— 手機推來的描述不會比它新;
@@ -6854,6 +6848,94 @@ static uint32_t lc_hash(uint32_t h, const char *s)
     return h ^ 0x9E3779B9u; /* 欄位分隔,避免「ab」+「c」與「a」+「bc」同雜湊 */
 }
 
+/* AI 通知的選項直接放在 Bot 卡片上(founder 2026-10-01:「app 字卡下面不需要有開啟的按鈕,如果 AI 的通知有選項
+   可以選,它可以直接顯示在上面」)。選項本來就在錶上那則通知裡(notification_t.options,通知頁畫成晶片,
+   點了走 0x20 回覆通道),所以不加協定:Bot 卡片的說明就是手機推來的那句主動提醒(壓平空白、截到 95 位元組),
+   去通知清單找「可回覆、有選項、內文壓平後以這句開頭」的那一則,把它的選項畫在卡片上;點選項 = 在通知頁
+   點同一顆晶片(replying_notification_id + REMOTE_INPUT + 移除通知)。找不到就不畫,卡片照舊。 */
+static char s_lc_opt_txt[3][36]; /* NOTIFICATION_OPTION_LEN */
+static char s_lc_opt_nid[48];    /* NOTIFICATION_ID_LEN */
+static uint8_t s_lc_opt_n = 0;
+static uint8_t s_lc_opt_card = 0;
+static uint32_t s_lc_opt_sig = 2166136261u; /* 沒有選項的簽章 */
+
+#ifdef BSP_USING_BLOC_NOTIFY
+/* flat 是壓平過的一句話(連續空白 = 一個空格、頭尾去空白);msg 是原文。msg 壓平後是否以 flat 開頭。 */
+static bool lc_flat_prefix(const char *msg, const char *flat)
+{
+    const unsigned char *m = (const unsigned char *)msg;
+    const unsigned char *f = (const unsigned char *)flat;
+    while (*m != 0 && isspace(*m))
+        m++;
+    while (*f != 0)
+    {
+        if (*m == 0)
+            return false;
+        if (isspace(*m))
+        {
+            if (*f != ' ')
+                return false;
+            while (*m != 0 && isspace(*m))
+                m++;
+            f++;
+            continue;
+        }
+        if (*m != *f)
+            return false;
+        m++;
+        f++;
+    }
+    return true;
+}
+
+static const notification_t *lc_find_reply_notification(const char *flat)
+{
+    if (flat == NULL || flat[0] == '\0')
+        return NULL;
+    for (int i = 0; i < (int)notification_items_amount && i < ITEM_AMOUNT_NOTIFICATION; i++)
+    {
+        const notification_t *n = get_notification(i);
+        if (n != NULL && n->can_reply && n->option_count > 0 && lc_flat_prefix(n->message, flat))
+            return n;
+    }
+    return NULL;
+}
+#endif
+
+#ifdef BSP_USING_BLOC_NOTIFY
+static uint32_t lc_opt_sig_of(const notification_t *nt)
+{
+    uint32_t h = 2166136261u;
+    if (nt == NULL)
+        return h;
+    h = lc_hash(h, nt->id);
+    for (uint8_t k = 0; k < nt->option_count && k < 3; k++)
+        h = lc_hash(h, nt->options[k]);
+    return h;
+}
+#endif
+
+static void lc_option_cb(uint8_t card, uint8_t opt)
+{
+#ifdef BSP_USING_BLOC_NOTIFY
+    if (s_list_horiz_swipe) /* 橫滑放手也會落一個 CLICKED,別當成點選項 */
+        return;
+    if (card != s_lc_opt_card || opt >= s_lc_opt_n)
+        return;
+    char nid[sizeof(s_lc_opt_nid)];
+    strncpy(nid, s_lc_opt_nid, sizeof(nid) - 1);
+    nid[sizeof(nid) - 1] = '\0';
+    /* 跟通知頁 message_option_chip_cb 同一條路:0x20 {"id","m"},然後把通知移掉 */
+    strcpy(replying_notification_id, nid);
+    handle_user_speech_intent(V2T_INTENT_REMOTE_INPUT, s_lc_opt_txt[opt]);
+    remove_notification_by_id(nid);
+    left_cards_sync(); /* 通知沒了 → 晶片收掉 */
+#else
+    (void)card;
+    (void)opt;
+#endif
+}
+
 /* 卡片點擊 = 點那一列(同一條 list_item_activate:@ → 進聊天室、action → 執行、openApp → 開錶上 app)。 */
 static void lc_tap_cb(uint8_t card)
 {
@@ -6941,6 +7023,7 @@ static void left_cards_release(void)
     s_lc_ssig = 0;
     s_lc_n = 0;
     s_lc_moved = false;
+    s_lc_opt_sig = 2166136261u;
     if (s_lc_rows_hidden)
         lc_set_rows_hidden(false);
 }
@@ -6962,6 +7045,8 @@ static void left_cards_sync(void)
     uint8_t n = 0;
     uint32_t sig = 2166136261u;
     uint32_t ssig = 2166136261u;
+    uint32_t osig = 2166136261u;
+    s_lc_opt_n = 0;
     for (uint8_t i = 0; i < list_item_count && n < LEFT_CARDS_MAX; i++)
     {
         const list_item_t *it = &list_items[i];
@@ -6972,12 +7057,34 @@ static void left_cards_sync(void)
         c->title = it->title;
         c->sub = lc_sub_for(s_lc_subbuf[n], it, ai);
         c->icon = (it->img_path[0] != '\0') ? (const void *)it->img_path : it->icon;
-        c->btn = lc_btn_for(it);
+        c->n_opts = 0;
+#ifdef BSP_USING_BLOC_NOTIFY
+        if (it->category == '@' && s_lc_opt_n == 0)
+        {
+            const notification_t *nt = lc_find_reply_notification(c->sub);
+            if (nt != NULL)
+            {
+                s_lc_opt_n = (nt->option_count > 3) ? 3 : nt->option_count;
+                s_lc_opt_card = n;
+                strncpy(s_lc_opt_nid, nt->id, sizeof(s_lc_opt_nid) - 1);
+                s_lc_opt_nid[sizeof(s_lc_opt_nid) - 1] = '\0';
+                for (uint8_t k = 0; k < s_lc_opt_n; k++)
+                {
+                    strncpy(s_lc_opt_txt[k], nt->options[k], sizeof(s_lc_opt_txt[k]) - 1);
+                    s_lc_opt_txt[k][sizeof(s_lc_opt_txt[k]) - 1] = '\0';
+                    c->opts[k] = s_lc_opt_txt[k];
+                }
+                c->n_opts = s_lc_opt_n;
+                osig = lc_opt_sig_of(nt);
+            }
+        }
+#endif
         c->accent = lc_accent_of(it, ai);
         s_lc_item[n] = i;
         sig = lc_hash(sig, c->title);
         ssig = lc_hash(ssig, c->sub);
-        sig = lc_hash(sig, c->btn);
+        for (uint8_t k = 0; k < c->n_opts; k++)
+            ssig = lc_hash(ssig, c->opts[k]); /* 選項變了只重畫內容 */
         sig = lc_hash(sig, it->img_path);
         sig = lc_hash(sig, (const char *)&c->icon); /* 內建圖示指標變了也算變 */
         sig ^= c->accent + n;
@@ -6996,8 +7103,11 @@ static void left_cards_sync(void)
         if (ssig != s_lc_ssig && !left_cards_busy())
         {
             s_lc_ssig = ssig;
+            s_lc_opt_sig = osig;
             left_cards_refresh();
         }
+        else if (ssig == s_lc_ssig)
+            s_lc_opt_sig = osig; /* 內容已經反映這組選項(含「沒有選項」) */
         lc_set_rows_hidden(true); /* refresh 剛重建了指示點,再藏一次 */
         return;
     }
@@ -7020,10 +7130,35 @@ static void left_cards_sync(void)
     s_lc_n = n;
     s_lc_sig = sig;
     s_lc_ssig = ssig;
-    left_cards_show(bg, s_lc_cards, n, start, lc_tap_cb, lc_page_cb, lc_scroll_cb);
+    left_cards_show(bg, s_lc_cards, n, start, lc_tap_cb, lc_page_cb, lc_scroll_cb, lc_option_cb);
+    s_lc_opt_sig = osig;
     s_lc_moved = false; /* show 自己的定位捲動也會觸發 scroll 回呼,不算使用者動 */
     lc_set_rows_hidden(true);
     LOG_W("[cards] show n=%u start=%u", (unsigned)n, (unsigned)start);
+}
+
+/* 每秒看一眼(op drain tick):AI 通知晚到、或被回覆/清掉,Bot 卡片的選項要跟著出現/收掉。
+   只在卡片顯示且手指沒在翻頁時做;選項沒變就什麼都不動。 */
+static void lc_opts_poll(void)
+{
+#ifdef BSP_USING_BLOC_NOTIFY
+    if (!left_cards_visible() || left_cards_busy())
+        return;
+    uint32_t sig = 2166136261u;
+    for (uint8_t i = 0; i < list_item_count; i++)
+    {
+        if (list_items[i].category != '@')
+            continue;
+        const notification_t *nt = lc_find_reply_notification(sub_of(list_items[i].id));
+        if (nt != NULL)
+        {
+            sig = lc_opt_sig_of(nt);
+            break;
+        }
+    }
+    if (sig != s_lc_opt_sig)
+        left_cards_sync();
+#endif
 }
 
 static void on_tap(void)
@@ -9053,6 +9188,7 @@ static void inst_op_drain_tick_cb(lv_timer_t *t)
         s_last_refresh_tick = 0; /* bypass debounce for this catch-up run */
         refresh_custom_instructions();
     }
+    lc_opts_poll();
 }
 
 lv_obj_t *lv_instruction_list_layout_create(lv_obj_t *parent)
@@ -10373,5 +10509,14 @@ void instruction_list_sim_select(uint8_t idx)
         return;
     scroll_center_item(p_instruction_list_layout->list, idx);
     scroll_list(p_instruction_list_layout->list, 0);
+}
+
+/* PC sim only: 最後一個 '@' 列(= 落點那張 Bot 卡)的說明文字,給 sim_bot_notif 做出一則內文以它開頭的通知。 */
+const char *instruction_list_sim_bot_sub(void)
+{
+    for (int i = (int)list_item_count - 1; i >= 0; i--)
+        if (list_items[i].category == '@' && sub_of(list_items[i].id)[0] != '\0')
+            return sub_of(list_items[i].id);
+    return "";
 }
 #endif

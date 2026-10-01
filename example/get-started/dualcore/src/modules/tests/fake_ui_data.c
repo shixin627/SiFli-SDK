@@ -211,6 +211,38 @@ MSH_CMD_EXPORT_ALIAS(gesture_back, back, back - alias for gesture_back);
 /*  MSH commands — notification                                          */
 /* ===================================================================== */
 
+/* sim_bot_notif:做一則「內文以 Bot 卡片說明開頭、帶 2 個選項」的可回覆通知(模擬 AI 主動提醒),
+   驗卡片把選項畫在 Bot 卡上。內文長度超過 msh 一行的 80 字元上限,所以不走 notif_inject。 */
+extern const char *instruction_list_sim_bot_sub(void);
+static int sim_bot_notif(int argc, char *argv[])
+{
+    (void)argc;
+    (void)argv;
+    const char *sub = instruction_list_sim_bot_sub();
+    int slot = notification_items_amount;
+    if (slot >= ITEM_AMOUNT_NOTIFICATION)
+        slot = ITEM_AMOUNT_NOTIFICATION - 1;
+    notification_t notif;
+    memset(&notif, 0, sizeof(notif));
+    notif.index = (uint8_t)(slot + 1);
+    notif.state = true;
+    notif.sec_time = (uint32_t)(rt_tick_get() / RT_TICK_PER_SECOND);
+    rt_snprintf(notif.id, NOTIFICATION_ID_LEN, "fake_bot_%d", slot);
+    rt_strncpy(notif.title, "Skai", NOTIFICATION_TITLE_LEN - 1);
+    rt_snprintf(notif.message, NOTIFICATION_MESSAGE_LEN, "%s\n\nmore text after the glance line.", sub);
+    rt_strncpy(notif.options[0], "Expand item one", NOTIFICATION_OPTION_LEN - 1);
+    rt_strncpy(notif.options[1], "Read it all to me", NOTIFICATION_OPTION_LEN - 1);
+    rt_strncpy(notif.options[2], "Later", NOTIFICATION_OPTION_LEN - 1);
+    notif.option_count = 3;
+    notif.can_reply = true;
+    set_notification(&notif, slot);
+    if (notification_items_amount < ITEM_AMOUNT_NOTIFICATION)
+        notification_items_amount++;
+    rt_kprintf("sim_bot_notif: slot=%d sub='%s'\n", slot, sub);
+    return 0;
+}
+MSH_CMD_EXPORT(sim_bot_notif, sim_bot_notif - inject a replyable notification matching the Bot card (sim));
+
 static int notif_inject(int argc, char *argv[])
 {
     if (argc < 3)
@@ -794,7 +826,7 @@ static void seed_left_async_cb(void *arg)
         {"seed-music", "\xE6\x92\xAD" "\xE6\x94\xBE" "\xE9\x9F\xB3" "\xE6\xA8\x82", "\xE4\xB8\x8A" "\xE6\xAC\xA1" "\xEF\xBC\x9A" "\xE5\xA4\x9C" "\xE7\xA9\xBA" "\xE4\xB8\xAD" "\xE6\x9C\x80" "\xE4\xBA\xAE" "\xE7\x9A\x84" "\xE6\x98\x9F", '/'},
         {"seed-weather", "\xE7\x9C\x8B" "\xE5\xA4\xA9" "\xE6\xB0\xA3", "\xE5\x8F\xB0" "\xE5\x8C\x97" " 27\xC2\xB0" " \xE5\xA4\x9A" "\xE9\x9B\xB2" "\xEF\xBC\x8C" "\xE4\xB8\x8B" "\xE5\x8D\x88" "\xE5\x8F\xAF" "\xE8\x83\xBD" "\xE6\x9C\x89" "\xE9\x9B\xA8", '/'},
         {"seed-lock", "\xE9\x8E\x96" "\xE5\xAE\x9A" "\xE9\x9B\xBB" "\xE8\x85\xA6", "", '/'},
-        {"seed-bot", "SkaiBot", "\xE6\x97\xA9" "\xE5\xAE\x89" "\xEF\xBC\x81" "\xE4\xBB\x8A" "\xE5\xA4\xA9" " 10:30 \xE6\x9C\x89" "\xE6\x9C\x83" "\xE8\xAD\xB0" "\xEF\xBC\x8C" "\xE8\xA8\x98" "\xE5\xBE\x97" "\xE5\xB8\xB6" "\xE7\xAD\x86" "\xE9\x9B\xBB" "\xEF\xBC\x8C" "\xE5\x87\xBA" "\xE9\x96\x80" "\xE5\x89\x8D" "\xE7\x9C\x8B" "\xE4\xB8\x80" "\xE4\xB8\x8B" "\xE5\xA4\xA9" "\xE6\xB0\xA3", '@'},
+        {"seed-bot", "SkaiBot", "Good morning! Meeting at 10:30", '@', NULL, ""},
         /* 錶上的 app 列:不推描述,內容由錶自己算(步數/鬧鐘)或給一句話用途(手電筒) */
         {"seed-steps", "Steps", "", '/', "watchapp", "exercise"},
         {"seed-flash", "Flashlight", "", '/', "watchapp", "flashlight"},
@@ -840,13 +872,14 @@ static void sim_cards_async_cb(void *arg)
 {
     (void)arg;
     static const left_card_t cards[] = {
-        {"SkaiBot", "今天 AI 與科技新品重點：1. OpenAI 發布 GPT-6，價格只有旗艦的五分之一 2. 另一家暫緩新模型", NULL, "進入聊天", 0x1F6F5C},
-        {"播放音樂", "上次：夜空中最亮的星", NULL, "執行", 0x6B3FA0},
-        {"看天氣", "台北 27° 多雲，下午可能有雨，記得帶傘出門", NULL, "開啟", 0x2F6FB5},
-        {"鎖定電腦", "", NULL, "執行", 0x4A5B78},
+        {"SkaiBot", "今天 AI 與科技新品重點：1. OpenAI 發布 GPT-6，價格只有旗艦的五分之一 2. 另一家暫緩新模型", NULL, 0x1F6F5C,
+         {"展開第一項", "全部念給我聽", "晚點再說"}, 3},
+        {"播放音樂", "上次：夜空中最亮的星", NULL, 0x6B3FA0, {NULL, NULL, NULL}, 0},
+        {"看天氣", "台北 27° 多雲，下午可能有雨，記得帶傘出門", NULL, 0x2F6FB5, {NULL, NULL, NULL}, 0},
+        {"鎖定電腦", "", NULL, 0x4A5B78, {NULL, NULL, NULL}, 0},
     };
     left_cards_show(lv_layer_top(), cards, sizeof(cards) / sizeof(cards[0]), (uint8_t)s_sim_cards_start,
-                    sim_card_tap, NULL, NULL);
+                    sim_card_tap, NULL, NULL, NULL);
 }
 
 static int sim_cards(int argc, char *argv[])

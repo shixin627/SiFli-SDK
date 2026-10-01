@@ -20,9 +20,9 @@
 #define TITLE_Y 98    /* 圖示+標題那一列的上緣 */
 #define SUB_Y 170     /* 說明上緣 */
 #define SUB_W 280      /* 右緣讓出點點輪盤(最大那顆縮成一半後約 66px) */
-#define BTN_W 236
-#define BTN_H 64
-#define BTN_Y 334
+#define CHIP_W 236    /* 選項晶片:半透明白底的膠囊,單行 */
+#define CHIP_H 40
+#define CHIP_GAP 8
 
 static lv_obj_t *s_pager = NULL;
 static const left_card_t *s_cards = NULL;
@@ -52,6 +52,7 @@ static const lv_img_dsc_t s_halo_dsc = {
 static left_cards_tap_cb_t s_on_tap = NULL;
 static left_cards_page_cb_t s_on_page = NULL;
 static left_cards_scroll_cb_t s_on_scroll = NULL;
+static left_cards_option_cb_t s_on_option = NULL;
 
 static void card_click_cb(lv_event_t *e)
 {
@@ -60,6 +61,15 @@ static void card_click_cb(lv_event_t *e)
     uint8_t idx = (uint8_t)(uintptr_t)lv_event_get_user_data(e);
     if (s_on_tap != NULL && idx < s_n)
         s_on_tap(idx);
+}
+
+static void chip_click_cb(lv_event_t *e)
+{
+    if (lv_event_get_code(e) != LV_EVENT_CLICKED)
+        return;
+    uint32_t ud = (uint32_t)(uintptr_t)lv_event_get_user_data(e);
+    if (s_on_option != NULL)
+        s_on_option((uint8_t)(ud >> 8), (uint8_t)(ud & 0xFF));
 }
 
 static lv_color_t accent_bottom(lv_color_t top)
@@ -133,7 +143,7 @@ static void fill_card(uint8_t i)
         lv_obj_t *sub = lv_label_create(card);
         lv_label_set_text(sub, c->sub);
         lv_label_set_long_mode(sub, LV_LABEL_LONG_DOT);
-        lv_obj_set_size(sub, SUB_W, lv_font_get_line_height(f_sub) * 3 + 8);
+        lv_obj_set_size(sub, SUB_W, lv_font_get_line_height(f_sub) * (c->n_opts > 0 ? 2 : 3) + 8);
         lv_obj_set_style_text_font(sub, f_sub, 0);
         lv_obj_set_style_text_color(sub, lv_color_hex(0xEBEBF5), 0);
         lv_obj_set_style_text_opa(sub, LV_OPA_80, 0);
@@ -141,22 +151,34 @@ static void fill_card(uint8_t i)
         lv_obj_add_flag(sub, LV_OBJ_FLAG_EVENT_BUBBLE);
     }
 
-    /* 底部膠囊按鈕:半透明白底(在彩色卡上就是「玻璃」),整顆可點 */
-    lv_obj_t *btn = lv_obj_create(card);
-    lv_obj_remove_style_all(btn);
-    lv_obj_set_size(btn, BTN_W, BTN_H);
-    lv_obj_set_pos(btn, (CARD_W - BTN_W) / 2, BTN_Y);
-    lv_obj_set_style_radius(btn, BTN_H / 2, 0);
-    lv_obj_set_style_bg_color(btn, lv_color_white(), 0);
-    lv_obj_set_style_bg_opa(btn, LV_OPA_20, 0);
-    lv_obj_add_flag(btn, LV_OBJ_FLAG_CLICKABLE | LV_OBJ_FLAG_EVENT_BUBBLE);
-    lv_obj_clear_flag(btn, LV_OBJ_FLAG_SCROLLABLE);
-    lv_obj_add_event_cb(btn, card_click_cb, LV_EVENT_CLICKED, (void *)(uintptr_t)i);
-    lv_obj_t *bl = lv_label_create(btn);
-    lv_label_set_text(bl, c->btn != NULL ? c->btn : "");
-    lv_obj_set_style_text_font(bl, f_btn, 0);
-    lv_obj_set_style_text_color(bl, lv_color_white(), 0);
-    lv_obj_center(bl);
+    /* AI 通知的選項晶片:接在說明下面,最多 3 顆(說明這時只留 2 行)。半透明白底=卡片上的「玻璃」,
+       單行 DOT 截斷;晶片自己吃點擊(不冒泡),不會同時觸發整張卡的點擊。 */
+    if (c->n_opts > 0)
+    {
+        lv_coord_t chip_y = (has_sub ? SUB_Y + lv_font_get_line_height(f_sub) * 2 + 8 + 12 : SUB_Y);
+        for (uint8_t k = 0; k < c->n_opts && k < 3; k++)
+        {
+            lv_obj_t *chip = lv_obj_create(card);
+            lv_obj_remove_style_all(chip);
+            lv_obj_set_size(chip, CHIP_W, CHIP_H);
+            lv_obj_set_pos(chip, X0, chip_y + k * (CHIP_H + CHIP_GAP));
+            lv_obj_set_style_radius(chip, CHIP_H / 2, 0);
+            lv_obj_set_style_bg_color(chip, lv_color_white(), 0);
+            lv_obj_set_style_bg_opa(chip, LV_OPA_20, 0);
+            lv_obj_add_flag(chip, LV_OBJ_FLAG_CLICKABLE);
+            lv_obj_clear_flag(chip, LV_OBJ_FLAG_SCROLLABLE);
+            lv_obj_add_event_cb(chip, chip_click_cb, LV_EVENT_CLICKED,
+                                (void *)(uintptr_t)(((uint32_t)i << 8) | k));
+            lv_obj_t *cl = lv_label_create(chip);
+            lv_label_set_text(cl, c->opts[k] != NULL ? c->opts[k] : "");
+            lv_label_set_long_mode(cl, LV_LABEL_LONG_DOT);
+            lv_obj_set_width(cl, CHIP_W - 28);
+            lv_obj_set_style_text_font(cl, f_btn, 0);
+            lv_obj_set_style_text_color(cl, lv_color_white(), 0);
+            lv_obj_set_style_text_align(cl, LV_TEXT_ALIGN_CENTER, 0);
+            lv_obj_center(cl);
+        }
+    }
 
     s_filled[i] = true;
 }
@@ -300,7 +322,7 @@ static void pager_event_cb(lv_event_t *e)
 
 lv_obj_t *left_cards_show(lv_obj_t *parent, const left_card_t *cards, uint8_t n, uint8_t start,
                           left_cards_tap_cb_t on_tap, left_cards_page_cb_t on_page,
-                          left_cards_scroll_cb_t on_scroll)
+                          left_cards_scroll_cb_t on_scroll, left_cards_option_cb_t on_option)
 {
     left_cards_hide();
     if (parent == NULL || cards == NULL || n == 0)
@@ -314,6 +336,7 @@ lv_obj_t *left_cards_show(lv_obj_t *parent, const left_card_t *cards, uint8_t n,
     s_on_tap = on_tap;
     s_on_page = on_page;
     s_on_scroll = on_scroll;
+    s_on_option = on_option;
     memset(s_card, 0, sizeof(s_card));
     memset(s_filled, 0, sizeof(s_filled));
     s_rounded = false;
@@ -386,6 +409,7 @@ void left_cards_hide(void)
     s_on_tap = NULL;
     s_on_page = NULL;
     s_on_scroll = NULL;
+    s_on_option = NULL;
     s_cards = NULL;
     memset(s_card, 0, sizeof(s_card));
     memset(s_filled, 0, sizeof(s_filled));
