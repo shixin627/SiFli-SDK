@@ -6659,6 +6659,54 @@ static bool left_cards_wanted(void)
            !is_open_instruction_list_ai && list_item_count > 0;
 }
 
+/* 卡片底色。手機對「開錶上 app」的列一律標同一個類型(watchapp),只靠類型色整排都變成同一個藍綠
+   (founder 2026-10-01:「大部分 app 背景都是淺藍色,不是應該跟著不同 app 切換嗎」)。所以 openApp
+   的列照「是哪個 app」各挑一色;其餘照類型色。都是飽和的深色,卡片模組自己把底端再壓暗。 */
+static uint32_t lc_accent_of(const list_item_t *it, uint8_t ai)
+{
+    static const struct
+    {
+        const char *app;
+        uint32_t rgb;
+    } t[] = {
+        {APP_ID_FLASHLIGHT, 0xA6791A}, /* 金黃 */
+        {APP_ID_EXERCISE, 0x2F8F3A},   /* 綠 */
+#ifdef APP_ID_ALARM
+        {APP_ID_ALARM, 0xC0561E}, /* 橘 */
+#endif
+#ifdef APP_ID_TIMER
+        {APP_ID_TIMER, 0xB04A6B}, /* 莓紅 */
+#endif
+#ifdef APP_ID_RECORDER
+        {APP_ID_RECORDER, 0xB03A3A}, /* 紅 */
+#endif
+#ifdef APP_ID_WEATHER
+        {APP_ID_WEATHER, 0x2F6FB5}, /* 藍 */
+#endif
+#ifdef APP_ID_CALCULATOR
+        {APP_ID_CALCULATOR, 0x5A5F6B}, /* 石墨 */
+#endif
+#ifdef APP_ID_CAMERA
+        {APP_ID_CAMERA, 0x4A4A8C}, /* 靛 */
+#endif
+#ifdef APP_ID_PHOTO
+        {APP_ID_PHOTO, 0x4A4A8C},
+#endif
+#ifdef APP_ID_MOUSE
+        {APP_ID_MOUSE, 0x1F7A85}, /* 藍綠 */
+#endif
+#ifdef APP_ID_SETTING
+        {APP_ID_SETTING, 0x56606E},
+#endif
+        {APP_ID_BATTERY, 0x3B6B8F},
+    };
+    if (it->open_app[0] != '\0')
+        for (unsigned i = 0; i < sizeof(t) / sizeof(t[0]); i++)
+            if (strcmp(it->open_app, t[i].app) == 0)
+                return t[i].rgb;
+    return s_accent_rgb[ai];
+}
+
 static const char *lc_btn_for(const list_item_t *it)
 {
     if (it->category == '@')
@@ -6920,7 +6968,7 @@ static void left_cards_sync(void)
         c->sub = lc_sub_for(s_lc_subbuf[n], it, ai);
         c->icon = (it->img_path[0] != '\0') ? (const void *)it->img_path : it->icon;
         c->btn = lc_btn_for(it);
-        c->accent = s_accent_rgb[ai];
+        c->accent = lc_accent_of(it, ai);
         s_lc_item[n] = i;
         sig = lc_hash(sig, c->title);
         ssig = lc_hash(ssig, c->sub);
