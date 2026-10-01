@@ -145,14 +145,23 @@ static void fill_card(uint8_t i)
     s_filled[i] = true;
 }
 
-/* 右緣圓點:目前這張是白色長條,其餘是暗點;多於 RAIL_MAX 張就不畫(圓點會沒有意義)。 */
+/* 右緣圓點:目前這張是白色長條,其餘是暗點。卡片多於 RAIL_MAX 張時圓點數固定,目前位置按比例對應
+   (只表示「大概在第幾段」,不是一張一顆)。 */
+static uint8_t rail_current_dot(void)
+{
+    if (s_n <= s_dot_n || s_n < 2)
+        return s_cur;
+    return (uint8_t)(((uint32_t)s_cur * (s_dot_n - 1) + (s_n - 1) / 2) / (s_n - 1));
+}
+
 static void rail_update(void)
 {
     if (s_rail == NULL)
         return;
+    uint8_t cur_dot = rail_current_dot();
     for (uint8_t i = 0; i < s_dot_n; i++)
     {
-        bool on = (i == s_cur);
+        bool on = (i == cur_dot);
         lv_obj_set_size(s_dot[i], 6, on ? 16 : 6);
         lv_obj_set_style_bg_opa(s_dot[i], on ? LV_OPA_COVER : LV_OPA_40, 0);
     }
@@ -246,7 +255,7 @@ lv_obj_t *left_cards_show(lv_obj_t *parent, const left_card_t *cards, uint8_t n,
         s_card[i] = card;
     }
 
-    s_dot_n = (n <= RAIL_MAX && n > 1) ? n : 0;
+    s_dot_n = (n > 1) ? ((n <= RAIL_MAX) ? n : RAIL_MAX) : 0; /* 只有一張就沒有點點 */
     if (s_dot_n > 0)
     {
         s_rail = lv_obj_create(parent);
