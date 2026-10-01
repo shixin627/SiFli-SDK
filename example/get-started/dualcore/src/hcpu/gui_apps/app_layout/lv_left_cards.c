@@ -204,7 +204,10 @@ static void halo_set_color(void)
         return;
     for (uint8_t i = 0; i < HALO_N; i++)
         if (s_halo[i] != NULL)
+        {
             lv_obj_set_style_bg_color(s_halo[i], lv_color_hex(s_cards[s_cur].accent), 0);
+            lv_obj_set_style_bg_grad_color(s_halo[i], lv_color_hex(s_cards[s_cur].accent), 0);
+        }
 }
 
 static void settle_page(uint8_t idx)
@@ -263,6 +266,13 @@ lv_obj_t *left_cards_show(lv_obj_t *parent, const left_card_t *cards, uint8_t n,
         lv_obj_set_style_radius(s_halo[i], (CARD_W + 2 * g) / 2, 0);
         lv_obj_set_style_bg_opa(s_halo[i], HALO_OPA, 0);
         lv_obj_set_style_bg_color(s_halo[i], lv_color_hex(cards[start].accent), 0);
+        /* 斷層(founder 2026-10-01 真機:「有模糊了,但斷層超嚴重」):幀緩衝是 RGB565,暗色區可用色階很少,
+           疊半透明層每一層都落在同幾個色階上 → 一條一條。EPIC 的硬體抖色只有「漸層矩形」那條路徑有開
+           (drv_epic_rl_draw.c setup_grad_rect_layer 設 dither_level=MAX;實心+透明度那條沒開)。
+           所以兩端設成同一個顏色的『漸層』:畫面不變,但走漸層路徑、輸出被抖色。
+           PC sim 是 32 位元色,看不到這種斷層,只能靠讀驅動確認。 */
+        lv_obj_set_style_bg_grad_dir(s_halo[i], LV_GRAD_DIR_VER, 0);
+        lv_obj_set_style_bg_grad_color(s_halo[i], lv_color_hex(cards[start].accent), 0);
         lv_obj_clear_flag(s_halo[i], LV_OBJ_FLAG_CLICKABLE | LV_OBJ_FLAG_SCROLLABLE);
         lv_obj_add_flag(s_halo[i], LV_OBJ_FLAG_HIDDEN);
     }

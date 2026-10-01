@@ -4945,10 +4945,14 @@ static void page_dim_track(lv_coord_t tx)
             if (pulled < 0) pulled = 0;
             if (pulled > LV_HOR_RES) pulled = LV_HOR_RES;
             lv_obj_set_style_bg_color(s_global_bar_layer, lv_color_black(), 0);
+            /* 同色漸層 = 走 EPIC 有開硬體抖色的那條路徑,壓暗的漸變不會一條一條(見 lv_left_cards.c 光暈) */
+            lv_obj_set_style_bg_grad_color(s_global_bar_layer, lv_color_black(), 0);
+            lv_obj_set_style_bg_grad_dir(s_global_bar_layer, LV_GRAD_DIR_VER, 0);
             lv_obj_set_style_bg_opa(s_global_bar_layer, (lv_opa_t)((pulled * LV_OPA_60) / LV_HOR_RES), 0);
             lv_obj_invalidate(s_global_bar_layer);
             return;
         }
+        lv_obj_set_style_bg_grad_dir(s_global_bar_layer, LV_GRAD_DIR_NONE, 0);
         lv_obj_set_style_bg_opa(s_global_bar_layer, LV_OPA_0, 0);
         return;
     }
