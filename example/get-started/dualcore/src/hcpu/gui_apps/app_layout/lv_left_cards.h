@@ -31,10 +31,14 @@ typedef struct
 
 typedef void (*left_cards_tap_cb_t)(uint8_t idx);
 typedef void (*left_cards_page_cb_t)(uint8_t idx);
+/* 翻頁途中每一幀回報捲動位置:page_x256 = 目前捲到第幾頁 × 256(定點小數,第 2.5 頁 = 640)。
+   停穩時也會用整數頁再回報一次。右緣的點點輪盤靠它連續轉動。 */
+typedef void (*left_cards_scroll_cb_t)(int32_t page_x256);
 
 /* 在 parent 底下建立(或重建)整組卡片,停在第 start 張。已存在則先拆掉。 */
 lv_obj_t *left_cards_show(lv_obj_t *parent, const left_card_t *cards, uint8_t n, uint8_t start,
-                          left_cards_tap_cb_t on_tap, left_cards_page_cb_t on_page);
+                          left_cards_tap_cb_t on_tap, left_cards_page_cb_t on_page,
+                          left_cards_scroll_cb_t on_scroll);
 void left_cards_hide(void);
 bool left_cards_visible(void);
 uint8_t left_cards_current(void);

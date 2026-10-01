@@ -647,6 +647,9 @@ lv_obj_t *app_icon_shadow[MAX_LIST_ITEMS];
 static bool is_indicator_dots_visible = true;
 static uint16_t selected_item_index = 0;
 static uint16_t last_zoom[MAX_LIST_ITEMS] = {0};
+/* 右緣點點輪盤的整體縮放(圖示大小與每格角度一起縮,輪盤只是變成縮小版):1 = 列清單模式的原樣,
+   整頁卡片模式縮成 50%(founder 2026-10-01:「還是要像之前的樣式一樣,只是變小 50%」)。 */
+static float s_dot_scale = 1.0f;
 
 /* SKAIBAR option-tracking session lifetime — decoupled from
    is_open_instruction_list_ai. The voice/v2t session ends when the
@@ -742,7 +745,7 @@ static void update_indicator_dots_position(int input_value)
     const int center_x = LV_HOR_RES / 2 - 20;
     const int center_y = LV_VER_RES / 2;
 
-    const float angle_per_dot = 36.0f; /* 跟 app_exercise.c 的 ICON_SLOT_ANGLE_DEG=36 對齊 */
+    const float angle_per_dot = 36.0f * s_dot_scale; /* 跟 app_exercise.c 的 ICON_SLOT_ANGLE_DEG=36 對齊 */
 
     float base_input = 63.0f;
     float degrees_per_200_input = angle_per_dot;
@@ -836,7 +839,7 @@ static void update_indicator_dots_position(int input_value)
          * 邊緣 dot 快速縮小，視覺上中央更突出 */
         float zoom_ratio = powf(ratio, DOT_ZOOM_EXPONENT);
         uint16_t zoom =
-            (uint16_t)(255 * DOT_ICON_SCALE *
+            (uint16_t)(255 * DOT_ICON_SCALE * s_dot_scale *
                        (DOT_SMOLL_PROPORTION +
                         (DOT_BIG_PROPORTION - DOT_SMOLL_PROPORTION) * zoom_ratio));
         if (abs((int)zoom - (int)last_zoom[i]) > 5)
@@ -6806,6 +6809,13 @@ static void lc_tap_cb(uint8_t card)
     list_item_activate(&list_items[s_lc_item[card]]);
 }
 
+/* 翻頁途中每一幀:把「捲到第幾頁(×256)」換成原本點點輪盤吃的 input 值(第 i 項 = 100*N-63-100*i,
+   見 gesture_starting_value),輪盤就跟著手連續轉,不是停下來才跳。 */
+static void lc_scroll_cb(int32_t page_x256)
+{
+    update_indicator_dots_position(100 * (int)list_item_count - 63 - (int)((100 * page_x256) / 256));
+}
+
 static void lc_page_cb(uint8_t card)
 {
     if (card < s_lc_n && s_lc_item[card] < list_item_count)
@@ -6825,16 +6835,25 @@ static void lc_set_rows_hidden(bool hide)
         else
             lv_obj_clear_flag(list, LV_OBJ_FLAG_HIDDEN);
     }
+    /* 右緣點點:不藏,沿用原本那圈圖示輪盤,卡片模式縮成 50%、浮到卡片上面、不接點擊(點擊歸卡片),
+       位置由卡片翻頁連續驅動(lc_scroll_cb)。 */
+    s_dot_scale = hide ? 0.5f : 1.0f;
     for (uint8_t i = 0; i < MAX_LIST_ITEMS; i++)
     {
         lv_obj_t *d = p_instruction_list_layout->indicator_dots_bg[i];
         if (d == NULL || !lv_obj_is_valid(d))
             continue;
         if (hide)
-            lv_obj_add_flag(d, LV_OBJ_FLAG_HIDDEN);
+        {
+            lv_obj_clear_flag(d, LV_OBJ_FLAG_CLICKABLE);
+            lv_obj_move_foreground(d);
+        }
         else
-            lv_obj_clear_flag(d, LV_OBJ_FLAG_HIDDEN);
+            lv_obj_add_flag(d, LV_OBJ_FLAG_CLICKABLE);
+        last_zoom[i] = 0; /* 縮放比例換了,強制重算每顆的 zoom */
     }
+    update_indicator_dots_position(100 * (int)list_item_count - 63 -
+                                   100 * (int)(hide ? left_cards_current() : selected_item_index));
     if (p_instruction_list_layout->arc_handle != NULL)
         arc_scroll_set_enabled(p_instruction_list_layout->arc_handle, !hide);
     s_lc_rows_hidden = hide;
@@ -6926,7 +6945,7 @@ static void left_cards_sync(void)
     s_lc_n = n;
     s_lc_sig = sig;
     s_lc_ssig = ssig;
-    left_cards_show(bg, s_lc_cards, n, start, lc_tap_cb, lc_page_cb);
+    left_cards_show(bg, s_lc_cards, n, start, lc_tap_cb, lc_page_cb, lc_scroll_cb);
     lc_set_rows_hidden(true);
     LOG_W("[cards] show n=%u start=%u", (unsigned)n, (unsigned)start);
 }

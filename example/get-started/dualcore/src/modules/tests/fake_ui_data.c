@@ -846,7 +846,7 @@ static void sim_cards_async_cb(void *arg)
         {"鎖定電腦", "", NULL, "執行", 0x4A5B78},
     };
     left_cards_show(lv_layer_top(), cards, sizeof(cards) / sizeof(cards[0]), (uint8_t)s_sim_cards_start,
-                    sim_card_tap, NULL);
+                    sim_card_tap, NULL, NULL);
 }
 
 static int sim_cards(int argc, char *argv[])

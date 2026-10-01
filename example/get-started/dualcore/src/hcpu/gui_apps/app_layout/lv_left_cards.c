@@ -19,21 +19,17 @@
 #define ICON_GAP 14   /* 圖示與標題的間距 */
 #define TITLE_Y 98    /* 圖示+標題那一列的上緣 */
 #define SUB_Y 170     /* 說明上緣 */
-#define SUB_W 298
+#define SUB_W 280      /* 右緣讓出點點輪盤(最大那顆縮成一半後約 66px) */
 #define BTN_W 236
 #define BTN_H 64
 #define BTN_Y 334
-#define RAIL_MAX 9    /* 右緣圓點最多顯示幾顆 */
 
 static lv_obj_t *s_pager = NULL;
-static lv_obj_t *s_rail = NULL;
 static const left_card_t *s_cards = NULL;
 static uint8_t s_n = 0;
 static uint8_t s_cur = 0;
 static lv_obj_t *s_card[LEFT_CARDS_MAX];
 static bool s_filled[LEFT_CARDS_MAX];
-static lv_obj_t *s_dot[RAIL_MAX];
-static uint8_t s_dot_n = 0;
 static bool s_rounded = false; /* 滑動中:目前那張卡是圓盤,後面疊光暈 */
 
 /* 柔邊(founder 2026-09-30 給的小米照片:滑入那一頁的前緣是一圈柔化的漸層,不是清楚的線)。
@@ -55,6 +51,7 @@ static const lv_img_dsc_t s_halo_dsc = {
 };
 static left_cards_tap_cb_t s_on_tap = NULL;
 static left_cards_page_cb_t s_on_page = NULL;
+static left_cards_scroll_cb_t s_on_scroll = NULL;
 
 static void card_click_cb(lv_event_t *e)
 {
@@ -164,38 +161,6 @@ static void fill_card(uint8_t i)
     s_filled[i] = true;
 }
 
-/* 右緣圓點:目前這張是白色長條,其餘是暗點。卡片多於 RAIL_MAX 張時圓點數固定,目前位置按比例對應
-   (只表示「大概在第幾段」,不是一張一顆)。 */
-static uint8_t rail_current_dot(void)
-{
-    if (s_n <= s_dot_n || s_n < 2)
-        return s_cur;
-    return (uint8_t)(((uint32_t)s_cur * (s_dot_n - 1) + (s_n - 1) / 2) / (s_n - 1));
-}
-
-static void rail_update(void)
-{
-    if (s_rail == NULL)
-        return;
-    uint8_t cur_dot = rail_current_dot();
-    for (uint8_t i = 0; i < s_dot_n; i++)
-    {
-        bool on = (i == cur_dot);
-        lv_obj_set_size(s_dot[i], 6, on ? 16 : 6);
-        lv_obj_set_style_bg_opa(s_dot[i], on ? LV_OPA_COVER : LV_OPA_40, 0);
-    }
-    /* 尺寸變了,重新對位(圓弧上的 x 依 y 變) */
-    const lv_coord_t step = 20;
-    lv_coord_t total = (lv_coord_t)(s_dot_n - 1) * step;
-    float r = (float)CARD_W / 2.0f;
-    for (uint8_t i = 0; i < s_dot_n; i++)
-    {
-        float d = (float)(-total / 2 + (lv_coord_t)i * step);
-        float half = sqrtf(r * r - d * d);
-        lv_obj_align(s_dot[i], LV_ALIGN_CENTER, (lv_coord_t)(half - 24), (lv_coord_t)d);
-    }
-}
-
 static uint8_t page_from_scroll(void)
 {
     lv_coord_t y = lv_obj_get_scroll_y(s_pager);
@@ -225,14 +190,24 @@ static void settle_page(uint8_t idx)
         else
             clear_card(i);
     }
-    rail_update();
+    if (s_on_scroll != NULL)
+        s_on_scroll((int32_t)idx * 256);
     if (s_on_page != NULL)
         s_on_page(idx);
 }
 
 static void pager_event_cb(lv_event_t *e)
 {
-    if (lv_event_get_code(e) != LV_EVENT_SCROLL_END || s_pager == NULL)
+    lv_event_code_t code = lv_event_get_code(e);
+    if (s_pager == NULL)
+        return;
+    if (code == LV_EVENT_SCROLL)
+    {
+        if (s_on_scroll != NULL)
+            s_on_scroll((int32_t)lv_obj_get_scroll_y(s_pager) * 256 / CARD_H);
+        return;
+    }
+    if (code != LV_EVENT_SCROLL_END)
         return;
     uint8_t idx = page_from_scroll();
     if (idx != s_cur)
@@ -240,7 +215,8 @@ static void pager_event_cb(lv_event_t *e)
 }
 
 lv_obj_t *left_cards_show(lv_obj_t *parent, const left_card_t *cards, uint8_t n, uint8_t start,
-                          left_cards_tap_cb_t on_tap, left_cards_page_cb_t on_page)
+                          left_cards_tap_cb_t on_tap, left_cards_page_cb_t on_page,
+                          left_cards_scroll_cb_t on_scroll)
 {
     left_cards_hide();
     if (parent == NULL || cards == NULL || n == 0)
@@ -253,6 +229,7 @@ lv_obj_t *left_cards_show(lv_obj_t *parent, const left_card_t *cards, uint8_t n,
     s_n = n;
     s_on_tap = on_tap;
     s_on_page = on_page;
+    s_on_scroll = on_scroll;
     memset(s_card, 0, sizeof(s_card));
     memset(s_filled, 0, sizeof(s_filled));
     s_rounded = false;
@@ -280,6 +257,7 @@ lv_obj_t *left_cards_show(lv_obj_t *parent, const left_card_t *cards, uint8_t n,
     lv_obj_set_scroll_snap_y(s_pager, LV_SCROLL_SNAP_START);
     lv_obj_set_scrollbar_mode(s_pager, LV_SCROLLBAR_MODE_OFF);
     lv_obj_add_event_cb(s_pager, pager_event_cb, LV_EVENT_SCROLL_END, NULL);
+    lv_obj_add_event_cb(s_pager, pager_event_cb, LV_EVENT_SCROLL, NULL);
 
     for (uint8_t i = 0; i < n; i++)
     {
@@ -297,24 +275,6 @@ lv_obj_t *left_cards_show(lv_obj_t *parent, const left_card_t *cards, uint8_t n,
         s_card[i] = card;
     }
 
-    s_dot_n = (n > 1) ? ((n <= RAIL_MAX) ? n : RAIL_MAX) : 0; /* 只有一張就沒有點點 */
-    if (s_dot_n > 0)
-    {
-        s_rail = lv_obj_create(parent);
-        lv_obj_remove_style_all(s_rail);
-        lv_obj_set_size(s_rail, CARD_W, CARD_H);
-        lv_obj_set_pos(s_rail, 0, 0);
-        lv_obj_clear_flag(s_rail, LV_OBJ_FLAG_CLICKABLE | LV_OBJ_FLAG_SCROLLABLE);
-        for (uint8_t i = 0; i < s_dot_n; i++)
-        {
-            s_dot[i] = lv_obj_create(s_rail);
-            lv_obj_remove_style_all(s_dot[i]);
-            lv_obj_set_style_radius(s_dot[i], 3, 0);
-            lv_obj_set_style_bg_color(s_dot[i], lv_color_white(), 0);
-            lv_obj_clear_flag(s_dot[i], LV_OBJ_FLAG_CLICKABLE | LV_OBJ_FLAG_SCROLLABLE);
-        }
-    }
-
     lv_obj_update_layout(s_pager);
     lv_obj_scroll_to_y(s_pager, (lv_coord_t)start * CARD_H, LV_ANIM_OFF);
     settle_page(start);
@@ -327,21 +287,17 @@ void left_cards_hide(void)
     lv_obj_t *halo = s_halo_img;
     s_halo_img = NULL;
     lv_obj_t *pager = s_pager;
-    lv_obj_t *rail = s_rail;
     s_pager = NULL;
-    s_rail = NULL;
     s_n = 0;
     s_cur = 0;
-    s_dot_n = 0;
     s_on_tap = NULL;
     s_on_page = NULL;
+    s_on_scroll = NULL;
     s_cards = NULL;
     memset(s_card, 0, sizeof(s_card));
     memset(s_filled, 0, sizeof(s_filled));
     if (halo != NULL && lv_obj_is_valid(halo))
         lv_obj_del(halo);
-    if (rail != NULL && lv_obj_is_valid(rail))
-        lv_obj_del(rail);
     if (pager != NULL && lv_obj_is_valid(pager))
         lv_obj_del(pager);
 }
