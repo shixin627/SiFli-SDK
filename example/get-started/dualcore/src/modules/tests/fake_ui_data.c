@@ -789,19 +789,25 @@ static void seed_left_async_cb(void *arg)
     {
         const char *id, *title, *sub;
         char cat;
+        const char *ico, *app; /* NULL = 沿用 icos[] / 無 openApp */
     } rows[] = {
         {"seed-music", "\xE6\x92\xAD" "\xE6\x94\xBE" "\xE9\x9F\xB3" "\xE6\xA8\x82", "\xE4\xB8\x8A" "\xE6\xAC\xA1" "\xEF\xBC\x9A" "\xE5\xA4\x9C" "\xE7\xA9\xBA" "\xE4\xB8\xAD" "\xE6\x9C\x80" "\xE4\xBA\xAE" "\xE7\x9A\x84" "\xE6\x98\x9F", '/'},
         {"seed-weather", "\xE7\x9C\x8B" "\xE5\xA4\xA9" "\xE6\xB0\xA3", "\xE5\x8F\xB0" "\xE5\x8C\x97" " 27\xC2\xB0" " \xE5\xA4\x9A" "\xE9\x9B\xB2" "\xEF\xBC\x8C" "\xE4\xB8\x8B" "\xE5\x8D\x88" "\xE5\x8F\xAF" "\xE8\x83\xBD" "\xE6\x9C\x89" "\xE9\x9B\xA8", '/'},
         {"seed-lock", "\xE9\x8E\x96" "\xE5\xAE\x9A" "\xE9\x9B\xBB" "\xE8\x85\xA6", "", '/'},
         {"seed-bot", "SkaiBot", "\xE6\x97\xA9" "\xE5\xAE\x89" "\xEF\xBC\x81" "\xE4\xBB\x8A" "\xE5\xA4\xA9" " 10:30 \xE6\x9C\x89" "\xE6\x9C\x83" "\xE8\xAD\xB0" "\xEF\xBC\x8C" "\xE8\xA8\x98" "\xE5\xBE\x97" "\xE5\xB8\xB6" "\xE7\xAD\x86" "\xE9\x9B\xBB" "\xEF\xBC\x8C" "\xE5\x87\xBA" "\xE9\x96\x80" "\xE5\x89\x8D" "\xE7\x9C\x8B" "\xE4\xB8\x80" "\xE4\xB8\x8B" "\xE5\xA4\xA9" "\xE6\xB0\xA3", '@'},
+        /* 錶上的 app 列:不推描述,內容由錶自己算(步數/鬧鐘)或給一句話用途(手電筒) */
+        {"seed-steps", "Steps", "", '/', "watchapp", "exercise"},
+        {"seed-flash", "Flashlight", "", '/', "watchapp", "flashlight"},
+        {"seed-alarm", "Alarm", "", '/', "watchapp", "alarm"},
     };
     clear_custom_instructions();
     for (unsigned i = 0; i < sizeof(rows) / sizeof(rows[0]); i++)
     {
-        add_or_update_custom_instruction(rows[i].id, rows[i].title, "", 0, false, 0, "");
+        add_or_update_custom_instruction(rows[i].id, rows[i].title, "", 0, false, 0,
+                                         rows[i].app != NULL ? rows[i].app : "");
         set_instruction_category(rows[i].id, rows[i].cat);
         set_instruction_sub(rows[i].id, rows[i].sub);
-        set_instruction_type_icon(rows[i].id, icos[i]);
+        set_instruction_type_icon(rows[i].id, rows[i].ico != NULL ? rows[i].ico : (i < 4 ? icos[i] : NULL));
     }
     refresh_custom_instructions();
     rt_kprintf("sim_seed_left: %u rows seeded\n", (unsigned)(sizeof(rows) / sizeof(rows[0])));

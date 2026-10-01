@@ -369,6 +369,18 @@ void left_cards_set_slide(lv_coord_t tx)
     }
 }
 
+void left_cards_refresh(void)
+{
+    if (s_pager == NULL || !lv_obj_is_valid(s_pager))
+        return;
+    for (uint8_t i = 0; i < s_n; i++)
+        if (s_filled[i])
+        {
+            clear_card(i);
+            fill_card(i);
+        }
+}
+
 bool left_cards_visible(void)
 {
     return s_pager != NULL && lv_obj_is_valid(s_pager);

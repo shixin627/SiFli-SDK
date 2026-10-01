@@ -6640,8 +6640,10 @@ void instruction_list_activate_index(uint8_t i)
    只有「左頁瀏覽態」才用卡片:語音搜尋開著(文字篩選/AI 輸入框)、滑鼠 app 單設備抽屜都退回列清單。 */
 static left_card_t s_lc_cards[LEFT_CARDS_MAX];
 static uint8_t s_lc_item[LEFT_CARDS_MAX]; /* 第幾張卡 → list_items[] 的索引 */
+static char s_lc_subbuf[LEFT_CARDS_MAX][LIST_SUB_LEN]; /* 即時內容的存放(卡片只存指標) */
 static uint8_t s_lc_n = 0;
 static uint32_t s_lc_sig = 0;
+static uint32_t s_lc_ssig = 0; /* 說明文字的雜湊(單獨一個,內容變了只重畫不重建) */
 static bool s_lc_rows_hidden = false;
 
 static bool left_cards_wanted(void)
@@ -6659,6 +6661,121 @@ static const char *lc_btn_for(const list_item_t *it)
     if (it->open_app[0] != '\0')
         return "開啟";
     return "執行";
+}
+
+/* 每一列都要有一行「大概內容」(founder 2026-10-01:「所有的 app 都要」)。來源依序:
+   ① 錶上現成的即時資料(步數/天氣/鬧鐘/電量/現在播放)—— 手機推來的描述不會比它新;
+   ② 手機推來的 `sub`(Action 的描述 → 第一個步驟標籤 → 連結對話的來源;Bot 列是主動提醒或「在哪台電腦執行」);
+   ③ 內建 app 的一句話用途(只有沒有即時資料可秀、手機也沒給描述的 openApp 列)。
+   都沒有就留白,不編填充字。 */
+static const char *lc_blurb(const char *app)
+{
+    if (app == NULL || app[0] == '\0')
+        return NULL;
+    if (strcmp(app, APP_ID_FLASHLIGHT) == 0)
+        return "把螢幕當手電筒用";
+#ifdef APP_ID_TIMER
+    if (strcmp(app, APP_ID_TIMER) == 0)
+        return "計時與倒數";
+#endif
+#ifdef APP_ID_RECORDER
+    if (strcmp(app, APP_ID_RECORDER) == 0)
+        return "錄一段語音";
+#endif
+#ifdef APP_ID_CALCULATOR
+    if (strcmp(app, APP_ID_CALCULATOR) == 0)
+        return "簡易計算機";
+#endif
+#ifdef APP_ID_PHOTO
+    if (strcmp(app, APP_ID_PHOTO) == 0)
+        return "遙控手機拍照";
+#endif
+    return NULL;
+}
+
+extern char *get_media_title(void);
+static bool lc_live_sub(const list_item_t *it, uint8_t ai, char *buf, size_t n)
+{
+    const char *app = it->open_app;
+    bool has_app = (app[0] != '\0');
+
+    if (has_app && strcmp(app, APP_ID_EXERCISE) == 0)
+    {
+        uint32_t steps = SkaiWatchSys.gPedoData.global_steps;
+        uint32_t target = SkaiWatchSys.gPedoData.daily_step_target;
+        if (target > 0)
+            rt_snprintf(buf, n, "今日步數 %u / %u", (unsigned)steps, (unsigned)target);
+        else
+            rt_snprintf(buf, n, "今日步數 %u", (unsigned)steps);
+        return true;
+    }
+#ifdef BSP_USING_BLOC
+    if ((has_app && strcmp(app, APP_ID_WEATHER) == 0) || ai == ACC_WEATHER)
+    {
+        weather_t *w = get_weather(0);
+        if (w != NULL && w->description[0] != '\0')
+        {
+            rt_snprintf(buf, n, "%d° %s", (int)w->temperature, w->description);
+            return true;
+        }
+    }
+#endif
+#ifdef APP_ID_ALARM
+    if (has_app && strcmp(app, APP_ID_ALARM) == 0)
+    {
+        char *p = buf;
+        size_t left = n;
+        int shown = 0;
+        for (uint8_t i = 0; i < MAX_ALARM_NUM && i < SkaiWatchSys.alarm_num; i++)
+        {
+            if (SkaiWatchSys.alarms[i].data == 0)
+                continue;
+            int w = rt_snprintf(p, left, "%s%02u:%02u", shown ? "、" : "",
+                                (unsigned)SkaiWatchSys.alarms[i].alarm.hour,
+                                (unsigned)SkaiWatchSys.alarms[i].alarm.minute);
+            if (w < 0 || (size_t)w >= left)
+                break;
+            p += w;
+            left -= (size_t)w;
+            shown++;
+        }
+        if (shown == 0)
+            rt_snprintf(buf, n, "尚未設定鬧鐘");
+        return true;
+    }
+#endif
+    if (has_app && (strcmp(app, APP_ID_BATTERY) == 0
+#ifdef APP_ID_SETTING
+                    || strcmp(app, APP_ID_SETTING) == 0
+#endif
+                    ))
+    {
+        rt_snprintf(buf, n, "電量 %u%%", (unsigned)SkaiWatchSys.battery_level_value);
+        return true;
+    }
+    if (ai == ACC_MUSIC)
+    {
+        const char *t = get_media_title();
+        if (t != NULL && t[0] != '\0')
+        {
+            rt_snprintf(buf, n, "正在播放 %s", t);
+            return true;
+        }
+    }
+    return false;
+}
+
+/* buf 至少 LIST_SUB_LEN 位元組;回傳要畫的那行字(可能指向旁表,也可能是 buf)。 */
+static const char *lc_sub_for(char *buf, const list_item_t *it, uint8_t ai)
+{
+    buf[0] = '\0';
+    if (lc_live_sub(it, ai, buf, LIST_SUB_LEN))
+        return buf;
+    const char *pushed = sub_of(it->id);
+    if (pushed[0] != '\0')
+        return pushed;
+    const char *b = lc_blurb(it->open_app);
+    return b != NULL ? b : "";
 }
 
 static uint32_t lc_hash(uint32_t h, const char *s)
@@ -6721,6 +6838,7 @@ static void left_cards_release(void)
     if (left_cards_visible())
         left_cards_hide();
     s_lc_sig = 0;
+    s_lc_ssig = 0;
     s_lc_n = 0;
     if (s_lc_rows_hidden)
         lc_set_rows_hidden(false);
@@ -6742,6 +6860,7 @@ static void left_cards_sync(void)
 
     uint8_t n = 0;
     uint32_t sig = 2166136261u;
+    uint32_t ssig = 2166136261u;
     for (uint8_t i = 0; i < list_item_count && n < LEFT_CARDS_MAX; i++)
     {
         const list_item_t *it = &list_items[i];
@@ -6750,13 +6869,13 @@ static void left_cards_sync(void)
         if (ai == ACC_NONE)
             ai = (it->category == '@') ? ACC_BOT : ACC_GENERIC;
         c->title = it->title;
-        c->sub = sub_of(it->id);
+        c->sub = lc_sub_for(s_lc_subbuf[n], it, ai);
         c->icon = (it->img_path[0] != '\0') ? (const void *)it->img_path : it->icon;
         c->btn = lc_btn_for(it);
         c->accent = s_accent_rgb[ai];
         s_lc_item[n] = i;
         sig = lc_hash(sig, c->title);
-        sig = lc_hash(sig, c->sub);
+        ssig = lc_hash(ssig, c->sub);
         sig = lc_hash(sig, c->btn);
         sig = lc_hash(sig, it->img_path);
         sig = lc_hash(sig, (const char *)&c->icon); /* 內建圖示指標變了也算變 */
@@ -6772,6 +6891,12 @@ static void left_cards_sync(void)
     bool shown = left_cards_visible();
     if (shown && n == s_lc_n && sig == s_lc_sig)
     {
+        /* 只有說明文字變了(步數多一步、換了一首歌):原地重畫卡片內容,不重建翻頁容器 */
+        if (ssig != s_lc_ssig && !left_cards_busy())
+        {
+            s_lc_ssig = ssig;
+            left_cards_refresh();
+        }
         lc_set_rows_hidden(true); /* refresh 剛重建了指示點,再藏一次 */
         return;
     }
@@ -6792,6 +6917,7 @@ static void left_cards_sync(void)
         start = (uint8_t)(n - 1);
     s_lc_n = n;
     s_lc_sig = sig;
+    s_lc_ssig = ssig;
     left_cards_show(bg, s_lc_cards, n, start, lc_tap_cb, lc_page_cb);
     lc_set_rows_hidden(true);
     LOG_W("[cards] show n=%u start=%u", (unsigned)n, (unsigned)start);
@@ -7887,7 +8013,11 @@ static void create_list_items_ui(lv_obj_t *list, uint8_t start_idx,
         /* 預覽行:旁表有這個 id 的內容才建,沒有就零成本。 */
         app_sub[i] = NULL;
         {
-            const char *sub = sub_of(list_items[i].id);
+            char sub_tmp[LIST_SUB_LEN];
+            uint8_t sub_ai = accent_idx_of(list_items[i].id);
+            if (sub_ai == ACC_NONE)
+                sub_ai = (list_items[i].category == '@') ? ACC_BOT : ACC_GENERIC;
+            const char *sub = lc_sub_for(sub_tmp, &list_items[i], sub_ai);
             if (sub[0] != '\0')
             {
                 const lv_font_t *sub_font = LV_EXT_FONT_GET(get_system_font_size(-1));
