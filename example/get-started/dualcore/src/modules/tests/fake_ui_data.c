@@ -781,7 +781,9 @@ static void seed_left_async_cb(void *arg)
                                                  const char *open_app);
     extern void set_instruction_category(const char *id, char cat);
     extern bool set_instruction_sub(const char *id, const char *sub);
+    extern void set_instruction_type_icon(const char *id, const char *ico);
     extern void refresh_custom_instructions(void);
+    static const char *const icos[] = {"music", "weather", "generic", NULL};
     static const struct
     {
         const char *id, *title, *sub;
@@ -798,6 +800,7 @@ static void seed_left_async_cb(void *arg)
         add_or_update_custom_instruction(rows[i].id, rows[i].title, "", 0, false, 0, "");
         set_instruction_category(rows[i].id, rows[i].cat);
         set_instruction_sub(rows[i].id, rows[i].sub);
+        set_instruction_type_icon(rows[i].id, icos[i]);
     }
     refresh_custom_instructions();
     rt_kprintf("sim_seed_left: %u rows seeded\n", (unsigned)(sizeof(rows) / sizeof(rows[0])));
@@ -816,3 +819,51 @@ static int sim_seed_left(int argc, char *argv[])
     return 0;
 }
 MSH_CMD_EXPORT(sim_seed_left, sim_seed_left [row] - seed the left-page list with previews, park on row (sim));
+
+/* 整頁彩色卡片(lv_left_cards.c)單獨在 sim 上畫出來:`sim_cards [起始張]`。 */
+#include "lv_left_cards.h"
+static int s_sim_cards_start;
+
+static void sim_card_tap(uint8_t idx) { rt_kprintf("sim_cards: tap %u\n", (unsigned)idx); }
+
+static void sim_cards_async_cb(void *arg)
+{
+    (void)arg;
+    static const left_card_t cards[] = {
+        {"SkaiBot", "今天 AI 與科技新品重點：1. OpenAI 發布 GPT-6，價格只有旗艦的五分之一 2. 另一家暫緩新模型", NULL, "進入聊天", 0x1F6F5C},
+        {"播放音樂", "上次：夜空中最亮的星", NULL, "執行", 0x6B3FA0},
+        {"看天氣", "台北 27° 多雲，下午可能有雨，記得帶傘出門", NULL, "開啟", 0x2F6FB5},
+        {"鎖定電腦", "", NULL, "執行", 0x4A5B78},
+    };
+    left_cards_show(lv_layer_top(), cards, sizeof(cards) / sizeof(cards[0]), (uint8_t)s_sim_cards_start,
+                    sim_card_tap, NULL);
+}
+
+static int sim_cards(int argc, char *argv[])
+{
+    s_sim_cards_start = (argc > 1) ? atoi(argv[1]) : 0;
+    lv_async_call(sim_cards_async_cb, NULL);
+    return 0;
+}
+MSH_CMD_EXPORT(sim_cards, sim_cards [start] - show the full-page left cards on the sim);
+
+/* Print the CJK font line height behind each font-size index (0..6) — which index is big enough for a card title. */
+#include "ui_helper.h"
+#include "lv_ext_resource_manager.h"
+static void sim_fonts_async_cb(void *arg)
+{
+    (void)arg;
+    rt_kprintf("sim_fonts: system font_size=%d\n", (int)SkaiWatchSys.font_size);
+    for (int i = 0; i <= 6; i++)
+    {
+        const lv_font_t *f = LV_EXT_FONT_GET((uint16_t)i);
+        rt_kprintf("sim_fonts: idx %d -> line_height %d\n", i, f ? (int)lv_font_get_line_height(f) : -1);
+    }
+}
+static int sim_fonts(int argc, char *argv[])
+{
+    (void)argc; (void)argv;
+    lv_async_call(sim_fonts_async_cb, NULL);
+    return 0;
+}
+MSH_CMD_EXPORT(sim_fonts, sim_fonts - print line height per font-size index);

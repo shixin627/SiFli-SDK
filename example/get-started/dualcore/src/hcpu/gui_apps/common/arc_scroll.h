@@ -80,6 +80,10 @@ arc_scroll_handle_t *arc_scroll_create(const arc_scroll_config_t *cfg);
 /* item 數變動時更新（影響 scroll 上下界 clamp） */
 void arc_scroll_set_item_count(arc_scroll_handle_t *handle, uint16_t count);
 
+/* 停用 / 恢復整條弧帶(overlay 藏起來 = 不參與 hit-test,也不會搶右緣的直向滑動)。
+ * 給「同一個頁面在某些模式下由別的東西接管捲動」用(左頁整頁卡片)。 */
+void arc_scroll_set_enabled(arc_scroll_handle_t *handle, bool enabled);
+
 /* 把 overlay 移到父物件 children list 最後（= z-order 最上）。在外部重建
  * sibling（例如 indicator dots）之後呼叫，避免新建的 sibling 蓋在 overlay
  * 上面、把 press 從 arc_zone 搶走。 */

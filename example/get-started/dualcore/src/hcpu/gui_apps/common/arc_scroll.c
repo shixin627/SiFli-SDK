@@ -417,6 +417,15 @@ void arc_scroll_set_item_count(arc_scroll_handle_t *h, uint16_t count)
     if (h != NULL) h->cfg.item_count = count;
 }
 
+void arc_scroll_set_enabled(arc_scroll_handle_t *h, bool enabled)
+{
+    if (h == NULL || h->overlay == NULL || !lv_obj_is_valid(h->overlay)) return;
+    if (enabled)
+        lv_obj_clear_flag(h->overlay, LV_OBJ_FLAG_HIDDEN);
+    else
+        lv_obj_add_flag(h->overlay, LV_OBJ_FLAG_HIDDEN);
+}
+
 void arc_scroll_bring_to_front(arc_scroll_handle_t *h)
 {
     if (h == NULL) return;

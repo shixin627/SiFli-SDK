@@ -57,6 +57,7 @@
 #include "ui_img_helper.h"
 #include "lv_chat_page.h"
 #include "lv_session_pager.h"
+#include "lv_left_cards.h"
 #include "voice_ai_logo.h"
 
 #ifndef M_PI
@@ -1284,6 +1285,91 @@ bool set_instruction_sub(const char *id, const char *sub)
     s_sub_txt[slot][n] = '\0';
     return true;
 }
+
+/* ── 整頁卡片(lv_left_cards.c):色板 + 每列的底色索引 ──────────────────────────
+   底色跟著「這一列是什麼」:手機每個 Action 已經帶 `ico` 類型 slug(0x65/0x6B),韌體照它挑色,
+   不必多一個協定欄位;@ 聊天列 = Bot 色;沒有類型的 = 通用石板藍。飽和的深色(小米卡片的樣子),
+   卡片模組自己把底端再壓暗。旁表以 id 雜湊為鍵,理由同預覽旁表(不動 list_item_t)。 */
+enum
+{
+    ACC_BOT = 0, ACC_MUSIC, ACC_NAV, ACC_DRIVE, ACC_WEB, ACC_TRANSLATE, ACC_CURRENCY,
+    ACC_STOCK, ACC_WEATHER, ACC_NOTIFY, ACC_CAMERA, ACC_WATCHAPP, ACC_CHAT, ACC_GENERIC,
+    ACC_COUNT,
+    ACC_NONE = 255
+};
+static const uint32_t s_accent_rgb[ACC_COUNT] = {
+    0x1E6B57, /* bot */      0x6B3FA0, /* music */    0xB5601C, /* navigation */
+    0xA8481E, /* drive */    0x3556A6, /* webpage */  0x4650B5, /* translate */
+    0x2C7A55, /* currency */ 0x2C7A4A, /* stock */    0x2F6FB5, /* weather */
+    0xA9801B, /* notify */   0x555B66, /* camera */   0x1F7A85, /* watch app */
+    0x2A7B4F, /* chat */     0x465A78, /* generic */
+};
+static uint32_t s_acc_key[MAX_LIST_ITEMS];
+static uint8_t s_acc_idx[MAX_LIST_ITEMS];
+static uint8_t s_acc_next;
+
+static uint8_t accent_idx_for_slug(const char *slug)
+{
+    static const struct
+    {
+        const char *slug;
+        uint8_t idx;
+    } t[] = {
+        {"music", ACC_MUSIC},     {"navigation", ACC_NAV},   {"drive", ACC_DRIVE},
+        {"webpage", ACC_WEB},     {"translate", ACC_TRANSLATE}, {"currency", ACC_CURRENCY},
+        {"stock", ACC_STOCK},     {"weather", ACC_WEATHER},  {"notification", ACC_NOTIFY},
+        {"camera", ACC_CAMERA},   {"watchapp", ACC_WATCHAPP}, {"chat", ACC_CHAT},
+        {"generic", ACC_GENERIC},
+    };
+    if (slug == NULL)
+        return ACC_NONE;
+    for (unsigned i = 0; i < sizeof(t) / sizeof(t[0]); i++)
+        if (strcmp(slug, t[i].slug) == 0)
+            return t[i].idx;
+    return ACC_NONE;
+}
+
+/* 記下(或清掉)某列的底色;slug 缺席/不認得 = 清掉,批次整份取代時手機不再送就代表沒有類型了。 */
+static void accent_store(const char *id, const char *slug)
+{
+    if (id == NULL || id[0] == '\0')
+        return;
+    uint8_t idx = accent_idx_for_slug(slug);
+    uint32_t k = sub_key_of(id);
+    int slot = -1, empty = -1;
+    for (uint8_t i = 0; i < MAX_LIST_ITEMS; i++)
+    {
+        if (s_acc_key[i] == k)
+        {
+            slot = i;
+            break;
+        }
+        if (empty < 0 && s_acc_key[i] == 0)
+            empty = i;
+    }
+    if (idx == ACC_NONE)
+    {
+        if (slot >= 0)
+            s_acc_key[slot] = 0;
+        return;
+    }
+    if (slot < 0)
+        slot = (empty >= 0) ? empty : (int)(s_acc_next++ % MAX_LIST_ITEMS);
+    s_acc_key[slot] = k;
+    s_acc_idx[slot] = idx;
+}
+
+static uint8_t accent_idx_of(const char *id)
+{
+    uint32_t k = sub_key_of(id);
+    for (uint8_t i = 0; i < MAX_LIST_ITEMS; i++)
+        if (s_acc_key[i] == k)
+            return s_acc_idx[i];
+    return ACC_NONE;
+}
+
+static void left_cards_sync(void);
+static void left_cards_release(void);
 static lv_obj_t *widget_img = NULL;
 static bool left_hand_mode = true;
 static bool need_correction = false;
@@ -2046,6 +2132,12 @@ static bool s_vdrag_locked = false;
 static void list_window_scroll_event_cb(lv_event_t *evt)
 {
     lv_obj_t *obj = evt->target;
+    /* 整頁卡片自己管直向翻頁:它的 SCROLL 事件冒泡上來時 target 是翻頁容器,不能交給下面的
+       列清單邏輯(scroll_list 會把卡片當列去排)。按壓/手勢事件照走 —— 右滑返回靠它。 */
+    if ((evt->code == LV_EVENT_SCROLL_BEGIN || evt->code == LV_EVENT_SCROLL ||
+         evt->code == LV_EVENT_SCROLL_END) &&
+        left_cards_owns(obj))
+        return;
     switch (evt->code)
     {
     case LV_EVENT_SCROLL_BEGIN:
@@ -4660,6 +4752,7 @@ static void inst_list_slide_out_done_cb(lv_anim_t *a)
 {
     (void)a;
     s_entry_landing_pending = false; /* R50:清單關了,進場落點的任務結束 */
+    left_cards_release();            /* 整頁卡片一併拆掉(heap),列清單還原可見 */
     /* R55:搜尋字不跨開關殘留 —— 下次拉開要看到完整清單,不是上次講到一半的篩選結果。 */
     if (s_text_filter[0] != '\0')
     {
@@ -6510,6 +6603,170 @@ void instruction_list_activate_index(uint8_t i)
     list_item_activate(&list_items[i]);
 }
 
+/* ── 左頁整頁彩色卡片(founder 2026-09-30:「照整頁彩色卡片做」)──────────────────────
+   卡片掛在既有的浮層 bg 底下,蓋住原本的列清單:浮層的開/關、滑入動畫、右滑返回、底部 mic
+   全都沿用,只是「看到的東西」從列輪播換成一張張整頁卡。列清單本身照舊建好(只是藏起來),
+   所以 selected_item_index、落點、注入、篩選這些狀態機一個都沒動 —— 卡片只是它的另一種畫法。
+   只有「左頁瀏覽態」才用卡片:語音搜尋開著(文字篩選/AI 輸入框)、滑鼠 app 單設備抽屜都退回列清單。 */
+static left_card_t s_lc_cards[LEFT_CARDS_MAX];
+static uint8_t s_lc_item[LEFT_CARDS_MAX]; /* 第幾張卡 → list_items[] 的索引 */
+static uint8_t s_lc_n = 0;
+static uint32_t s_lc_sig = 0;
+static bool s_lc_rows_hidden = false;
+
+static bool left_cards_wanted(void)
+{
+    return s_session_page_mode && !s_bar_single_device && s_text_filter[0] == '\0' &&
+           !is_open_instruction_list_ai && list_item_count > 0;
+}
+
+static const char *lc_btn_for(const list_item_t *it)
+{
+    if (it->category == '@')
+        return "進入聊天";
+    if (it->is_interval)
+        return "切換";
+    if (it->open_app[0] != '\0')
+        return "開啟";
+    return "執行";
+}
+
+static uint32_t lc_hash(uint32_t h, const char *s)
+{
+    for (; s && *s; s++)
+    {
+        h ^= (uint8_t)*s;
+        h *= 16777619u;
+    }
+    return h ^ 0x9E3779B9u; /* 欄位分隔,避免「ab」+「c」與「a」+「bc」同雜湊 */
+}
+
+/* 卡片點擊 = 點那一列(同一條 list_item_activate:@ → 進聊天室、action → 執行、openApp → 開錶上 app)。 */
+static void lc_tap_cb(uint8_t card)
+{
+    if (s_list_horiz_swipe) /* 橫滑(右滑返回)放手時也會落一個 CLICKED,別當成點擊 */
+        return;
+    if (card >= s_lc_n || s_lc_item[card] >= list_item_count)
+        return;
+    list_item_activate(&list_items[s_lc_item[card]]);
+}
+
+static void lc_page_cb(uint8_t card)
+{
+    if (card < s_lc_n && s_lc_item[card] < list_item_count)
+        selected_item_index = s_lc_item[card]; /* 讓「目前選中的項目」跟著卡片走 */
+}
+
+/* 卡片顯示時把列清單、右緣指示點、右緣弧形拖曳帶都讓開(它們會搶直向滑動,或畫在卡片上面)。 */
+static void lc_set_rows_hidden(bool hide)
+{
+    if (p_instruction_list_layout == NULL)
+        return;
+    lv_obj_t *list = p_instruction_list_layout->list;
+    if (list != NULL && lv_obj_is_valid(list))
+    {
+        if (hide)
+            lv_obj_add_flag(list, LV_OBJ_FLAG_HIDDEN);
+        else
+            lv_obj_clear_flag(list, LV_OBJ_FLAG_HIDDEN);
+    }
+    for (uint8_t i = 0; i < MAX_LIST_ITEMS; i++)
+    {
+        lv_obj_t *d = p_instruction_list_layout->indicator_dots_bg[i];
+        if (d == NULL || !lv_obj_is_valid(d))
+            continue;
+        if (hide)
+            lv_obj_add_flag(d, LV_OBJ_FLAG_HIDDEN);
+        else
+            lv_obj_clear_flag(d, LV_OBJ_FLAG_HIDDEN);
+    }
+    if (p_instruction_list_layout->arc_handle != NULL)
+        arc_scroll_set_enabled(p_instruction_list_layout->arc_handle, !hide);
+    s_lc_rows_hidden = hide;
+}
+
+/* 離開卡片模式(浮層收掉 / 改用列清單):拆卡片、還原列清單。 */
+static void left_cards_release(void)
+{
+    if (left_cards_visible())
+        left_cards_hide();
+    s_lc_sig = 0;
+    s_lc_n = 0;
+    if (s_lc_rows_hidden)
+        lc_set_rows_hidden(false);
+}
+
+/* refresh 尾端呼叫:資料變了或模式變了才動,沒變就不重建(重建會重置翻頁位置)。 */
+static void left_cards_sync(void)
+{
+    if (p_instruction_list_layout == NULL)
+        return;
+    lv_obj_t *bg = p_instruction_list_layout->p_instruction_list_bg;
+    if (bg == NULL || !lv_obj_is_valid(bg))
+        return;
+    if (!left_cards_wanted() || !instruction_list_is_visible())
+    {
+        left_cards_release();
+        return;
+    }
+
+    uint8_t n = 0;
+    uint32_t sig = 2166136261u;
+    for (uint8_t i = 0; i < list_item_count && n < LEFT_CARDS_MAX; i++)
+    {
+        const list_item_t *it = &list_items[i];
+        left_card_t *c = &s_lc_cards[n];
+        uint8_t ai = accent_idx_of(it->id);
+        if (ai == ACC_NONE)
+            ai = (it->category == '@') ? ACC_BOT : ACC_GENERIC;
+        c->title = it->title;
+        c->sub = sub_of(it->id);
+        c->icon = (it->img_path[0] != '\0') ? (const void *)it->img_path : it->icon;
+        c->btn = lc_btn_for(it);
+        c->accent = s_accent_rgb[ai];
+        s_lc_item[n] = i;
+        sig = lc_hash(sig, c->title);
+        sig = lc_hash(sig, c->sub);
+        sig = lc_hash(sig, c->btn);
+        sig = lc_hash(sig, it->img_path);
+        sig = lc_hash(sig, (const char *)&c->icon); /* 內建圖示指標變了也算變 */
+        sig ^= c->accent + n;
+        n++;
+    }
+    if (n == 0)
+    {
+        left_cards_release();
+        return;
+    }
+
+    bool shown = left_cards_visible();
+    if (shown && n == s_lc_n && sig == s_lc_sig)
+    {
+        lc_set_rows_hidden(true); /* refresh 剛重建了指示點,再藏一次 */
+        return;
+    }
+    if (shown && left_cards_busy())
+        return; /* 手指正在翻頁:等下一輪 refresh(5s 輪詢)再換資料,不然畫面會抖 */
+
+    /* 停在哪張:已經在看就留原位;剛進場就停在「選中的那一列」(進場落點規則 = 最新的 session) */
+    uint8_t start = (uint8_t)(n - 1);
+    if (shown)
+        start = left_cards_current();
+    else
+    {
+        for (uint8_t k = 0; k < n; k++)
+            if (s_lc_item[k] == selected_item_index)
+                start = k;
+    }
+    if (start >= n)
+        start = (uint8_t)(n - 1);
+    s_lc_n = n;
+    s_lc_sig = sig;
+    left_cards_show(bg, s_lc_cards, n, start, lc_tap_cb, lc_page_cb);
+    lc_set_rows_hidden(true);
+    LOG_W("[cards] show n=%u start=%u", (unsigned)n, (unsigned)start);
+}
+
 static void on_tap(void)
 {
     LOG_W("[act] on_tap sel=%u cnt=%u", (unsigned)selected_item_index,
@@ -7375,6 +7632,7 @@ void set_instruction_service_icon(const char *id, const char *svc)
    so it must lose to both. */
 void set_instruction_type_icon(const char *id, const char *ico)
 {
+    accent_store(id, ico); /* 整頁卡片的底色跟類型走,不論這個 slug 有沒有對應的小圖 */
     const char *icon = action_type_icon(ico);
     if (icon == NULL)
         return;
@@ -8192,6 +8450,8 @@ void refresh_custom_instructions(void)
     LOG_I("[RCK] F refresh tail reached (done)");
     LOG_D("refresh_custom_instructions: %d items total", list_item_count);
     s_in_refresh_scroll = false;
+
+    left_cards_sync(); /* 左頁瀏覽態 → 整頁卡片蓋在列清單上面 */
 
     /* ADR-0020:左頁的 actions 區段從 list_items[] 匯出 —— 清單落地後叫它重畫。
        這裡已經在 LVGL thread、且過了 debounce,不會抖。 */
@@ -9726,6 +9986,7 @@ void instruction_list_release_ui(void)
 {
     if (p_instruction_list_layout == NULL || s_list_ui_released)
         return;
+    left_cards_release();
     lv_obj_t *list = p_instruction_list_layout->list;
     if (list == NULL || !lv_obj_is_valid(list))
         return;
