@@ -34,6 +34,7 @@
 #include "bloc_notification.h"
 #include "ui_handler.h"
 #include "watch_global_data.h"  /* ADR-0008 E7: SkaiWatchSys.device_registry seed (sim) */
+#include "lvgl.h"               /* lv_async_call: seed commands must build UI on the LVGL thread */
 
 #define DBG_TAG "fake_ui"
 #define DBG_LVL DBG_LOG
@@ -765,3 +766,53 @@ static int pager_seed(int argc, char *argv[])
     return 0;
 }
 MSH_CMD_EXPORT(pager_seed, pager_seed [N] - seed N fake devices into device_pager (sim));
+
+/* Seed the left-page list the way the phone does -- actions ('/') and a Bot row ('@') --
+   each with a preview line (founder 2026-09-30). Then `sim_open_list` and screenshot. */
+static int s_seed_sel; /* row to park on after seeding */
+
+static void seed_left_async_cb(void *arg)
+{
+    (void)arg;
+    extern void clear_custom_instructions(void);
+    extern void add_or_update_custom_instruction(const char *id, const char *title,
+                                                 const char *trigger_type, uint32_t interval_sec,
+                                                 bool enabled, uint32_t version,
+                                                 const char *open_app);
+    extern void set_instruction_category(const char *id, char cat);
+    extern bool set_instruction_sub(const char *id, const char *sub);
+    extern void refresh_custom_instructions(void);
+    static const struct
+    {
+        const char *id, *title, *sub;
+        char cat;
+    } rows[] = {
+        {"seed-music", "\xE6\x92\xAD" "\xE6\x94\xBE" "\xE9\x9F\xB3" "\xE6\xA8\x82", "\xE4\xB8\x8A" "\xE6\xAC\xA1" "\xEF\xBC\x9A" "\xE5\xA4\x9C" "\xE7\xA9\xBA" "\xE4\xB8\xAD" "\xE6\x9C\x80" "\xE4\xBA\xAE" "\xE7\x9A\x84" "\xE6\x98\x9F", '/'},
+        {"seed-weather", "\xE7\x9C\x8B" "\xE5\xA4\xA9" "\xE6\xB0\xA3", "\xE5\x8F\xB0" "\xE5\x8C\x97" " 27\xC2\xB0" " \xE5\xA4\x9A" "\xE9\x9B\xB2" "\xEF\xBC\x8C" "\xE4\xB8\x8B" "\xE5\x8D\x88" "\xE5\x8F\xAF" "\xE8\x83\xBD" "\xE6\x9C\x89" "\xE9\x9B\xA8", '/'},
+        {"seed-lock", "\xE9\x8E\x96" "\xE5\xAE\x9A" "\xE9\x9B\xBB" "\xE8\x85\xA6", "", '/'},
+        {"seed-bot", "SkaiBot", "\xE6\x97\xA9" "\xE5\xAE\x89" "\xEF\xBC\x81" "\xE4\xBB\x8A" "\xE5\xA4\xA9" " 10:30 \xE6\x9C\x89" "\xE6\x9C\x83" "\xE8\xAD\xB0" "\xEF\xBC\x8C" "\xE8\xA8\x98" "\xE5\xBE\x97" "\xE5\xB8\xB6" "\xE7\xAD\x86" "\xE9\x9B\xBB" "\xEF\xBC\x8C" "\xE5\x87\xBA" "\xE9\x96\x80" "\xE5\x89\x8D" "\xE7\x9C\x8B" "\xE4\xB8\x80" "\xE4\xB8\x8B" "\xE5\xA4\xA9" "\xE6\xB0\xA3", '@'},
+    };
+    clear_custom_instructions();
+    for (unsigned i = 0; i < sizeof(rows) / sizeof(rows[0]); i++)
+    {
+        add_or_update_custom_instruction(rows[i].id, rows[i].title, "", 0, false, 0, "");
+        set_instruction_category(rows[i].id, rows[i].cat);
+        set_instruction_sub(rows[i].id, rows[i].sub);
+    }
+    refresh_custom_instructions();
+    rt_kprintf("sim_seed_left: %u rows seeded\n", (unsigned)(sizeof(rows) / sizeof(rows[0])));
+    extern void instruction_list_open_browse(void);
+    instruction_list_open_browse();
+    extern void instruction_list_sim_select(uint8_t idx);
+    instruction_list_sim_select((uint8_t)s_seed_sel);
+}
+
+/* FinSH runs on its own thread; refresh_custom_instructions() builds LVGL objects and the
+   list_items[] array has a single owner (the LVGL thread), so hop over first. */
+static int sim_seed_left(int argc, char *argv[])
+{
+    s_seed_sel = (argc > 1) ? atoi(argv[1]) : 0;
+    lv_async_call(seed_left_async_cb, NULL);
+    return 0;
+}
+MSH_CMD_EXPORT(sim_seed_left, sim_seed_left [row] - seed the left-page list with previews, park on row (sim));

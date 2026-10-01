@@ -1205,6 +1205,85 @@ lv_obj_t *app_icon[MAX_LIST_ITEMS];
 lv_obj_t *app_widget[MAX_LIST_ITEMS];
 lv_obj_t *touch_obj[MAX_LIST_ITEMS];
 lv_obj_t *app_label[MAX_LIST_ITEMS];
+
+/* 預覽行(founder 2026-09-30:「每個放在左邊的 actions 都可以像小米智能助理那樣有個
+   大概瀏覽,點了就是進去 app 或執行」)。選中那一列在標題下面多畫最多兩行小字。
+   資料放旁表而不是 list_item_t 的欄位:list_items 會被 s_cat_backup / s_order_tmp /
+   s_base_items 各複製一份,每列多 96B = 憑空多出 8KB 常駐 SRAM,而 R31~R33 才剛把 heap
+   用盡的當機救回來。旁表只有一份,以 id 雜湊為鍵 —— 清單被重排/篩選時 list_items 會搬
+   位置,鍵不會。 */
+#define LIST_SUB_LEN 96 /* 手機端 WATCH_PREVIEW_MAX_BYTES=95 的對口:兩行 CJK 約 31 字 */
+#define LIST_SUB_MAX_W 260 /* 標題置中偏左 20px、右緣讓出圖標,弦長內放得下的寬度 */
+static lv_obj_t *app_sub[MAX_LIST_ITEMS];
+static uint32_t s_sub_key[MAX_LIST_ITEMS]; /* 0 = 空槽 */
+static char s_sub_txt[MAX_LIST_ITEMS][LIST_SUB_LEN];
+static uint8_t s_sub_next; /* 旁表滿了才輪流覆寫 */
+static lv_coord_t s_sub_dy; /* 預覽區塊中心相對標題中心的下移量,建列時算 */
+
+static uint32_t sub_key_of(const char *id)
+{
+    uint32_t h = 2166136261u; /* FNV-1a */
+    for (; id && *id; id++)
+    {
+        h ^= (uint8_t)*id;
+        h *= 16777619u;
+    }
+    return h ? h : 1u; /* 0 保留給空槽 */
+}
+
+static const char *sub_of(const char *id)
+{
+    uint32_t k = sub_key_of(id);
+    for (uint8_t i = 0; i < MAX_LIST_ITEMS; i++)
+        if (s_sub_key[i] == k)
+            return s_sub_txt[i];
+    return "";
+}
+
+/* 設/清某列的預覽。回傳「存的內容真的變了」—— 呼叫端據此決定要不要重建清單
+   (只有重建才會替沒有預覽行的列補建 label)。永遠在 LVGL 執行緒(批次佇列的 drain 端)。 */
+bool set_instruction_sub(const char *id, const char *sub)
+{
+    if (id == NULL || id[0] == '\0')
+        return false;
+    uint32_t k = sub_key_of(id);
+    int slot = -1, empty = -1;
+    for (uint8_t i = 0; i < MAX_LIST_ITEMS; i++)
+    {
+        if (s_sub_key[i] == k)
+        {
+            slot = i;
+            break;
+        }
+        if (empty < 0 && s_sub_key[i] == 0)
+            empty = i;
+    }
+    if (sub == NULL || sub[0] == '\0')
+    {
+        if (slot < 0)
+            return false;
+        s_sub_key[slot] = 0;
+        s_sub_txt[slot][0] = '\0';
+        return true;
+    }
+    size_t n = strlen(sub);
+    if (n > LIST_SUB_LEN - 1)
+    {
+        n = LIST_SUB_LEN - 1;
+        while (n > 0 && ((uint8_t)sub[n] & 0xC0) == 0x80) /* 別把 UTF-8 字切在中間 */
+            n--;
+    }
+    if (slot >= 0 && strlen(s_sub_txt[slot]) == n && memcmp(s_sub_txt[slot], sub, n) == 0)
+        return false;
+    if (slot < 0)
+    {
+        slot = (empty >= 0) ? empty : (int)(s_sub_next++ % MAX_LIST_ITEMS);
+        s_sub_key[slot] = k;
+    }
+    memcpy(s_sub_txt[slot], sub, n);
+    s_sub_txt[slot][n] = '\0';
+    return true;
+}
 static lv_obj_t *widget_img = NULL;
 static bool left_hand_mode = true;
 static bool need_correction = false;
@@ -1569,6 +1648,10 @@ static void scroll_list(lv_obj_t *obj, int16_t drift)
                 {
                     lv_obj_set_style_text_opa(app_label[i], brightness, 0);
                 }
+                if (app_sub[i] != NULL && lv_obj_is_valid(app_sub[i]))
+                {
+                    lv_obj_set_style_text_opa(app_sub[i], (uint8_t)(brightness * 6 / 10), 0);
+                }
                 if (switch_objs[i] != NULL && lv_obj_is_valid(switch_objs[i]))
                 {
                     lv_obj_set_style_bg_opa(switch_objs[i], brightness, 0);
@@ -1717,6 +1800,8 @@ static void scroll_list(lv_obj_t *obj, int16_t drift)
                     lv_obj_clear_flag(app_icon_shadow[i], LV_OBJ_FLAG_HIDDEN);
                 if (switch_objs[i] != NULL && lv_obj_is_valid(switch_objs[i]))
                     lv_obj_clear_flag(switch_objs[i], LV_OBJ_FLAG_HIDDEN);
+                if (app_sub[i] != NULL && lv_obj_is_valid(app_sub[i]))
+                    lv_obj_clear_flag(app_sub[i], LV_OBJ_FLAG_HIDDEN);
             }
             else
             {
@@ -1734,6 +1819,8 @@ static void scroll_list(lv_obj_t *obj, int16_t drift)
                     lv_obj_add_flag(app_label[i], LV_OBJ_FLAG_HIDDEN);
                 if (switch_objs[i] != NULL && lv_obj_is_valid(switch_objs[i]))
                     lv_obj_add_flag(switch_objs[i], LV_OBJ_FLAG_HIDDEN);
+                if (app_sub[i] != NULL && lv_obj_is_valid(app_sub[i]))
+                    lv_obj_add_flag(app_sub[i], LV_OBJ_FLAG_HIDDEN);
             }
             LOG_D("DBGi=%d before app_icon", i);
             if (app_icon[i] != NULL && lv_obj_is_valid(app_icon[i]))
@@ -1741,6 +1828,8 @@ static void scroll_list(lv_obj_t *obj, int16_t drift)
             LOG_D("DBGi=%d before app_label", i);
             if (app_label[i] != NULL && lv_obj_is_valid(app_label[i]))
                 lv_obj_align(app_label[i], LV_ALIGN_CENTER, -20, 0);
+            if (app_sub[i] != NULL && lv_obj_is_valid(app_sub[i]))
+                lv_obj_align(app_sub[i], LV_ALIGN_CENTER, -20, s_sub_dy);
             LOG_D("DBGi=%d before get_child", i);
             {
                 lv_obj_t *first_child = lv_obj_get_child(child, 0);
@@ -7507,6 +7596,29 @@ static void create_list_items_ui(lv_obj_t *list, uint8_t start_idx,
                                    LV_EXT_FONT_GET(get_system_font_size(1)), 0);
         lv_obj_set_style_text_color(app_label[i], lv_color_hex(0xFFFFFF), 0);
 
+        /* 預覽行:旁表有這個 id 的內容才建,沒有就零成本。 */
+        app_sub[i] = NULL;
+        {
+            const char *sub = sub_of(list_items[i].id);
+            if (sub[0] != '\0')
+            {
+                const lv_font_t *sub_font = LV_EXT_FONT_GET(get_system_font_size(-1));
+                const lv_font_t *title_font = LV_EXT_FONT_GET(get_system_font_size(1));
+                lv_coord_t sub_h = lv_font_get_line_height(sub_font) * 2 + 4;
+                app_sub[i] = lv_label_create(item);
+                lv_label_set_text(app_sub[i], sub);
+                lv_label_set_long_mode(app_sub[i], LV_LABEL_LONG_DOT);
+                lv_obj_set_size(app_sub[i], LIST_SUB_MAX_W, sub_h);
+                lv_obj_set_style_text_font(app_sub[i], sub_font, 0);
+                lv_obj_set_style_text_color(app_sub[i], lv_color_hex(0xEBEBF5), 0);
+                lv_obj_set_style_text_align(app_sub[i], LV_TEXT_ALIGN_CENTER, 0);
+                lv_obj_clear_flag(app_sub[i], LV_OBJ_FLAG_CLICKABLE);
+                lv_obj_add_flag(app_sub[i], LV_OBJ_FLAG_EVENT_BUBBLE);
+                s_sub_dy = lv_font_get_line_height(title_font) / 2 + 6 + sub_h / 2;
+                lv_obj_align(app_sub[i], LV_ALIGN_CENTER, -20, s_sub_dy);
+            }
+        }
+
         /* R17(founder):標題右下角的設備名小副標退場 —— 設備名改顯示在右緣
            dot 輪播的位置(create_indicator_dots 的 conv 分支),字級加大。 */
 
@@ -7572,6 +7684,8 @@ static void create_list_items_ui(lv_obj_t *list, uint8_t start_idx,
         {
             if (app_label[i] != NULL && lv_obj_is_valid(app_label[i]))
                 lv_obj_add_flag(app_label[i], LV_OBJ_FLAG_HIDDEN);
+            if (app_sub[i] != NULL && lv_obj_is_valid(app_sub[i]))
+                lv_obj_add_flag(app_sub[i], LV_OBJ_FLAG_HIDDEN);
             if (switch_objs[i] != NULL && lv_obj_is_valid(switch_objs[i]))
                 lv_obj_add_flag(switch_objs[i], LV_OBJ_FLAG_HIDDEN);
             if (touch_obj[i] != NULL && lv_obj_is_valid(touch_obj[i]))
@@ -7902,6 +8016,7 @@ void refresh_custom_instructions(void)
         app_widget[i] = NULL;
         touch_obj[i] = NULL;
         app_label[i] = NULL;
+        app_sub[i] = NULL;
         switch_objs[i] = NULL;
         app_icon_shadow[i] = NULL;
         p_instruction_list_layout->p_app_indicator_btn[i] = NULL;
@@ -9501,6 +9616,11 @@ rt_int32_t instruction_list_deinit(void)
                 lv_obj_del(app_label[i]);
                 app_label[i] = NULL;
             }
+            if (app_sub[i] != NULL && lv_obj_is_valid(app_sub[i]))
+            {
+                lv_obj_del(app_sub[i]);
+                app_sub[i] = NULL;
+            }
             if (p_instruction_list_layout->p_app_indicator_btn[i] != NULL &&
                 lv_obj_is_valid(
                     p_instruction_list_layout->p_app_indicator_btn[i]))
@@ -9629,6 +9749,7 @@ void instruction_list_release_ui(void)
         app_widget[i] = NULL;
         touch_obj[i] = NULL;
         app_label[i] = NULL;
+        app_sub[i] = NULL;
         switch_objs[i] = NULL;
         p_instruction_list_layout->p_app_indicator_btn[i] = NULL;
     }
@@ -9692,3 +9813,16 @@ bool instruction_list_ui_is_released(void)
 
 /************************ (C) COPYRIGHT Skaiwalk Technology *******END OF
  * FILE****/
+
+#ifdef BSP_USING_PC_SIMULATOR
+/* PC sim only: park the browse list on row [idx] so a screenshot can show that row
+   (touch injection does not drive the list's right-edge arc scroll). */
+void instruction_list_sim_select(uint8_t idx)
+{
+    if (p_instruction_list_layout == NULL || p_instruction_list_layout->list == NULL ||
+        idx >= list_item_count)
+        return;
+    scroll_center_item(p_instruction_list_layout->list, idx);
+    scroll_list(p_instruction_list_layout->list, 0);
+}
+#endif

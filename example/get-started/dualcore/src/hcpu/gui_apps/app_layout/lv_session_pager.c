@@ -67,6 +67,9 @@ typedef struct
     char bot[SESSION_BOT_LEN];
     /* 這個 Bot 的頭像鍵(內容雜湊)。空 = 手機沒給(舊手機/沒頭像),右緣照舊畫設備名。 */
     char av[SESSION_AV_LEN];
+    /* preview 是「這個 Bot 的一句話」(手機掛的 AI 主動提醒),不是這個對話的最後一則訊息:
+       只給左頁列的預覽行用,開聊天室時不能拿它當第一個氣泡(會閃出不相干的內容)。 */
+    bool glance;
 } session_meta_t;
 
 typedef struct
@@ -834,6 +837,14 @@ static void sp_inject_sessions_into_actions(void)
             extern void set_instruction_avatar(const char *id, const char *av);
             set_instruction_avatar(s->id, s->av);
         }
+        /* 預覽行:代表列(該 Bot 最新的 session)帶的 preview 就是這個 Bot 的「大概瀏覽」。
+           手機只在代表列填,其他列 preview 為空;旁表以 id 為鍵,空的只清自己那一格。
+           內容變了要重建清單,label 才會補建。 */
+        {
+            extern bool set_instruction_sub(const char *id, const char *sub);
+            if (set_instruction_sub(s->id, s->preview))
+                changed = true;
+        }
     }
 
     /* R27:每次注入都把 conv 段**強制排成上面算好的 ts 舊→新順序**。只靠 upsert 的呼叫
@@ -1250,7 +1261,7 @@ static void sp_enter_chat(int slot, int idx)
     lv_obj_clean(s_chat_list);
     s_drawn_sig = 0;
     s_drawn_page = -1;
-    if (s->preview[0])
+    if (s->preview[0] && !s->glance)
         sp_add_bubble(s_chat_list, s->preview, true);
     lv_obj_scroll_to_y(s_chat_list, LV_COORD_MAX, LV_ANIM_OFF);
 
@@ -1485,6 +1496,8 @@ void skai_sessions_on_conv_list(const uint8_t *json, uint16_t length)
             cJSON *j_bot = cJSON_GetObjectItem(it, "bot");
             if (cJSON_IsString(j_bot))
                 strncpy(dst->bot, j_bot->valuestring, SESSION_BOT_LEN - 1);
+            cJSON *j_gl = cJSON_GetObjectItem(it, "glance");
+            dst->glance = cJSON_IsTrue(j_gl);
             cJSON *j_av = cJSON_GetObjectItem(it, "av");
             if (cJSON_IsString(j_av))
                 strncpy(dst->av, j_av->valuestring, SESSION_AV_LEN - 1);

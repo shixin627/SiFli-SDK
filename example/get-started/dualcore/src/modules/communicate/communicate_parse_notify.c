@@ -147,6 +147,13 @@ static bool apply_one_instruction_obj(cJSON *root)
     /* Last of the three icon sources — fills only a still-empty slot (see its doc). */
     extern void set_instruction_type_icon(const char *id, const char *ico);
     set_instruction_type_icon(id, ico);
+    /* sub:這一列的「大概瀏覽」小字(founder 2026-09-30)。缺席 = 清掉:批次是整份取代,
+       手機不再送就代表這列現在沒有預覽了。 */
+    {
+        extern bool set_instruction_sub(const char *id, const char *sub);
+        cJSON *j_sub = cJSON_GetObjectItem(root, "sub");
+        set_instruction_sub(id, cJSON_IsString(j_sub) ? j_sub->valuestring : "");
+    }
 
     if (id[0] != '\0')
     {
