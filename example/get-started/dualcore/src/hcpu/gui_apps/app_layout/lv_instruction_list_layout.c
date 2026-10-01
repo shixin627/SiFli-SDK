@@ -6948,6 +6948,30 @@ static void lc_tap_cb(uint8_t card)
 
 /* 翻頁途中每一幀:把「捲到第幾頁(×256)」換成原本點點輪盤吃的 input 值(第 i 項 = 100*N-63-100*i,
    見 gesture_starting_value),輪盤就跟著手連續轉,不是停下來才跳。 */
+/* 右緣輪盤上的「選中圈」(app_icon_shadow):列清單模式由 scroll_list 在選中項改變時搬到新那一項,卡片模式
+   列清單不捲動,圈圈就一直停在進場時那一項(founder 2026-10-01:「翻頁時右邊 icon 的圈圈沒有因為目前的位置切換」)。
+   所以卡片翻到哪一頁、圈就亮在那一項的圖示上。判定條件跟 scroll_list 那段對稱(有圖/有檔案圖/conv: 列才有圈)。 */
+static int s_lc_ring_idx = -1;
+static void lc_ring_select(int idx)
+{
+    if (p_instruction_list_layout == NULL)
+        return;
+    s_lc_ring_idx = idx;
+    for (uint8_t i = 0; i < list_item_count; i++)
+    {
+        lv_obj_t *r = app_icon_shadow[i];
+        if (r == NULL || !lv_obj_is_valid(r))
+            continue;
+        if (list_items[i].icon == NULL && list_items[i].img_path[0] == '\0' &&
+            strncmp(list_items[i].id, "conv:", 5) != 0)
+            continue;
+        if ((int)i == idx)
+            lv_obj_clear_flag(r, LV_OBJ_FLAG_HIDDEN);
+        else
+            lv_obj_add_flag(r, LV_OBJ_FLAG_HIDDEN);
+    }
+}
+
 static void lc_tick(void)
 {
     if (get_scrolling_motor_vibrate_status() && open_scroll_motor)
@@ -6959,6 +6983,13 @@ static void lc_scroll_cb(int32_t page_x256)
     s_lc_moved = true;
     if (arc_drag_is_live())
         return; /* 圓弧撥動中輪盤跟手指走,別被卡片自己的捲動動畫拉回去 */
+    int near_idx = (int)((page_x256 + 128) / 256);
+    if (near_idx < 0)
+        near_idx = 0;
+    if (near_idx >= (int)list_item_count)
+        near_idx = (int)list_item_count - 1;
+    if (near_idx != s_lc_ring_idx)
+        lc_ring_select(near_idx);
     update_indicator_dots_position(100 * (int)list_item_count - 63 - (int)((100 * page_x256) / 256));
 }
 
@@ -7004,6 +7035,8 @@ static void lc_set_rows_hidden(bool hide)
     }
     update_indicator_dots_position(100 * (int)list_item_count - 63 -
                                    100 * (int)(hide ? left_cards_current() : selected_item_index));
+    if (hide)
+        lc_ring_select((int)left_cards_current());
     /* 原本的右緣圓弧撥動(arc_scroll)照舊啟用,而且要浮在卡片與點點上面才接得到弧帶內的 press:
        弧帶內上下撥動 = 輪盤轉、卡片換頁(inst_arc_drag_cb);弧帶外的上下滑照舊由卡片自己的捲動接。 */
     if (p_instruction_list_layout->arc_handle != NULL)
@@ -9083,6 +9116,7 @@ static void inst_arc_drag_cb(lv_coord_t scroll_delta_px, void *ctx)
             /* 整頁卡片:換到最靠近中央的那一張(跟列清單同一個手感:輪盤連續轉、頁在跨過一格時動畫切換、有震動點) */
             selected_item_index = (uint16_t)closest_idx;
             app_scroll_target_item = (uint8_t)closest_idx;
+            lc_ring_select(closest_idx);
             lc_tick();
             left_cards_scroll_to((uint8_t)closest_idx, true);
         }
