@@ -6855,6 +6855,10 @@ static uint32_t lc_hash(uint32_t h, const char *s)
    點同一顆晶片(replying_notification_id + REMOTE_INPUT + 移除通知)。找不到就不畫,卡片照舊。 */
 static char s_lc_opt_txt[3][36]; /* NOTIFICATION_OPTION_LEN */
 static char s_lc_opt_nid[48];    /* NOTIFICATION_ID_LEN */
+/* Bot 卡片的完整內文(founder 2026-10-01:「AI 的字卡沒給選項的話,可以讓它能顯示的字增加多一些」):
+   手機推來的那句只有 95 位元組(旁表一格 96B、30 格不能再放大),而同一則 AI 主動提醒的全文本來就在錶上的
+   通知清單裡(最多 768B)。找到對應通知就改顯示它的全文(壓平空白、截 299B),找不到仍用那一句。 */
+static char s_lc_ai_text[300];
 static uint8_t s_lc_opt_n = 0;
 static uint8_t s_lc_opt_card = 0;
 static uint32_t s_lc_opt_sig = 2166136261u; /* 沒有選項的簽章 */
@@ -6895,7 +6899,7 @@ static const notification_t *lc_find_reply_notification(const char *flat)
     for (int i = 0; i < (int)notification_items_amount && i < ITEM_AMOUNT_NOTIFICATION; i++)
     {
         const notification_t *n = get_notification(i);
-        if (n != NULL && n->can_reply && n->option_count > 0 && lc_flat_prefix(n->message, flat))
+        if (n != NULL && n->can_reply && lc_flat_prefix(n->message, flat))
             return n;
     }
     return NULL;
@@ -6912,6 +6916,29 @@ static uint32_t lc_opt_sig_of(const notification_t *nt)
     for (uint8_t k = 0; k < nt->option_count && k < 3; k++)
         h = lc_hash(h, nt->options[k]);
     return h;
+}
+#endif
+
+#ifdef BSP_USING_BLOC_NOTIFY
+static void lc_ai_text_from(const char *msg)
+{
+    size_t n = strlen(msg);
+    bool cut = false;
+    if (n > sizeof(s_lc_ai_text) - 4) /* 留 3 個位元組給結尾的「…」 */
+    {
+        n = sizeof(s_lc_ai_text) - 4;
+        while (n > 0 && ((uint8_t)msg[n] & 0xC0) == 0x80) /* 別把 UTF-8 字切在中間 */
+            n--;
+        cut = true;
+    }
+    memcpy(s_lc_ai_text, msg, n);
+    if (cut)
+    {
+        memcpy(s_lc_ai_text + n, "...", 3); /* 結尾刪節號(用 ASCII 三個點,字型一定有) */
+        n += 3;
+    }
+    s_lc_ai_text[n] = '\0';
+    notification_flatten_line(s_lc_ai_text, sizeof(s_lc_ai_text));
 }
 #endif
 
@@ -7079,6 +7106,7 @@ static void left_cards_sync(void)
     uint32_t sig = 2166136261u;
     uint32_t ssig = 2166136261u;
     uint32_t osig = 2166136261u;
+    bool ai_done = false;
     s_lc_opt_n = 0;
     for (uint8_t i = 0; i < list_item_count && n < LEFT_CARDS_MAX; i++)
     {
@@ -7092,11 +7120,14 @@ static void left_cards_sync(void)
         c->icon = (it->img_path[0] != '\0') ? (const void *)it->img_path : it->icon;
         c->n_opts = 0;
 #ifdef BSP_USING_BLOC_NOTIFY
-        if (it->category == '@' && s_lc_opt_n == 0)
+        if (it->category == '@' && !ai_done)
         {
             const notification_t *nt = lc_find_reply_notification(c->sub);
             if (nt != NULL)
             {
+                ai_done = true;
+                lc_ai_text_from(nt->message);
+                c->sub = s_lc_ai_text;
                 s_lc_opt_n = (nt->option_count > 3) ? 3 : nt->option_count;
                 s_lc_opt_card = n;
                 strncpy(s_lc_opt_nid, nt->id, sizeof(s_lc_opt_nid) - 1);

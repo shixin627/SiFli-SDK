@@ -216,8 +216,6 @@ MSH_CMD_EXPORT_ALIAS(gesture_back, back, back - alias for gesture_back);
 extern const char *instruction_list_sim_bot_sub(void);
 static int sim_bot_notif(int argc, char *argv[])
 {
-    (void)argc;
-    (void)argv;
     const char *sub = instruction_list_sim_bot_sub();
     int slot = notification_items_amount;
     if (slot >= ITEM_AMOUNT_NOTIFICATION)
@@ -229,11 +227,13 @@ static int sim_bot_notif(int argc, char *argv[])
     notif.sec_time = (uint32_t)(rt_tick_get() / RT_TICK_PER_SECOND);
     rt_snprintf(notif.id, NOTIFICATION_ID_LEN, "fake_bot_%d", slot);
     rt_strncpy(notif.title, "Skai", NOTIFICATION_TITLE_LEN - 1);
-    rt_snprintf(notif.message, NOTIFICATION_MESSAGE_LEN, "%s\n\nmore text after the glance line.", sub);
+    rt_snprintf(notif.message, NOTIFICATION_MESSAGE_LEN,
+                "%s\n\nmore text after the glance line: the full AI reminder keeps going for a while so the card can show several more lines when there are no options to choose from, and it should stop with an ellipsis when it runs out of room.",
+                sub);
     rt_strncpy(notif.options[0], "Expand item one", NOTIFICATION_OPTION_LEN - 1);
     rt_strncpy(notif.options[1], "Read it all to me", NOTIFICATION_OPTION_LEN - 1);
     rt_strncpy(notif.options[2], "Later", NOTIFICATION_OPTION_LEN - 1);
-    notif.option_count = 3;
+    notif.option_count = (argc > 1) ? 0 : 3; /* sim_bot_notif plain = 沒有選項 */
     notif.can_reply = true;
     set_notification(&notif, slot);
     if (notification_items_amount < ITEM_AMOUNT_NOTIFICATION)

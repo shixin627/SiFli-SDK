@@ -19,6 +19,7 @@
 #define ICON_GAP 14   /* 圖示與標題的間距 */
 #define TITLE_Y 98    /* 圖示+標題那一列的上緣 */
 #define SUB_Y 170     /* 說明上緣 */
+#define SUB_BOTTOM 376 /* 說明最多往下排到這裡(圓內放得下、在麥克風列上面) */
 #define SUB_W 280      /* 右緣讓出點點輪盤(最大那顆縮成一半後約 66px) */
 #define CHIP_W 236    /* 選項晶片:半透明白底的膠囊,單行 */
 #define CHIP_H 40
@@ -145,12 +146,24 @@ static void fill_card(uint8_t i)
     lv_obj_add_flag(title, LV_OBJ_FLAG_EVENT_BUBBLE);
 
     /* 說明:最多三行,DOT 收尾。色用 label 階層的次要色(bluish #EBEBF5),不是純白半透明。 */
+    lv_coord_t sub_bottom = SUB_Y;
     if (has_sub)
     {
         lv_obj_t *sub = lv_label_create(card);
         lv_label_set_text(sub, c->sub);
         lv_label_set_long_mode(sub, LV_LABEL_LONG_DOT);
-        lv_obj_set_size(sub, SUB_W, lv_font_get_line_height(f_sub) * (c->n_opts > 0 ? 2 : 3) + 8);
+        /* 有選項晶片 → 只留 2 行把位置讓給晶片;沒有選項 → 往下排滿(founder 2026-10-01:AI 字卡沒給選項時
+           多顯示一些字),至少 3 行 */
+        lv_coord_t sub_lh = lv_font_get_line_height(f_sub);
+        lv_coord_t sub_ls = lv_obj_get_style_text_line_space(sub, LV_PART_MAIN);
+        lv_coord_t sub_lines = (c->n_opts > 0) ? 2 : (SUB_BOTTOM - SUB_Y - 8) / (sub_lh + sub_ls);
+        if (c->n_opts == 0 && sub_lines < 3) /* 有晶片時固定 2 行,不套最少 3 行 */
+            sub_lines = 3;
+        /* LV_LABEL_LONG_DOT(lv_label.c)把刪節號放在 y=(高度往下取整到整行 - 行距) 所在的那一行,而且行的判定是
+           y <= 該行頂 + 字高(含邊界)。所以高度取剛好 N 行(字高+行距)*N,刪節號就落在第 N 行;多留幾 px 會多露一行,
+           少 1px 又會少一行(sim 實測:+2/+8 → 3 行、-1 → 1 行)。 */
+        lv_obj_set_size(sub, SUB_W, (sub_lh + sub_ls) * sub_lines);
+        sub_bottom = SUB_Y + (sub_lh + sub_ls) * sub_lines; /* 不能用 lv_obj_get_height:版面還沒更新,拿到的是舊座標 */
         lv_obj_set_style_text_font(sub, f_sub, 0);
         lv_obj_set_style_text_color(sub, lv_color_hex(0xEBEBF5), 0);
         lv_obj_set_style_text_opa(sub, LV_OPA_80, 0);
@@ -162,7 +175,7 @@ static void fill_card(uint8_t i)
        單行 DOT 截斷;晶片自己吃點擊(不冒泡),不會同時觸發整張卡的點擊。 */
     if (c->n_opts > 0)
     {
-        lv_coord_t chip_y = (has_sub ? SUB_Y + lv_font_get_line_height(f_sub) * 2 + 8 + 12 : SUB_Y);
+        lv_coord_t chip_y = has_sub ? sub_bottom + 12 : SUB_Y;
         for (uint8_t k = 0; k < c->n_opts && k < 3; k++)
         {
             lv_obj_t *chip = lv_obj_create(card);
