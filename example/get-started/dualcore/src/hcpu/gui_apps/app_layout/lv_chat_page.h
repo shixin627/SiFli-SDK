@@ -27,6 +27,18 @@ extern "C"
        const char*, or NULL) shown small before the name in the header. LVGL thread (the tap cb is). */
     void chat_page_open(const char *title, const char *icon_src);
 
+    /* 2026-10-03 實驗:左頁點 Bot 房改用「真 app」開(1=app、0=原本的 lv_layer_top 浮層)。
+       app 模式下框架會暫停 Main(實測開一個 app 系統堆少 ~10KB),返回走 gui_app_goback。
+       只有左頁的 '@' 入口走這條;滑鼠抽屜 / 新對話 walk-in 仍是浮層(它們疊在滑鼠頁上,沒有 Main 可暫停)。 */
+#ifndef CHAT_AS_APP
+#define CHAT_AS_APP 1
+#endif
+    typedef void (*chat_app_open_hook_t)(void);
+    /* 非同步:先把左頁浮層收掉、搬回錶盤,再 gui_app_run(APP_ID_CHAT);app 的 ONSTART 建好房之後才呼叫
+       after_open(綁 switcher / 送 conv_open / 快取補畫 —— 原本緊接在 chat_page_open 後面的那幾行)。
+       title/icon_src 會被複製/記住,呼叫端不必保活。LVGL thread。 */
+    void chat_page_open_as_app(const char *title, const char *icon_src, chat_app_open_hook_t after_open);
+
     /* Hermes(AI session)vs messaging(@聯絡人)畫風分流 — 開房前設定(桌面
        ConversationPane 的 IsHermes 同款)。true = Hermes 平鋪風(使用者=全寬玻璃卡、
        AI=平鋪全寬文字);false = iMessage 氣泡(左灰右藍)。 */
@@ -57,8 +69,17 @@ extern "C"
     /* Tear the chat panel down (revealing the @-list underneath). Idempotent. LVGL thread. */
     void chat_page_close(void);
 
+    /* 返回流程最前面呼叫(watch_demo.c handle_back_event):先把訊息泡泡 + 鄰居頁拆掉換堆,
+       面板本身(不透明黑底)留著繼續蓋住後面的「收清單 / 搬回錶盤」。那段轉場要配十幾 KB,
+       而聊天室整頁還活著時系統堆只剩 ~15KB(2026-10-03 真機當機就在這一步)。之後的
+       chat_page_close 照常。LVGL thread。 */
+    void chat_page_release_content(void);
+
     /* True while the chat panel is up. */
     bool chat_page_is_open(void);
+
+    /* True only for the lv_layer_top overlay kind of room (not the chat-app kind). Main's check_is_at_home uses it. */
+    bool chat_page_is_overlay_open(void);
 
     /* DOWNLINK hook (KEY_CONV_STATE) — called on the BLE PARSE thread with the folded
        chat-state JSON {title, sending, messages:[{role,text}]}. Renders the transcript.

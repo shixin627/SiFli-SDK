@@ -201,7 +201,26 @@ static char s_cat_filter = 0;
    "no filtering at all" bug). A fixed BSS buffer makes the filter deterministic: it
    never hinges on a large transient malloc succeeding. s_cat_backup_valid replaces the
    old "s_cat_backup != NULL" filtered-state flag. */
-static list_item_t s_cat_backup[MAX_LIST_ITEMS];
+/* 2026-10-03:這份備份和 instruction_list_order_conv_items 的暫存各 ~9KB,原本是常駐 SRAM 的
+   static —— 而 SRAM 少一塊就是系統堆少一塊(link.sct 的 RW_IRAM0/1 首尾相接、堆從 ZI 尾巴開始)。
+   聊天室實測靜止時系統堆只剩 ~10KB、整頁一幀要 ~10KB,真機 `sys memory is full!` 重開機。
+   改成**第一次用到才從 PSRAM 配、之後常駐**:仍然是確定性的(PSRAM 圖片池 1.6MB 空著,不會像當年
+   per-reveal 的 rt_malloc 被吃緊的堆弄失敗而悄悄跳過篩選),但不再佔堆 → 堆 +18KB。
+   list_scratch(0)=備份、(1)=排序暫存;配不到回 NULL,呼叫端各自安全退出。 */
+static list_item_t *list_scratch(int slot)
+{
+#ifdef BSP_USING_PC_SIMULATOR
+    static list_item_t sim_buf[2][MAX_LIST_ITEMS];
+    return sim_buf[slot];
+#else
+    static list_item_t *s_psram[2];
+    if (s_psram[slot] == NULL)
+        s_psram[slot] = (list_item_t *)app_cache_alloc(sizeof(list_item_t) * MAX_LIST_ITEMS,
+                                                       IMAGE_CACHE_PSRAM);
+    return s_psram[slot];
+#endif
+}
+#define s_cat_backup list_scratch(0)
 static uint8_t s_cat_backup_count = 0;
 static bool s_cat_backup_valid = false;
 /* R55(founder 2026-08-13):左頁的麥克風 = 先開輸入框,說出來的字**即時篩上面的清單**
@@ -398,8 +417,8 @@ void instruction_list_set_session_page_mode(bool on)
    回傳是否真的動過順序,讓呼叫端只在有變時才 refresh(避免每次輪詢都重繪)。 */
 bool instruction_list_order_conv_items(const char *const *ids, uint8_t n)
 {
-    static list_item_t s_order_tmp[MAX_LIST_ITEMS];
-    if (list_item_count == 0)
+    list_item_t *const s_order_tmp = list_scratch(1); /* PSRAM 暫存,見 list_scratch */
+    if (list_item_count == 0 || s_order_tmp == NULL)
         return false;
     uint8_t w = 0;
     /* 0) actions 等非 conv 項,原順序,整段在**前**(R81) */
@@ -6324,6 +6343,36 @@ static void wf_chat_bind_switcher(const char *conv_id, const char *title)
     LOG_I("[wf-chat] switcher armed dev=%s bot=%s", s_wf_chat_dev, s_wf_chat_bot);
 }
 
+#if CHAT_AS_APP
+/* 左頁點 '@' 房改用「聊天室 app」開(見 lv_chat_page.c 的說明)。app 的 ONSTART 建好房之後才跑
+   after_open,順序同原本緊接在 chat_page_open 後面的那幾行;conv_open 也挪到這裡 —— 房已存在才請手機
+   推狀態,不會有「手機的第一包 conv_state 比房先到」的競態。 */
+static char s_lc_chat_id[64];
+static char s_lc_chat_title[64];
+static uint8_t s_lc_chat_idx;
+
+static void lc_chat_app_after_open(void)
+{
+    extern bool commu_send_conv_open(const char *title, const char *id, uint8_t index);
+    commu_send_conv_open(s_lc_chat_title, s_lc_chat_id, s_lc_chat_idx);
+    wf_chat_bind_switcher(s_lc_chat_id, s_lc_chat_title);
+    chat_page_try_restore(s_lc_chat_id);
+}
+
+static void lc_open_chat_app(const list_item_t *item, uint8_t idx)
+{
+    extern void chat_page_set_style_hermes(bool hermes);
+    strncpy(s_lc_chat_id, item->id, sizeof(s_lc_chat_id) - 1);
+    s_lc_chat_id[sizeof(s_lc_chat_id) - 1] = '\0';
+    strncpy(s_lc_chat_title, item->title, sizeof(s_lc_chat_title) - 1);
+    s_lc_chat_title[sizeof(s_lc_chat_title) - 1] = '\0';
+    s_lc_chat_idx = idx;
+    /* conv: 前綴 = Hermes session(桌面 IsHermes 同款分流);其他 @ 列保留氣泡畫風。 */
+    chat_page_set_style_hermes(strncmp(item->id, "conv:", 5) == 0);
+    chat_page_open_as_app(item->title, item->icon, lc_chat_app_after_open);
+}
+#endif
+
 static void sd_open_chat_async_cb(void *unused)
 {
     (void)unused;
@@ -6568,6 +6617,10 @@ static void list_item_activate(list_item_t *item)
         int conv_idx = (int)(item - &list_items[0]);
         if (conv_idx < 0 || conv_idx >= MAX_LIST_ITEMS)
             conv_idx = 0;
+#if CHAT_AS_APP
+        lc_open_chat_app(item, (uint8_t)conv_idx);
+        return;
+#endif
         commu_send_conv_open(item->title, item->id, (uint8_t)conv_idx);
         /* conv: 前綴 = Hermes session(桌面 IsHermes 同款分流);其他 @ 列是
            WhatsApp/Messenger 等 messaging 房,保留氣泡畫風。 */
@@ -7339,6 +7392,10 @@ static void on_tap(void)
        mixed list has no separate @ view). */
     if (item->category == '@' && !is_open_instruction_list_ai)
     {
+#if CHAT_AS_APP
+        lc_open_chat_app(item, (uint8_t)selected_item_index);
+        return;
+#endif
         commu_send_conv_open(item->title, item->id, (uint8_t)selected_item_index);
         {
             extern void chat_page_set_style_hermes(bool hermes);
@@ -9973,7 +10030,10 @@ static void pack_text_filter(void)
         return;
     if (!s_cat_backup_valid)
     {
-        memcpy(s_cat_backup, list_items, sizeof(list_items));
+        list_item_t *bk = s_cat_backup;
+        if (bk == NULL)
+            return; /* PSRAM 配不到(實務上不會):這輪不篩,不要在沒備份時改清單 */
+        memcpy(bk, list_items, sizeof(list_items));
         s_cat_backup_count = list_item_count;
         s_cat_backup_valid = true;
     }
@@ -10176,13 +10236,14 @@ static void instruction_list_set_category_filter(char cat)
     cat_filter_restore_full(); /* lift any current filter back to the full list */
     s_cat_filter = cat;
     s_view_cat = cat; /* remember the view across phone pushes (see instruction_list_reapply_view_filter) */
-    if (cat != 0)
+    list_item_t *const bk = (cat != 0) ? s_cat_backup : NULL; /* PSRAM 備份,見 list_scratch */
+    if (cat != 0 && bk != NULL) /* 配不到(實務上不會):不篩,絕不在沒備份時改清單 */
     {
-        /* Snapshot the full list into the static backup, then re-pack list_items[] to
-           the matching subset. No malloc — the filter always runs (see the buffer's
-           declaration note: the old per-reveal rt_malloc could fail and silently skip
-           filtering, leaving every view full). */
-        memcpy(s_cat_backup, list_items, sizeof(list_items));
+        /* Snapshot the full list into the (PSRAM) backup, then re-pack list_items[] to
+           the matching subset. Allocated once on first use, never per reveal — the filter
+           always runs (see list_scratch: the old per-reveal rt_malloc could fail under heap
+           pressure and silently skip filtering, leaving every view full). */
+        memcpy(bk, list_items, sizeof(list_items));
         s_cat_backup_count = list_item_count;
         s_cat_backup_valid = true;
         uint8_t w = 0;

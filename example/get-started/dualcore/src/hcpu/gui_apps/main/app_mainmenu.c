@@ -501,12 +501,12 @@ void check_is_at_home(void)
        「看起來」是錶盤,這裡翻回 _at_home 就會 display_gesture_detect_objs(0,false) 把
        chat_page_open 剛武裝好的左緣返回偵測器再藏掉(房間從此退不出去)。聊天開著就不算
        在錶盤;關閉聊天後下一輪輪詢自然翻回 true、恢復錶盤手勢。 */
-    extern bool chat_page_is_open(void);
+    extern bool chat_page_is_overlay_open(void); /* app 模式的聊天室不算浮層,見 lv_chat_page.c */
     bool yes = gui_app_is_actived(APP_ID_MAIN) && !_at_instruction_list &&
                !_at_message && !_at_control_center && !_at_mouse_mode &&
                !_at_ai_interface &&
                !_at_speech_interface && !on_device_page &&
-               !lv_top_panel_mouse_mode() && !chat_page_is_open();
+               !lv_top_panel_mouse_mode() && !chat_page_is_overlay_open();
     if (yes != _at_home)
     {
         /* R22 診斷:假錶盤 = 畫面是錶盤但 _at_home 為 false(四條 zone 不開)。

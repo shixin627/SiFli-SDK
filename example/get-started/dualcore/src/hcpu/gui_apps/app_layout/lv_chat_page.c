@@ -14,12 +14,95 @@
 #include "ui_helper.h"
 #include "bloc_v2t.h"
 #include "voice_ai_logo.h"
+#include "gui_app_fwk.h"   /* 聊天室 app:gui_app_run / BUILTIN_APP_EXPORT */
+#include "ui_img_helper.h" /* IMG_LOGO */
 #include <cJSON.h>
 #include <string.h>
 
 #define DBG_TAG "lv_chat_page"
 #define DBG_LVL DBG_INFO
 #include <rtdbg.h>
+
+/* ── 堆保護(2026-10-03,「點進 Bot 聊天室偶發當機」)──
+   真機復現:`sys memory is full!` → data_proxy_process assert(malloc 回 NULL)→ 重開機。
+   系統堆(rt_malloc,LVGL/cJSON/BLE 全在這)總量只有 ~286KB、平時已用 ~250KB;聊天室一次
+   進出的暫態(開房 +5K、整頁渲染 +12K、鄰居頁 +10K 以上、每包 conv_state 的 cJSON DOM)
+   把歷史峰值推到離總量不到 5KB,基線又會飄 ±10KB,所以「有時候」會超過。
+   對策兩條,都只動聊天室自己的暫態:
+   1) conv_state 的 cJSON DOM 改走 PSRAM bump arena(見下);
+   2) 堆吃緊時不建鄰居頁(拖曳變橡皮筋、不換房),不要為了一個動畫把系統拖死。 */
+#define CHAT_NEIGHBOR_MIN_FREE (20 * 1024)
+#define CHAT_NEXT_PREVIEW_MSGS 4 /* 鄰居頁預覽只建最後這幾則,見 chat_next_page_build */
+void chat_page_apply_pending_state(void); /* 定義在檔尾;commit_done 升格後要補完整頁 */
+static uint32_t chat_heap_free(void)
+{
+#ifdef BSP_USING_PC_SIMULATOR
+    return 0xFFFFFFFFu; /* sim 的堆不是瓶頸 */
+#else
+    rt_uint32_t total = 0, used = 0, mx = 0;
+    rt_memory_info(&total, &used, &mx);
+    return (uint32_t)(total - used);
+#endif
+}
+
+/* ── conv_state 解析專用 arena ──
+   cJSON DOM ≈ 3.7× payload(實測 2.6KB → ~10KB;真實長對話 4~8KB → 15~30KB),全部在
+   skai_chat_on_conv_state 內解析、用完即 cJSON_Delete,沒有任何指標被留下。解析視窗內只有
+   KE_EVT2 這條執行緒的 cJSON 配置走 arena,其他執行緒 / 其他 cJSON 使用者照舊 rt_malloc;
+   arena 滿了、或沒配到 PSRAM 就退回 rt_malloc(行為等同修前)。arena 的 free 是 no-op,
+   每次解析開始時整塊歸零。PC sim 不啟用。 */
+#ifndef BSP_USING_PC_SIMULATOR
+#define CHAT_JSON_ARENA_SIZE (40 * 1024) /* L2 重組上限 8192B × 3.7 ≈ 30KB,留餘裕 */
+static uint8_t *s_json_arena;
+static size_t s_json_off;
+static rt_thread_t s_json_owner; /* 只有它的 cJSON 配置走 arena;解析視窗外為 NULL */
+
+static void *chat_json_malloc(size_t n)
+{
+    if (s_json_owner != NULL && s_json_owner == rt_thread_self() && s_json_arena != NULL)
+    {
+        size_t a = (n + 7u) & ~(size_t)7u;
+        if (s_json_off + a <= CHAT_JSON_ARENA_SIZE)
+        {
+            void *p = s_json_arena + s_json_off;
+            s_json_off += a;
+            return p;
+        }
+    }
+    return rt_malloc(n);
+}
+
+static void chat_json_free(void *p)
+{
+    if (p == NULL)
+        return;
+    if (s_json_arena != NULL && (uint8_t *)p >= s_json_arena &&
+        (uint8_t *)p < s_json_arena + CHAT_JSON_ARENA_SIZE)
+        return; /* arena 內的塊不單獨釋放 */
+    rt_free(p);
+}
+
+/* GUI 執行緒(第一次開房)呼叫:配 arena + 裝 hook。要是 app_cache_alloc 的 PSRAM 池滿了、
+   悄悄退回系統堆,就立刻還回去不用 —— 把 40KB 永久釘在吃緊的堆上比不修還糟。 */
+static void chat_json_arena_ensure(void)
+{
+    if (s_json_arena != NULL)
+        return;
+    void *blk = app_cache_alloc(CHAT_JSON_ARENA_SIZE, IMAGE_CACHE_PSRAM);
+    if (blk == NULL)
+        return;
+    if (((uint32_t)blk & 0xFC000000u) != 0x60000000u) /* PSRAM 位址窗;不是 → 配到系統堆了 */
+    {
+        app_cache_free(blk);
+        LOG_W("[chat] json arena not in PSRAM — disabled");
+        return;
+    }
+    s_json_arena = (uint8_t *)blk;
+    static cJSON_Hooks hooks = {chat_json_malloc, chat_json_free};
+    cJSON_InitHooks(&hooks);
+    LOG_W("[chat] json arena %u KB ready @%p", (unsigned)(CHAT_JSON_ARENA_SIZE / 1024), blk);
+}
+#endif
 
 /* Bottom voice control uses the shared mic glyph image (resource/images/.../micro_icon.png) — the
    same asset the recorder quick-setting + hid_mouse space-bar use. Icon-only, no button chrome. */
@@ -300,6 +383,14 @@ static void chat_pool_put(chat_msg_t *dst, const char *text)
 
 static uint32_t s_last_rebuild_tick;
 static lv_timer_t *s_rebuild_defer;
+static bool s_closing; /* chat_page_release_content 之後、chat_page_close 之前:不再重建內容 */
+static lv_obj_t *s_open_parent; /* 非 NULL=chat_page_open 把面板建在這個父物件上(app 畫面);NULL=lv_layer_top */
+static bool s_chat_is_app_room; /* 這間房是「聊天室 app」開的(面板在 app 畫面上),不是 lv_layer_top 浮層 */
+/* 最近一次完整渲染所依據的輸入簽章。手機開房後會連推 ~5 包「內容完全相同」的 conv_state,
+   每包都觸發一次整頁重建(清掉 16 則再建 16 則 + 一整幀 EPIC),堆吃緊時這些重複就是尖峰。
+   輸入沒變就跳過。凡是「訊息列表被清掉 / 換掉」的地方都要把它歸零(見 s_render_sig_valid=false)。 */
+static uint32_t s_render_sig;
+static bool s_render_sig_valid;
 
 static void chat_rebuild_defer_cb(lv_timer_t *t)
 {
@@ -315,6 +406,15 @@ static void chat_rebuild_defer_cb(lv_timer_t *t)
 bool chat_page_is_open(void)
 {
     return s_chat_panel != NULL && lv_obj_is_valid(s_chat_panel);
+}
+
+/* 只算「疊在 lv_layer_top 的浮層」那種聊天室。Main 的 check_is_at_home 用它:app 模式的聊天室不在
+   tileview 狀態機的疑慮裡(app 開著時 Main 本來就不是 active),而 app 返回時 Main 先 ONRESUME、
+   聊天室 app 的面板要等返回動畫後 ONSTOP 才關 —— 若這裡仍算「開著」,Main 恢復當下 is_at_home()=false,
+   clock_on_resume() 被跳過、錶盤沒重建(2026-10-03 真機:錶盤不見)。 */
+bool chat_page_is_overlay_open(void)
+{
+    return chat_page_is_open() && !s_chat_is_app_room;
 }
 
 /* R69(founder:「可以先把我輸入的顯示出來」):開新對話時,session 要 ~4 秒才在桌面建好,
@@ -872,6 +972,7 @@ void chat_page_switch_session(const char *title)
         return;
     if (s_title_label != NULL && lv_obj_is_valid(s_title_label))
         lv_label_set_text(s_title_label, (title && title[0]) ? title : "聊天室");
+    s_render_sig_valid = false; /* 列表被清空,下一包狀態一定要重畫 */
     if (s_msg_list != NULL && lv_obj_is_valid(s_msg_list))
         lv_obj_clean(s_msg_list);
     if (s_loading_label != NULL && lv_obj_is_valid(s_loading_label))
@@ -986,6 +1087,8 @@ static char s_next_title_txt[64];
 
 static lv_obj_t *chat_add_hermes_turn(lv_obj_t *parent, const char *text, bool mine);
 
+static bool s_next_skip_logged; /* 低堆跳過鄰居頁的 log 去重;catcher PRESSED 清掉 */
+
 static void chat_next_page_destroy(void)
 {
     if (s_next_list != NULL && lv_obj_is_valid(s_next_list))
@@ -1028,6 +1131,16 @@ static void chat_next_page_build(int dir)
     chat_next_page_destroy();
     if (s_session_switch_cb == NULL)
         return;
+    if (chat_heap_free() < CHAT_NEIGHBOR_MIN_FREE)
+    {
+        /* 每一格拖曳事件都會進來;只在這一次按壓的第一次吭聲(PRESSED 時清旗標)。 */
+        if (!s_next_skip_logged)
+        {
+            s_next_skip_logged = true;
+            LOG_W("[chat] next page skipped: low heap free=%u", (unsigned)chat_heap_free());
+        }
+        return;
+    }
     char sid[64];
     char title[64];
     sid[0] = '\0';
@@ -1041,7 +1154,11 @@ static void chat_next_page_build(int dir)
     chat_cache_entry_t *e = chat_cache_find(sid);
     if (e != NULL && e->msg_count > 0)
     {
-        for (int i = 0; i < e->msg_count && i < CHAT_MAX_MSGS; i++)
+        /* 只建最後 CHAT_NEXT_PREVIEW_MSGS 則:鄰居頁釘在最新一則、滑動過程中看得到的只有最底下
+           那幾則。整份 16 則 ≈ +10KB,再加兩頁同時滑動的畫面,實測(2026-10-03)把系統堆推到離
+           耗盡 2KB。升格後 chat_hslide_commit_done 會用快取立刻補成完整頁。 */
+        int from = (e->msg_count > CHAT_NEXT_PREVIEW_MSGS) ? (e->msg_count - CHAT_NEXT_PREVIEW_MSGS) : 0;
+        for (int i = from; i < e->msg_count && i < CHAT_MAX_MSGS; i++)
         {
             const chat_msg_t *m = &e->msgs[i];
             const char *text = (m->off <= CHAT_TEXT_POOL) ? (e->pool + m->off) : "";
@@ -1163,6 +1280,14 @@ static void chat_hslide_commit_done(lv_anim_t *a)
         lv_timer_del(s_rebuild_defer);
         s_rebuild_defer = NULL;
     }
+    /* 鄰居頁預覽只建了最後幾則(見 chat_next_page_build)—— 舊頁剛刪、堆有空,用上面載好的快取
+       立刻補成完整頁。沒快取 / 本來就不超過預覽則數的就不動(維持房內自己的「載入中…」提示)。 */
+    s_render_sig_valid = false; /* 升格的是只有預覽則數的鄰居列表,不是上一頁畫過的內容 */
+    {
+        chat_cache_entry_t *ne = chat_cache_find(s_next_sid);
+        if (ne != NULL && ne->msg_count > CHAT_NEXT_PREVIEW_MSGS)
+            chat_page_apply_pending_state();
+    }
     if (s_session_switch_cb != NULL)
         s_session_switch_cb(dir, true, NULL, 0, NULL, 0);
 }
@@ -1225,6 +1350,7 @@ static void chat_swipe_catcher_cb(lv_event_t *e)
         s_hs_dy = 0;
         s_hs_last_vy = 0;
         s_hs_mode = CHAT_HS_MODE_IDLE;
+        s_next_skip_logged = false;
         LOG_D("[chat] catcher press (%d,%d) cb=%d next=%d", (int)s_hs_last.x, (int)s_hs_last.y,
               (int)(s_session_switch_cb != NULL), (int)s_next_dir);
         /* 手指一按住就停掉尚未走完的平移動畫,別跟拖曳打架。動畫被中斷 = 升格/
@@ -1339,11 +1465,17 @@ void chat_page_open(const char *title, const char *icon_src)
 {
     if (chat_page_is_open())
         chat_page_close();
+    s_closing = false;
+    s_render_sig_valid = false; /* 新面板、新的空訊息列表 */
     chat_cache_ensure(); /* per-session 轉錄快取(LVGL thread 配置;BLE 端 NULL 就跳過) */
+#ifndef BSP_USING_PC_SIMULATOR
+    chat_json_arena_ensure(); /* conv_state 解析 arena(PSRAM);見檔頭「堆保護」 */
+#endif
     s_state_received = false;
     s_room_sid[0] = '\0'; /* 開房的人若有 key 會經 chat_page_try_restore 綁上 */
 
-    lv_obj_t *panel = lv_obj_create(lv_layer_top());
+    /* app 模式(chat_page_open_as_app)時掛在 app 自己的畫面上;其他入口維持 lv_layer_top 浮層。 */
+    lv_obj_t *panel = lv_obj_create(s_open_parent != NULL ? s_open_parent : lv_layer_top());
     lv_obj_set_size(panel, LV_HOR_RES, LV_VER_RES);
     lv_obj_set_pos(panel, 0, 0);
     lv_obj_set_style_radius(panel, 0, 0);
@@ -1623,6 +1755,27 @@ void chat_page_open(const char *title, const char *icon_src)
     LOG_I("chat page opened: %s", (title && title[0]) ? title : "(none)");
 }
 
+void chat_page_release_content(void)
+{
+    if (!chat_page_is_open())
+        return;
+    uint32_t free_before = chat_heap_free();
+    s_closing = true; /* 之後遲到的 REFRESH_CHAT / defer timer 不准再把內容建回來 */
+    if (s_rebuild_defer != NULL)
+    {
+        lv_timer_del(s_rebuild_defer);
+        s_rebuild_defer = NULL;
+    }
+    chat_next_page_destroy();
+    chat_wait_stop();
+    chat_type_reset(); /* 揭露 timer + 直播 label 指標一起歸零;關房時本來就會做 */
+    s_render_sig_valid = false;
+    if (s_msg_list != NULL && lv_obj_is_valid(s_msg_list))
+        lv_obj_clean(s_msg_list);
+    LOG_W("[chat] content released for exit, heap free %u -> %u", (unsigned)free_before,
+          (unsigned)chat_heap_free());
+}
+
 void chat_page_close(void)
 {
     if (!chat_page_is_open())
@@ -1669,6 +1822,9 @@ void chat_page_close(void)
     chat_wait_stop();
     s_local_echo[0] = 0;
     s_awaiting_reply = false;
+    s_closing = false;
+    s_render_sig_valid = false;
+    s_chat_is_app_room = false;
     {
         extern void lv_top_panel_mouse_layer_set_covered(bool covered);
         lv_top_panel_mouse_layer_set_covered(false);
@@ -1680,7 +1836,32 @@ void chat_page_close(void)
    the pending STATIC buffer (bounded copies — heap-only cJSON, no 4KB BLE-stack blowup), then DEFER
    the render to the LVGL thread (LVGL ops are not thread-safe off the GUI task). Defined here so
    resolve_skailink_command links against a STRONG symbol regardless. */
+static void chat_on_conv_state(const uint8_t *json, uint16_t length);
+
 void skai_chat_on_conv_state(const uint8_t *json, uint16_t length)
+{
+#ifndef BSP_USING_PC_SIMULATOR
+    if (s_json_arena != NULL)
+    {
+        s_json_off = 0;
+        s_json_owner = rt_thread_self(); /* 解析視窗開始:本執行緒的 cJSON 配置走 arena */
+    }
+    else if (length != 0 && chat_heap_free() < (uint32_t)length * 4u + 8192u)
+    {
+        /* 沒有 arena(第一次開房前 / PSRAM 池滿):DOM 會落在系統堆。堆不夠就丟掉這一包 ——
+           手機房開著時每 ~10 秒會整份重推,比 malloc 失敗 → assert → 重開機好得多。 */
+        LOG_W("[chat] conv_state len=%u dropped: low heap free=%u", (unsigned)length,
+              (unsigned)chat_heap_free());
+        return;
+    }
+#endif
+    chat_on_conv_state(json, length);
+#ifndef BSP_USING_PC_SIMULATOR
+    s_json_owner = NULL; /* 解析視窗結束(DOM 已在 chat_on_conv_state 內 cJSON_Delete) */
+#endif
+}
+
+static void chat_on_conv_state(const uint8_t *json, uint16_t length)
 {
     LOG_D("[chat] conv_state rx len=%u open=%d", (unsigned)length, (int)chat_page_is_open());
     if (json == NULL || length == 0)
@@ -2185,10 +2366,39 @@ static void chat_render_pending_approval(void)
     }
 }
 
+/* 渲染輸入的簽章。**只放輸入,不放 apply 自己會改的衍生旗標**(s_awaiting_reply / s_live_turn):
+   它們由 pending_sending + 本機回音 + 訊息內容推得,放進來會讓每次重建完簽章就變、白多重建一次。 */
+static uint32_t chat_render_sig(int count)
+{
+    uint32_t h = 2166136261u;
+#define CHAT_SIG_MIX(v) (h = (h ^ (uint32_t)(v)) * 16777619u)
+    CHAT_SIG_MIX(count);
+    CHAT_SIG_MIX((uint32_t)s_hermes_style | ((uint32_t)s_pending_sending << 1) |
+                 ((uint32_t)s_appr_pending << 2) | ((uint32_t)s_state_received << 3));
+    CHAT_SIG_MIX(chat_fnv1a(s_pending_title, strlen(s_pending_title)));
+    CHAT_SIG_MIX(chat_fnv1a((const char *)s_pending_msgs, (size_t)count * sizeof(chat_msg_t)));
+    CHAT_SIG_MIX(chat_fnv1a(s_text_pool, (s_pool_used <= CHAT_TEXT_POOL) ? s_pool_used : CHAT_TEXT_POOL));
+    CHAT_SIG_MIX(chat_fnv1a(s_local_echo, strlen(s_local_echo)));
+    if (s_appr_pending)
+    {
+        CHAT_SIG_MIX(chat_fnv1a(s_appr_rid, strlen(s_appr_rid)));
+        CHAT_SIG_MIX(chat_fnv1a(s_appr_q, strlen(s_appr_q)));
+        for (int i = 0; i < s_appr_count && i < CHAT_APPR_OPTS; i++)
+        {
+            CHAT_SIG_MIX(chat_fnv1a(s_appr_opts[i].id, strlen(s_appr_opts[i].id)));
+            CHAT_SIG_MIX(chat_fnv1a(s_appr_opts[i].label, strlen(s_appr_opts[i].label)));
+        }
+    }
+#undef CHAT_SIG_MIX
+    return h;
+}
+
 /* LVGL thread: rebuild the transcript bubbles from the pending buffer (left=them grey / right=me
    blue). No-op if the chat closed between the BLE parse and this deferred render. */
 void chat_page_apply_pending_state(void)
 {
+    if (s_closing)
+        return; /* 返回中:內容已拆掉換堆,別為了一包遲到的狀態又建回來 */
     if (!chat_page_is_open() || s_msg_list == NULL || !lv_obj_is_valid(s_msg_list))
     {
         /* 早退等於「解析好的內容從來沒被畫出來」,而畫面就停在上一版 —— 這是「我的輸入閃
@@ -2198,6 +2408,17 @@ void chat_page_apply_pending_state(void)
         return;
     }
     LOG_D("[chat] render count=%d appr=%d", (int)s_pending_msg_count, (int)s_appr_pending);
+
+    /* 輸入沒變就不重建(見 s_render_sig)。簽章在這裡算、**重建完才存**,所以重建途中 BLE 又改了
+       狀態,下一次 REFRESH 算出的簽章會不同、照樣重建,不會被誤判成「已畫過」。 */
+    int sig_count = s_pending_msg_count;
+    if (sig_count > CHAT_MAX_MSGS)
+        sig_count = CHAT_MAX_MSGS;
+    if (sig_count < 0)
+        sig_count = 0;
+    const uint32_t sig = chat_render_sig(sig_count);
+    if (s_render_sig_valid && sig == s_render_sig)
+        return;
 
     if (s_title_label != NULL && lv_obj_is_valid(s_title_label) && s_pending_title[0] != '\0')
         lv_label_set_text(s_title_label, s_pending_title);
@@ -2274,7 +2495,11 @@ void chat_page_apply_pending_state(void)
             lv_obj_add_flag(s_loading_label, LV_OBJ_FLAG_HIDDEN);
     }
     if (empty)
+    {
+        s_render_sig = sig;
+        s_render_sig_valid = true;
         return; /* nothing to render yet — the centered placeholder is up */
+    }
 
     for (int i = 0; i < count; i++)
     {
@@ -2390,4 +2615,102 @@ void chat_page_apply_pending_state(void)
     chat_render_pending_approval();
 
     lv_obj_scroll_to_y(s_msg_list, LV_COORD_MAX, LV_ANIM_OFF); /* pin to the newest */
+    s_render_sig = sig;
+    s_render_sig_valid = true;
 }
+
+#if CHAT_AS_APP
+/* ── 聊天室 app(2026-10-03 實驗)──────────────────────────────────────────
+   動機:聊天室原本是蓋在 lv_layer_top 的浮層,錶盤 / 左頁 / 右側 app 列表 / 通知 / 滑鼠這幾面全都還活著
+   (實測靜止時系統堆只剩 ~10KB)。改成真 app 之後框架會暫停 Main(實測開一個 app 少 ~10KB),返回走
+   gui_app_goback → ONSTOP,不必再靠 handle_back_event 手動「先收清單、搬回錶盤、最後才關房」。
+   只有左頁的 '@' 入口走這條(chat_page_open_as_app);滑鼠抽屜 / walk-in 仍是浮層。 */
+static char s_app_title[64];
+static const char *s_app_icon;
+static chat_app_open_hook_t s_app_hook;
+static bool s_app_launching; /* 已排進 gui_app_run、ONSTART 還沒跑:擋掉連點 */
+
+void chat_page_open_as_app(const char *title, const char *icon_src, chat_app_open_hook_t after_open)
+{
+    if (s_app_launching || chat_page_is_open())
+    {
+        LOG_W("[chat-app] open ignored (launching=%d open=%d)", (int)s_app_launching,
+              (int)chat_page_is_open());
+        return;
+    }
+    strncpy(s_app_title, (title != NULL) ? title : "", sizeof(s_app_title) - 1);
+    s_app_title[sizeof(s_app_title) - 1] = '\0';
+    s_app_icon = icon_src;
+    s_app_hook = after_open;
+    s_app_launching = true;
+    /* 跟其他從左頁開 app 的路徑一模一樣(openApp:gui_app_run + animate_to_home_from_instruction_list):
+       gui_app_run 只是丟訊息給 GUI 任務,可以直接在點擊處理裡呼叫;左頁浮層由 tileview 搬回錶盤的動畫
+       帶走,和 app 轉場同時進行,看起來是直接進 app。(第一版我在這裡先 instruction_list_hide_now +
+       snap_to_home 再 async 啟動,結果使用者會先看到錶盤閃一下才進聊天室。) */
+    if (gui_app_run(APP_ID_CHAT) != RT_EOK)
+    {
+        LOG_W("[chat-app] gui_app_run failed");
+        s_app_launching = false;
+        return;
+    }
+    extern void animate_to_home_from_instruction_list(void);
+    animate_to_home_from_instruction_list();
+}
+
+static void chat_app_msg_handler(gui_app_msg_type_t msg, void *param)
+{
+    (void)param;
+    switch (msg)
+    {
+    case GUI_APP_MSG_ONSTART:
+    {
+        /* app_run 直接開啟不經 Main 狀態機,左緣右滑返回的偵測器仍是關的,這裡補開(同其他 app) */
+        extern void display_gesture_detect_objs(uint32_t idx, bool display);
+        display_gesture_detect_objs(0, true);
+        s_open_parent = lv_scr_act();
+        chat_page_open(s_app_title, s_app_icon);
+        s_chat_is_app_room = true; /* 要在 open 之後設:open 開頭的 close 會把它清掉 */
+        s_open_parent = NULL;
+        s_app_launching = false;
+        LOG_W("[chat-app] started, heap free=%u", (unsigned)chat_heap_free());
+        if (s_app_hook != NULL)
+            s_app_hook(); /* 綁 switcher / 送 conv_open / 快取補畫 */
+        break;
+    }
+    case GUI_APP_MSG_ONRESUME:
+    {
+        extern void set_open_control_options(bool open);
+        extern void set_free_control_with_arm(bool flag);
+        set_open_control_options(false);
+        set_free_control_with_arm(false);
+        reset_lvgl_msg_handler(); /* Main / 左頁掛的手勢 handler 不能留著去驅動看不見的清單 */
+        break;
+    }
+    case GUI_APP_MSG_ONSTOP:
+    {
+        extern bool commu_send_conv_close(void);
+        if (chat_page_is_open())
+        {
+            commu_send_conv_close(); /* 告訴手機這間房結束了(原本在 handle_back_event 做) */
+            chat_page_close();
+        }
+        s_app_hook = NULL;
+        s_app_icon = NULL;
+        s_app_launching = false;
+        s_chat_is_app_room = false;
+        break;
+    }
+    default:
+        break;
+    }
+}
+
+static int chat_app_main(intent_t i)
+{
+    (void)i;
+    gui_app_regist_msg_handler(APP_ID_CHAT, chat_app_msg_handler);
+    return 0;
+}
+
+BUILTIN_APP_EXPORT(LV_EXT_STR_ID(skaiapp), IMG_LOGO, APP_ID_CHAT, chat_app_main, 1);
+#endif /* CHAT_AS_APP */

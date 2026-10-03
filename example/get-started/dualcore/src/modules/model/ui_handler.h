@@ -21,6 +21,9 @@ extern "C"
 #define APP_ID_TIMER "timer"
 #define APP_ID_EXERCISE "exercise"
 #define APP_ID_FLASHLIGHT "flashlight"
+/* In-watch @-conversation chat room, opened from the left page as a real gui_app (lv_chat_page.c)
+   so the framework pauses Main while the room is up instead of stacking it on lv_layer_top. */
+#define APP_ID_CHAT "chat"
 #define APP_ID_MOUSE "mouse"
 /* TV remote — brand-neutral key surface; the phone owns discovery + the vendor
    driver (see SKAI_LINK KEY_TV_CONTROL 0x22 / KEY_TV_STATE 0x23). */

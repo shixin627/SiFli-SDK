@@ -24,6 +24,7 @@
 #include "app_speech.h"
 #include "app_mainmenu.h"
 #include "ui_handler.h"
+#include "lv_chat_page.h" /* CHAT_AS_APP:聊天室是 app 時返回走 gui_app_goback */
 #include "ui_helper.h"
 #ifdef BSP_USING_MODEL_WATCH_SYS_INTERACT
     #include "watch_system_interact.h"
@@ -138,6 +139,18 @@ static void handle_back_event(bool is_button)
         extern bool commu_send_conv_close(void);
         if (chat_page_is_open())
         {
+#if CHAT_AS_APP
+            /* 聊天室是 app(左頁入口):先放掉聊天內容換堆,再交給框架返回 —— ONSTOP 會送 conv_close
+               並關房;返回時 Main 已在錶盤(啟動前就把左頁收掉了),不必手動收清單/搬回錶盤。 */
+            if (gui_app_is_actived(APP_ID_CHAT))
+            {
+                extern void chat_page_release_content(void);
+                chat_page_release_content();
+                gui_app_goback();
+                LOG_I("ESC in chat app => release content + gui_app_goback");
+                return;
+            }
+#endif
             commu_send_conv_close();
             /* 滑鼠情境(單設備搜尋抽屜點 session 進聊天室,2026-08-15):聊天室 overlay 疊在
                觸控板上,返回=只關聊天室、直接露出觸控板。下面錶盤那套 hide list + snap
@@ -164,6 +177,11 @@ static void handle_back_event(bool is_button)
                back). The list is fully covered by the opaque chat panel, so it's never visible. On back:
                instant-hide the list FIRST (behind the still-up panel, no slide/flash), THEN close the
                chat so it reveals the WATCH FACE directly, not the list (founder 2026-06-29). */
+            /* 2026-10-03 真機當機(`sys memory is full!` → assert → 重開機)就在下面這段:
+               收清單 + 搬回錶盤要配十幾 KB,而聊天室整頁(泡泡 + 鄰居頁 ≈ 29KB)還活著、系統堆
+               只剩 ~15KB。所以先把聊天「內容」拆掉換堆 —— 不透明面板留著蓋住轉場,視覺不變。 */
+            extern void chat_page_release_content(void);
+            chat_page_release_content();
             extern void instruction_list_hide_now(void);
             instruction_list_hide_now();
             /* ADR-0020 R16:清單如今從左頁 (0,1) 開,tileview 還停在那個空左格 —
