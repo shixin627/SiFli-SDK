@@ -286,6 +286,22 @@ static int sim_nav(int argc, char *argv[])
 }
 MSH_CMD_EXPORT(sim_nav, sim_nav N - drive the list nav the way a motion gesture does (sim));
 
+/* sim_filter [text]:模擬語音搜尋的文字篩選(空字串=結束搜尋)。卡片模式要退回列清單,驗「沒建列」後會補建。 */
+static char s_sim_filter[32];
+static void sim_filter_async_cb(void *arg)
+{
+    (void)arg;
+    extern void instruction_list_set_text_filter(const char *text);
+    instruction_list_set_text_filter(s_sim_filter);
+}
+static int sim_filter(int argc, char *argv[])
+{
+    rt_strncpy(s_sim_filter, (argc > 1) ? argv[1] : "", sizeof(s_sim_filter) - 1);
+    lv_async_call(sim_filter_async_cb, NULL);
+    return 0;
+}
+MSH_CMD_EXPORT(sim_filter, sim_filter [text] - set/clear the list text filter (sim));
+
 static int notif_inject(int argc, char *argv[])
 {
     if (argc < 3)

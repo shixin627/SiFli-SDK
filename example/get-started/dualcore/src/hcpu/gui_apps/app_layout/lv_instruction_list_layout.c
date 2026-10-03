@@ -6699,6 +6699,15 @@ static bool s_lc_rows_hidden = false;
 /* 這次開著左頁之後,使用者動過卡片嗎(翻頁/撥輪盤)。沒動過 = 資料晚到重建卡片時要照列清單的落點規則走
    (selected_item_index:最新的 session 在最下面,晚到的 Bot 要補正過去);動過了就留在他看的那一張。 */
 static bool s_lc_moved = false;
+/* 這次 refresh 沒有建列(整頁卡片模式)。列清單的列在卡片模式下根本不會畫出來(整個 list 被藏起來),
+   founder 2026-10-03:「原本的不會顯示出來了就刪掉不要留著占空間」。量過真機:一列(item+touch 層+圖+標題+說明)
+   約 1500 位元組堆,10 列 ≈ 15KB,而堆只有 ~300KB 還被 OOM 壓著。卡片自己只存指標/建 3 張卡的內容。 */
+static bool s_lc_rows_skipped = false;
+static void lc_rebuild_rows_cb(void *arg)
+{
+    (void)arg;
+    refresh_custom_instructions();
+}
 
 static bool left_cards_wanted(void)
 {
@@ -7127,6 +7136,13 @@ static void left_cards_release(void)
     s_lc_n = 0;
     s_lc_moved = false;
     s_lc_opt_sig = 2166136261u;
+    /* 沒建列的狀態下改回列清單模式(語音搜尋、滑鼠單設備抽屜、AI 輸入框):列要補建,否則清單是空的。
+       只有「現在不要卡片」才補(只是浮層沒開著的 release 不需要列)。 */
+    if (s_lc_rows_skipped && !left_cards_wanted())
+    {
+        s_lc_rows_skipped = false;
+        lv_async_call(lc_rebuild_rows_cb, NULL);
+    }
     if (s_lc_rows_hidden)
         lc_set_rows_hidden(false);
 }
@@ -8789,7 +8805,11 @@ void refresh_custom_instructions(void)
 
     /* Recreate all list item UI */
     LOG_I("[RCK] A before create_list_items_ui n=%d", (int)list_item_count);
-    create_list_items_ui(list, 0, list_item_count);
+    /* 整頁卡片模式不建列:列清單這時整個被藏起來(lc_set_rows_hidden),建了只是白占堆(真機量過一列約 1.5KB)。
+       狀態改回列清單模式時由 left_cards_release 補一次 refresh。 */
+    s_lc_rows_skipped = left_cards_wanted();
+    if (!s_lc_rows_skipped)
+        create_list_items_ui(list, 0, list_item_count);
     LOG_I("[RCK] B after create_list_items_ui");
     update_list_empty_state();
 
