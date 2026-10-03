@@ -58,6 +58,7 @@
 #include "lv_chat_page.h"
 #include "lv_session_pager.h"
 #include "lv_left_cards.h"
+#include "app_mem.h" /* app_cache_alloc(IMAGE_CACHE_PSRAM) */
 #include <ctype.h>
 #ifdef BSP_USING_BLOC_NOTIFY
     #include "bloc_notification.h"
@@ -1228,7 +1229,21 @@ lv_obj_t *app_label[MAX_LIST_ITEMS];
 #define LIST_SUB_MAX_W 260 /* 標題置中偏左 20px、右緣讓出圖標,弦長內放得下的寬度 */
 static lv_obj_t *app_sub[MAX_LIST_ITEMS];
 static uint32_t s_sub_key[MAX_LIST_ITEMS]; /* 0 = 空槽 */
-static char s_sub_txt[MAX_LIST_ITEMS][LIST_SUB_LEN];
+/* 旁表的文字區 30x96B=2.9KB 原本常駐 SRAM static,SRAM 少一塊就是系統堆少一塊(link.sct 首尾相接)。
+   改成第一次用到才從 PSRAM 配、之後常駐(跟 list_scratch 同一招);配不到回 NULL,呼叫端當「沒有預覽」。 */
+static char (*sub_txt_tbl(void))[LIST_SUB_LEN]
+{
+#ifdef BSP_USING_PC_SIMULATOR
+    static char sim_buf[MAX_LIST_ITEMS][LIST_SUB_LEN];
+    return sim_buf;
+#else
+    static char(*s_psram)[LIST_SUB_LEN];
+    if (s_psram == NULL)
+        s_psram = (char(*)[LIST_SUB_LEN])app_cache_alloc(sizeof(char[MAX_LIST_ITEMS][LIST_SUB_LEN]),
+                                                         IMAGE_CACHE_PSRAM);
+    return s_psram;
+#endif
+}
 static uint8_t s_sub_next; /* 旁表滿了才輪流覆寫 */
 static lv_coord_t s_sub_dy; /* 預覽區塊中心相對標題中心的下移量,建列時算 */
 
@@ -1285,10 +1300,13 @@ bool set_instruction_sub_long(const char *id, const char *text)
 
 static const char *sub_of(const char *id)
 {
+    char(*tbl)[LIST_SUB_LEN] = sub_txt_tbl();
+    if (tbl == NULL)
+        return "";
     uint32_t k = sub_key_of(id);
     for (uint8_t i = 0; i < MAX_LIST_ITEMS; i++)
         if (s_sub_key[i] == k)
-            return s_sub_txt[i];
+            return tbl[i];
     return "";
 }
 
@@ -1297,6 +1315,9 @@ static const char *sub_of(const char *id)
 bool set_instruction_sub(const char *id, const char *sub)
 {
     if (id == NULL || id[0] == '\0')
+        return false;
+    char(*tbl)[LIST_SUB_LEN] = sub_txt_tbl();
+    if (tbl == NULL)
         return false;
     uint32_t k = sub_key_of(id);
     int slot = -1, empty = -1;
@@ -1315,7 +1336,7 @@ bool set_instruction_sub(const char *id, const char *sub)
         if (slot < 0)
             return false;
         s_sub_key[slot] = 0;
-        s_sub_txt[slot][0] = '\0';
+        tbl[slot][0] = '\0';
         return true;
     }
     size_t n = strlen(sub);
@@ -1325,15 +1346,15 @@ bool set_instruction_sub(const char *id, const char *sub)
         while (n > 0 && ((uint8_t)sub[n] & 0xC0) == 0x80) /* 別把 UTF-8 字切在中間 */
             n--;
     }
-    if (slot >= 0 && strlen(s_sub_txt[slot]) == n && memcmp(s_sub_txt[slot], sub, n) == 0)
+    if (slot >= 0 && strlen(tbl[slot]) == n && memcmp(tbl[slot], sub, n) == 0)
         return false;
     if (slot < 0)
     {
         slot = (empty >= 0) ? empty : (int)(s_sub_next++ % MAX_LIST_ITEMS);
         s_sub_key[slot] = k;
     }
-    memcpy(s_sub_txt[slot], sub, n);
-    s_sub_txt[slot][n] = '\0';
+    memcpy(tbl[slot], sub, n);
+    tbl[slot][n] = '\0';
     return true;
 }
 
@@ -6689,9 +6710,7 @@ void instruction_list_activate_index(uint8_t i)
    全都沿用,只是「看到的東西」從列輪播換成一張張整頁卡。列清單本身照舊建好(只是藏起來),
    所以 selected_item_index、落點、注入、篩選這些狀態機一個都沒動 —— 卡片只是它的另一種畫法。
    只有「左頁瀏覽態」才用卡片:語音搜尋開著(文字篩選/AI 輸入框)、滑鼠 app 單設備抽屜都退回列清單。 */
-static left_card_t s_lc_cards[LEFT_CARDS_MAX];
 static uint8_t s_lc_item[LEFT_CARDS_MAX]; /* 第幾張卡 → list_items[] 的索引 */
-static char s_lc_subbuf[LEFT_CARDS_MAX][LIST_SUB_LEN]; /* 即時內容的存放(卡片只存指標) */
 static uint8_t s_lc_n = 0;
 static uint32_t s_lc_sig = 0;
 static uint32_t s_lc_ssig = 0; /* 說明文字的雜湊(單獨一個,內容變了只重畫不重建) */
@@ -6911,6 +6930,7 @@ static char s_lc_opt_nid[48];    /* NOTIFICATION_ID_LEN */
    手機推來的那句只有 95 位元組(旁表一格 96B、30 格不能再放大),而同一則 AI 主動提醒的全文本來就在錶上的
    通知清單裡(最多 768B)。找到對應通知就改顯示它的全文(壓平空白、截 299B),找不到仍用那一句。 */
 static char s_lc_ai_text[300];
+static int s_lc_ai_card = -1; /* AI 通知配對到哪張卡(-1 = 沒有) */
 static uint8_t s_lc_opt_n = 0;
 static uint8_t s_lc_opt_card = 0;
 static uint32_t s_lc_opt_sig = 2166136261u; /* 沒有選項的簽章 */
@@ -7148,6 +7168,33 @@ static void left_cards_release(void)
 }
 
 /* refresh 尾端呼叫:資料變了或模式變了才動,沒變就不重建(重建會重置翻頁位置)。 */
+/* 第 idx 張卡的內容。卡片模組要畫/量哪張才問哪張 —— 不再常駐一份 30 張的陣列 + 每張 96B 的即時文字緩衝
+   (約 3.8KB 靜態 SRAM;SRAM 少一塊就是系統堆少一塊)。subbuf 由呼叫端(模組/sync)提供,只在這次呼叫期間有效。 */
+static bool lc_card_at(uint8_t idx, left_card_t *c, char *subbuf)
+{
+    if (idx >= list_item_count)
+        return false;
+    const list_item_t *it = &list_items[idx];
+    uint8_t ai = accent_idx_of(it->id);
+    if (ai == ACC_NONE)
+        ai = (it->category == '@') ? ACC_BOT : ACC_GENERIC;
+    c->title = it->title;
+    c->sub = lc_sub_for(subbuf, it, ai);
+    c->icon = (it->img_path[0] != '\0') ? (const void *)it->img_path : it->icon;
+    c->accent = lc_accent_of(it, ai);
+    c->n_opts = 0;
+    for (uint8_t k = 0; k < 3; k++)
+        c->opts[k] = NULL;
+    if ((int)idx == s_lc_ai_card) /* AI 通知配對到這張:全文 + 選項(sync 先算好放在 s_lc_ai_text / s_lc_opt_*) */
+    {
+        c->sub = s_lc_ai_text;
+        for (uint8_t k = 0; k < s_lc_opt_n && k < 3; k++)
+            c->opts[k] = s_lc_opt_txt[k];
+        c->n_opts = s_lc_opt_n;
+    }
+    return true;
+}
+
 static void left_cards_sync(void)
 {
     if (p_instruction_list_layout == NULL)
@@ -7161,57 +7208,51 @@ static void left_cards_sync(void)
         return;
     }
 
-    uint8_t n = 0;
+    uint8_t n = (list_item_count > LEFT_CARDS_MAX) ? LEFT_CARDS_MAX : list_item_count;
     uint32_t sig = 2166136261u;
     uint32_t ssig = 2166136261u;
     uint32_t osig = 2166136261u;
-    bool ai_done = false;
     s_lc_opt_n = 0;
-    for (uint8_t i = 0; i < list_item_count && n < LEFT_CARDS_MAX; i++)
+    s_lc_ai_card = -1;
+#ifdef BSP_USING_BLOC_NOTIFY
+    /* 先找 AI 通知配對到哪張 Bot 卡(全文 + 選項),結果放在 s_lc_ai_* / s_lc_opt_*;卡片內容由 lc_card_at 按需組出 */
+    for (uint8_t i = 0; i < n; i++)
     {
         const list_item_t *it = &list_items[i];
-        left_card_t *c = &s_lc_cards[n];
-        uint8_t ai = accent_idx_of(it->id);
-        if (ai == ACC_NONE)
-            ai = (it->category == '@') ? ACC_BOT : ACC_GENERIC;
-        c->title = it->title;
-        c->sub = lc_sub_for(s_lc_subbuf[n], it, ai);
-        c->icon = (it->img_path[0] != '\0') ? (const void *)it->img_path : it->icon;
-        c->n_opts = 0;
-#ifdef BSP_USING_BLOC_NOTIFY
-        if (it->category == '@' && !ai_done)
+        if (it->category != '@')
+            continue;
+        char tmp[LIST_SUB_LEN];
+        const notification_t *nt = lc_find_reply_notification(lc_sub_for(tmp, it, ACC_BOT));
+        if (nt == NULL)
+            continue;
+        lc_ai_text_from(nt->message);
+        s_lc_ai_card = i;
+        s_lc_opt_n = (nt->option_count > 3) ? 3 : nt->option_count;
+        s_lc_opt_card = i;
+        strncpy(s_lc_opt_nid, nt->id, sizeof(s_lc_opt_nid) - 1);
+        s_lc_opt_nid[sizeof(s_lc_opt_nid) - 1] = '\0';
+        for (uint8_t k = 0; k < s_lc_opt_n; k++)
         {
-            const notification_t *nt = lc_find_reply_notification(c->sub);
-            if (nt != NULL)
-            {
-                ai_done = true;
-                lc_ai_text_from(nt->message);
-                c->sub = s_lc_ai_text;
-                s_lc_opt_n = (nt->option_count > 3) ? 3 : nt->option_count;
-                s_lc_opt_card = n;
-                strncpy(s_lc_opt_nid, nt->id, sizeof(s_lc_opt_nid) - 1);
-                s_lc_opt_nid[sizeof(s_lc_opt_nid) - 1] = '\0';
-                for (uint8_t k = 0; k < s_lc_opt_n; k++)
-                {
-                    strncpy(s_lc_opt_txt[k], nt->options[k], sizeof(s_lc_opt_txt[k]) - 1);
-                    s_lc_opt_txt[k][sizeof(s_lc_opt_txt[k]) - 1] = '\0';
-                    c->opts[k] = s_lc_opt_txt[k];
-                }
-                c->n_opts = s_lc_opt_n;
-                osig = lc_opt_sig_of(nt);
-            }
+            strncpy(s_lc_opt_txt[k], nt->options[k], sizeof(s_lc_opt_txt[k]) - 1);
+            s_lc_opt_txt[k][sizeof(s_lc_opt_txt[k]) - 1] = '\0';
         }
+        osig = lc_opt_sig_of(nt);
+        break;
+    }
 #endif
-        c->accent = lc_accent_of(it, ai);
-        s_lc_item[n] = i;
-        sig = lc_hash(sig, c->title);
-        ssig = lc_hash(ssig, c->sub);
-        for (uint8_t k = 0; k < c->n_opts; k++)
-            ssig = lc_hash(ssig, c->opts[k]); /* 選項變了只重畫內容 */
-        sig = lc_hash(sig, it->img_path);
-        sig = lc_hash(sig, (const char *)&c->icon); /* 內建圖示指標變了也算變 */
-        sig ^= c->accent + n;
-        n++;
+    for (uint8_t i = 0; i < n; i++)
+    {
+        left_card_t c;
+        char sb[LEFT_CARD_SUB_BUF];
+        lc_card_at(i, &c, sb);
+        s_lc_item[i] = i;
+        sig = lc_hash(sig, c.title);
+        ssig = lc_hash(ssig, c.sub);
+        for (uint8_t k = 0; k < c.n_opts; k++)
+            ssig = lc_hash(ssig, c.opts[k]); /* 選項變了只重畫內容 */
+        sig = lc_hash(sig, list_items[i].img_path);
+        sig ^= (uint32_t)(uintptr_t)c.icon * 2654435761u; /* 內建圖示指標變了也算變 */
+        sig ^= c.accent + i;
     }
     if (n == 0)
     {
@@ -7253,7 +7294,7 @@ static void left_cards_sync(void)
     s_lc_n = n;
     s_lc_sig = sig;
     s_lc_ssig = ssig;
-    left_cards_show(bg, s_lc_cards, n, start, lc_tap_cb, lc_page_cb, lc_scroll_cb, lc_option_cb);
+    left_cards_show(bg, lc_card_at, n, start, lc_tap_cb, lc_page_cb, lc_scroll_cb, lc_option_cb);
     s_lc_opt_sig = osig;
     s_lc_moved = false; /* show 自己的定位捲動也會觸發 scroll 回呼,不算使用者動 */
     lc_set_rows_hidden(true);

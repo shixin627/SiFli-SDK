@@ -302,6 +302,32 @@ static int sim_filter(int argc, char *argv[])
 }
 MSH_CMD_EXPORT(sim_filter, sim_filter [text] - set/clear the list text filter (sim));
 
+/* sim_add_action [title]:模擬手機之後又新增一個 action(0x65/0x6B 推進來 = add_or_update + 分類 + refresh)。 */
+static char s_sim_new_title[32];
+static void sim_add_action_async_cb(void *arg)
+{
+    (void)arg;
+    extern void add_or_update_custom_instruction(const char *id, const char *title, const char *trigger_type,
+                                                 uint32_t interval_sec, bool enabled, uint32_t version,
+                                                 const char *open_app);
+    extern void set_instruction_category(const char *id, char cat);
+    extern bool set_instruction_sub(const char *id, const char *sub);
+    extern void refresh_custom_instructions(void);
+    extern uint8_t return_total_list_count(void);
+    add_or_update_custom_instruction("sim-new-action", s_sim_new_title, "", 0, false, 0, "");
+    set_instruction_category("sim-new-action", '/');
+    set_instruction_sub("sim-new-action", "added later from the phone");
+    refresh_custom_instructions();
+    rt_kprintf("sim_add_action: list_item_count=%u\n", (unsigned)return_total_list_count());
+}
+static int sim_add_action(int argc, char *argv[])
+{
+    rt_strncpy(s_sim_new_title, (argc > 1) ? argv[1] : "NewAction", sizeof(s_sim_new_title) - 1);
+    lv_async_call(sim_add_action_async_cb, NULL);
+    return 0;
+}
+MSH_CMD_EXPORT(sim_add_action, sim_add_action [title] - add one more action like a later phone push (sim));
+
 static int notif_inject(int argc, char *argv[])
 {
     if (argc < 3)
@@ -927,19 +953,27 @@ static int s_sim_cards_start;
 
 static void sim_card_tap(uint8_t idx) { rt_kprintf("sim_cards: tap %u\n", (unsigned)idx); }
 
-static void sim_cards_async_cb(void *arg)
-{
-    (void)arg;
-    static const left_card_t cards[] = {
+static const left_card_t s_sim_card_tbl[] = {
         {"SkaiBot", "今天 AI 與科技新品重點：1. OpenAI 發布 GPT-6，價格只有旗艦的五分之一 2. 另一家暫緩新模型", NULL, 0x1F6F5C,
          {"展開第一項", "全部念給我聽", "晚點再說"}, 3},
         {"播放 sterben音樂", "YouTube Music — sterben音樂", NULL, 0x6B3FA0, {NULL, NULL, NULL}, 0},
         {"這是一個非常非常長的標題用來檢查超過兩行會不會被截斷收尾", "標題超過兩行時最多只留兩行，後面用刪節號", NULL, 0xB5601C, {NULL, NULL, NULL}, 0},
         {"看天氣", "台北 27° 多雲，下午可能有雨，記得帶傘出門", NULL, 0x2F6FB5, {NULL, NULL, NULL}, 0},
         {"鎖定電腦", "", NULL, 0x4A5B78, {NULL, NULL, NULL}, 0},
-    };
-    left_cards_show(lv_layer_top(), cards, sizeof(cards) / sizeof(cards[0]), (uint8_t)s_sim_cards_start,
-                    sim_card_tap, NULL, NULL, NULL);
+};
+static bool sim_card_get(uint8_t i, left_card_t *out, char *subbuf)
+{
+    (void)subbuf;
+    if (i >= sizeof(s_sim_card_tbl) / sizeof(s_sim_card_tbl[0]))
+        return false;
+    *out = s_sim_card_tbl[i];
+    return true;
+}
+static void sim_cards_async_cb(void *arg)
+{
+    (void)arg;
+    left_cards_show(lv_layer_top(), sim_card_get, sizeof(s_sim_card_tbl) / sizeof(s_sim_card_tbl[0]),
+                    (uint8_t)s_sim_cards_start, sim_card_tap, NULL, NULL, NULL);
 }
 
 static int sim_cards(int argc, char *argv[])

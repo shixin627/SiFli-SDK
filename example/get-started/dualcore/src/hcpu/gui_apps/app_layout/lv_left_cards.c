@@ -26,7 +26,7 @@
 #define CHIP_GAP 8
 
 static lv_obj_t *s_pager = NULL;
-static const left_card_t *s_cards = NULL;
+static left_cards_get_cb_t s_get = NULL;
 static uint8_t s_n = 0;
 static uint8_t s_cur = 0;
 static lv_obj_t *s_card[LEFT_CARDS_MAX];
@@ -73,6 +73,14 @@ static void chip_click_cb(lv_event_t *e)
         s_on_option((uint8_t)(ud >> 8), (uint8_t)(ud & 0xFF));
 }
 
+/* 第 i 張的底色(向呼叫端要;沒有就退回通用石板藍)。 */
+static uint32_t card_accent(uint8_t i)
+{
+    left_card_t cv;
+    char sb[LEFT_CARD_SUB_BUF];
+    return (s_get != NULL && s_get(i, &cv, sb)) ? cv.accent : 0x465A78;
+}
+
 static lv_color_t accent_bottom(lv_color_t top)
 {
     /* 底端壓到頂端色的 ~30%:小米卡片是「飽和的深色」漸到更深,不是亮色 */
@@ -91,7 +99,11 @@ static void fill_card(uint8_t i)
 {
     if (i >= s_n || s_card[i] == NULL || s_filled[i])
         return;
-    const left_card_t *c = &s_cards[i];
+    left_card_t cv;
+    char sb[LEFT_CARD_SUB_BUF];
+    if (s_get == NULL || !s_get(i, &cv, sb))
+        return;
+    const left_card_t *c = &cv;
     lv_obj_t *card = s_card[i];
     /* 字級索引:LVSF_FONT_SMALL..SUPER 由小到大,系統預設是 TITLE,現有介面的一般文字都是
        get_system_font_size(0)。所以卡片標題往大一階(+1 = BIG),說明與按鈕往小一階(-1 =
@@ -269,7 +281,7 @@ static void bg_timer_cb(lv_timer_t *t)
 {
     (void)t;
     s_bg_timer = NULL; /* 單發計時器,回呼結束後 LVGL 自己刪 */
-    if (s_pager == NULL || s_cards == NULL)
+    if (s_pager == NULL || s_get == NULL)
         return;
     if (left_cards_busy())
     {
@@ -278,7 +290,7 @@ static void bg_timer_cb(lv_timer_t *t)
     }
     uint8_t pg = page_from_scroll();
     s_bg_from = s_bg_cur;
-    s_bg_to = lv_color_hex(s_cards[pg].accent);
+    s_bg_to = lv_color_hex(card_accent(pg));
     if (lv_color_eq(s_bg_to, s_bg_from))
         return;
     lv_anim_t a;
@@ -340,18 +352,18 @@ static void pager_event_cb(lv_event_t *e)
         settle_page(idx);
 }
 
-lv_obj_t *left_cards_show(lv_obj_t *parent, const left_card_t *cards, uint8_t n, uint8_t start,
+lv_obj_t *left_cards_show(lv_obj_t *parent, left_cards_get_cb_t get, uint8_t n, uint8_t start,
                           left_cards_tap_cb_t on_tap, left_cards_page_cb_t on_page,
                           left_cards_scroll_cb_t on_scroll, left_cards_option_cb_t on_option)
 {
     left_cards_hide();
-    if (parent == NULL || cards == NULL || n == 0)
+    if (parent == NULL || get == NULL || n == 0)
         return NULL;
     if (n > LEFT_CARDS_MAX)
         n = LEFT_CARDS_MAX;
     if (start >= n)
         start = n - 1;
-    s_cards = cards;
+    s_get = get;
     s_n = n;
     s_on_tap = on_tap;
     s_on_page = on_page;
@@ -370,7 +382,7 @@ lv_obj_t *left_cards_show(lv_obj_t *parent, const left_card_t *cards, uint8_t n,
     lv_obj_set_pos(s_halo_img, (CARD_W - LEFT_CARDS_HALO_N) / 2, (CARD_H - LEFT_CARDS_HALO_N) / 2);
     /* A8 圖的顏色來自 recolor;recolor_opa 在 A8 上就是整體不透明度(lv_gpu_new_api.c draw_img),
        濃淡已經烤在圖的透明度裡,所以給滿 */
-    lv_obj_set_style_img_recolor(s_halo_img, lv_color_hex(cards[start].accent), 0);
+    lv_obj_set_style_img_recolor(s_halo_img, lv_color_hex(card_accent(start)), 0);
     lv_obj_set_style_img_recolor_opa(s_halo_img, LV_OPA_COVER, 0);
     lv_obj_clear_flag(s_halo_img, LV_OBJ_FLAG_CLICKABLE | LV_OBJ_FLAG_SCROLLABLE);
     lv_obj_add_flag(s_halo_img, LV_OBJ_FLAG_HIDDEN);
@@ -383,7 +395,7 @@ lv_obj_t *left_cards_show(lv_obj_t *parent, const left_card_t *cards, uint8_t n,
     lv_obj_set_style_bg_opa(s_bg, LV_OPA_COVER, 0);
     lv_obj_set_style_bg_grad_dir(s_bg, LV_GRAD_DIR_VER, 0);
     lv_obj_clear_flag(s_bg, LV_OBJ_FLAG_CLICKABLE | LV_OBJ_FLAG_SCROLLABLE);
-    bg_apply(lv_color_hex(cards[start].accent));
+    bg_apply(lv_color_hex(card_accent(start)));
 
     s_pager = lv_obj_create(parent);
     lv_obj_remove_style_all(s_pager);
@@ -430,7 +442,7 @@ void left_cards_hide(void)
     s_on_page = NULL;
     s_on_scroll = NULL;
     s_on_option = NULL;
-    s_cards = NULL;
+    s_get = NULL;
     memset(s_card, 0, sizeof(s_card));
     memset(s_filled, 0, sizeof(s_filled));
     if (halo != NULL && lv_obj_is_valid(halo))

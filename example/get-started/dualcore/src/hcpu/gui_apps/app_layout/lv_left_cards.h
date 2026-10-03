@@ -6,8 +6,8 @@
  * 一張卡 = 整個螢幕、一件事,直向翻頁;底色跟著類型;左上圖示+大標題、中間最多三行說明、
  * 底部一顆膠囊按鈕;點卡或按鈕 = 進 app / 執行(由呼叫端決定,這個模組不認識清單)。
  *
- * 這個模組只管「畫卡+翻頁」:資料由呼叫端整理成 left_card_t 陣列(呼叫端擁有它,在卡片
- * 顯示期間必須保持有效 —— 說明文字/標題只存指標,不複製),點擊/換頁走回呼。
+ * 這個模組只管「畫卡+翻頁」:資料由呼叫端按需提供(left_cards_get_cb_t,要畫哪張才問哪張,模組自己
+ * 不存任何一張的內容),點擊/換頁走回呼。
  * 內容(圖示/標題/說明/按鈕)只為目前這張與前後各一張建立,其餘只留一個空底板,heap 吃緊
  * (R31~R33)所以物件數要有上限。
  */
@@ -32,6 +32,12 @@ typedef struct
     uint8_t n_opts;
 } left_card_t;
 
+/* 卡片內容按需提供(founder 2026-10-03 要省 SRAM:不再常駐一份 30 張的陣列 + 每張 96B 的即時文字緩衝):
+   模組要畫/量某一張才問呼叫端一次。subbuf 是呼叫端可以拿來組即時文字的暫存(LEFT_CARD_SUB_BUF 位元組,
+   只在這次呼叫期間有效 —— 模組馬上把文字複製進 label);title/icon/opts 要指向呼叫端自己保證穩定的位置。
+   回傳 false = 沒有這張。 */
+#define LEFT_CARD_SUB_BUF 96
+typedef bool (*left_cards_get_cb_t)(uint8_t idx, left_card_t *out, char *subbuf);
 typedef void (*left_cards_tap_cb_t)(uint8_t idx);
 typedef void (*left_cards_page_cb_t)(uint8_t idx);
 /* 翻頁途中每一幀回報捲動位置:page_x256 = 目前捲到第幾頁 × 256(定點小數,第 2.5 頁 = 640)。
@@ -41,7 +47,7 @@ typedef void (*left_cards_scroll_cb_t)(int32_t page_x256);
 typedef void (*left_cards_option_cb_t)(uint8_t card, uint8_t opt);
 
 /* 在 parent 底下建立(或重建)整組卡片,停在第 start 張。已存在則先拆掉。 */
-lv_obj_t *left_cards_show(lv_obj_t *parent, const left_card_t *cards, uint8_t n, uint8_t start,
+lv_obj_t *left_cards_show(lv_obj_t *parent, left_cards_get_cb_t get, uint8_t n, uint8_t start,
                           left_cards_tap_cb_t on_tap, left_cards_page_cb_t on_page,
                           left_cards_scroll_cb_t on_scroll, left_cards_option_cb_t on_option);
 void left_cards_hide(void);
