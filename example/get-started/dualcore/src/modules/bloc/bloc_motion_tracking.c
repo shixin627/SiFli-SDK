@@ -1800,14 +1800,6 @@ extern bool app_hid_mouse_movement_lock(void);
        手腕,gyro 一路累積;加上 IMU(100Hz+)判定頻率遠高於 LVGL PRESSING(~30Hz),飛鼠幾乎
        必勝。拉高成要「明確轉手腕」才搶得走,純滑觸控板累積達不到,手指那 5px 就能先到。 */
     #define PRESS_FREE_MOVE_CLAIM_UNITS 120.0f
-    // Roll-compensation sign for data-collection air-mouse (see air_mouse_process).
-    // Flip to -1.0f on device if roll compensation goes the WRONG way.
-    #define AIR_MOUSE_COLLECT_ROLL_SIGN 1.0f
-    // Vertical-axis sign for the collection air-mouse's gyro_y mapping (2026-07-16:
-    // gyro_x read ~0 for up/down in the collection hold posture — real device
-    // testing found gyro_y is the responsive axis there). Flip to +1.0f on device
-    // if up/down comes out reversed.
-    #define AIR_MOUSE_COLLECT_V_SIGN -1.0f
 
 static bool mouse_movement_lock = false;
 static float gyro_movement_distance = 0.0f; /* 總路程:claim owner(鎖觸控板)仍用它 */
@@ -1833,20 +1825,6 @@ static volatile bool s_air_cursor_owned = false;
    claim(s_touch_cursor_owned)是「已定案手指贏」、前哨是「手指正在滑、暫別讓飛鼠插」。 */
 static volatile rt_tick_t s_finger_active_tick = 0;
 #define FINGER_ACTIVE_HOLD_MS 250 /* 手指停止滑動後仍擋飛鼠這麼久,涵蓋滑滑停停的間隙 */
-
-/* Data-collection air-mouse roll reference (file scope so the always-run motion
- * handler can invalidate it when collection ends — air_mouse_process itself only
- * runs in mouse modes and can't reliably see the off state). */
-static Vector3 s_collect_gref = {0};
-static bool s_collect_gref_valid = false;
-
-/* Phone-game (data-collection) air-mouse mapping selector (2026-07-10). true =
- * the desktop mouse app's PROVEN mapping (gyro_x = up/down tilt, gyro_z =
- * left/right) — that path never reverses. false = the old roll-compensated gyro_y
- * path (kept live below as a fallback), which intermittently reversed (roll wrapped
- * past ±90°, or the y-z fallback went raw body-frame). Flip to false + rebuild if
- * the new mapping still reverses on device, so the game stays usable either way. */
-static bool s_collect_use_mouse_app_map = true;
 
 void air_mouse_movement_lock_reset(void)
 {
@@ -1929,13 +1907,11 @@ extern bool get_gesture_click_mode(void); /* hid_mouse.c:手勢點擊模式(0x27
                                         (founder 2026-07-20:瞬間速度判定慢慢拖不會動→改總距離,
                                         慢動作也會累積觸發;雜訊被 air_mouse deadzone 濾掉不累積) */
 
-/* 側立圓盤軸向:gyro(rad/s)直接線性累積(無游標加速曲線),gain=7 沿用空中手寫時代手感。
-   符號=側立手寫 pen 映射同款(x←-gx / y←+gz)——2026-07-20 founder 真機:「上下左右都反」
-   =朝上圓盤那套 pointing 取負慣例在側立**不成立**(凍結向量設計拿掉了回中抵消,指哪
-   就是哪),雙軸翻回 pen 映射。再反就再翻這兩個 SIGN([dial-pose] 1Hz log 對方向)。 */
+/* 側立圓盤軸向:世界水平/垂直角速度(rad/s,見 air_gyro_to_world_hv)直接線性累積(無游標
+   加速曲線),gain=7 沿用空中手寫時代手感。符號=游標慣例(指哪就是哪):ax=-h*G、ay=-v*G。
+   2026-07-20 founder 真機調「上下左右都反」時是固定符號 x←-gx / y←+gz,只在重力 x 為正那側
+   對;2026-10-04 表面朝右(重力 x 為負)那側整個鏡像反,改用重力轉世界座標,兩側都對。 */
 #define DIAL_POSE_GAIN      7.0f
-#define DIAL_POSE_SIGN_X  (-1.0f)  /* 對 gyro_x → ax(螢幕 x 右+) */
-#define DIAL_POSE_SIGN_Y  (+1.0f)  /* 對 gyro_z → ay(螢幕 y 下+) */
 #define DIAL_POSE_FREEZE_GX 0.60f  /* |gravity.x| 掉出此值=正在離開側立→凍結向量,
                                       退出旋轉的過渡角速度不污染已比好的方向 */
 
@@ -2380,6 +2356,28 @@ static bool mouse_dial_pose_active(void)
     return s_dial_pose_active;
 }
 
+/* 翻腕補償(飛鼠/側立圓盤/收集遊戲共用):gyro 是機身座標,翻腕後世界的左右/上下會轉進
+   「z 軸 + 俯仰軸 a」這個平面(a=x 或 y,視操作姿勢哪條軸管上下)。用融合重力(global_q
+   第三列=世界「上」在機身座標)取翻腕角 (s,c)=(g_a,gz)/|(g_a,gz)|,把 (rate_a,gyro_z) 轉回
+   世界水平 h(正=向左轉)/垂直 v(正=繞 a 軸正轉)。朝上(c=+1)h=gyro_z、v=rate_a;朝下 c=-1
+   兩者取負;側立 s=±1 時 h=±rate_a、v=∓gyro_z——兩側自動鏡像。
+   gravity 與 gyro 同座標系,IMU 座標系整組翻時 h/v 不變。|(g_a,gz)| 太小(前臂近乎鉛直)翻腕角
+   沒定義→沿用 cs[](呼叫端各自一份 static,初值 {1,0}=不轉)。繞前臂軸的 roll 不進來。
+   // ponytail: 只補 roll、不補 pitch(前臂抬高時增益 ×cos(pitch)) */
+static void air_gyro_to_world_hv(float cs[2], float rate_a, float g_a, float gyro_z,
+                                 float *h, float *v)
+{
+    float gz = watch_sensor.motion_data.gravity.z;
+    float n = sqrtf(g_a * g_a + gz * gz);
+    if (n > 0.2f)
+    {
+        cs[0] = gz / n;
+        cs[1] = g_a / n;
+    }
+    *h = gyro_z * cs[0] + rate_a * cs[1];
+    *v = rate_a * cs[0] - gyro_z * cs[1];
+}
+
 /* motion thread(air_mouse_process 每 sample 轉入):按住畫面期間手腕比方向。
    commit=放開畫面(hid_mouse RELEASED→mouse_dial_pose_commit),此處不再有
    「轉回朝上自動 commit」——放開才算數(founder 2026-07-20 二改)。 */
@@ -2394,12 +2392,15 @@ static void dial_pose_motion_process(float gyro_x, float gyro_z)
     {
         float rx = (fabsf(gyro_x) < HW_DEADZONE_RADS) ? 0.0f : gyro_x;
         float rz = (fabsf(gyro_z) < HW_DEADZONE_RADS) ? 0.0f : gyro_z;
-        s_dial_ax += DIAL_POSE_SIGN_X * rx * DIAL_POSE_GAIN;
-        s_dial_ay += DIAL_POSE_SIGN_Y * rz * DIAL_POSE_GAIN;
+        static float s_cs[2] = {1.0f, 0.0f};
+        float h, v;
+        air_gyro_to_world_hv(s_cs, rx, g.x, rz, &h, &v);
+        s_dial_ax -= h * DIAL_POSE_GAIN;
+        s_dial_ay -= v * DIAL_POSE_GAIN;
         mouse_dial_vector_refresh();
     }
 
-    /* 軸向/符號真機定調用:~1Hz。founder 各方向比一下即可對出 DIAL_POSE_SIGN_*。 */
+    /* 軸向真機定調用:~1Hz。founder 各方向比一下對 ax/ay 的正負。 */
     if (now - s_dial_pose_last_dbg >= rt_tick_from_millisecond(1000))
     {
         LOG_I("[dial-pose] dir=%d mag=%d ax=%d ay=%d gx=%d gz=%d mrad/s",
@@ -2446,81 +2447,36 @@ static void air_mouse_process(rt_uint32_t ts, Quaternion *quaternion,
     }
 
     extern bool imu_mouse_data_collection;
-    /* Roll-compensation reference (DATA-COLLECTION MODE ONLY). Captured at the
-     * START of a session = the user's holding posture, so the mapping is IDENTITY
-     * there (== the raw mapping the real mouse app uses, correct at a normal
-     * posture). RELATIVE to this reference — no assumption about which body axis is
-     * "up" — so normal posture is always right; only wrist ROLL away from it is
-     * compensated, keeping left/right & up/down consistent. */
     /* 手勢點擊模式(founder 2026-09-06「動起來很怪」):游標位移沿用這條收集遊戲的
        角速度映射(同 selector/同 roll 補償),下面送出時走正常游標路由但**不經移動鎖**。 */
     if (imu_mouse_data_collection || get_gesture_click_mode())
     {
-        if (s_collect_use_mouse_app_map)
+        /* 收集遊戲握姿(2026-07-16 實機):上下擺動繞 y(gyro_x 讀 ~0)、左右繞 z。翻腕補償用
+           重力轉回世界水平/垂直(2026-10-04,見 air_gyro_to_world_hv,平面=y-z)。朝上(c=+1)
+           輸出恆等於舊的固定映射 x_in=-gyro_y / z_in=gyro_z(founder 驗過方向),只多了翻腕
+           後仍然對。取代 7/03 那版「相對開局握姿 atan2」補償——旋轉方向反了,翻過頭會反向。 */
         {
-            /* 2026-07-16: collection-mode hold posture reads ~0 on gyro_x for real
-             * up/down wrist motion (confirmed on device) — unlike the desktop
-             * mouse app's posture, where gyro_x is the responsive vertical axis.
-             * Use gyro_y (sign-flippable via AIR_MOUSE_COLLECT_V_SIGN) instead;
-             * horizontal stays on gyro_z, unaffected. */
-            s_collect_gref_valid = false; /* stale ref shouldn't linger if we switch back */
-            delta_movement = air_mouse_algorithm(
-                AIR_MOUSE_COLLECT_V_SIGN * gyro_y, gyro_z, AIR_MOUSE_SENSITIVITY);
-        }
-        else
-        {
-            /* OLD roll-compensated path — PRESERVED as a fallback (see the selector
-             * s_collect_use_mouse_app_map). Uses gyro_y (翻腕 roll 軸) rotated by the
-             * gravity-roll relative to the session-start posture. */
-            Vector3 g = watch_sensor.motion_data.gravity;
-            if (!s_collect_gref_valid)
-            {
-                s_collect_gref = g;
-                s_collect_gref_valid = true;
-            }
-            float refh = sqrtf(s_collect_gref.y * s_collect_gref.y + s_collect_gref.z * s_collect_gref.z);
-            float curh = sqrtf(g.y * g.y + g.z * g.z);
-            if (refh > 0.2f && curh > 0.2f) /* both well-defined in the y-z plane */
-            {
-                /* signed roll from the reference to the current gravity, in the y-z plane */
-                float cross = s_collect_gref.y * g.z - s_collect_gref.z * g.y;
-                float dot = s_collect_gref.y * g.y + s_collect_gref.z * g.z;
-                float roll = AIR_MOUSE_COLLECT_ROLL_SIGN * atan2f(cross, dot);
-                float cr = cosf(roll);
-                float sr = sinf(roll);
-                float h = gyro_z * cr + gyro_y * sr;  /* roll-consistent horizontal rate */
-                float v = -gyro_z * sr + gyro_y * cr; /* roll-consistent vertical rate */
-                delta_movement = air_mouse_algorithm(-v, h, AIR_MOUSE_SENSITIVITY);
-            }
-            else
-            {
-                delta_movement =
-                    air_mouse_algorithm(-gyro_y, gyro_z, AIR_MOUSE_SENSITIVITY);
-            }
+            static float s_cs[2] = {1.0f, 0.0f};
+            float h, v;
+            air_gyro_to_world_hv(s_cs, gyro_y, watch_sensor.motion_data.gravity.y,
+                                 gyro_z, &h, &v);
+            delta_movement = air_mouse_algorithm(-v, h, AIR_MOUSE_SENSITIVITY);
         }
     }
     else
     {
-        s_collect_gref_valid = false; /* recapture the start posture next session */
         /* 垂直=繞 x（上下擺腕，正號＝實機兩輪驗出的方向）、水平=繞 z：
-           gyro_y 是翻腕 roll 軸、對不上上下（2026-07-06 logo 飛鼠）。
-           data-collection 分支有自己的 roll 補償映射，不隨動。 */
-        /* IMU 座標系翻轉「兜底」防禦（非主要修法）：dial/飛鼠方向偶發全反的根因已治本——
-           以前 BMI270 晶片 remap 只在第一次螢幕睡眠時寫入,開機到那之前是出廠軸=全反窗口;
-           2026-07-17 改為 redirect_sensor_data 軟體層固定翻轉、晶片恆 identity(bmi270_driver.c),
-           時機問題消除。此段保留當第二道保險:萬一未知來源再讓座標系整組翻(gravity.z 戴姿
-           恆 −0.98,變 +0.98=翻了),自動對 gyro_x/z 取負。遲滯 ±0.3 防手腕傾斜抖動;正常
-           情況永不觸發。 */
+           gyro_y 是翻腕 roll 軸、對不上上下（2026-07-06 logo 飛鼠）。 */
+        /* 翻腕補償(founder 2026-10-04「表面朝右往右揮,游標變往上」)見 air_gyro_to_world_hv。
+           朝上/朝下輸出恆等於舊的「gz 正負號整組取負」兜底,所以平常手感不變;兜底
+           (IMU 座標系整組翻)也一併吃掉。 */
         {
-            static bool s_imu_frame_flipped = false;
-            float gz_now = watch_sensor.motion_data.gravity.z;
-            if (gz_now > 0.3f)       s_imu_frame_flipped = true;
-            else if (gz_now < -0.3f) s_imu_frame_flipped = false;
-            if (s_imu_frame_flipped)
-            {
-                gyro_x = -gyro_x;
-                gyro_z = -gyro_z;
-            }
+            static float s_cs[2] = {1.0f, 0.0f};
+            float h, v;
+            air_gyro_to_world_hv(s_cs, gyro_x, watch_sensor.motion_data.gravity.x,
+                                 gyro_z, &h, &v);
+            gyro_x = -v;
+            gyro_z = -h;
         }
         delta_movement =
             air_mouse_algorithm(gyro_x, gyro_z, AIR_MOUSE_SENSITIVITY);
@@ -3279,15 +3235,6 @@ static void motion_tracking_in_hcpu(motion_data_t *motion_data)
 
 #ifdef BSP_USING_AIR_MOUSE
     extern bool imu_mouse_data_collection;
-    /* Invalidate the collection roll reference whenever collection is OFF, so every
-     * session recaptures a FRESH start posture. This handler runs every frame;
-     * air_mouse_process does NOT when the gesture app is foreground with collection
-     * off, so it can't reset the reference itself — a stale reference from the
-     * previous session is exactly why the direction "reversed again" next game. */
-    if (!imu_mouse_data_collection && !get_gesture_click_mode())
-    {
-        s_collect_gref_valid = false;
-    }
     /* imu_mouse_data_collection first so the short-circuit skips the
      * gui_app_is_actived() call (asserts on the GUI thread) while collecting. */
     if (imu_mouse_data_collection || app_control_get_mouse_mode() ||
