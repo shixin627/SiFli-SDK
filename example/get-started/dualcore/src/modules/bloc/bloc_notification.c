@@ -169,6 +169,15 @@ uint32_t notification_center_get_arrival_seq(void)
     return notification_arrival_seq;
 }
 
+/* When the seq last advanced. The dial header uses it to tell "arrived just
+   now" from "arrived a while ago and nobody popped it yet". */
+static rt_tick_t notification_arrival_tick = 0;
+
+rt_tick_t notification_center_get_arrival_tick(void)
+{
+    return notification_arrival_tick;
+}
+
 /**
  * @brief Get notification at specified index
  * @param index Index of the notification
@@ -306,6 +315,7 @@ static void update_notification(const notification_t *newNotification)
        the seq so the dial header pops + buzzes. Silent re-pushes returned
        early above without touching the list order or the seq. */
     notification_arrival_seq++;
+    notification_arrival_tick = rt_tick_get();
 
     SkaiWatchSys.notification_number = notification_items_amount;
 }

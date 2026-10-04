@@ -3304,6 +3304,22 @@ static void handle_dial_header_new_notification(void)
        count 仍要更新（上面已做）才不會之後一次補彈。 */
     if (is_at_message())
         return;
+    /* Pop + buzz only for a notification that arrived just now. This handler
+       runs on every notification refresh, whoever asked for it; when the GUI
+       was busy (a reconnect burst) or the watch went back to sleep before it
+       got here, the owed pop used to fire at the NEXT refresh — seconds or
+       minutes later, on a link drop or a reconnect — as a buzz for nothing
+       new. Measured: arrival 13:48:08, pop 13:48:57 at the disconnect. A late
+       pop is not an alert any more; the notification is already in the list. */
+    {
+        extern rt_tick_t notification_center_get_arrival_tick(void);
+        if ((rt_tick_get() - notification_center_get_arrival_tick()) >
+                rt_tick_from_millisecond(3000))
+        {
+            LOG_W("[wake] header pop skipped: arrival is stale");
+            return;
+        }
+    }
     /* Remember if music was playing before this notification */
     dial_header_was_music_before_notif = dial_header_music_active;
     dial_header_showing_notification = true;

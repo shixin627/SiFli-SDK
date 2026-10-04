@@ -311,6 +311,14 @@ static void process_lvgl_message(lvgl_msg_t *msg)
         break;
 
     case LVGL_MSG_TYPE_NOTIFICATION:
+        /* Header pop + buzz FIRST: it reads the notification straight from the
+           model and costs a few ms. The list rebuild below takes ~1.6 s on a
+           full list, and with the old order the alert trailed the screen
+           coming on by that much (measured 1.67-1.81 s on four wakes). */
+        if (lvgl_msg_handler.handle_dial_header_new_notification)
+        {
+            lvgl_msg_handler.handle_dial_header_new_notification();
+        }
         if (lvgl_msg_handler.handle_notification)
         {
             lvgl_msg_handler.handle_notification(NULL);
@@ -320,10 +328,6 @@ static void process_lvgl_message(lvgl_msg_t *msg)
         {
             lvgl_msg_handler.handle_new_notification();
             trigger_activity();
-        }
-        if (lvgl_msg_handler.handle_dial_header_new_notification)
-        {
-            lvgl_msg_handler.handle_dial_header_new_notification();
         }
         break;
     case LVGL_MSG_TYPE_CALNEDAR:
@@ -987,12 +991,41 @@ static void lvgl_task(void *param)
  *
  * @param task LVGL timer task pointer
  */
+/* Payload-free refresh requests ("the notification list changed", "re-land
+   the instruction list") are held as pending bits, not queue entries.
+   A BLE reconnect re-pushes ten notifications, each asking for both, on top
+   of the roster / device / session traffic: 20+ entries into a 32-deep queue.
+   The queue overflowed on every reconnect and the notification refresh was
+   among the dropped — so a genuinely new notification woke the screen and
+   then showed no header (or showed it ~2 s late, when some unrelated refresh
+   happened to run). As bits they cannot be dropped and a burst collapses to
+   one refresh each. */
+#define PENDING_REFRESH_NOTIFICATION (1u << 0)
+#define PENDING_REFRESH_RESET_INSTR  (1u << 1)
+static volatile rt_uint32_t s_pending_refresh;
+
 static void ui_refresh_task_entry(struct _lv_timer_t *task)
 {
     lvgl_msg_t msg;
     while (rt_mq_recv(lvgl_mq, &msg, sizeof(lvgl_msg_t), RT_WAITING_NO) ==
            RT_EOK)
     {
+        process_lvgl_message(&msg);
+    }
+
+    rt_base_t level = rt_hw_interrupt_disable();
+    rt_uint32_t pending = s_pending_refresh;
+    s_pending_refresh = 0;
+    rt_hw_interrupt_enable(level);
+    /* notification first: its header pop is the user-facing alert */
+    if (pending & PENDING_REFRESH_NOTIFICATION)
+    {
+        msg.type = LVGL_MSG_TYPE_NOTIFICATION;
+        process_lvgl_message(&msg);
+    }
+    if (pending & PENDING_REFRESH_RESET_INSTR)
+    {
+        msg.type = LVGL_MSG_TYPE_RESET_INSTRUCTION_LIST;
         process_lvgl_message(&msg);
     }
 }
@@ -1041,6 +1074,19 @@ INIT_APP_EXPORT(lvgl_task_init);
  */
 void lvgl_send_msg(lvgl_msg_t msg)
 {
+#ifdef USE_LV_TIMER
+    rt_uint32_t bit =
+        (msg.type == LVGL_MSG_TYPE_NOTIFICATION) ? PENDING_REFRESH_NOTIFICATION :
+        (msg.type == LVGL_MSG_TYPE_RESET_INSTRUCTION_LIST) ? PENDING_REFRESH_RESET_INSTR : 0;
+    if (bit)
+    {
+        /* see s_pending_refresh: picked up by ui_refresh_task_entry */
+        rt_base_t level = rt_hw_interrupt_disable();
+        s_pending_refresh |= bit;
+        rt_hw_interrupt_enable(level);
+        return;
+    }
+#endif
     rt_err_t err = rt_mq_send(lvgl_mq, &msg, sizeof(lvgl_msg_t));
     if (err != RT_EOK)
     {
