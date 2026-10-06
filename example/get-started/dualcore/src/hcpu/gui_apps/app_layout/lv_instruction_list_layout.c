@@ -1469,13 +1469,21 @@ static uint8_t app_scroll_target_item = 0;
 static uint16_t old_selected_item_index = -1;
 static lv_obj_t *selected_label;
 
+/* 體感路徑(bloc_motion_tracking)除了送「翻到第幾頁」的 NAV_BAR_CONTROL,還**平行**送連續的手腕角度(APP_LIST_SCROLL_BAR_OFFSET)
+   直接推右邊輪盤:手一動輪盤就跟著動,不只翻頁才動(founder 2026-10-06)。整頁卡片模式下卡片的捲動回呼 lc_scroll_cb
+   也會寫輪盤,兩個來源同時寫就在「手腕角度」與「卡片位置」之間來回跳 = 瞬移 —— 所以體感角度「活著」的這段時間
+   (最後一筆起 MOTION_OFFSET_LIVE_MS 內)lc_scroll_cb 讓開,只剩這一個寫入者。 */
+#define MOTION_OFFSET_LIVE_MS 800
+static rt_tick_t s_motion_offset_tick = 0;
+static bool motion_offset_is_live(void)
+{
+    return s_motion_offset_tick != 0 &&
+           (rt_tick_get() - s_motion_offset_tick) < rt_tick_from_millisecond(MOTION_OFFSET_LIVE_MS);
+}
+
 void set_arc_stripe_external_offset(int16_t offset_degrees)
 {
-    /* 體感路徑(bloc_motion_tracking)除了送「翻到第幾頁」的 NAV_BAR_CONTROL,還**平行**送連續的手腕角度(APP_LIST_SCROLL_BAR_OFFSET)
-       直接推右邊輪盤。整頁卡片模式輪盤跟著卡片的捲動位置走(lc_scroll_cb),兩個來源一起寫就在「手腕角度」與
-       「卡片位置」之間來回跳 = 輪盤瞬移(founder 2026-10-06:「體感時右邊的 icon 會瞬移」)。卡片顯示時以卡片為準,這條不管。 */
-    if (left_cards_visible())
-        return;
+    s_motion_offset_tick = rt_tick_get();
     update_indicator_dots_position(offset_degrees);
 }
 
@@ -7147,6 +7155,8 @@ static void lc_scroll_cb(int32_t page_x256)
         near_idx = (int)list_item_count - 1;
     if (near_idx != s_lc_ring_idx)
         lc_ring_select(near_idx);
+    if (motion_offset_is_live())
+        return; /* 體感中輪盤由連續手腕角度(set_arc_stripe_external_offset)驅動,別跟它搶 = 不瞬移 */
     update_indicator_dots_position(100 * (int)list_item_count - 63 - (int)((100 * page_x256) / 256));
 }
 

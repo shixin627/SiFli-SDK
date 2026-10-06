@@ -286,18 +286,28 @@ static int sim_nav(int argc, char *argv[])
 }
 MSH_CMD_EXPORT(sim_nav, sim_nav N - drive the list nav the way a motion gesture does (sim));
 
-/* sim_motion_offset V:模擬體感路徑平行送來的連續手腕角度(set_arc_stripe_external_offset)。卡片模式下輪盤不該被它推走。 */
+/* sim_motion_offset V [N]:模擬體感路徑同一幀送出的兩個訊號 —— 連續手腕角度 V(set_arc_stripe_external_offset),有給 N 就再送翻到第 N 頁(NAV_BAR_CONTROL)。輪盤要跟 V 走、不被卡片捲動拉走。 */
+typedef struct { int v; int page; } sim_motion_arg_t;
 static void sim_motion_offset_async_cb(void *arg)
 {
     extern void set_arc_stripe_external_offset(int16_t offset_degrees);
-    set_arc_stripe_external_offset((int16_t)(intptr_t)arg);
+    sim_motion_arg_t *a = (sim_motion_arg_t *)arg;
+    set_arc_stripe_external_offset((int16_t)a->v);
+    if (a->page >= 0 && lvgl_msg_handler.handle_nav_bar_control != NULL)
+        lvgl_msg_handler.handle_nav_bar_control((int8_t)a->page);
+    rt_free(a);
 }
 static int sim_motion_offset(int argc, char *argv[])
 {
-    lv_async_call(sim_motion_offset_async_cb, (void *)(intptr_t)((argc > 1) ? atoi(argv[1]) : 0));
+    sim_motion_arg_t *a = (sim_motion_arg_t *)rt_malloc(sizeof(*a));
+    if (a == NULL)
+        return -1;
+    a->v = (argc > 1) ? atoi(argv[1]) : 0;
+    a->page = (argc > 2) ? atoi(argv[2]) : -1;
+    lv_async_call(sim_motion_offset_async_cb, a);
     return 0;
 }
-MSH_CMD_EXPORT(sim_motion_offset, sim_motion_offset V - feed the motion path's continuous wheel offset (sim));
+MSH_CMD_EXPORT(sim_motion_offset, sim_motion_offset V [N] - feed the motion path wheel offset V and optional page N (sim));
 
 /* sim_filter [text]:模擬語音搜尋的文字篩選(空字串=結束搜尋)。卡片模式要退回列清單,驗「沒建列」後會補建。 */
 static char s_sim_filter[32];
