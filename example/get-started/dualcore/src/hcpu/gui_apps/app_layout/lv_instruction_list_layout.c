@@ -6868,7 +6868,7 @@ static const char *lc_blurb(const char *app)
 #endif
 #ifdef APP_ID_TIMER
     if (strcmp(app, APP_ID_TIMER) == 0)
-        return "計時與倒數";
+        return "選一個時間直接開始，更多選項點進去";
 #endif
 #ifdef APP_ID_RECORDER
     if (strcmp(app, APP_ID_RECORDER) == 0)
@@ -6907,6 +6907,19 @@ static const char *lc_weather_zh(const char *token, const char *raw)
     return raw;
 }
 #endif
+#ifdef APP_ID_TIMER
+/* 計時器卡片:不進 app 就能開始倒數(founder 2026-10-06:「計時器應該要有一些可以在外面開啟,要更多選項就進去開」)。
+   三顆常用時間的晶片;倒數中改成一顆「取消計時」,說明文字顯示剩餘時間。引擎在 app_timer.c(跟 app 畫面脫鉤)。 */
+extern bool app_timer_quick_start(uint32_t seconds);
+extern void app_timer_quick_cancel(void);
+extern uint32_t app_timer_remaining(bool *paused);
+static const uint16_t k_lc_timer_secs[3] = {60, 300, 600};
+#define LC_TIMER_CHIPS {"1 分鐘", "5 分鐘", "10 分鐘"}
+static bool lc_is_timer(const list_item_t *it)
+{
+    return strcmp(it->open_app, APP_ID_TIMER) == 0;
+}
+#endif
 static bool lc_live_sub(const list_item_t *it, uint8_t ai, char *buf, size_t n)
 {
     const char *app = it->open_app;
@@ -6922,6 +6935,22 @@ static bool lc_live_sub(const list_item_t *it, uint8_t ai, char *buf, size_t n)
             rt_snprintf(buf, n, "今日步數 %u", (unsigned)steps);
         return true;
     }
+#ifdef APP_ID_TIMER
+    if (has_app && strcmp(app, APP_ID_TIMER) == 0)
+    {
+        bool paused = false;
+        uint32_t left = app_timer_remaining(&paused);
+        if (left > 0)
+        {
+            const char *st = paused ? "已暫停" : "倒數中";
+            if (left >= 3600)
+                rt_snprintf(buf, n, "%s %u:%02u:%02u", st, (unsigned)(left / 3600), (unsigned)((left / 60) % 60), (unsigned)(left % 60));
+            else
+                rt_snprintf(buf, n, "%s %02u:%02u", st, (unsigned)(left / 60), (unsigned)(left % 60));
+            return true;
+        }
+    }
+#endif
 #ifdef BSP_USING_BLOC
     if ((has_app && strcmp(app, APP_ID_WEATHER) == 0) || ai == ACC_WEATHER)
     {
@@ -7111,6 +7140,20 @@ static void lc_ai_text_from(const char *msg)
 
 static void lc_option_cb(uint8_t card, uint8_t opt)
 {
+#ifdef APP_ID_TIMER
+    if (card < s_lc_n && s_lc_item[card] < list_item_count && lc_is_timer(&list_items[s_lc_item[card]]))
+    {
+        if (s_list_horiz_swipe) /* 橫滑放手也會落一個 CLICKED,別當成點選項 */
+            return;
+        if (app_timer_remaining(NULL) > 0)
+            app_timer_quick_cancel();
+        else if (opt < 3)
+            app_timer_quick_start(k_lc_timer_secs[opt]);
+        motor_pattern_touchpad_slide();
+        left_cards_sync(); /* 晶片換成「取消計時」/說明文字換成剩餘時間 */
+        return;
+    }
+#endif
 #ifdef BSP_USING_BLOC_NOTIFY
     if (s_list_horiz_swipe) /* 橫滑放手也會落一個 CLICKED,別當成點選項 */
         return;
@@ -7282,6 +7325,23 @@ static bool lc_card_at(uint8_t idx, left_card_t *c, char *subbuf)
     c->n_opts = 0;
     for (uint8_t k = 0; k < 3; k++)
         c->opts[k] = NULL;
+#ifdef APP_ID_TIMER
+    if (lc_is_timer(it))
+    {
+        static const char *const chips[3] = LC_TIMER_CHIPS;
+        if (app_timer_remaining(NULL) > 0)
+        {
+            c->opts[0] = "取消計時";
+            c->n_opts = 1;
+        }
+        else
+        {
+            for (uint8_t k = 0; k < 3; k++)
+                c->opts[k] = chips[k];
+            c->n_opts = 3;
+        }
+    }
+#endif
     if ((int)idx == s_lc_ai_card) /* AI 通知配對到這張:全文 + 選項(sync 先算好放在 s_lc_ai_text / s_lc_opt_*) */
     {
         c->sub = s_lc_ai_text;
@@ -7430,6 +7490,18 @@ static void left_cards_sync(void)
    只在卡片顯示且手指沒在翻頁時做;選項沒變就什麼都不動。 */
 static void lc_opts_poll(void)
 {
+#ifdef APP_ID_TIMER
+    /* 計時器卡片:倒數中每秒重畫(剩餘時間);倒數結束/被取消那一次也要重畫一次(晶片換回開始鍵)。 */
+    {
+        static bool s_timer_was_running = false;
+        bool running = app_timer_remaining(NULL) > 0;
+        if ((running || s_timer_was_running) && left_cards_visible() && !left_cards_busy())
+        {
+            s_timer_was_running = running;
+            left_cards_sync();
+        }
+    }
+#endif
 #ifdef BSP_USING_BLOC_NOTIFY
     if (!left_cards_visible() || left_cards_busy())
         return;

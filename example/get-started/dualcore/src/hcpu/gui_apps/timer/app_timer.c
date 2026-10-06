@@ -1210,6 +1210,34 @@ static void msg_handler(gui_app_msg_type_t msg, void *param)
     }
 }
 
+/* 左頁計時器卡片用:不進 app 直接開始/取消倒數(founder 2026-10-06)。倒數引擎本來就跟 app 畫面脫鉤 ——
+   on_stop 不動 countdown_timer/remaining_time,app 再開時 on_start 走「Resume countdown timer」,
+   到點由 countdown_timer_cb 呼叫 interact_timer_reminder 叫醒螢幕並開 app。這裡只是不經 UI 把它啟動/停掉。 */
+bool app_timer_quick_start(uint32_t seconds)
+{
+    if (seconds == 0 || app_timer_data_ctx.countdown_timer)
+        return false; /* 已經在倒數:不覆蓋 */
+    _timeout = false;
+    app_timer_data_ctx.remaining_time = seconds;
+    create_countdown_timer();
+    return app_timer_data_ctx.countdown_timer != NULL;
+}
+
+void app_timer_quick_cancel(void)
+{
+    remove_countdown_timer();
+    app_timer_data_ctx.remaining_time = 0;
+    _timeout = false;
+}
+
+/* 剩餘秒數;沒在倒數、或已到點等著關提醒 = 0。paused 可傳 NULL。 */
+uint32_t app_timer_remaining(bool *paused)
+{
+    if (paused != NULL)
+        *paused = app_timer_data_ctx.is_paused;
+    return (app_timer_data_ctx.countdown_timer != NULL && !_timeout) ? app_timer_data_ctx.remaining_time : 0;
+}
+
 static int app_main(intent_t i)
 {
     gui_app_regist_msg_handler(APP_ID_TIMER, msg_handler);

@@ -939,6 +939,7 @@ static void seed_left_async_cb(void *arg)
         {"seed-steps", "Steps", "", '/', "watchapp", "exercise"},
         {"seed-flash", "Flashlight", "", '/', "watchapp", "flashlight"},
         {"seed-alarm", "Alarm", "", '/', "watchapp", "alarm"},
+        {"seed-timer", "Timer", "", '/', "watchapp", "timer"},
     };
     clear_custom_instructions();
     for (unsigned i = 0; i < sizeof(rows) / sizeof(rows[0]); i++)
