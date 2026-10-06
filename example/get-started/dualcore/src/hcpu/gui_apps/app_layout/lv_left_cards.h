@@ -30,6 +30,12 @@ typedef struct
        (founder 2026-10-01:「app 字卡下面不需要有開啟的按鈕」)—— 點卡片本身就是進 app / 執行。 */
     const char *opts[3];
     uint8_t n_opts;
+    /* 「大字 + 步進 + 主動作」版面(計時器,founder 2026-10-06 選的 D 版):big != NULL 時不畫說明與選項晶片,
+       改畫中間大字 big、(arrows)左右兩個步進箭頭、底下一顆實心大膠囊 act。點擊走選項回呼:
+       opt 0 = act 膠囊、1 = 左箭頭、2 = 右箭頭。big 指到的字要在這次呼叫期間有效(可以用 subbuf)。 */
+    const char *big;
+    const char *act;
+    bool arrows;
 } left_card_t;
 
 /* 卡片內容按需提供(founder 2026-10-03 要省 SRAM:不再常駐一份 30 張的陣列 + 每張 96B 的即時文字緩衝):

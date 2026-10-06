@@ -24,6 +24,10 @@
 #define CHIP_W 236    /* 選項晶片:半透明白底的膠囊,單行 */
 #define CHIP_H 40
 #define CHIP_GAP 8
+#define BIG_W 280     /* 大字版面(計時器)整排寬度:箭頭 + 大字,底下膠囊同寬 */
+#define STEP_W 48     /* 步進箭頭的點擊區寬 */
+#define BIG_Y 208     /* 大字上緣 */
+#define ACT_H 54      /* 主動作膠囊高 */
 
 static lv_obj_t *s_pager = NULL;
 static left_cards_get_cb_t s_get = NULL;
@@ -111,8 +115,9 @@ static void fill_card(uint8_t i)
     const lv_font_t *f_title = LV_EXT_FONT_GET(get_system_font_size(1));
     const lv_font_t *f_sub = LV_EXT_FONT_GET(get_system_font_size(-1));
     const lv_font_t *f_btn = LV_EXT_FONT_GET(get_system_font_size(-1));
-    bool has_sub = (c->sub != NULL && c->sub[0] != '\0');
-    lv_coord_t row_y = has_sub ? TITLE_Y : (TITLE_Y + 56); /* 沒說明時圖示+標題往中間放 */
+    bool bigmode = (c->big != NULL);
+    bool has_sub = !bigmode && (c->sub != NULL && c->sub[0] != '\0');
+    lv_coord_t row_y = (has_sub || bigmode) ? TITLE_Y : (TITLE_Y + 56); /* 沒說明時圖示+標題往中間放 */
     lv_coord_t tx = X0;
 
     /* 圖示:52px 方塊,原圖(通常 100px)用 zoom 縮。zoom 要 OVERFLOW_VISIBLE 才不被裁。 */
@@ -185,7 +190,7 @@ static void fill_card(uint8_t i)
 
     /* AI 通知的選項晶片:接在說明下面,最多 3 顆(說明這時只留 2 行)。半透明白底=卡片上的「玻璃」,
        單行 DOT 截斷;晶片自己吃點擊(不冒泡),不會同時觸發整張卡的點擊。 */
-    if (c->n_opts > 0)
+    if (!bigmode && c->n_opts > 0)
     {
         lv_coord_t chip_y = has_sub ? sub_bottom + 12 : SUB_Y;
         for (uint8_t k = 0; k < c->n_opts && k < 3; k++)
@@ -209,6 +214,66 @@ static void fill_card(uint8_t i)
             lv_obj_set_style_text_color(cl, lv_color_white(), 0);
             lv_obj_set_style_text_align(cl, LV_TEXT_ALIGN_CENTER, 0);
             lv_obj_center(cl);
+        }
+    }
+
+    /* 大字 + 步進 + 主動作(計時器;見 left_card_t.big)。點擊都走選項回呼:0 = 膠囊、1/2 = 左/右箭頭。 */
+    if (bigmode)
+    {
+        const lv_font_t *f_big = LV_EXT_FONT_GET(get_system_font_size(strlen(c->big) > 5 ? 1 : 2));
+        lv_coord_t big_h = lv_font_get_line_height(f_big);
+        lv_obj_t *bl = lv_label_create(card);
+        lv_label_set_text(bl, c->big);
+        lv_label_set_long_mode(bl, LV_LABEL_LONG_CLIP);
+        lv_obj_set_size(bl, BIG_W - 2 * STEP_W, big_h);
+        lv_obj_set_pos(bl, X0 + STEP_W, BIG_Y);
+        lv_obj_set_style_text_font(bl, f_big, 0);
+        lv_obj_set_style_text_color(bl, lv_color_white(), 0);
+        lv_obj_set_style_text_align(bl, LV_TEXT_ALIGN_CENTER, 0);
+        lv_obj_add_flag(bl, LV_OBJ_FLAG_EVENT_BUBBLE);
+        if (c->arrows)
+        {
+            /* 箭頭用折線畫(不靠字型有沒有 ‹ › 這兩個字);點擊區比箭頭大,手指好按 */
+            static const lv_point_t k_chev[2][3] = {{{12, 0}, {0, 14}, {12, 28}}, {{0, 0}, {12, 14}, {0, 28}}};
+            for (uint8_t k = 1; k <= 2; k++)
+            {
+                lv_obj_t *hit = lv_obj_create(card);
+                lv_obj_remove_style_all(hit);
+                lv_obj_set_size(hit, STEP_W, big_h);
+                lv_obj_set_pos(hit, (k == 1) ? X0 : (X0 + BIG_W - STEP_W), BIG_Y);
+                lv_obj_set_style_radius(hit, STEP_W / 2, 0);
+                lv_obj_set_style_bg_color(hit, lv_color_white(), 0);
+                lv_obj_set_style_bg_opa(hit, LV_OPA_20, LV_STATE_PRESSED);
+                lv_obj_add_flag(hit, LV_OBJ_FLAG_CLICKABLE);
+                lv_obj_clear_flag(hit, LV_OBJ_FLAG_SCROLLABLE);
+                lv_obj_add_event_cb(hit, chip_click_cb, LV_EVENT_CLICKED,
+                                    (void *)(uintptr_t)(((uint32_t)i << 8) | k));
+                lv_obj_t *ln = lv_line_create(hit);
+                lv_line_set_points(ln, k_chev[k - 1], 3);
+                lv_obj_set_style_line_width(ln, 4, 0);
+                lv_obj_set_style_line_color(ln, lv_color_white(), 0);
+                lv_obj_set_style_line_rounded(ln, true, 0);
+                lv_obj_center(ln);
+            }
+        }
+        if (c->act != NULL)
+        {
+            lv_obj_t *pill = lv_obj_create(card);
+            lv_obj_remove_style_all(pill);
+            lv_obj_set_size(pill, BIG_W, ACT_H);
+            lv_obj_set_pos(pill, X0, BIG_Y + big_h + 12);
+            lv_obj_set_style_radius(pill, ACT_H / 2, 0);
+            lv_obj_set_style_bg_color(pill, lv_color_white(), 0);
+            lv_obj_set_style_bg_opa(pill, LV_OPA_COVER, 0);
+            lv_obj_set_style_bg_opa(pill, LV_OPA_80, LV_STATE_PRESSED);
+            lv_obj_add_flag(pill, LV_OBJ_FLAG_CLICKABLE);
+            lv_obj_clear_flag(pill, LV_OBJ_FLAG_SCROLLABLE);
+            lv_obj_add_event_cb(pill, chip_click_cb, LV_EVENT_CLICKED, (void *)(uintptr_t)(((uint32_t)i << 8) | 0));
+            lv_obj_t *al = lv_label_create(pill);
+            lv_label_set_text(al, c->act);
+            lv_obj_set_style_text_font(al, f_btn, 0);
+            lv_obj_set_style_text_color(al, accent_bottom(lv_color_hex(c->accent)), 0);
+            lv_obj_center(al);
         }
     }
 
