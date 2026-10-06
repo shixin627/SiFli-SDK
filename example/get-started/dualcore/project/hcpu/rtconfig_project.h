@@ -86,4 +86,23 @@
     #pragma warning(disable:4244)
 #endif /* _MSC_VER */
 
+/* 瘦身(founder 2026-10-06:不動功能、拿掉沒用到的):這些 LVGL 元件沒有任何 app 用到,只被 lvsf_theme_1.c 的
+   樣式設定順手引用。proj.conf 已設 "# CONFIG_LV_USE_X is not set",但這個 SDK 的 lv_conf_internal.h 在 Kconfig
+   未啟用時(沒有 CONFIG_LV_COLOR_DEPTH)會把沒定義的元件預設成 1,所以要在這裡明確定成 0 才真的不編。
+   省 ~26.5 KB(main.bin 2,618,400 -> 2,591,312)。 */
+#define LV_USE_CHART 0
+#define LV_USE_COLORWHEEL 0
+#define LV_USE_TABLE 0
+#define LV_USE_METER 0
+#define LV_USE_KEYBOARD 0
+#define LV_USE_MENU 0
+#define LV_USE_SPINBOX 0
+#define LV_USE_TABVIEW 0
+#define LV_USE_LED 0
+#define LV_USE_WIN 0
+#define LV_USE_CALENDAR 0
+#define LV_USE_IMGBTN 0
+#define LV_USE_SPAN 0
+#define LV_USE_ANIMIMG 0
+
 #endif
