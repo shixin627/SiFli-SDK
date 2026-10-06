@@ -50,6 +50,13 @@ extern "C"
         Quaternion global_q;
         Quaternion sensor_q;
         ppg_sensor_data_t ppg_raw_data;
+        /* Same-frame pre-fusion inputs, passed through the existing IMU service.
+           Old IPC prefixes are accepted with these fields zeroed. */
+        uint32_t measurement_magic;
+        uint32_t measurement_sequence;
+        uint16_t measurement_hz;
+        Vector3 fusion_acc;
+        Vector3 fusion_gyro;
     } motion_data_t;
 
     typedef struct hr_sensor_data

@@ -23,6 +23,7 @@ extern "C"
 	typedef enum
 	{
 		KEY_OPEN_TEST_APP = 0x01, /* launch the hidden factory test app */
+        KEY_IMU_MEASUREMENT = 0x02, /* versioned pre-fusion measurement lease */
 	} FACTORY_TEST_KEY;
 
 	void resolve_factory_test_command(uint8_t key, const uint8_t *pValue, uint16_t length);

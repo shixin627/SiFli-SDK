@@ -32,6 +32,8 @@ if GetDepend('BSP_USING_BLOC_WEATHER'):
     src += Glob('bloc_weather.c')
 if GetDepend('BSP_USING_BLOC_MOTION_TRACKING'):
     src += Glob('bloc_motion_tracking.c')
+    if not GetDepend('BSP_USING_PC_SIMULATOR'):
+        src += Glob('imu_measurement.c')
 if GetDepend('BSP_USING_BLOC_FILESYSTEM'):
     src += Glob('bloc_filesystem.c')
     src += Glob('bloc_health.c')

@@ -13,6 +13,9 @@
 #include "gui_app_fwk.h"
 #include "gui_app_fwk2.h"
 #include "string.h"
+#if defined(BSP_USING_BLOC_MOTION_TRACKING) && !defined(BSP_USING_PC_SIMULATOR)
+#include "imu_measurement.h"
+#endif
 
 #define DBG_TAG "commu.parse.factory"
 #include "bsp_board.h"
@@ -33,6 +36,11 @@ void resolve_factory_test_command(uint8_t key, const uint8_t *pValue,
 
     switch (key)
     {
+    case KEY_IMU_MEASUREMENT:
+#if defined(BSP_USING_BLOC_MOTION_TRACKING) && !defined(BSP_USING_PC_SIMULATOR)
+        imu_measurement_command(pValue, length);
+#endif
+        break;
     case KEY_OPEN_TEST_APP:
         LOG_I("Factory test: launch test app");
         /* Safe from the BLE rx thread: gui_app_run() only posts

@@ -186,6 +186,8 @@ static void imu_data_fetch(motion_sensor_data_t *data)
     data->imu.acce = watch_sensor.imu_data.acce;
     data->imu.gyro = watch_sensor.imu_data.gyro;
 
+    // Keep the same-frame fusion input/output snapshot coherent across preemption.
+    rt_base_t measurement_level = rt_hw_interrupt_disable();
     // Motion data
     data->motion.timestamp = watch_sensor.motion_data.timestamp;
     data->motion.linear_acce = watch_sensor.motion_data.linear_acce;
@@ -193,6 +195,12 @@ static void imu_data_fetch(motion_sensor_data_t *data)
     data->motion.global_q = watch_sensor.motion_data.global_q;
     data->motion.sensor_q = watch_sensor.motion_data.sensor_q;
     data->motion.ppg_raw_data = watch_sensor.ppg_data;
+    data->motion.measurement_magic = watch_sensor.motion_data.measurement_magic;
+    data->motion.measurement_sequence = watch_sensor.motion_data.measurement_sequence;
+    data->motion.measurement_hz = watch_sensor.motion_data.measurement_hz;
+    data->motion.fusion_acc = watch_sensor.motion_data.fusion_acc;
+    data->motion.fusion_gyro = watch_sensor.motion_data.fusion_gyro;
+    rt_hw_interrupt_enable(measurement_level);
 }
 
 /**
