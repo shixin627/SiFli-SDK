@@ -217,5 +217,6 @@
 
   "call_connecting": "Connecting...",
   "call_answer_failed": "Could not answer - use your phone",
-  "call_hangup_failed": "Could not hang up - use your phone"
+  "call_hangup_failed": "Could not hang up - use your phone",
+  "timer_times_up": "Time is up"
 }

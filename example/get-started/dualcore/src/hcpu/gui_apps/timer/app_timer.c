@@ -235,6 +235,8 @@ static void remove_countdown_timer(void)
 }
 
 static bool _timeout = false;
+static bool s_quick = false;          /* 這次倒數是從左頁卡片(不進 app)開始的 */
+static bool s_goback_on_close = false; /* 時間到時 app 是被提醒叫起來的:關掉提示後回到原本的畫面 */
 
 /**
  * @brief Callback for the countdown timer
@@ -369,6 +371,7 @@ static void tap_button(lv_obj_t *btn)
     create_timer_data_bindings();
     update_timer_label();
     show_new_timer_view(timer_options[idx]);
+    s_quick = false; /* 在 app 裡開始的 */
     create_countdown_timer();
 }
 
@@ -950,96 +953,74 @@ static lv_obj_t *timeout_msg_box = NULL;
 
 static void close_timeout_notification_cb(lv_event_t *e)
 {
+    (void)e;
     if (timeout_msg_box && lv_obj_is_valid(timeout_msg_box))
-    {
-        // 獲取並刪除遮罩層
-        lv_obj_t *mask = (lv_obj_t *)lv_obj_get_user_data(timeout_msg_box);
-        if (mask && lv_obj_is_valid(mask))
-        {
-            lv_obj_del(mask); // 刪除遮罩層會同時刪除其子元素（包括timeout_msg_box）
-        }
-        else
-        {
-            lv_obj_del(timeout_msg_box); // 以防萬一，如果找不到遮罩層
-        }
-        timeout_msg_box = NULL;
-    }
+        lv_obj_del(timeout_msg_box);
+    timeout_msg_box = NULL;
     _timeout = false;
+    s_quick = false;
     remove_countdown_timer();
-    show_counter_listview();
     setting_provider.set_power_save_mode(1);
+    if (s_goback_on_close)
+    {
+        s_goback_on_close = false;
+        gui_app_goback(); /* 從左頁卡片開始的計時:關掉提示就回到原本的畫面,不落到計時器清單(founder 2026-10-06) */
+    }
+    else
+    {
+        show_counter_listview();
+    }
 }
 
+/* 時間到的提示:風格跟鬧鐘響鈴畫面一致(app_alarm.c build_ringing_view)—— 黑底、橘色小標、大字、底部一顆圓角膠囊,
+   文字走 i18n(原本是寫死英文、藍紫色圓角對話框,跟錶上其他畫面不搭,founder 2026-10-06)。 */
 static void show_timeout_notification(void)
 {
     if (timeout_msg_box && lv_obj_is_valid(timeout_msg_box))
         return;
-    
+
     setting_provider.set_power_save_mode(0);
-    // 創建一個全屏遮罩層
-    lv_obj_t *mask = lv_obj_create(lv_scr_act());
-    lv_obj_set_size(mask, LV_HOR_RES_MAX, LV_VER_RES_MAX);
-    lv_obj_set_style_bg_color(mask, lv_color_hex(0x000000), 0);
-    lv_obj_set_style_bg_opa(mask, LV_OPA_60, 0);
-    lv_obj_set_style_border_width(mask, 0, 0);
-    lv_obj_clear_flag(mask, LV_OBJ_FLAG_SCROLLABLE);
+    lv_obj_t *root = lv_obj_create(lv_scr_act());
+    lv_obj_set_size(root, LV_HOR_RES_MAX, LV_VER_RES_MAX);
+    lv_obj_align(root, LV_ALIGN_CENTER, 0, 0);
+    lv_obj_set_style_bg_color(root, lv_color_black(), 0);
+    lv_obj_set_style_bg_opa(root, LV_OPA_COVER, 0);
+    lv_obj_set_style_border_width(root, 0, 0);
+    lv_obj_set_style_radius(root, 0, 0);
+    lv_obj_set_style_pad_all(root, 0, 0);
+    lv_obj_clear_flag(root, LV_OBJ_FLAG_SCROLLABLE);
+    timeout_msg_box = root;
 
-    // 創建主要消息框
-    timeout_msg_box = lv_obj_create(mask);
-    lv_obj_set_size(timeout_msg_box, LV_PCT(75), LV_PCT(75));
-    lv_obj_align(timeout_msg_box, LV_ALIGN_CENTER, 0, 0);
-    lv_obj_set_style_radius(timeout_msg_box, 50, 0); // 使用純色背景
-    lv_obj_set_style_bg_color(timeout_msg_box, lv_color_hex(0x303040), 0);
-    lv_obj_set_style_bg_opa(timeout_msg_box, 240, 0); // 約95%不透明度    // 添加精緻邊框
-    lv_obj_set_style_border_width(timeout_msg_box, 2, 0);
-    lv_obj_set_style_border_color(timeout_msg_box, lv_color_hex(0x6080FF), 0);
-    lv_obj_set_style_border_opa(timeout_msg_box, LV_OPA_40, 0);
+    lv_obj_t *kicker = lv_label_create(root);
+    lv_label_set_text(kicker, LV_EXT_STR_GET_BY_KEY(timer, "Timer"));
+    lv_obj_set_style_text_color(kicker, lv_color_hex(LIST_TIMER_ACCENT_COLOR), 0);
+    lv_obj_set_style_text_font(kicker, LV_EXT_FONT_GET(get_system_font_size(0)), 0);
+    lv_obj_align(kicker, LV_ALIGN_TOP_MID, 0, 80);
 
-    // 添加鬧鐘圖標
-    lv_obj_t *alarm_icon = lv_img_create(timeout_msg_box);
-    lv_img_set_src(alarm_icon, IMG_ALARM_2);
-    lv_obj_align(alarm_icon, LV_ALIGN_TOP_MID, 0, 40);
+    lv_obj_t *title = lv_label_create(root);
+    lv_label_set_text(title, LV_EXT_STR_GET_BY_KEY(timer_times_up, "Time is up"));
+    lv_label_set_long_mode(title, LV_LABEL_LONG_WRAP);
+    lv_obj_set_width(title, 340);
+    lv_obj_set_style_text_align(title, LV_TEXT_ALIGN_CENTER, 0);
+    lv_obj_set_style_text_color(title, lv_color_white(), 0);
+    lv_obj_set_style_text_font(title, LV_EXT_FONT_GET(get_system_font_size(2)), 0);
+    lv_obj_align(title, LV_ALIGN_CENTER, 0, -20);
 
-    // 添加主標題
-    lv_obj_t *title = lv_label_create(timeout_msg_box);
-    lv_label_set_text(title, "Time's Up!");
-    lv_obj_set_style_text_font(title, LV_EXT_FONT_GET(get_system_font_size(0)), 0);
-    lv_obj_set_style_text_color(title, lv_color_hex(0xFFFFFF), 0);
-    lv_obj_align_to(title, alarm_icon, LV_ALIGN_OUT_BOTTOM_MID, 0, 20);
-
-    // 添加副標題
-    lv_obj_t *subtitle = lv_label_create(timeout_msg_box);
-    lv_label_set_text(subtitle, "Your timer has finished");
-    lv_obj_set_style_text_font(subtitle, LV_EXT_FONT_GET(get_system_font_size(0)), 0);
-    lv_obj_set_style_text_color(subtitle, lv_color_hex(0xAAAAAA), 0);
-    lv_obj_align_to(subtitle, title, LV_ALIGN_OUT_BOTTOM_MID, 0, 10);
-
-    // 創建一個精美的關閉按鈕
-    lv_obj_t *close_btn = lv_btn_create(timeout_msg_box);
-    lv_obj_set_size(close_btn, 160, 60);
-    lv_obj_align(close_btn, LV_ALIGN_BOTTOM_MID, 0, -40);
-    lv_obj_set_style_radius(close_btn, 12, 0); // 按鈕漸變背景
-    lv_obj_set_style_bg_color(close_btn, lv_color_hex(0x5070DD), 0);
-    lv_obj_set_style_bg_opa(close_btn, LV_OPA_100, 0); // 按鈕邊框
-    lv_obj_set_style_border_width(close_btn, 1, 0);
-    lv_obj_set_style_border_color(close_btn, lv_color_hex(0x80A0FF), 0);
-    lv_obj_set_style_border_opa(close_btn, LV_OPA_50, 0);
-
-    // 按下效果
-    lv_obj_set_style_bg_color(close_btn, lv_color_hex(0x4060CC), LV_STATE_PRESSED);
-
-    // 添加按鈕文字
-    lv_obj_t *btn_label = lv_label_create(close_btn);
-    lv_label_set_text(btn_label, "Close");
-    lv_obj_set_style_text_font(btn_label, LV_EXT_FONT_GET(get_system_font_size(0)), 0);
-    lv_obj_set_style_text_color(btn_label, lv_color_hex(0xFFFFFF), 0);
-    lv_obj_center(btn_label);
-
-    // 添加點擊事件
-    lv_obj_add_event_cb(close_btn, close_timeout_notification_cb, LV_EVENT_CLICKED, NULL);
-
-    // 將整個遮罩添加到 timeout_msg_box 用戶數據中，以便在關閉時一併刪除
-    lv_obj_set_user_data(timeout_msg_box, mask);
+    lv_obj_t *btn = lv_btn_create(root);
+    lv_obj_set_size(btn, 200, 56);
+    lv_obj_align(btn, LV_ALIGN_BOTTOM_MID, 0, -56);
+    lv_obj_set_style_bg_color(btn, lv_color_hex(LIST_TIMER_ACCENT_COLOR), 0);
+    lv_obj_set_style_bg_color(btn, lv_color_hex(0xE08600), LV_STATE_PRESSED);
+    lv_obj_set_style_bg_opa(btn, LV_OPA_COVER, 0);
+    lv_obj_set_style_radius(btn, 28, 0);
+    lv_obj_set_style_border_width(btn, 0, 0);
+    lv_obj_set_style_shadow_width(btn, 0, 0);
+    lv_obj_add_event_cb(btn, close_timeout_notification_cb, LV_EVENT_CLICKED, NULL);
+    lv_obj_t *bl = lv_label_create(btn);
+    lv_label_set_text(bl, LV_EXT_STR_GET_BY_KEY(ok, "OK"));
+    lv_obj_set_style_text_color(bl, lv_color_white(), 0);
+    lv_obj_set_style_text_font(bl, LV_EXT_FONT_GET(get_system_font_size(0)), 0);
+    lv_obj_center(bl);
 }
 
 static void create_timer_app_ui(lv_obj_t *parent)
@@ -1075,6 +1056,7 @@ static void on_start(void)
         if (_timeout)
         {
             LOG_D("Show timeout notification");
+            s_goback_on_close = s_quick; /* 提醒把 app 叫起來的:從卡片開始的計時,關掉後就離開 */
             show_timeout_notification();
             motor_pattern_timer_reminder();
         }
@@ -1218,6 +1200,7 @@ bool app_timer_quick_start(uint32_t seconds)
     if (seconds == 0 || app_timer_data_ctx.countdown_timer)
         return false; /* 已經在倒數:不覆蓋 */
     _timeout = false;
+    s_quick = true;
     app_timer_data_ctx.remaining_time = seconds;
     create_countdown_timer();
     return app_timer_data_ctx.countdown_timer != NULL;
@@ -1228,6 +1211,7 @@ void app_timer_quick_cancel(void)
     remove_countdown_timer();
     app_timer_data_ctx.remaining_time = 0;
     _timeout = false;
+    s_quick = false;
 }
 
 /* 剩餘秒數;沒在倒數、或已到點等著關提醒 = 0。paused 可傳 NULL。 */

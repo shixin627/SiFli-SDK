@@ -286,6 +286,15 @@ static int sim_nav(int argc, char *argv[])
 }
 MSH_CMD_EXPORT(sim_nav, sim_nav N - drive the list nav the way a motion gesture does (sim));
 
+/* sim_timer N:像左頁卡片「開始」那樣不進 app 直接倒數 N 秒(預設 5),看到點的提示畫面。 */
+static int sim_timer(int argc, char *argv[])
+{
+    extern bool app_timer_quick_start(uint32_t seconds);
+    app_timer_quick_start((argc > 1) ? (uint32_t)atoi(argv[1]) : 5u);
+    return 0;
+}
+MSH_CMD_EXPORT(sim_timer, sim_timer N - quick-start a countdown of N seconds like the left card does (sim));
+
 /* sim_motion_offset V [N]:模擬體感路徑同一幀送出的兩個訊號 —— 連續手腕角度 V(set_arc_stripe_external_offset),有給 N 就再送翻到第 N 頁(NAV_BAR_CONTROL)。輪盤要跟 V 走、不被卡片捲動拉走。 */
 typedef struct { int v; int page; } sim_motion_arg_t;
 static void sim_motion_offset_async_cb(void *arg)

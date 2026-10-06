@@ -217,5 +217,6 @@
 
   "call_connecting": "接聽中...",
   "call_answer_failed": "接聽失敗，請用手機接聽",
-  "call_hangup_failed": "掛斷失敗，請用手機操作"
+  "call_hangup_failed": "掛斷失敗，請用手機操作",
+  "timer_times_up": "時間到"
 }
