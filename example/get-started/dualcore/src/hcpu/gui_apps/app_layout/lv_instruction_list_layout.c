@@ -7292,6 +7292,31 @@ static bool lc_card_at(uint8_t idx, left_card_t *c, char *subbuf)
     return true;
 }
 
+#ifdef BSP_USING_BLOC
+/* 天氣只存在 RAM,重開機後是空的;而「卡片第一次出現」那一下手機常常還沒連上(請求被 bloc 丟掉),
+   之後重建只是 refresh、不會再問 → 卡片空到使用者點進天氣 app(那條 active=true 才會問)。
+   所以:有天氣卡、卡片顯示中、已連手機、還是沒有「現在」的資料 → 每 30 秒問一次(active=true 才不吃
+   30 分鐘的「剛同步過」門檻;bloc 內另有 10 秒硬節流)。資料到了就停。 */
+#define LC_WEATHER_RETRY_MS 30000
+static void lc_weather_poke(void)
+{
+    static rt_tick_t last = 0;
+    if (skai_weather_temp() != SKAI_NO_DATA || !SkaiWatchSys.connected_to_phone)
+        return;
+    bool has = false;
+    for (uint8_t i = 0; i < list_item_count && !has; i++)
+        has = strcmp(list_items[i].open_app, APP_ID_WEATHER) == 0 || accent_idx_of(list_items[i].id) == ACC_WEATHER;
+    if (!has)
+        return;
+    rt_tick_t now = rt_tick_get();
+    if (last != 0 && (now - last) < rt_tick_from_millisecond(LC_WEATHER_RETRY_MS))
+        return;
+    last = now;
+    LOG_W("[weather] cards up, no data yet -> ask phone");
+    request_weather_within_six_hours(true);
+}
+#endif
+
 static void left_cards_sync(void)
 {
     if (p_instruction_list_layout == NULL)
@@ -7356,6 +7381,9 @@ static void left_cards_sync(void)
         left_cards_release();
         return;
     }
+#ifdef BSP_USING_BLOC
+    lc_weather_poke();
+#endif
 
     bool shown = left_cards_visible();
     if (shown && n == s_lc_n && sig == s_lc_sig)
@@ -7391,10 +7419,6 @@ static void left_cards_sync(void)
     s_lc_n = n;
     s_lc_sig = sig;
     s_lc_ssig = ssig;
-#ifdef BSP_USING_BLOC
-    if (!shown)
-        request_weather_within_six_hours(false); /* 天氣只存在 RAM,重開機後是空的;進場時向手機要(bloc 內 10 秒/30 分節流,沒連手機直接放棄) */
-#endif
     left_cards_show(bg, lc_card_at, n, start, lc_tap_cb, lc_page_cb, lc_scroll_cb, lc_option_cb);
     s_lc_opt_sig = osig;
     s_lc_moved = false; /* show 自己的定位捲動也會觸發 scroll 回呼,不算使用者動 */
