@@ -798,11 +798,18 @@ INIT_APP_EXPORT(watch_sensor_init_lcpu);
 
 void motion_data_fetch(motion_data_t *data)
 {
+    rt_base_t measurement_level = rt_hw_interrupt_disable();
+    watch_sensor.motion_data.measurement_magic = data->measurement_magic;
+    watch_sensor.motion_data.measurement_sequence = data->measurement_sequence;
+    watch_sensor.motion_data.measurement_hz = data->measurement_hz;
+    watch_sensor.motion_data.fusion_acc = data->fusion_acc;
+    watch_sensor.motion_data.fusion_gyro = data->fusion_gyro;
     watch_sensor.motion_data.timestamp = data->timestamp;
     watch_sensor.motion_data.linear_acce = data->linear_acce;
     watch_sensor.motion_data.gravity = data->gravity;
     watch_sensor.motion_data.global_q = data->global_q;
     watch_sensor.motion_data.sensor_q = data->sensor_q;
+    rt_hw_interrupt_enable(measurement_level);
     // LOG_D("[T:%d]motion_data_fetch", data->timestamp);
 }
 

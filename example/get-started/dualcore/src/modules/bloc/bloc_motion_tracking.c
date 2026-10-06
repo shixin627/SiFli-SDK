@@ -26,7 +26,8 @@
     #include "bloc_control.h"
     #include "bloc_skaiwalk.h"
     #include "watch_system_interact.h"
-    #include "bloc_motion_tracking.h"
+#include "bloc_motion_tracking.h"
+#include "imu_measurement.h"
     #include "bloc_v2t.h"
     #include "bloc_setting.h"
 #endif
@@ -3341,7 +3342,12 @@ static void motion_tracking_thread_entry(void *parameter)
         {
             continue;
         }
+        rt_base_t measurement_level = rt_hw_interrupt_disable();
         motion_data_t motion_data = watch_sensor.motion_data;
+        rt_hw_interrupt_enable(measurement_level);
+#ifndef BSP_USING_PC_SIMULATOR
+        imu_measurement_feed(&motion_data);
+#endif
         motion_tracking_in_hcpu(&motion_data);
     }
 }

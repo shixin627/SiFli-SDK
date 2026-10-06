@@ -67,6 +67,7 @@ extern "C"
 		KEY_MEDIA_TITLE = 0X46,
 		KEY_BATTERY_LEVEL = 0X4D,
 		KEY_GSENSOR_SAMPLE = 0X50,
+        KEY_IMU_MEASUREMENT_SAMPLE = 0x51, /* versioned fusion-input diagnostic */
 		KEY_START_SYNC_FILE = 0X52,
 		KEY_SYNC_FILE = 0X53,
 		KEY_END_SYNC_FILE = 0X54,

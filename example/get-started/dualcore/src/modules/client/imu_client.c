@@ -59,6 +59,8 @@
 #include "watch_sys_service.h"
 #endif
 #include "watch_system_interact.h"
+#include <stddef.h>
+#include <string.h>
 
 #define DBG_TAG "CLIENT.IMU"
 #define DBG_LVL DBG_LOG
@@ -76,7 +78,17 @@ static int imu_callback(data_callback_arg_t *arg)
         len = arg->data_len;
 
         buffer = arg->data;
-        motion_sensor_data_t object = *(motion_sensor_data_t *)buffer;
+        /* Preserve the old LCPU prefix; zero extension fields prevent it from
+           masquerading as supported raw measurement. */
+        const size_t legacy_size = offsetof(motion_sensor_data_t, motion) +
+            offsetof(motion_data_t, measurement_magic);
+        if (len != sizeof(motion_sensor_data_t) && len != legacy_size)
+        {
+            LOG_E("IMU IPC ABI mismatch: %u", len);
+            return 0;
+        }
+        motion_sensor_data_t object = {0};
+        memcpy(&object, buffer, len);
         process_motion_sensor_data(&object);
     }
     else if (MSG_SERVICE_SUBSCRIBE_RSP == arg->msg_id)

@@ -438,6 +438,10 @@ void handle_motion_data_in_25hz(rt_tick_t now, Vector3 *accData)
 
 int handle_imu_data(float hz, Vector3 *accData, Vector3 *gyroData)
 {
+    static uint32_t measurement_sequence = 0;
+    const Vector3 fusion_acc = *accData;
+    const Vector3 fusion_gyro = *gyroData;
+    ++measurement_sequence;
     static float pre_freq = 0;
     rt_tick_t now = rt_tick_get_millisecond();
 
@@ -520,6 +524,11 @@ int handle_imu_data(float hz, Vector3 *accData, Vector3 *gyroData)
             .gravity = watch_gravity,
             .global_q = global_q,
             .sensor_q = sensor_q,
+            .measurement_magic = 0x494d5531u,
+            .measurement_sequence = measurement_sequence,
+            .measurement_hz = (uint16_t)hz,
+            .fusion_acc = fusion_acc,
+            .fusion_gyro = fusion_gyro,
         };
         motion_data_fetch(&motion_data);
 
