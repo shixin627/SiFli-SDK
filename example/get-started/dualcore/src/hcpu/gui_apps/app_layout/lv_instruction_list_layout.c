@@ -7368,7 +7368,6 @@ static void lc_weather_poke(void)
     if (last != 0 && (now - last) < rt_tick_from_millisecond(LC_WEATHER_RETRY_MS))
         return;
     last = now;
-    LOG_W("[weather] cards up, no data yet -> ask phone");
     request_weather_within_six_hours(true);
 }
 #endif
@@ -7490,6 +7489,19 @@ static void left_cards_sync(void)
 static void lc_opts_poll(void)
 {
 #ifdef APP_ID_TIMER
+    {
+        /* 計時器時間到、左頁還開著:先在這(GUI 執行緒)把左頁收回錶盤,再叫起提醒 —— 這樣框架替 Main 拍的快照是錶盤,
+           返回時不會先閃一下左頁的計時器卡(見 app_timer.c countdown_timer_cb)。 */
+        extern bool app_timer_take_pending_reminder(void);
+        extern void snap_to_home_from_any_page(void);
+        if (app_timer_take_pending_reminder())
+        {
+            instruction_list_hide_now();
+            snap_to_home_from_any_page();
+            interact_timer_reminder();
+            return;
+        }
+    }
     /* 計時器卡片:倒數中每秒重畫(剩餘時間);倒數結束/被取消那一次也要重畫一次(晶片換回開始鍵)。 */
     {
         static bool s_timer_was_running = false;

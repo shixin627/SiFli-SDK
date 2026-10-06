@@ -237,6 +237,7 @@ static void remove_countdown_timer(void)
 static bool _timeout = false;
 static bool s_quick = false;          /* 這次倒數是從左頁卡片(不進 app)開始的 */
 static bool s_goback_on_close = false; /* 時間到時 app 是被提醒叫起來的:關掉提示後回到原本的畫面 */
+static volatile bool s_remind_pending = false; /* 時間到時左頁還開著:提醒交給左頁的 GUI 執行緒輪詢去發 */
 
 /**
  * @brief Callback for the countdown timer
@@ -254,8 +255,15 @@ static void countdown_timer_cb(void *parameter)
 
         if (app_timer_data_ctx.remaining_time == 0)
         {
+            extern bool instruction_list_is_visible(void);
+            extern bool gui_is_active(void);
             _timeout = true;
-            interact_timer_reminder();
+            /* 左頁還開著時別直接叫起 app:框架在 Main 暫停那一刻拍快照,返回時先放這張快照 —— 會先看到左頁的計時器卡
+               才退到錶盤(founder 2026-10-06)。改由左頁 GUI 執行緒的輪詢先收起左頁再提醒(見
+               app_timer_take_pending_reminder)。螢幕沒亮就照舊直接提醒(那時輪詢不保證在跑)。 */
+            s_remind_pending = instruction_list_is_visible() && gui_is_active();
+            if (!s_remind_pending)
+                interact_timer_reminder();
             LOG_D("Timer finished");
         }
         LOG_D("Remaining time: %d", app_timer_data_ctx.remaining_time);
@@ -1212,6 +1220,14 @@ void app_timer_quick_cancel(void)
     app_timer_data_ctx.remaining_time = 0;
     _timeout = false;
     s_quick = false;
+}
+
+/* 時間到時左頁還開著:左頁的輪詢(GUI 執行緒)來問一次,拿到 true 就先收起左頁再叫 interact_timer_reminder。 */
+bool app_timer_take_pending_reminder(void)
+{
+    bool p = s_remind_pending;
+    s_remind_pending = false;
+    return p;
 }
 
 /* 剩餘秒數;沒在倒數、或已到點等著關提醒 = 0。paused 可傳 NULL。 */
