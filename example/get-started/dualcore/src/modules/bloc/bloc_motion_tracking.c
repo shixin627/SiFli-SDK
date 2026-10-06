@@ -1362,10 +1362,14 @@ static void waveform_capture_process(motion_data_t *motion_data, Vector3 *gyro)
     extern bool get_gesture_click_mode(void);
     bool get_switch_freehand_mode(void); /* 本檔後段定義 */
     bool collecting = imu_raw_data_collection || imu_mouse_data_collection;
-    /* 手勢點擊模式的 burst 縮成 20 筆(440B,2 個 BLE 片段):35 筆=770B 要切 4 片,
-       游標 0x08 被擋在後面每 350ms 頓一下(founder 2026-09-06「卡卡的」)。收集模式維持 35。 */
-    #define GESTURE_CLICK_STREAM_STEP 20
-    int flush_at = collecting ? MAX_RAWDATA_TIME_STEP : GESTURE_CLICK_STREAM_STEP;
+    /* 0x50 的 burst 大小 = 手機看到按下/放開之前平均要多等的時間(一批 N 筆 = N×10ms 才送一次)。
+       35 筆=770B 要切 4 個 BLE 片段:游標 0x08 被擋在後面每 350ms 頓一下(founder 2026-09-06
+       「卡卡的」),手勢點擊模式因此先縮到 20 筆(440B,2 片)。2026-10-06 實測(桌上錶,手機
+       用模型判定點擊):實際按下→手機判定 中位 627ms,其中批次等待平均 ~175ms(最壞 350ms);
+       founder 要求再壓 → 一律 10 筆(220B,單一 BLE 片段,批次等待平均 50ms)。收集模式的資料內容
+       不變(一樣每筆 22B,只是切得更碎),手機端逐批處理、不依賴批大小。 */
+    #define GESTURE_CLICK_STREAM_STEP 10
+    int flush_at = GESTURE_CLICK_STREAM_STEP;
     /* 手勢點擊模式:錶面朝下時**不送** 0x50 —— 退出用的那下倒置 tap 本身就是一次手指按壓,
        手機模型會先判成 PRESS 送左鍵 down(2026-09-06 19:07:54 實測:PRESS 比 on=0 早 61ms),
        電腦在退出瞬間多點一下。朝下期間手機沒樣本=沒判定;手錶自己的 tap 模型另走一條不受影響。 */
