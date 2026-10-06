@@ -77,6 +77,7 @@
     #include "bloc_v2t.h"
     #include "bloc_peripheral.h"
     #include "bloc_weather.h"
+    #include "skai/skai_weather.h"
     #include "bloc_calendar.h"
     #include "bloc_motion_tracking.h"
 #endif
@@ -6860,6 +6861,11 @@ static const char *lc_blurb(const char *app)
         return NULL;
     if (strcmp(app, APP_ID_FLASHLIGHT) == 0)
         return "把螢幕當手電筒用";
+#ifdef APP_ID_WEATHER
+    /* 沒有即時資料時才會落到這(天氣存在 RAM,重開機後要等手機回傳) */
+    if (strcmp(app, APP_ID_WEATHER) == 0)
+        return "尚無天氣資料，連上手機後會更新";
+#endif
 #ifdef APP_ID_TIMER
     if (strcmp(app, APP_ID_TIMER) == 0)
         return "計時與倒數";
@@ -6888,6 +6894,19 @@ static const char *lc_blurb(const char *app)
 }
 
 extern char *get_media_title(void);
+#ifdef BSP_USING_BLOC
+/* 手機回傳的天氣是英文字(Clear/Clouds/...),skai_weather_condition 正規化成 token;卡片上轉成中文,不認得的照原字。 */
+static const char *lc_weather_zh(const char *token, const char *raw)
+{
+    static const struct { const char *tok; const char *zh; } k[] = {
+        {"clear", "晴"}, {"sun", "晴"}, {"cloudy", "多雲"}, {"rain", "下雨"}, {"thunder", "雷雨"}, {"snow", "下雪"},
+    };
+    for (unsigned i = 0; i < sizeof(k) / sizeof(k[0]); i++)
+        if (strcmp(token, k[i].tok) == 0)
+            return k[i].zh;
+    return raw;
+}
+#endif
 static bool lc_live_sub(const list_item_t *it, uint8_t ai, char *buf, size_t n)
 {
     const char *app = it->open_app;
@@ -6906,10 +6925,18 @@ static bool lc_live_sub(const list_item_t *it, uint8_t ai, char *buf, size_t n)
 #ifdef BSP_USING_BLOC
     if ((has_app && strcmp(app, APP_ID_WEATHER) == 0) || ai == ACC_WEATHER)
     {
-        weather_t *w = get_weather(0);
-        if (w != NULL && w->description[0] != '\0')
+        /* 「現在」是最後一格(AMOUNT-1),陣列時間倒著排;讀 get_weather(0) 拿到的是 9 小時後的預報(見 skai_api.c WEATHER_SLOT_NOW)。
+           走 skai_weather_*:空槽判斷、現在槽都已經對。 */
+        int32_t t = skai_weather_temp();
+        if (t != SKAI_NO_DATA)
         {
-            rt_snprintf(buf, n, "%d° %s", (int)w->temperature, w->description);
+            char tok[16], desc[16];
+            skai_weather_condition(tok, sizeof(tok));
+            skai_weather_description(desc, sizeof(desc));
+            int32_t rain = skai_weather_rain_pct();
+            int w = rt_snprintf(buf, n, "%d° %s", (int)t, lc_weather_zh(tok, desc));
+            if (rain != SKAI_NO_DATA && w > 0 && (size_t)w < n)
+                rt_snprintf(buf + w, n - (size_t)w, "，降雨 %d%%", (int)rain);
             return true;
         }
     }
@@ -6972,6 +6999,8 @@ static const char *lc_sub_for(char *buf, const list_item_t *it, uint8_t ai)
     if (pushed[0] != '\0')
         return pushed;
     const char *b = lc_blurb(it->open_app);
+    if (b == NULL && ai == ACC_WEATHER)
+        b = "尚無天氣資料，連上手機後會更新"; /* 手機建的天氣卡(沒有 openApp)也要有字,不留白 */
     return b != NULL ? b : "";
 }
 
@@ -7362,6 +7391,10 @@ static void left_cards_sync(void)
     s_lc_n = n;
     s_lc_sig = sig;
     s_lc_ssig = ssig;
+#ifdef BSP_USING_BLOC
+    if (!shown)
+        request_weather_within_six_hours(false); /* 天氣只存在 RAM,重開機後是空的;進場時向手機要(bloc 內 10 秒/30 分節流,沒連手機直接放棄) */
+#endif
     left_cards_show(bg, lc_card_at, n, start, lc_tap_cb, lc_page_cb, lc_scroll_cb, lc_option_cb);
     s_lc_opt_sig = osig;
     s_lc_moved = false; /* show 自己的定位捲動也會觸發 scroll 回呼,不算使用者動 */
