@@ -205,6 +205,7 @@ bool commu_send_skaiapp_run(const char *app_id, const char *ev, const char *r, c
 
 /* Sensor */
 bool commu_send_linear_acce_buffer(const uint8_t *acce, uint16_t length);
+bool commu_send_gsensor_gyro_buffer(const uint8_t *buf, uint16_t length); /* -> KEY_GSENSOR_SAMPLE_GYRO (0x55) */
 
 /* File sync */
 bool commu_send_start_sync_file(uint32_t total_size);

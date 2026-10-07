@@ -1369,7 +1369,12 @@ static void waveform_capture_process(motion_data_t *motion_data, Vector3 *gyro)
        founder 要求再壓 → 一律 10 筆(220B,單一 BLE 片段,批次等待平均 50ms)。收集模式的資料內容
        不變(一樣每筆 22B,只是切得更碎),手機端逐批處理、不依賴批大小。 */
     #define GESTURE_CLICK_STREAM_STEP 10
-    int flush_at = GESTURE_CLICK_STREAM_STEP;
+    /* 收集模式(RAW/MOUSE)改走 0x55:同一個 22B 樣本後面接 6B 角速度(int16 x/y/z,
+       dps×16,飽和在 ±2047dps),一批 8 筆 = 224B,仍是單一 BLE 封包;前 22B 與 0x50 逐位元
+       相同。手勢點擊模式不需要角速度,維持 0x50 的 10 筆(少 27% 流量)。 */
+    #define GYRO_STREAM_STEP 8
+    #define GYRO_STREAM_SAMPLE_BYTES (BYTES_PER_SAMPLE + 6)
+    int flush_at = collecting ? GYRO_STREAM_STEP : GESTURE_CLICK_STREAM_STEP;
     /* 手勢點擊模式:錶面朝下時**不送** 0x50 —— 退出用的那下倒置 tap 本身就是一次手指按壓,
        手機模型會先判成 PRESS 送左鍵 down(2026-09-06 19:07:54 實測:PRESS 比 on=0 早 61ms),
        電腦在退出瞬間多點一下。朝下期間手機沒樣本=沒判定;手錶自己的 tap 模型另走一條不受影響。 */
@@ -1381,6 +1386,24 @@ static void waveform_capture_process(motion_data_t *motion_data, Vector3 *gyro)
            計數器會把視窗切壞 —— 串流改用自己的一份。 */
         static gesture_dataset_t gc_stream_dataset = {0};
         gesture_dataset_t *sd = collecting ? &release_dataset : &gc_stream_dataset;
+        /* 角速度與樣本同索引並排存(只收集模式用)。剛進收集模式時 release_dataset 可能殘留
+           RELEASE 擷取的計數,先清零,批次從 0 開始,gyro 索引 = 樣本索引。 */
+        static int16_t stream_gyro[GYRO_STREAM_STEP][3];
+        static bool was_collecting;
+        if (collecting && !was_collecting) release_dataset.gesture_sample_count = 0;
+        was_collecting = collecting;
+        if (collecting && sd->gesture_sample_count < GYRO_STREAM_STEP)
+        {
+            const float gyro_dps[3] = {gyro->x, gyro->y, gyro->z};
+            for (int k = 0; k < 3; k++)
+            {
+                float v = gyro_dps[k] * 16.0f;
+                if (v > 32767.0f) v = 32767.0f;
+                if (v < -32768.0f) v = -32768.0f;
+                stream_gyro[sd->gesture_sample_count][k] =
+                    (int16_t)(v >= 0.0f ? v + 0.5f : v - 0.5f);
+            }
+        }
         // LOG_D("Collecting IMU raw data: ppg:%d, fsr_adc:%d", ppg_rawdata,
         //       fsr_adc_value);
         store_gesture_sample(sd, rt_tick_get_millisecond(),
@@ -1394,9 +1417,25 @@ static void waveform_capture_process(motion_data_t *motion_data, Vector3 *gyro)
             {
                 packMatrixToBuffer(gsensorSamplesBuffer, targetWave_algo, NULL,
                                    sd->gesture_sample_count);
-                commu_send_linear_acce_buffer(
-                    gsensorSamplesBuffer,
-                    sd->gesture_sample_count * BYTES_PER_SAMPLE);
+                if (collecting)
+                {
+                    static uint8_t gyro_frame[GYRO_STREAM_SAMPLE_BYTES * GYRO_STREAM_STEP];
+                    int n = sd->gesture_sample_count;
+                    if (n > GYRO_STREAM_STEP) n = GYRO_STREAM_STEP;
+                    for (int i = 0; i < n; i++)
+                    {
+                        uint8_t *q = &gyro_frame[i * GYRO_STREAM_SAMPLE_BYTES];
+                        memcpy(q, &gsensorSamplesBuffer[i * BYTES_PER_SAMPLE], BYTES_PER_SAMPLE);
+                        memcpy(q + BYTES_PER_SAMPLE, stream_gyro[i], 6);
+                    }
+                    commu_send_gsensor_gyro_buffer(gyro_frame, n * GYRO_STREAM_SAMPLE_BYTES);
+                }
+                else
+                {
+                    commu_send_linear_acce_buffer(
+                        gsensorSamplesBuffer,
+                        sd->gesture_sample_count * BYTES_PER_SAMPLE);
+                }
             }
             sd->gesture_sample_count = 0;
         }

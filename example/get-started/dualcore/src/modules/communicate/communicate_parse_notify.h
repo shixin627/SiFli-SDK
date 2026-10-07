@@ -67,6 +67,7 @@ extern "C"
 		KEY_MEDIA_TITLE = 0X46,
 		KEY_BATTERY_LEVEL = 0X4D,
 		KEY_GSENSOR_SAMPLE = 0X50,
+		KEY_GSENSOR_SAMPLE_GYRO = 0X55, /* 收集模式(RAW/MOUSE)的 0x50:每筆 28B = 原 22B 樣本 + 尾巴 6B 角速度(int16 LE x/y/z,dps×16,飽和 ±2047dps) */
         KEY_IMU_MEASUREMENT_SAMPLE = 0x51, /* versioned fusion-input diagnostic */
 		KEY_START_SYNC_FILE = 0X52,
 		KEY_SYNC_FILE = 0X53,

@@ -1107,6 +1107,13 @@ bool commu_send_linear_acce_buffer(const uint8_t *acce, uint16_t length)
     return skaiwatch_ble_send_l2(NOTIFY_COMMAND_ID, KEY_GSENSOR_SAMPLE, acce, length);
 }
 
+/* 0x55:同 0x50 的樣本再接角速度(每筆 28B)。收集模式用,手機端見 WatchProtocol 的 0x55。 */
+bool commu_send_gsensor_gyro_buffer(const uint8_t *buf, uint16_t length)
+{
+    if (!commu_can_send() || buf == NULL) return false;
+    return skaiwatch_ble_send_l2(NOTIFY_COMMAND_ID, KEY_GSENSOR_SAMPLE_GYRO, buf, length);
+}
+
 /*============================================================================*
  *                              File sync
  *============================================================================*/

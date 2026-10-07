@@ -77,6 +77,7 @@ typedef struct { uint8_t addr[6]; } bd_addr_t;
 /* communicate_task.h */ bool commu_send_hr_window(uint32_t ts, uint8_t bpm, uint8_t conf, uint16_t count, const int8_t *win, uint16_t acc_count, uint8_t acc_shift, const int8_t *acc) { (void)ts; (void)bpm; (void)conf; (void)count; (void)win; (void)acc_count; (void)acc_shift; (void)acc; return false; }
 /* communicate_task.h */ bool commu_send_language(void) { return false; }
 /* communicate_task.h */ bool commu_send_linear_acce_buffer(const uint8_t *acce, uint16_t length) { return false; }
+/* communicate_task.h */ bool commu_send_gsensor_gyro_buffer(const uint8_t *buf, uint16_t length) { return false; }
 /* communicate_task.h */ bool commu_send_media_control(void) { return false; }
 /* communicate_task.h */ bool commu_send_oled_display_time(uint8_t time) { return false; }
 /* communicate_task.h */ bool commu_send_phone_control_cmd(void) { return false; }
