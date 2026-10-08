@@ -442,6 +442,10 @@ static rt_err_t sifli_get_adc_value(struct rt_adc_device *device, rt_uint32_t ch
         else
             rt_thread_delay(10);
 #else
+#ifdef USING_FSR_ADC_SAMPLER
+        /* FSR(ch3,bloc_peripheral.c FSR_ADC_CHANNEL)不需要這 10 ms:3 次取樣從 ~30 ms 降到 ~1 ms,FSR 才跑得到 ~100Hz */
+        if (channel != 3)
+#endif
         rt_thread_delay(10);
 #endif /* ADC_VBAT_DEDICATED_CHANNEL_SUPPORT */
 #else   /* SF32LB55X */

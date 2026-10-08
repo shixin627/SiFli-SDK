@@ -1048,6 +1048,13 @@ rt_uint32_t bloc_control_fsr_adc_latest(void)
 	return g_fsr_adc_latest;
 }
 
+/* 收集模式(RAW/MOUSE)的 0x50/0x55 串流以 100Hz 送出這裡的最新值當 FSR 欄位;平常 10Hz 省電。
+   收集中改 ~100Hz:手機逐筆判按下,7Hz 時比取樣間隔(~135ms)短的 tap 會整個落在兩次取樣之間。
+   (讀值本身要夠快才跑得到:drv_adc.c 對 FSR 通道跳過取樣間的 10 ms settle,一次讀 ~30 ms → ~4 ms。
+   桌上錶實測:串流模式 98Hz、平常 9.6Hz;原本 7.4Hz。) */
+extern bool imu_raw_data_collection;
+extern bool imu_mouse_data_collection;
+
 static void fsr_adc_sampler_thread_entry(void *parameter)
 {
 	/* 邊緣觸發：避免每 100ms 重複 set / press / release 造成 BLE 流量 */
@@ -1055,6 +1062,7 @@ static void fsr_adc_sampler_thread_entry(void *parameter)
 	bool left_pressed = false;
 	while (1)
 	{
+		rt_uint32_t period_ms = (imu_raw_data_collection || imu_mouse_data_collection) ? 10 : 100;
 		if (SkaiWatchSys.sys_power_status != SYS_POWER_STATUS_ON)
 		{
 			rt_thread_mdelay(1000);
@@ -1068,7 +1076,7 @@ static void fsr_adc_sampler_thread_entry(void *parameter)
 		if (fsr_adc_read_value(&fsr_sample) != RT_EOK)
 		{
 			g_fsr_adc_dropped++;
-			rt_thread_mdelay(100);
+			rt_thread_mdelay(period_ms);
 			continue;
 		}
 		g_fsr_adc_latest = fsr_sample;
@@ -1106,7 +1114,7 @@ static void fsr_adc_sampler_thread_entry(void *parameter)
 				cal_acc = 0;
 				cal_cnt = 0;
 			}
-			rt_thread_mdelay(100);
+			rt_thread_mdelay(period_ms);
 			continue;
 		}
 
@@ -1173,7 +1181,7 @@ static void fsr_adc_sampler_thread_entry(void *parameter)
 			left_pressed = false;
 		}
 
-		rt_thread_mdelay(100); /* 10Hz */
+		rt_thread_mdelay(period_ms);
 	}
 }
 
