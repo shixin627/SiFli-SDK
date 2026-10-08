@@ -50,6 +50,7 @@
 
 /* Includes */
 #include <rtthread.h>
+#include <rthw.h> /* rt_hw_interrupt_disable: PC sim has no bf0_hal.h to pull it in */
 #include <stdint.h>
 #include <string.h>
 #include "ui_handler.h"

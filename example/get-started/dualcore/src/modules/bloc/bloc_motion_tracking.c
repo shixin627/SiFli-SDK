@@ -6,6 +6,7 @@
  */
 #include <rtthread.h>
 #include <rtdevice.h>
+#include <rthw.h> /* rt_hw_interrupt_disable: PC sim has no bf0_hal.h to pull it in */
 #include <stdlib.h>
 #include <string.h>
 #include <math.h>
