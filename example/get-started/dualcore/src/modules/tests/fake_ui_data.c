@@ -29,6 +29,7 @@
 #include <stdlib.h>
 #include <stdint.h>
 #include <stdbool.h>
+#include <time.h>
 
 #include "ble_device_manager.h"
 #include "bloc_notification.h"
@@ -224,7 +225,7 @@ static int sim_bot_notif(int argc, char *argv[])
     memset(&notif, 0, sizeof(notif));
     notif.index = (uint8_t)(slot + 1);
     notif.state = true;
-    notif.sec_time = (uint32_t)(rt_tick_get() / RT_TICK_PER_SECOND);
+    notif.sec_time = (uint32_t)time(RT_NULL); /* wall clock, like the real arrival stamp */
     rt_snprintf(notif.id, NOTIFICATION_ID_LEN, "fake_bot_%d", slot);
     rt_strncpy(notif.title, "Skai", NOTIFICATION_TITLE_LEN - 1);
     rt_snprintf(notif.message, NOTIFICATION_MESSAGE_LEN,
@@ -379,7 +380,7 @@ static int notif_inject(int argc, char *argv[])
     memset(&notif, 0, sizeof(notif));
     notif.index    = (uint8_t)(slot + 1);  /* 1-based per set_notification */
     notif.state    = true;
-    notif.sec_time = (uint32_t)(rt_tick_get() / RT_TICK_PER_SECOND);
+    notif.sec_time = (uint32_t)time(RT_NULL); /* wall clock, like the real arrival stamp */
     notif.type     = (argc >= 4) ? (uint16_t)atoi(argv[3]) : 0;
     rt_snprintf(notif.id,     NOTIFICATION_ID_LEN,     "fake_%u_%d",
                 (unsigned)rt_tick_get(), slot);

@@ -54,6 +54,7 @@
 #include <math.h>
 #include <stdio.h>
 #include <stdint.h>
+#include <time.h>
 #include <rtthread.h>
 #ifdef BSP_USING_BLOC_NOTIFY
     #include "bloc_notification.h"
@@ -139,9 +140,19 @@ typedef struct notification_widget
 {
     lv_obj_t *card;
     lv_obj_t *title;
+    lv_obj_t *time; /* HH:MM arrival time, right end of the title row */
     lv_obj_t *content;
     lv_obj_t *icon;
 } notification_widget_t;
+
+/* Title row: label starts at x=50 and (with no time shown) ends at 50+372. */
+#define MSG_TITLE_X (50)
+#define MSG_TITLE_RIGHT_PAD (20)
+/* The card is a rounded rectangle (radius 80), so on the title row it is much
+   narrower than its bounding box. The time sits well inside the corner curve:
+   at the title's 20 px pad "2:57 PM" poked out of the frame. */
+#define MSG_TIME_RIGHT_PAD (48)
+#define MSG_TITLE_TIME_GAP (10)
 
 static notification_widget_t notification_widgets[ITEM_AMOUNT_NOTIFICATION];
 
@@ -1902,6 +1913,28 @@ lv_obj_t *notification_card_builder(lv_obj_t *list, uint8_t i)
     lv_obj_align(label, LV_ALIGN_TOP_LEFT, 50, 10);
     notification_widgets[i].title = label;
 
+    /* Arrival time, right-aligned on the title's row. A separate label rather
+       than text appended to the title: the title truncates with "…", which
+       would cut the time off exactly when the title is long. */
+    lv_obj_t *time_label = lv_label_create(message_widget);
+    /* -3 so it is the smallest face at the default font setting (title is
+       index 3 on a real watch); a timestamp does not need to be read big. */
+    const lv_font_t *time_font = LV_EXT_FONT_GET(get_system_font_size(-3));
+    lv_obj_set_style_text_font(time_label, time_font, 0);
+    lv_obj_set_style_text_color(time_label, lv_color_hex(0xB3B3B3), 0);
+    lv_obj_set_style_bg_opa(time_label, LV_OPA_TRANSP, 0);
+    /* Sit the time on the title's baseline (bottoms flush), whatever the font
+       setting. The renderer puts a font's baseline at line_height - base_line
+       from the top of the line (lv_gpu.c). */
+    const lv_font_t *title_font = lv_obj_get_style_text_font(label, 0);
+    lv_coord_t time_y = 10 +
+                        (title_font->line_height - title_font->base_line) -
+                        (time_font->line_height - time_font->base_line);
+    if (time_y < 0)
+        time_y = 0;
+    lv_obj_align(time_label, LV_ALIGN_TOP_RIGHT, -MSG_TIME_RIGHT_PAD, time_y);
+    notification_widgets[i].time = time_label;
+
     lv_obj_t *content = lv_label_create(message_widget);
     lv_label_set_long_mode(content, LV_LABEL_LONG_DOT);
     lv_obj_set_height(content, LIST_MESSAGE_HEIGHT - 90);
@@ -1968,6 +2001,35 @@ static char *replace_nbsp_oneline(const char *str)
     return r;
 }
 
+/* Fill the card's time label and shrink the title so the two never overlap. */
+static void card_set_time(notification_widget_t *w, const notification_t *n)
+{
+    char buf[16] = "";
+    /* Before the phone first syncs the clock the RTC reads near zero — show
+       nothing rather than a 1970 time. */
+    if (n->sec_time >= 946684800) /* 2000-01-01 */
+    {
+        time_t t = (time_t)n->sec_time;
+        struct tm *tm_info = localtime(&t);
+        if (tm_info)
+            ui_time_format_hhmm(buf, sizeof(buf), tm_info->tm_hour,
+                                tm_info->tm_min);
+    }
+    lv_label_set_text(w->time, buf);
+
+    lv_coord_t title_w = LIST_MESSAGE_WIDTH - MSG_TITLE_X - MSG_TITLE_RIGHT_PAD;
+    if (buf[0] != '\0')
+    {
+        lv_point_t sz;
+        lv_txt_get_size(&sz, buf, lv_obj_get_style_text_font(w->time, 0), 0, 0,
+                        LV_COORD_MAX, LV_TEXT_FLAG_NONE);
+        /* The time's right edge is MSG_TIME_RIGHT_PAD in, not the title's. */
+        title_w = LIST_MESSAGE_WIDTH - MSG_TIME_RIGHT_PAD - MSG_TITLE_X -
+                  sz.x - MSG_TITLE_TIME_GAP;
+    }
+    lv_obj_set_width(w->title, title_w);
+}
+
 static void refresh_list(uint8_t new_item_count)
 {
     /* 卡片重新綁定內容、拖曳刪除的 fade-in 也會動到子物件透明度 —
@@ -2015,6 +2077,7 @@ static void refresh_list(uint8_t new_item_count)
                 char *clean_title = replace_nbsp(notification->title);
                 lv_label_set_text(notification_widgets[i].title, clean_title);
                 lv_mem_free(clean_title);
+                card_set_time(&notification_widgets[i], notification);
                 char *clean_message = replace_nbsp_oneline(notification->message);
                 lv_label_set_text(notification_widgets[i].content,
                                   clean_message);

@@ -45,6 +45,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <time.h>
 #include <rtthread.h>
 
 /* Bloc modules */
@@ -618,6 +619,11 @@ static bool need_wakeup = false;
 void interact_with_notification(notification_t *notification)
 {
     notification_sanitize(notification);
+    /* Stamp the arrival wall-clock here, for every ingestion path. The callers'
+       own `sec_time = SkaiWatchSys.SecondCountRTC` is dead: nothing ever
+       writes SecondCountRTC, so it is always 0. A re-pushed duplicate keeps
+       the original stamp (update_notification() returns before copying). */
+    notification->sec_time = (uint32_t)time(RT_NULL);
     /* Snapshot the arrival seq so update_notification()'s internal verdict
        (previously-dismissed drop / identical reconnect re-push → seq
        untouched) is observable here — those must not light the screen. */
@@ -1096,6 +1102,21 @@ static int bloc_notification_test(int argc, char *argv[])
             strcpy(notification.message,
                    "Please update your smartphone app to the latest version to "
                    "ensure compatibility.");
+            interact_with_notification(&notification);
+        }
+        else if (strcmp(argv[1], "send_noti_long") == 0)
+        {
+            /* Title wider than the card's title row: the list card must
+               truncate it with "..." and still leave room for the arrival
+               time on the right. */
+            notification_t notification;
+            memset(&notification, 0, sizeof(notification));
+            notification.type = Notify_others;
+            notification.state = true;
+            strcpy(notification.id, "long_title_probe");
+            strcpy(notification.title,
+                   "VeryLongNotificationTitleThatOverflowsTheLabelWidth");
+            strcpy(notification.message, "Body of the long-title probe.");
             interact_with_notification(&notification);
         }
         else if (strcmp(argv[1], "send_noti_nl") == 0)
