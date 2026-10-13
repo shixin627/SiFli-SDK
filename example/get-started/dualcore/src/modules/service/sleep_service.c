@@ -372,13 +372,37 @@ static void prv_emit_stage(const sleep_fusion_output_t *out, uint32_t utc_now)
     {
         return;
     }
+    /* 2026-10-13: hold the ENTRY into a sleep wire until the session has lasted
+       SF_MIN_SESSION_MIN — sleep_fusion's own bar for counting it. Before this,
+       every 15-minute still stretch (a desk, a sofa) went to the phone as
+       「睡著」 and minutes later 「醒來」, while the daily total quietly dropped
+       the same session. A session that never confirms emits nothing; one that
+       does is announced with its real start time. Mirrored in
+       sleep_fusion_test.py emit_wire(). */
+    uint32_t ts = utc_now;
+    bool to_sleep = (wire_mode == WIRE_TSLEEP || wire_mode == WIRE_TDEEP_SLEEP ||
+                     wire_mode == WIRE_TREM_SLEEP);
+    bool from_sleep = (s_env.last_emitted_wire_mode == WIRE_TSLEEP ||
+                       s_env.last_emitted_wire_mode == WIRE_TDEEP_SLEEP ||
+                       s_env.last_emitted_wire_mode == WIRE_TREM_SLEEP);
+    if (to_sleep && !from_sleep)
+    {
+        if (!out->session_confirmed)
+        {
+            return;                     /* not sleep yet — say nothing */
+        }
+        if (out->session_start_utc)
+        {
+            ts = out->session_start_utc;
+        }
+    }
     s_env.last_emitted_wire_mode = wire_mode;
     if (watch_sys_sync.notify_sleep_state)
     {
-        watch_sys_sync.notify_sleep_state(wire_mode, utc_now);
+        watch_sys_sync.notify_sleep_state(wire_mode, ts);
     }
     LOG_I("sleep stage -> wire=%u utc=%u score=%u baseline=%u total=%u D=%u R=%u L=%u",
-          (unsigned)wire_mode, (unsigned)utc_now,
+          (unsigned)wire_mode, (unsigned)ts,
           (unsigned)out->last_cole_kripke_score,
           (unsigned)out->last_hr_baseline_bpm,
           (unsigned)out->total_sleep_min,
