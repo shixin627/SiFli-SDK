@@ -1375,11 +1375,16 @@ static void waveform_capture_process(motion_data_t *motion_data, Vector3 *gyro)
        相同。手勢點擊模式不需要角速度,維持 0x50 的 10 筆(少 27% 流量)。 */
     #define GYRO_STREAM_STEP 8
     #define GYRO_STREAM_SAMPLE_BYTES (BYTES_PER_SAMPLE + 6)
-    int flush_at = collecting ? GYRO_STREAM_STEP : GESTURE_CLICK_STREAM_STEP;
-    /* 手勢點擊模式:錶面朝下時**不送** 0x50 —— 退出用的那下倒置 tap 本身就是一次手指按壓,
+    /* 2026-10-16:手勢點擊模式也送 0x55(帶角速度)—— 手機的 8 通道按放模型(press_p100)要角速度,
+       沒有就只能退回舊的 5 通道模型。流量多 27%(28B/筆 vs 22B/筆),一批 8 筆 224B 仍是單一 BLE 封包。
+       手機 app 還沒有 0x55 解析(PR #643 之前)時把 GC_STREAM_WITH_GYRO 改 0 即回到 0x50 × 10 筆。 */
+    #define GC_STREAM_WITH_GYRO 1
+    /* 手勢點擊模式:錶面朝下時**不送**串流 —— 退出用的那下倒置 tap 本身就是一次手指按壓,
        手機模型會先判成 PRESS 送左鍵 down(2026-09-06 19:07:54 實測:PRESS 比 on=0 早 61ms),
        電腦在退出瞬間多點一下。朝下期間手機沒樣本=沒判定;手錶自己的 tap 模型另走一條不受影響。 */
     bool gc_stream = get_gesture_click_mode() && !get_switch_freehand_mode();
+    bool gyro_stream = collecting || (GC_STREAM_WITH_GYRO && gc_stream);
+    int flush_at = gyro_stream ? GYRO_STREAM_STEP : GESTURE_CLICK_STREAM_STEP;
     if (collecting || gc_stream)
     {
         /* 收集模式沿用 release_dataset(當時擷取整個被 return 跳過,沒人共用);手勢點擊模式
@@ -1387,13 +1392,13 @@ static void waveform_capture_process(motion_data_t *motion_data, Vector3 *gyro)
            計數器會把視窗切壞 —— 串流改用自己的一份。 */
         static gesture_dataset_t gc_stream_dataset = {0};
         gesture_dataset_t *sd = collecting ? &release_dataset : &gc_stream_dataset;
-        /* 角速度與樣本同索引並排存(只收集模式用)。剛進收集模式時 release_dataset 可能殘留
+        /* 角速度與樣本同索引並排存(收集模式、手勢點擊模式 0x55 用)。剛進收集模式時 release_dataset 可能殘留
            RELEASE 擷取的計數,先清零,批次從 0 開始,gyro 索引 = 樣本索引。 */
         static int16_t stream_gyro[GYRO_STREAM_STEP][3];
         static bool was_collecting;
         if (collecting && !was_collecting) release_dataset.gesture_sample_count = 0;
         was_collecting = collecting;
-        if (collecting && sd->gesture_sample_count < GYRO_STREAM_STEP)
+        if (gyro_stream && sd->gesture_sample_count < GYRO_STREAM_STEP)
         {
             const float gyro_dps[3] = {gyro->x, gyro->y, gyro->z};
             for (int k = 0; k < 3; k++)
@@ -1418,7 +1423,7 @@ static void waveform_capture_process(motion_data_t *motion_data, Vector3 *gyro)
             {
                 packMatrixToBuffer(gsensorSamplesBuffer, targetWave_algo, NULL,
                                    sd->gesture_sample_count);
-                if (collecting)
+                if (gyro_stream)
                 {
                     static uint8_t gyro_frame[GYRO_STREAM_SAMPLE_BYTES * GYRO_STREAM_STEP];
                     int n = sd->gesture_sample_count;
