@@ -132,16 +132,7 @@ static const uint16_t SF_CK_WEIGHTS_Q10[SF_WINDOW_MIN] = {
               bursts (poor optical contact) no longer fragment the night, and
               the slip-into-sleep backstop still fires within ~3 bursts. */
 #define SF_WAKE_HR_CONSEC_AWAKE   2u
-/* 2026-10-13: was 2u while the comment above already said 3. Founder's phone log
-   10-11..13: the HR veto kicked a real sleeper out at 02:17 and 05:01 on two
-   consecutive early-night bursts of 60-64 bpm against a reference of 46-48 —
-   early-night sleeping HR sits 12-16 above the night's floor. With 3 bursts
-   those two vanish and the one real wake-up (07:14, phone unlocked at 07:12)
-   survives. PSG replay (31 nights): sleep sensitivity 85.7 -> 88.7%, WASO
-   minutes caught 28.9 -> 26.5%, false wake-ups inside the night 1.1 -> 0.8
-   per subject, total-sleep bias -29 -> -17 min. Rescue from a slipped false
-   sleep now takes ~30 min at the 10-min cadence instead of ~20. */
-#define SF_WAKE_HR_CONSEC_ASLEEP  3u
+#define SF_WAKE_HR_CONSEC_ASLEEP  2u
 
 /* Online resting-HR learner. The firmware has no per-user resting HR yet
    (the seed is a fixed fallback), and real sleeping HR varies far too much
@@ -607,8 +598,6 @@ static void prv_apply_stage_transition(uint32_t utc_sec,
         {
             s_sf.out.sleep_onset_utc = utc_sec;
         }
-        s_sf.out.session_start_utc = utc_sec;
-        s_sf.out.session_confirmed = false;
     }
     if (prev_was_sleep && !next_is_sleep)
     {
@@ -616,8 +605,6 @@ static void prv_apply_stage_transition(uint32_t utc_sec,
         /* Session over. Anything still provisional never reached
            SF_MIN_SESSION_MIN, so it was not sleep. */
         prv_drop_session();
-        s_sf.out.session_start_utc = 0;
-        s_sf.out.session_confirmed = false;
     }
 }
 
@@ -686,10 +673,6 @@ static void prv_update_daily_counters(sleep_fusion_stage_t stage,
         if (s_sf.session_min >= SF_MIN_SESSION_MIN)
         {
             prv_commit_session();   /* it lasted — the held minutes are real */
-            /* Sticky until the session ends: the midnight reset re-opens the
-               provisional window for the counters but must not un-confirm a
-               session that is visibly still going. */
-            s_sf.out.session_confirmed = true;
         }
     }
     else
