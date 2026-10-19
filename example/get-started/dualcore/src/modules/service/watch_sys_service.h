@@ -27,7 +27,7 @@
  * separate proj.conf files (HR_SVC/SLEEP_FUSION in project/lcpu, WATCH_SYS_CLIENT
  * in project/hcpu), so the two halves can drift apart — which is exactly the
  * HCPU-new/LCPU-old split-brain firmware this repo has already shipped once. */
-#define SKAI_HEALTH_DIAG 1   /* 2026-10-13: diag build for one night of raw PPG (HRV feasibility); flip back to 0 before release */
+#define SKAI_HEALTH_DIAG 0
 
 #ifdef __cplusplus
 extern "C"
