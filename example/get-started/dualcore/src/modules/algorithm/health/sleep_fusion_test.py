@@ -19,7 +19,7 @@ SF_STEP_CORROB_SCORE = 100     # steps only force wake if score >= this (real mo
 SF_WAKE_HR_OFFSET_BPM = 12      # HR > STABLE rhr reference + 12 => awake
 SF_HR_ARTEFACT_MAX = 120       # bursts above this are PPG artefact -> dropped
 SF_WAKE_HR_CONSEC_AWAKE = 2    # fresh elevated BURSTS to arm veto while awake
-SF_WAKE_HR_CONSEC_ASLEEP = 3   # ... while already asleep (artefact immunity); 2026-10-13: 2 -> 3, see sleep_fusion.c
+SF_WAKE_HR_CONSEC_ASLEEP = 2   # ... while already asleep (artefact immunity)
 SF_RHR_DOWN_SHIFT = 3          # est -= (est - hr) >> 3  (~1/8 of the gap)
 SF_RHR_LEAK_PERIOD_MIN = 4     # minutes mildly-above per +1 bpm upward leak
 SF_RHR_MIN = 40
@@ -90,8 +90,6 @@ class State:
     waso: int = 0
     onset_utc: int = 0
     last_wake_utc: int = 0
-    session_start_utc: int = 0     # current session's first sleep minute; 0 outside
-    session_confirmed: bool = False  # lasted SF_MIN_SESSION_MIN (sticky until exit)
     ck_score: int = 0
     hr_baseline: int = 0
 
@@ -307,16 +305,11 @@ def update(state, utc, inp):
     else:
         prev_was_sleep = prev in (Stage.LIGHT, Stage.DEEP, Stage.REM)
         nxt_is_sleep = nxt in (Stage.LIGHT, Stage.DEEP, Stage.REM)
-        if not prev_was_sleep and nxt_is_sleep:
-            if state.onset_utc == 0:
-                state.onset_utc = utc
-            state.session_start_utc = utc
-            state.session_confirmed = False
+        if not prev_was_sleep and nxt_is_sleep and state.onset_utc == 0:
+            state.onset_utc = utc
         if prev_was_sleep and not nxt_is_sleep:
             state.last_wake_utc = utc
             drop_session(state)      # 沒撐到 SF_MIN_SESSION_MIN 的不是睡眠
-            state.session_start_utc = 0
-            state.session_confirmed = False
         state.stage = nxt
         state.in_stage = 1
 
@@ -336,35 +329,9 @@ def update(state, utc, inp):
         state.pend['total'] += 1
         if state.session_min >= SF_MIN_SESSION_MIN:
             commit_session(state)      # 撐過去了,暫記的分鐘是真的
-            state.session_confirmed = True   # sticky:午夜 reset 不會取消它
     else:
         setattr(state, key, getattr(state, key) + 1)
         state.total += 1
-
-
-# -------- Wire to the phone (mirror of sleep_service.c prv_emit_stage) -------
-
-WIRE_TSLEEP, WIRE_TGET_UP, WIRE_TNOT_WEAR = 0x01, 0x03, 0x04
-_SLEEP_WIRES = {0x01, 0x02, 0x05}
-
-
-def stage_to_wire(stage):
-    return {Stage.AWAKE: WIRE_TGET_UP, Stage.NOT_WORN: WIRE_TNOT_WEAR}.get(stage, WIRE_TSLEEP)
-
-
-def emit_wire(state, last_wire, utc):
-    """回傳 (new_last_wire, emitted or None)。2026-10-13:進入睡眠 wire 要等 session
-    撐過 SF_MIN_SESSION_MIN 才送(跟日計數同一個標準),送的時間戳是 session 真正開始的
-    那一分鐘;沒撐過去的 session 一個字都不送。"""
-    w = stage_to_wire(state.stage)
-    if w == last_wire:
-        return last_wire, None
-    ts = utc
-    if w in _SLEEP_WIRES and last_wire not in _SLEEP_WIRES:
-        if not state.session_confirmed:
-            return last_wire, None
-        ts = state.session_start_utc or utc
-    return w, (w, ts)
 
 
 # -------- Scenarios ----------------------------------------------------
@@ -544,31 +511,6 @@ ref_night_then_awake = [
 REF_NIGHT_MIN = 180
 
 
-# 13) 坐在桌前不動 20 分鐘(2026-10-13 創辦人:手錶一天回報好幾次「睡著→醒來」,
-#     多數是坐著不動)。狀態機會進 LIGHT(15 分鐘靜止、心率 60 沒超過 50+12),
-#     日計數會在 30 分鐘前丟掉它 —— 但以前 wire 已經把「睡著」「醒來」都送到手機了。
-def desk_sit(still_min):
-    walk = [MinuteInput(activity_count=3000, step_count=60, hr_mean_bpm=90,
-                        hr_std_bpm=3, hr_is_fresh=(i % 3 == 0)) for i in range(15)]
-    return ([MinuteInput(activity_count=20, hr_mean_bpm=50, hr_std_bpm=1,
-                         hr_is_fresh=(i % 10 == 0)) for i in range(120)]
-            + walk
-            + [MinuteInput(activity_count=(0 if i % 2 else 25), hr_mean_bpm=60,
-                           hr_std_bpm=2, hr_is_fresh=(i % 10 == 0)) for i in range(still_min)]
-            + walk)
-DESK_PRE_MIN = 120 + 15
-
-
-def run_wire(inputs):
-    s = State(); last = 0; emitted = []; stages = []
-    for i, inp in enumerate(inputs, start=1):
-        update(s, i * 60, inp)
-        last, e = emit_wire(s, last, i * 60)
-        if e: emitted.append((i, e))
-        stages.append(s.stage)
-    return s, emitted, stages
-
-
 def check(name, cond):
     print(f"  [{'PASS' if cond else 'FAIL'}] {name}")
     if not cond:
@@ -698,26 +640,5 @@ if __name__ == "__main__":
           s_night.stage in (Stage.LIGHT, Stage.DEEP, Stage.REM))
     check("polluted night accumulates >= 100 of 120 min",
           s_night.total >= 100)
-
-    # 桌前靜坐:20 分鐘 → 狀態機確實進了 LIGHT,但 wire 上一個「睡著」都不能出現。
-    _, em20, st20 = run_wire(desk_sit(25))
-    check("desk 25 min: state machine did enter LIGHT (scenario is real)",
-          any(st == Stage.LIGHT for st in st20[DESK_PRE_MIN:DESK_PRE_MIN + 25]))
-    desk_wires = [e for (i, e) in em20 if i > DESK_PRE_MIN]
-    check(f"desk 25 min: no sleep wire ever sent to the phone (got {desk_wires})",
-          all(w != WIRE_TSLEEP for (w, _) in desk_wires))
-    # 45 分鐘 → 第 30 分鐘才送「睡著」,但時間戳是靜坐開始後第 15 分鐘(真正進 LIGHT 的那分)。
-    _, em45, st45 = run_wire(desk_sit(60))
-    sleep_em = [(i, e) for (i, e) in em45 if i > DESK_PRE_MIN and e[0] == WIRE_TSLEEP]
-    check("desk 60 min: exactly one 「睡著」 wire", len(sleep_em) == 1)
-    first_light = next(i for i, st in enumerate(st45, start=1)
-                       if i > DESK_PRE_MIN and st == Stage.LIGHT)
-    i_sent, (_, ts) = sleep_em[0]
-    check(f"desk 60 min: sent at min {i_sent} = onset {first_light} + {SF_MIN_SESSION_MIN - 1}",
-          i_sent == first_light + SF_MIN_SESSION_MIN - 1)
-    check(f"desk 60 min: wire timestamp is the real onset minute (ts={ts // 60}, onset={first_light})",
-          ts == first_light * 60)
-    check("desk 60 min: 「醒來」 follows once walking resumes",
-          any(e[0] == WIRE_TGET_UP for (i, e) in em45 if i > i_sent))
 
     print("\nAll assertions passed.")

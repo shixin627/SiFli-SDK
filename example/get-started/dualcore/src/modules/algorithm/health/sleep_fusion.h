@@ -107,15 +107,6 @@ extern "C"
         uint32_t sleep_onset_utc;
         uint32_t last_wake_utc;
 
-        /* The CURRENT session: when it began, and whether it has lasted
-           SF_MIN_SESSION_MIN yet. Both are 0/false outside a session. The daily
-           counters only ever count a confirmed session; the wire to the phone
-           holds to the same bar (sleep_service.c prv_emit_stage). 2026-10-13:
-           it did not — every 15-min still stretch at a desk was announced as
-           「睡著」 then 「醒來」 while the watch's own total discarded it. */
-        uint32_t session_start_utc;
-        bool     session_confirmed;
-
         /* Diagnostics — useful for logging and tuning. */
         uint32_t last_cole_kripke_score;
         uint8_t  last_hr_baseline_bpm;
