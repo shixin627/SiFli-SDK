@@ -186,6 +186,8 @@ extern "C"
      * bloc_control.c. Read by motion_tracking (100Hz) so all 10 IMU samples
      * within a window share the same FSR snapshot. */
     rt_uint32_t bloc_control_fsr_adc_latest(void);
+    /* true = 這支錶沒接壓感(讀值連續為 0)。此時 sampler 不校準、不驅動滑鼠,間隔拉長。 */
+    bool bloc_control_fsr_absent(void);
 #endif
 
 #ifdef __cplusplus

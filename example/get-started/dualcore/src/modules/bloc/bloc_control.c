@@ -1016,6 +1016,13 @@ static volatile rt_uint32_t g_fsr_adc_latest = 0;
 static volatile rt_uint32_t g_fsr_adc_dropped = 0;
 static rt_thread_t fsr_adc_sampler_thread = RT_NULL;
 
+/* 發布版也取樣 FSR,但不是每支錶都接了壓感 — 沒接的讀值恆為 0。連續 FSR_ABSENT_ZERO_SAMPLES
+   筆都是 0 就判定「沒接」:不校準、不比門檻、不驅動滑鼠(見迴圈內的 g_fsr_absent),取樣間隔
+   拉長到 FSR_ABSENT_PROBE_MS 省電。之後只要讀到非 0 就自動恢復,所以接上壓感不必重開機。 */
+#define FSR_ABSENT_ZERO_SAMPLES 30
+#define FSR_ABSENT_PROBE_MS     5000
+static volatile bool g_fsr_absent = false;
+
 /* Press detection is RELATIVE to an auto-captured resting baseline, as a
    PERCENTAGE drop — not an absolute ADC delta. The FSR's press swing scales with
    the baseline (a press from 18000→17000 is −5.6%, the same press from 4000→3777
@@ -1048,6 +1055,11 @@ rt_uint32_t bloc_control_fsr_adc_latest(void)
 	return g_fsr_adc_latest;
 }
 
+bool bloc_control_fsr_absent(void)
+{
+	return g_fsr_absent;
+}
+
 /* 收集模式(RAW/MOUSE)的 0x50/0x55 串流以 100Hz 送出這裡的最新值當 FSR 欄位;平常 10Hz 省電。
    收集中改 ~100Hz:手機逐筆判按下,7Hz 時比取樣間隔(~135ms)短的 tap 會整個落在兩次取樣之間。
    (讀值本身要夠快才跑得到:drv_adc.c 對 FSR 通道跳過取樣間的 10 ms settle,一次讀 ~30 ms → ~4 ms。
@@ -1060,6 +1072,7 @@ static void fsr_adc_sampler_thread_entry(void *parameter)
 	/* 邊緣觸發：避免每 100ms 重複 set / press / release 造成 BLE 流量 */
 	bool prev_handfree = false;
 	bool left_pressed = false;
+	rt_uint8_t zero_run = 0;  /* 連續讀到 0 的筆數,飽和在 FSR_ABSENT_ZERO_SAMPLES */
 	while (1)
 	{
 		rt_uint32_t period_ms = (imu_raw_data_collection || imu_mouse_data_collection) ? 10 : 100;
@@ -1080,6 +1093,18 @@ static void fsr_adc_sampler_thread_entry(void *parameter)
 			continue;
 		}
 		g_fsr_adc_latest = fsr_sample;
+		if (fsr_sample == 0)
+		{
+			if (zero_run < FSR_ABSENT_ZERO_SAMPLES && ++zero_run >= FSR_ABSENT_ZERO_SAMPLES)
+				g_fsr_absent = true;
+		}
+		else
+		{
+			zero_run = 0;
+			g_fsr_absent = false;
+		}
+		if (g_fsr_absent)
+			period_ms = FSR_ABSENT_PROBE_MS;
 		/* 每筆取樣的讀值:預設關閉(10Hz 會灌爆 console)。要看時取消註解。
 		   permille = 相對 baseline 的千分比,跟 FSR_*_PERMILLE 門檻同一把尺。
 		   注意用 rt_kprintf 不要用 LOG_I — 本檔的 DBG_LVL 定義排在其他 include
@@ -1150,7 +1175,7 @@ static void fsr_adc_sampler_thread_entry(void *parameter)
 		   open. Outside it a squeeze must not leak a BLE HID click. Forcing
 		   want_* false here lets the edge-triggered release below clean up a
 		   press/handfree that was live when the app closed mid-squeeze. */
-		if (!fsr_mouse_app_is_foreground())
+		if (g_fsr_absent || !fsr_mouse_app_is_foreground())
 		{
 			want_handfree = false;
 			want_left_press = false;
@@ -1198,6 +1223,7 @@ static int fsr_adc_sampler_thread_init(void)
 }
 INIT_APP_EXPORT(fsr_adc_sampler_thread_init);
 
+#ifdef RT_USING_FINSH  /* 發布版沒有 msh;不包的話這兩支 static 會變 unused-function */
 /* Re-capture the FSR resting baseline. Run with the FSR untouched; the sampler
    averages the next FSR_CAL_SAMPLES resting samples into the new baseline. */
 static int fsr_recal(int argc, char **argv)
@@ -1214,14 +1240,15 @@ MSH_CMD_EXPORT(fsr_recal, "recapture FSR mouse resting baseline (keep finger off
 static int fsr(int argc, char **argv)
 {
 	rt_int32_t base = (rt_int32_t)g_fsr_baseline;
-	rt_kprintf("FSR v=%d base=%d  light on/off=%d/%d  heavy on/off=%d/%d  dropped=%d\n",
+	rt_kprintf("FSR v=%d base=%d  light on/off=%d/%d  heavy on/off=%d/%d  dropped=%d absent=%d\n",
 	           g_fsr_adc_latest, base,
 	           base * FSR_LIGHT_ON_PERMILLE / 1000, base * FSR_LIGHT_OFF_PERMILLE / 1000,
 	           base * FSR_HEAVY_ON_PERMILLE / 1000, base * FSR_HEAVY_OFF_PERMILLE / 1000,
-	           g_fsr_adc_dropped);
+	           g_fsr_adc_dropped, g_fsr_absent);
 	return 0;
 }
 MSH_CMD_EXPORT(fsr, "print current FSR ADC value, baseline and thresholds");
+#endif // RT_USING_FINSH
 #endif // USING_FSR_ADC_SAMPLER
 
 #if !kReleaseMode

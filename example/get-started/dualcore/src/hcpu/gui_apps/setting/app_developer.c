@@ -157,6 +157,28 @@ bool pause_sleep_cause_of_dev_reson(void)
 static lv_obj_t *accel_data_label;
 static lv_obj_t *gyro_data_label;
 static lv_obj_t *attitude_data_label;
+#ifdef USING_FSR_ADC_SAMPLER
+/* 即時壓感(FSR)讀值:跟 sampler 的一般取樣率(10Hz)同步刷新。 */
+#define FSR_LABEL_REFRESH_MS 100
+extern rt_uint32_t bloc_control_fsr_adc_latest(void);
+extern bool bloc_control_fsr_absent(void);
+static lv_obj_t *fsr_data_label = NULL;
+static lv_timer_t *fsr_label_timer = NULL;
+
+static void fsr_label_refresh_cb(lv_timer_t *timer)
+{
+    char buf[32];
+    if (bloc_control_fsr_absent())
+    {
+        snprintf(buf, sizeof(buf), "FSR: no sensor");
+    }
+    else
+    {
+        snprintf(buf, sizeof(buf), "FSR: %u", (unsigned)bloc_control_fsr_adc_latest());
+    }
+    lv_label_set_text(fsr_data_label, buf);
+}
+#endif
 static lv_obj_t *hr_data_label;
 static lv_obj_t *battery_voltage_label;
 static lv_obj_t *battery_percentage_label;
@@ -413,6 +435,13 @@ static void lv_create_dev_screen(void)
     lv_label_set_text(attitude_data_label, "Attitude: x, y, z");
     lv_obj_set_style_text_font(attitude_data_label, LV_EXT_FONT_GET(get_system_font_size(0)), 0);
     lv_obj_align_to(attitude_data_label, accel_data_label, LV_ALIGN_OUT_BOTTOM_MID, 0, 10);
+#ifdef USING_FSR_ADC_SAMPLER
+    // Live FSR (pressure) reading
+    fsr_data_label = lv_label_create(cont);
+    lv_label_set_text(fsr_data_label, "FSR: -");
+    lv_obj_set_style_text_font(fsr_data_label, LV_EXT_FONT_GET(get_system_font_size(0)), 0);
+    lv_obj_align_to(fsr_data_label, attitude_data_label, LV_ALIGN_OUT_BOTTOM_MID, 0, 10);
+#endif
 
     /* IMU Data Collection Section */
     lv_obj_t *imu_section_title = lv_label_create(cont);
@@ -728,6 +757,11 @@ static void on_start(void)
     // Start FS info update timer
     fs_update_timer = lv_timer_create(fs_update_info_cb, 1000, NULL);
     fs_update_info_cb(NULL); // Initial update
+
+#ifdef USING_FSR_ADC_SAMPLER
+    fsr_label_timer = lv_timer_create(fsr_label_refresh_cb, FSR_LABEL_REFRESH_MS, NULL);
+    fsr_label_refresh_cb(NULL); // Initial update
+#endif
 }
 
 static void on_resume(void)
@@ -756,6 +790,15 @@ static void on_stop(void)
         lv_timer_del(fs_update_timer);
         fs_update_timer = NULL;
     }
+
+#ifdef USING_FSR_ADC_SAMPLER
+    if (fsr_label_timer)
+    {
+        lv_timer_del(fsr_label_timer);
+        fsr_label_timer = NULL;
+    }
+    fsr_data_label = NULL;
+#endif
 
     // Stop battery request timer
     if (battery_request_timer)

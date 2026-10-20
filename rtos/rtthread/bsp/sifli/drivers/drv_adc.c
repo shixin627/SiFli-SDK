@@ -382,11 +382,17 @@ static rt_err_t sifli_get_adc_value(struct rt_adc_device *device, rt_uint32_t ch
 
     // do filter and average here
     int i, j;
-    uint32_t data[ADC_SW_AVRA_CNT];
+#ifdef USING_FSR_ADC_SAMPLER
+    /* FSR(ch3)要快:3 筆中位數就夠。其他通道(電池…)維持 ADC_SW_AVRA_CNT 筆平均。 */
+    const int avg_n = (channel == 3) ? 3 : ADC_SW_AVRA_CNT;
+#else
+    const int avg_n = ADC_SW_AVRA_CNT;
+#endif
+    uint32_t data[avg_n]; /* VLA:fsr_smp 執行緒棧只有 1 KB,FSR 這條不能多佔 22 筆的陣列 */
     uint32_t total, ave;
     float fave;
     total = 0;
-    for (i = 0; i < ADC_SW_AVRA_CNT; i++)
+    for (i = 0; i < avg_n; i++)
     {
         if (i != 0)
         {
@@ -461,8 +467,8 @@ static rt_err_t sifli_get_adc_value(struct rt_adc_device *device, rt_uint32_t ch
     HAL_ADC_Stop(sifli_adc_handler);
 
     // sort
-    for (i = 0; i < ADC_SW_AVRA_CNT - 1; i++)
-        for (j = 0; j < ADC_SW_AVRA_CNT - 1 - i; j++)
+    for (i = 0; i < avg_n - 1; i++)
+        for (j = 0; j < avg_n - 1 - i; j++)
             if (data[j] > data[j + 1])
             {
                 ave = data[j];
@@ -471,9 +477,9 @@ static rt_err_t sifli_get_adc_value(struct rt_adc_device *device, rt_uint32_t ch
             }
     // drop max/min , mid filter
     total -= data[0];
-    total -= data[ADC_SW_AVRA_CNT - 1];
+    total -= data[avg_n - 1];
 
-    fave = (float)total / (ADC_SW_AVRA_CNT - 2);
+    fave = (float)total / (avg_n - 2);
     //rt_kprintf("ch[%d]average val =%f;\n", channel, fave);
 
 #endif

@@ -253,9 +253,9 @@ extern int __bss_end;
 #define MOTOR_POWER_EN_PIN (5)     // PA05
 #define USING_LINEAR_MOTOR_0619
 #define WATCH_IMU_REVERSE_180 (1)
-#if !kReleaseMode
+/* 發布版也取樣 FSR(2026-10-20 founder)。沒接壓感的錶讀值恆為 0,sampler 會自己判定
+   「沒接」並停止動作,見 bloc_control.c 的 g_fsr_absent。 */
 #define USING_FSR_ADC_SAMPLER
-#endif
 #endif
 
 // #define FRAME_BUFFER_IN_PSRAM
@@ -264,11 +264,9 @@ extern int __bss_end;
 #define PWM_LRA_MOTOR // Linear Resonant Actuator (LRA) Driver IC
 #define REAL_TIME_IMU_DATA_COLLECTION
 
-#if defined(USING_FSR_ADC_SAMPLER)
-#define CUSTOM_ADC_SW_AVRA_CNT 3
-#else
+/* 軟體平均筆數的上限(電池等一般通道用這個)。FSR 通道改用 3 筆中位數,在 drv_adc.c 內
+   依通道決定 — 不能讓 FSR 把全域平均壓到 3,否則發布版的電池讀值會從 22 筆變 3 筆。 */
 #define CUSTOM_ADC_SW_AVRA_CNT 22
-#endif
 
 #if !kReleaseMode
 #define SHOW_TAP_GESTURE_INDICATOR
