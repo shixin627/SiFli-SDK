@@ -6607,6 +6607,25 @@ static bool single_device_try_open_session(const list_item_t *item)
     return true;
 }
 
+/* 手機執行的 Action:點下去的當下就讓使用者知道按到了 —— 震一下,有開關的列圓點立刻滑到另一邊(位置手錶自己記),
+   不等手機回覆(founder 2026-10-24:「讓我可以在按到的當下就知道我有按到」)。觸控(list_item_activate)與
+   手勢(on_tap)是兩條平行的點擊 handler,兩條都要呼叫(見 reference_watch_instruction_two_tap_paths):
+   founder 用手勢點「切換燈」時開關不動,就是只有觸控那條有接。 */
+static void instruction_tap_feedback(list_item_t *item)
+{
+    /* 點了 Action = 位置已選定,進場落點寬限窗到此為止(手勢點擊不經 lc_tap_cb,否則窗內手機重推會把畫面拉走)。 */
+    s_entry_landing_pending = false;
+    int swp = instruction_switch_pos(item->id);
+    if (swp >= 0)
+    {
+        instruction_switch_flip(item->id);
+        if (left_cards_visible())
+            left_cards_switch_set((uint8_t)(item - &list_items[0]), (uint8_t)((swp ^ 1) + 1), true);
+    }
+    extern void motor_pattern_unlocked(void);
+    motor_pattern_unlocked();
+}
+
 static void list_item_activate(list_item_t *item)
 {
     if (s_activate_suppress_until != 0 &&
@@ -6739,23 +6758,8 @@ static void list_item_activate(list_item_t *item)
                 animate_to_home_from_instruction_list();
             return;
         }
-        /* 手機執行的 Action：點下去的當下就震一下，不等手機回覆
-           (founder 2026-10-24：「讓我可以在按到的當下就知道我有按到」)。
-           結果稍後由手機改這一列的小字。上面的「開手錶 app」走自己的回饋，不在這。 */
-        {
-            /* 開關列:圓點立刻滑到另一邊(位置手錶自己記),不等手機回覆 */
-            int swp = instruction_switch_pos(item->id);
-            if (swp >= 0)
-            {
-                instruction_switch_flip(item->id);
-                if (left_cards_visible())
-                    left_cards_switch_set((uint8_t)(item - &list_items[0]), (uint8_t)((swp ^ 1) + 1), true);
-            }
-        }
-        {
-            extern void motor_pattern_unlocked(void);
-            motor_pattern_unlocked();
-        }
+        /* 結果稍後由手機改這一列的小字。上面的「開手錶 app」走自己的回饋，不在這。 */
+        instruction_tap_feedback(item);
         /* SKAIBAR commit — tap on a custom instruction while the
            tracking session is alive (mic was opened at some point on
            this page, page not yet paused). Send the option idx the
@@ -7685,6 +7689,8 @@ static void on_tap(void)
                 animate_to_home_from_instruction_list();
             return;
         }
+        /* 手勢路徑也要有「按到了」的回饋(震動 + 開關圓點滑動),跟 list_item_activate 同一支。 */
+        instruction_tap_feedback(item);
         /* SKAIBAR commit — same rationale as list_item_click_event_cb,
            parallel gesture path. selected_item_index is the raw
            list_items index; subtract app_base_count for the 0-based
