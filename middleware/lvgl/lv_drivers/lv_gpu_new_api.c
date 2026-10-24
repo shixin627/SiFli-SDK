@@ -1339,6 +1339,11 @@ static void my_draw_cleanup(_lv_img_cache_entry_t *cache)
 #endif
 }
 
+/* Count of images skipped because decode/open failed, and the last source that
+   failed (read by app_clock_earth_digita.c's digit diagnostics). */
+volatile uint32_t lv_gpu_img_draw_err_cnt;
+const void *volatile lv_gpu_img_draw_err_src;
+
 /*
     This function is copied from decode_and_draw() at lv_draw_img.c
 */
@@ -1352,6 +1357,9 @@ static lv_res_t my_decode_and_draw(lv_draw_ctx_t *draw_ctx, const lv_draw_img_ds
 
     if (cdsc == NULL || (!EPIC_SUPPORTED_CF(cdsc->dec_dsc.header.cf)) || (cdsc->dec_dsc.error_msg != NULL))
     {
+        /* Diagnostics (digit dump): this skip is otherwise completely silent. */
+        lv_gpu_img_draw_err_cnt++;
+        lv_gpu_img_draw_err_src = src;
         LV_LOG_WARN("Image draw error");
 
         //show_error(draw_ctx, coords, cdsc->dec_dsc.error_msg);

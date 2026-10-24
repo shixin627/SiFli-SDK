@@ -866,6 +866,31 @@ void log_file_report_crash_evidence(void)
     }
 }
 
+/* Render diagnostics (app_clock_earth_digita.c digit dump): text goes into the
+ * RAM ring exactly like a crash report, then the live-evidence push is re-armed
+ * (crash_evidence_handled normally latches it to once per boot) so every dump
+ * reaches the phone. Call only from the GUI thread: the line buffer is static. */
+void log_file_diag_printf(const char *fmt, ...)
+{
+    static char line[CRASH_LINE_MAX];
+    va_list args;
+
+    va_start(args, fmt);
+    rt_int32_t n = rt_vsnprintf(line, sizeof(line), fmt, args);
+    va_end(args);
+
+    if (n > 0)
+    {
+        ring_write(line, (size_t)(n > (rt_int32_t)sizeof(line) - 1 ? sizeof(line) - 1 : n));
+    }
+}
+
+void log_file_diag_push(void)
+{
+    crash_evidence_handled = 0;
+    log_file_report_crash_evidence();
+}
+
 /* Called from the HCPU WDT1 timeout handler (main.c: wdt_store_exception_
  * information) just before drv_reboot(), when a thread has monopolised the CPU
  * past the watchdog deadline. This is the SILENT reboot class: no RT_ASSERT and

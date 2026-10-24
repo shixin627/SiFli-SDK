@@ -130,6 +130,7 @@ static lv_timer_t *fs_update_timer;
 static void test_all_callback(lv_event_t *e);
 static void restart_callback(lv_event_t *e);
 static void reset_restart_num_callback(lv_event_t *e);
+static void digit_diag_callback(lv_event_t *e);
 static void ble_log_sw_event_callback(lv_event_t *e);
 static void file_log_sw_event_callback(lv_event_t *e);
 static void accel_sub_unsub_sw_event_callback(lv_event_t *e);
@@ -375,6 +376,8 @@ static void lv_create_dev_screen(void)
     snprintf(restart_num_text, sizeof(restart_num_text), "Reset Restart Num (%d)", SkaiWatchSys.watch_restart_num);
     reset_restart_num_btn = common_text_button(cont, restart_num_text, NULL, NULL, NULL, reset_restart_num_callback);
     reset_restart_num_label = lv_obj_get_child(reset_restart_num_btn, 0); // 獲取按鈕中的 label
+    /* 數字消失診斷：看到錶盤數字不見後，按這顆把紀錄送到手機 */
+    common_text_button(cont, "Dump Digit Diag", NULL, NULL, NULL, digit_diag_callback);
     /* 開啟藍芽log */
     lv_obj_t *ble_log_container = lv_obj_create(cont);
     lv_obj_set_size(ble_log_container, LV_SIZE_CONTENT, LV_SIZE_CONTENT);
@@ -870,6 +873,21 @@ static void reset_restart_num_callback(lv_event_t *e)
             char restart_num_text[32];
             snprintf(restart_num_text, sizeof(restart_num_text), "Reset Restart Num (%d)", SkaiWatchSys.watch_restart_num);
             lv_label_set_text(reset_restart_num_label, restart_num_text);
+        }
+    }
+}
+
+static void digit_diag_callback(lv_event_t *e)
+{
+    if (LV_EVENT_CLICKED == lv_event_get_code(e))
+    {
+        extern void app_clock_digit_diag_dump(const char *why);
+        app_clock_digit_diag_dump("manual");
+
+        lv_obj_t *label = lv_obj_get_child(lv_event_get_target(e), 0);
+        if (label != NULL)
+        {
+            lv_label_set_text(label, "Digit Diag sent");
         }
     }
 }
