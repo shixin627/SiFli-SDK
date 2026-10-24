@@ -1378,6 +1378,65 @@ bool set_instruction_sub(const char *id, const char *sub)
     return true;
 }
 
+/* ── 開關列(founder 2026-10-24:「一個開關在上面,但開關不會有顏色變化,只有左右切換」,同時解決
+   「按到的當下就知道我有按到」):手機把「切換燈」這類 Action 標上 "sw"(0/1 = 初始位置),整頁卡片就在標題
+   下面畫一顆不變色的開關;點下去的當下圓點立刻滑到另一邊(+ 震動),不等手機回覆。圓點位置是手錶自己記的 ——
+   手機每次整份重推只決定「這一列有沒有開關」與第一次出現時的位置,不會把圓點拉回去。旁表以 id 雜湊為鍵
+   (不動 list_item_t)。永遠在 LVGL 執行緒(批次佇列的 drain 端 / 點擊處理)。 */
+#define SW_SLOTS 8
+static uint32_t s_sw_key[SW_SLOTS]; /* 0 = 空槽 */
+static uint8_t s_sw_pos[SW_SLOTS];  /* 0 = 左 / 1 = 右 */
+static bool s_sw_on[SW_SLOTS];      /* 最近一份批次裡這一列有標 sw */
+static uint8_t s_sw_next;
+
+static int sw_slot_of(const char *id)
+{
+    uint32_t k = sub_key_of(id);
+    for (int i = 0; i < SW_SLOTS; i++)
+        if (s_sw_key[i] == k)
+            return i;
+    return -1;
+}
+
+/* sw < 0:這一列不是開關(清掉標記,位置保留);sw >= 0:標成開關,第一次出現才用 sw 當初始位置。 */
+void set_instruction_switch(const char *id, int sw)
+{
+    if (id == NULL || id[0] == '\0')
+        return;
+    int s = sw_slot_of(id);
+    if (sw < 0)
+    {
+        if (s >= 0)
+            s_sw_on[s] = false;
+        return;
+    }
+    if (s < 0)
+    {
+        for (int i = 0; i < SW_SLOTS && s < 0; i++)
+            if (s_sw_key[i] == 0)
+                s = i;
+        if (s < 0)
+            s = (int)(s_sw_next++ % SW_SLOTS);
+        s_sw_key[s] = sub_key_of(id);
+        s_sw_pos[s] = sw ? 1 : 0;
+    }
+    s_sw_on[s] = true;
+}
+
+/* 這一列的開關位置:-1 = 沒有開關,0 = 左,1 = 右 */
+int instruction_switch_pos(const char *id)
+{
+    int s = (id != NULL && id[0] != '\0') ? sw_slot_of(id) : -1;
+    return (s >= 0 && s_sw_on[s]) ? (int)s_sw_pos[s] : -1;
+}
+
+void instruction_switch_flip(const char *id)
+{
+    int s = (id != NULL && id[0] != '\0') ? sw_slot_of(id) : -1;
+    if (s >= 0)
+        s_sw_pos[s] ^= 1;
+}
+
 /* ── 整頁卡片(lv_left_cards.c):色板 + 每列的底色索引 ──────────────────────────
    底色跟著「這一列是什麼」:手機每個 Action 已經帶 `ico` 類型 slug(0x65/0x6B),韌體照它挑色,
    不必多一個協定欄位;@ 聊天列 = Bot 色;沒有類型的 = 通用石板藍。飽和的深色(小米卡片的樣子),
@@ -6680,6 +6739,23 @@ static void list_item_activate(list_item_t *item)
                 animate_to_home_from_instruction_list();
             return;
         }
+        /* 手機執行的 Action：點下去的當下就震一下，不等手機回覆
+           (founder 2026-10-24：「讓我可以在按到的當下就知道我有按到」)。
+           結果稍後由手機改這一列的小字。上面的「開手錶 app」走自己的回饋，不在這。 */
+        {
+            /* 開關列:圓點立刻滑到另一邊(位置手錶自己記),不等手機回覆 */
+            int swp = instruction_switch_pos(item->id);
+            if (swp >= 0)
+            {
+                instruction_switch_flip(item->id);
+                if (left_cards_visible())
+                    left_cards_switch_set((uint8_t)(item - &list_items[0]), (uint8_t)((swp ^ 1) + 1), true);
+            }
+        }
+        {
+            extern void motor_pattern_unlocked(void);
+            motor_pattern_unlocked();
+        }
         /* SKAIBAR commit — tap on a custom instruction while the
            tracking session is alive (mic was opened at some point on
            this page, page not yet paused). Send the option idx the
@@ -7173,6 +7249,9 @@ static void lc_tap_cb(uint8_t card)
         return;
     if (card >= s_lc_n || s_lc_item[card] >= list_item_count)
         return;
+    /* 點了卡片 = 使用者已經選好位置:進場落點(8 秒寬限窗)到此結束。否則點「切換燈」後手機重推 actions,
+       這次重建還在窗內就把畫面拉到最新一項(founder 2026-10-24:「切換完有時候跑回最下面」)。 */
+    s_entry_landing_pending = false;
     list_item_activate(&list_items[s_lc_item[card]]);
 }
 
@@ -7211,6 +7290,10 @@ static void lc_tick(void)
 static void lc_scroll_cb(int32_t page_x256)
 {
     s_lc_moved = true;
+    /* 卡片的翻頁事件被 list_window_scroll_event_cb 擋在外面(left_cards_owns),列清單那條「真手勢熄掉進場落點」
+       走不到 —— 這裡補上。只算手真的在螢幕上:show 自己的定位捲動也會進來。 */
+    if (is_user_touching_screen())
+        s_entry_landing_pending = false;
     if (arc_drag_is_live())
         return; /* 圓弧撥動中輪盤跟手指走,別被卡片自己的捲動動畫拉回去 */
     int near_idx = (int)((page_x256 + 128) / 256);
@@ -7321,6 +7404,10 @@ static bool lc_card_at(uint8_t idx, left_card_t *c, char *subbuf)
     c->big = NULL;
     c->act = NULL;
     c->arrows = false;
+    {
+        int swp = instruction_switch_pos(it->id); /* 有開關的 Action:卡片上畫不變色的開關 */
+        c->sw = (swp < 0) ? 0 : (uint8_t)(swp + 1);
+    }
 #ifdef APP_ID_TIMER
     if (lc_is_timer(it))
     {
@@ -7428,6 +7515,7 @@ static void left_cards_sync(void)
         ssig = lc_hash(ssig, c.big); /* 大字版面(計時器)的字/膠囊/箭頭變了也要重畫 */
         ssig = lc_hash(ssig, c.act);
         ssig = lc_hash(ssig, c.arrows ? "<>" : "");
+        ssig = lc_hash(ssig, c.sw == 2 ? "R" : (c.sw == 1 ? "L" : ""));
         for (uint8_t k = 0; k < c.n_opts; k++)
             ssig = lc_hash(ssig, c.opts[k]); /* 選項變了只重畫內容 */
         sig = lc_hash(sig, list_items[i].img_path);

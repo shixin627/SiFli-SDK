@@ -36,6 +36,10 @@ typedef struct
     const char *big;
     const char *act;
     bool arrows;
+    /* 開關(founder 2026-10-24:「一個開關在上面,但開關不會有顏色變化,只有左右切換」):
+       0 = 沒有開關;1 = 圓點在左;2 = 圓點在右(0 是預設,舊的卡片資料不用改)。軌道不變色(半透明白),只有圓點的位置;
+       整顆開關不吃點擊(冒泡),點它 = 點整張卡;呼叫端翻位置後用 left_cards_switch_set 讓圓點滑過去。 */
+    uint8_t sw;
 } left_card_t;
 
 /* 卡片內容按需提供(founder 2026-10-03 要省 SRAM:不再常駐一份 30 張的陣列 + 每張 96B 的即時文字緩衝):
@@ -69,6 +73,8 @@ void left_cards_set_slide(lv_coord_t tx);
 /* 說明文字之類的內容變了、但卡片數/標題/底色沒變:只重畫已建好的那幾張,不動翻頁容器(不閃、不重置位置)。
    呼叫端要先確認 left_cards_busy() 為假。 */
 void left_cards_refresh(void);
+/* 第 idx 張卡的開關圓點滑到 sw(1 = 左,2 = 右);anim=false 就直接到位。沒有開關/沒建出來就什麼都不做。 */
+void left_cards_switch_set(uint8_t idx, uint8_t sw, bool anim);
 /* obj 是翻頁容器本身或它底下的物件(事件濾除用)。 */
 bool left_cards_owns(lv_obj_t *obj);
 

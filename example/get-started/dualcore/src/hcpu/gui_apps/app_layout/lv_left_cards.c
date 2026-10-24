@@ -27,6 +27,11 @@
 #define BIG_W 280     /* 大字版面(計時器)整排寬度:箭頭 + 大字,底下膠囊同寬 */
 #define STEP_W 48     /* 步進箭頭的點擊區寬 */
 #define BIG_Y 208     /* 大字上緣 */
+#define SW_W 112      /* 開關軌道 */
+#define SW_H 60
+#define SW_PAD 6      /* 圓點距軌道邊緣 */
+#define SW_KNOB (SW_H - 2 * SW_PAD)
+#define SW_ANIM_MS 160
 #define ACT_H 54      /* 主動作膠囊高 */
 
 static lv_obj_t *s_pager = NULL;
@@ -35,6 +40,7 @@ static uint8_t s_n = 0;
 static uint8_t s_cur = 0;
 static lv_obj_t *s_card[LEFT_CARDS_MAX];
 static bool s_filled[LEFT_CARDS_MAX];
+static lv_obj_t *s_sw_knob[LEFT_CARDS_MAX]; /* 有開關的卡:圓點物件(清卡時跟著清掉) */
 static bool s_rounded = false; /* 滑動中:目前那張卡是圓盤,後面疊光暈 */
 
 /* 柔邊(founder 2026-09-30 給的小米照片:滑入那一頁的前緣是一圈柔化的漸層,不是清楚的線)。
@@ -97,6 +103,7 @@ static void clear_card(uint8_t i)
         return;
     lv_obj_clean(s_card[i]);
     s_filled[i] = false;
+    s_sw_knob[i] = NULL;
 }
 
 static void fill_card(uint8_t i)
@@ -163,7 +170,33 @@ static void fill_card(uint8_t i)
     lv_obj_add_flag(title, LV_OBJ_FLAG_EVENT_BUBBLE);
 
     /* 說明:最多三行,DOT 收尾。色用 label 階層的次要色(bluish #EBEBF5),不是純白半透明。 */
-    lv_coord_t sub_bottom = SUB_Y;
+    /* 有開關的卡:開關放在標題列正下面(在最上面),說明往下讓出一格 */
+    bool has_sw = !bigmode && c->sw != 0;
+    lv_coord_t sub_top = SUB_Y + (has_sw ? (SW_H + 16) : 0);
+    lv_coord_t sub_bottom = sub_top;
+    if (has_sw)
+    {
+        /* 軌道不變色(半透明白),只有圓點左右移動。兩個都不吃點擊:點它 = 點整張卡。 */
+        lv_obj_t *trk = lv_obj_create(card);
+        lv_obj_remove_style_all(trk);
+        lv_obj_set_size(trk, SW_W, SW_H);
+        lv_obj_set_pos(trk, X0, SUB_Y);
+        lv_obj_set_style_radius(trk, SW_H / 2, 0);
+        lv_obj_set_style_bg_color(trk, lv_color_white(), 0);
+        lv_obj_set_style_bg_opa(trk, LV_OPA_30, 0);
+        lv_obj_clear_flag(trk, LV_OBJ_FLAG_CLICKABLE | LV_OBJ_FLAG_SCROLLABLE);
+        lv_obj_add_flag(trk, LV_OBJ_FLAG_EVENT_BUBBLE);
+        lv_obj_t *kn = lv_obj_create(trk);
+        lv_obj_remove_style_all(kn);
+        lv_obj_set_size(kn, SW_KNOB, SW_KNOB);
+        lv_obj_set_style_radius(kn, LV_RADIUS_CIRCLE, 0);
+        lv_obj_set_style_bg_color(kn, lv_color_white(), 0);
+        lv_obj_set_style_bg_opa(kn, LV_OPA_COVER, 0);
+        lv_obj_set_pos(kn, (c->sw == 2) ? (SW_W - SW_PAD - SW_KNOB) : SW_PAD, SW_PAD);
+        lv_obj_clear_flag(kn, LV_OBJ_FLAG_CLICKABLE | LV_OBJ_FLAG_SCROLLABLE);
+        lv_obj_add_flag(kn, LV_OBJ_FLAG_EVENT_BUBBLE);
+        s_sw_knob[i] = kn;
+    }
     if (has_sub)
     {
         lv_obj_t *sub = lv_label_create(card);
@@ -173,18 +206,18 @@ static void fill_card(uint8_t i)
            多顯示一些字),至少 3 行 */
         lv_coord_t sub_lh = lv_font_get_line_height(f_sub);
         lv_coord_t sub_ls = lv_obj_get_style_text_line_space(sub, LV_PART_MAIN);
-        lv_coord_t sub_lines = (c->n_opts > 0) ? 2 : (SUB_BOTTOM - SUB_Y - 8) / (sub_lh + sub_ls);
+        lv_coord_t sub_lines = (c->n_opts > 0) ? 2 : (SUB_BOTTOM - sub_top - 8) / (sub_lh + sub_ls);
         if (c->n_opts == 0 && sub_lines < 3) /* 有晶片時固定 2 行,不套最少 3 行 */
             sub_lines = 3;
         /* LV_LABEL_LONG_DOT(lv_label.c)把刪節號放在 y=(高度往下取整到整行 - 行距) 所在的那一行,而且行的判定是
            y <= 該行頂 + 字高(含邊界)。所以高度取剛好 N 行(字高+行距)*N,刪節號就落在第 N 行;多留幾 px 會多露一行,
            少 1px 又會少一行(sim 實測:+2/+8 → 3 行、-1 → 1 行)。 */
         lv_obj_set_size(sub, SUB_W, (sub_lh + sub_ls) * sub_lines);
-        sub_bottom = SUB_Y + (sub_lh + sub_ls) * sub_lines; /* 不能用 lv_obj_get_height:版面還沒更新,拿到的是舊座標 */
+        sub_bottom = sub_top + (sub_lh + sub_ls) * sub_lines; /* 不能用 lv_obj_get_height:版面還沒更新,拿到的是舊座標 */
         lv_obj_set_style_text_font(sub, f_sub, 0);
         lv_obj_set_style_text_color(sub, lv_color_hex(0xEBEBF5), 0);
         lv_obj_set_style_text_opa(sub, LV_OPA_80, 0);
-        lv_obj_set_pos(sub, X0, SUB_Y);
+        lv_obj_set_pos(sub, X0, sub_top);
         lv_obj_add_flag(sub, LV_OBJ_FLAG_EVENT_BUBBLE);
     }
 
@@ -192,7 +225,7 @@ static void fill_card(uint8_t i)
        單行 DOT 截斷;晶片自己吃點擊(不冒泡),不會同時觸發整張卡的點擊。 */
     if (!bigmode && c->n_opts > 0)
     {
-        lv_coord_t chip_y = has_sub ? sub_bottom + 12 : SUB_Y;
+        lv_coord_t chip_y = has_sub ? sub_bottom + 12 : sub_top;
         for (uint8_t k = 0; k < c->n_opts && k < 3; k++)
         {
             lv_obj_t *chip = lv_obj_create(card);
@@ -436,6 +469,7 @@ lv_obj_t *left_cards_show(lv_obj_t *parent, left_cards_get_cb_t get, uint8_t n, 
     s_on_option = on_option;
     memset(s_card, 0, sizeof(s_card));
     memset(s_filled, 0, sizeof(s_filled));
+    memset(s_sw_knob, 0, sizeof(s_sw_knob));
     s_rounded = false;
 
     /* 柔邊圖比浮層大:預設子物件會被父物件的範圍裁掉,會在浮層邊界被切成一條直線 */
@@ -510,6 +544,7 @@ void left_cards_hide(void)
     s_get = NULL;
     memset(s_card, 0, sizeof(s_card));
     memset(s_filled, 0, sizeof(s_filled));
+    memset(s_sw_knob, 0, sizeof(s_sw_knob));
     if (halo != NULL && lv_obj_is_valid(halo))
         lv_obj_del(halo);
     if (bg != NULL && lv_obj_is_valid(bg))
@@ -551,6 +586,35 @@ void left_cards_refresh(void)
             clear_card(i);
             fill_card(i);
         }
+}
+
+static void sw_knob_anim_cb(void *var, int32_t v)
+{
+    lv_obj_set_x((lv_obj_t *)var, (lv_coord_t)v);
+}
+
+void left_cards_switch_set(uint8_t idx, uint8_t sw, bool anim)
+{
+    if (idx >= s_n || idx >= LEFT_CARDS_MAX || sw == 0)
+        return;
+    lv_obj_t *kn = s_sw_knob[idx];
+    if (kn == NULL || !lv_obj_is_valid(kn))
+        return;
+    lv_coord_t to = (sw == 2) ? (SW_W - SW_PAD - SW_KNOB) : SW_PAD;
+    lv_anim_del(kn, sw_knob_anim_cb);
+    if (!anim)
+    {
+        lv_obj_set_x(kn, to);
+        return;
+    }
+    lv_anim_t a;
+    lv_anim_init(&a);
+    lv_anim_set_var(&a, kn);
+    lv_anim_set_exec_cb(&a, sw_knob_anim_cb);
+    lv_anim_set_values(&a, lv_obj_get_x(kn), to);
+    lv_anim_set_time(&a, SW_ANIM_MS);
+    lv_anim_set_path_cb(&a, lv_anim_path_ease_out);
+    lv_anim_start(&a);
 }
 
 bool left_cards_visible(void)

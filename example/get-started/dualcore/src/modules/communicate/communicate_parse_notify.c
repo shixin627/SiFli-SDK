@@ -154,6 +154,12 @@ static bool apply_one_instruction_obj(cJSON *root)
         cJSON *j_sub = cJSON_GetObjectItem(root, "sub");
         set_instruction_sub(id, cJSON_IsString(j_sub) ? j_sub->valuestring : "");
     }
+    /* sw:這一列是「開關」Action(0/1 = 第一次出現時的圓點位置)。缺席 = 一般 Action,不畫開關。 */
+    {
+        extern void set_instruction_switch(const char *id, int sw);
+        cJSON *j_sw = cJSON_GetObjectItem(root, "sw");
+        set_instruction_switch(id, cJSON_IsNumber(j_sw) ? (int)j_sw->valuedouble : -1);
+    }
 
     if (id[0] != '\0')
     {
