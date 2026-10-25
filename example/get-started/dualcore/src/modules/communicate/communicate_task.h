@@ -27,6 +27,8 @@
 /* ADR-0008 E7: watch→phone uplink — the watch's active-target device selection
    (sent on tileview page change). JSON {"device_id":"..."} over 0x20/0x05. */
 bool commu_send_active_device(const char *device_id);
+void commu_active_device_forget(void); /* link down → phone dropped the target; next send must not be de-duped */
+bool commu_send_active_device_force(const char *device_id); /* mouse page: always send (phone ignores same id) */
 
 bool commu_send_bond_success(void);
 bool commu_send_bond_fail(void);

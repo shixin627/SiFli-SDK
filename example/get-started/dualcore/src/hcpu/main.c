@@ -590,6 +590,12 @@ void skaiwalk_disconnected_ind(ble_gap_disconnected_ind_t *ind)
             extern void media_clear_on_link_down(void);
             media_clear_on_link_down();
         }
+        /* 手機在 link teardown 時清掉 active target;錶端的去重記憶也要作廢,
+           不然重連後進滑鼠頁重送同一台會被吞掉(手機沒目標、觸控板不動)。 */
+        {
+            extern void commu_active_device_forget(void);
+            commu_active_device_forget();
+        }
 
 #ifdef USE_BLE_RSSI_CHECK_TIMER
         stop_ble_rssi_checker();

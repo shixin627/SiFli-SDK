@@ -881,6 +881,9 @@ static void process_lvgl_message(lvgl_msg_t *msg)
            在這裡補一發等於把 pull 的主動權放在知道對方剛接上的一端。 */
         extern bool commu_send_battery_snapshot(void);
         commu_send_battery_snapshot();
+        /* 人在滑鼠頁時也把控制目標補告知手機(手機斷線時已清掉它那邊的目標)。 */
+        extern void hid_mouse_resync_active_target(void);
+        hid_mouse_resync_active_target();
         break;
     }
 

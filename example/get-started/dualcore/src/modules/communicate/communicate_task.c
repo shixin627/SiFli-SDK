@@ -146,16 +146,26 @@ static bool commu_send_string(uint8_t cmd_id, uint8_t key, const char *s)
 /* ADR-0008 E7: watch→phone active-target selection (sent on tileview page
    change). UNVERIFIED — build-verify rt_snprintf is available (else use
    rt_sprintf with a bounds guard). */
+/* Shared active-target de-dup. Both the LEFT page (instruction_list, target
+   = the directly-connected primary) and the RIGHT page (device_pager, target
+   = the selected non-primary device) assert the active target; sending only
+   on an actual CHANGE keeps a single source of truth across both pages, so
+   switching pages re-asserts cleanly without spamming identical frames. */
+static char s_last_active[SYNCED_DEVICE_ID_LEN];
+static bool s_last_active_valid = false;
+
+/* 連線掉了 = 手機端的 active target 已被清掉(WatchAirMouseRouter.dispose 每次 link
+   teardown 都 clearActive),但上面的去重記的還是舊值 —— 重連後進滑鼠頁
+   (hid_mouse_ensure_active_device 重送同一台)會被當成「沒變」吞掉,手機沒有目標、
+   觸控板全丟,直到左右切到別台(id 不同才真的送出)才恢復。斷線時忘掉記憶。 */
+void commu_active_device_forget(void)
+{
+    s_last_active_valid = false;
+}
+
 bool commu_send_active_device(const char *device_id)
 {
     if (device_id == NULL) device_id = "";
-    /* Shared active-target de-dup. Both the LEFT page (instruction_list, target
-       = the directly-connected primary) and the RIGHT page (device_pager, target
-       = the selected non-primary device) assert the active target; sending only
-       on an actual CHANGE keeps a single source of truth across both pages, so
-       switching pages re-asserts cleanly without spamming identical frames. */
-    static char s_last_active[SYNCED_DEVICE_ID_LEN];
-    static bool s_last_active_valid = false;
     if (s_last_active_valid &&
         strncmp(s_last_active, device_id, sizeof(s_last_active)) == 0)
         return true; /* unchanged → no-op success */
@@ -173,6 +183,16 @@ bool commu_send_active_device(const char *device_id)
         s_last_active_valid = true;
     }
     return ok;
+}
+
+/* 滑鼠頁專用:進場 / 左右換台 / 連線(重)建立後的補告知一律送,不走上面的去重。
+   手機端同一台自己會略過(WatchAirMouseRouter.onActiveDevice 已是同 id 直接 return),
+   所以多送無害;而錶端「上次送了什麼」記憶一旦跟手機不同步(斷線期間進頁、手機重啟)
+   就會讓去重把該送的吞掉。 */
+bool commu_send_active_device_force(const char *device_id)
+{
+    s_last_active_valid = false;
+    return commu_send_active_device(device_id);
 }
 
 /* watch→phone: relay a media transport command to the active target device

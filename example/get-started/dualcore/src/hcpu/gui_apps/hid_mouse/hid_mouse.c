@@ -11896,7 +11896,7 @@ static void set_active_device_by_index(int idx)
         extern void instruction_list_set_remote_target_focus(bool focused);
         instruction_list_set_remote_target_focus(false);
     }
-    commu_send_active_device(id);
+    commu_send_active_device_force(id); /* 每次換台都告知手機,同一台它會略過 */
     ble_hid_mouse_set_app_route(true);
     ble_hid_mouse_set_web_route(false);
     strncpy(s_dev_active_id, id, sizeof(s_dev_active_id) - 1);
@@ -12107,13 +12107,26 @@ void hid_mouse_ensure_active_device(void)
            **要重送一次 active** 而不是直接 return:手機收到 active-select 才會把
            那台的 now-playing(0x19)推回來,滑鼠頁頂部的媒體 header 靠它現身。 */
         LOG_W("[active] mouse reuse last device");
-        commu_send_active_device(s_dev_active_id);
+        commu_send_active_device_force(s_dev_active_id);
         ble_hid_mouse_set_app_route(true);
         return;
     }
     int def = pick_default_device();
     if (def >= 0)
         set_active_device_by_index(def);
+}
+
+/* 手機(重新)連上後由 LVGL thread 呼叫(ui_handler SEND_DEVICE_INFO,CCCD 訂閱後 1.5s)。
+   人在滑鼠頁時,手機剛(重)連、那邊的控制目標是空的 —— 斷線期間才進的滑鼠頁,進場那發
+   也根本沒送出去 —— 在這裡把「現在這頁控制誰」補告知。網頁頁/直控手機時
+   s_dev_active_id 是空的,手機本來就是目標,不用送。 */
+void hid_mouse_resync_active_target(void)
+{
+    extern bool app_control_get_mouse_mode(void);
+    if (!app_control_get_mouse_mode() || s_dev_active_id[0] == '\0')
+        return;
+    LOG_W("[active] mouse resync after link up");
+    commu_send_active_device_force(s_dev_active_id);
 }
 
 const char *hid_mouse_device_name(int idx)
@@ -13748,7 +13761,7 @@ static void msg_handler(gui_app_msg_type_t msg, void *param)
         {
             /* 上次控制的設備還在 → 接回 relay 控制 */
             LOG_W("[active] mouse reenter");
-            commu_send_active_device(s_dev_active_id);
+            commu_send_active_device_force(s_dev_active_id);
             ble_hid_mouse_set_app_route(true);
         }
         else

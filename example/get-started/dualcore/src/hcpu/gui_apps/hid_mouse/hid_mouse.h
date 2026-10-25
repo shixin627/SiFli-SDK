@@ -126,6 +126,8 @@ const char *hid_mouse_device_id(int idx);
 bool hid_mouse_device_online(int idx);
 /** 沒有有效控制目標時挑一台預設（主要→第一個在線→第一台）；registry 空則不動。 */
 void hid_mouse_ensure_active_device(void);
+/** 手機(重)連上後補告知目前滑鼠頁的控制目標（不在滑鼠頁/目標是手機本身時不動）。LVGL thread。 */
+void hid_mouse_resync_active_target(void);
 /** 把控制目標退回「當前連線的手機」（清 active + 關 app_route，回 BLE HID 直連）。 */
 void hid_mouse_clear_active_device(void);
 
