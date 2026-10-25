@@ -61,6 +61,7 @@
 #include <string.h>
 #include <time.h>
 #include "bsp_board.h"
+#include "bf0_hal.h"         /* HAL_Set_backup / HAL_Get_backup — RTC backup */
 #include "wear_detect.h"
 #include "bloc_peripheral.h"
 #include "bloc_battery.h"
@@ -392,6 +393,11 @@
  * probe is the ONLY thing that lights the PPG while off-wrist. */
 #define PROBE_WINDOW_MS         (2 * 60 * 1000)
 
+/* A probe window that is open but whose PPG has gone dark gets the PPG re-opened,
+ * but no more often than this after the last (re)open: settle (6 s) plus the
+ * driver's start-up must have had their chance before "no samples" means "dead". */
+#define PROBE_REPOWER_GRACE_MS  (10 * 1000)
+
 /* Debounce for the standby motion interrupt: it can fire several times a
  * second while the wrist is moving, and each call restarts a soft timer or
  * rewrites the expiry. The extension semantics make a longer limit pointless
@@ -502,12 +508,75 @@ typedef struct
 
 static wear_detect_ctx_t ctx;
 
+/* The verdict (and the baseline it was measured against) across a reboot.
+ *
+ * The watch restarts 1-2 times a day (2026-10-20..25: six restarts, WDT in
+ * app_watch / motion_t, heap ~90% full). Everything above is RAM, so each one
+ * dropped a worn wrist back to NOT_WEARING with no baseline, and the only way
+ * back is a cold entry: a probe window that lasts as long as the wrist keeps
+ * moving, then 7 of 10 evals with a clean pulse AND a calm accelerometer. A
+ * walking or typing wrist rarely gives that: the five reboots with a worn
+ * wrist took 1 min, 2 min, 19 min, 80 min and 3 h 39 min to get back to ON
+ * (wear_diag base=0 PROBE_OPEN -> next ON), and meanwhile bg_hr is gated off
+ * and sleep is paused.
+ *
+ * So a reboot must not forget a verdict it already earned. Only WEARING with a
+ * pulse-seeded baseline is resumed; NOT_WEARING stays the boot default. A wrong
+ * resume (watch taken off in the seconds around the crash) is the ordinary
+ * take-off case: DC collapse or the stillness exit ends it within ~20 min.
+ *
+ * An RTC backup register is where sleep_service keeps its resting-HR reference
+ * for the same reason (see SLEEP_RHR_BKP_IDX there: 20; 12-31 are unallocated).
+ * Cold power-on leaves garbage, the magic will not match, and we start OFF.
+ * Layout: [31:16] magic | [15] worn | [11:0] worn_dc_base / 16 (0 = none). */
+#define WEAR_BKP_IDX        21u
+#define WEAR_BKP_MAGIC      0x3EA7u
+#define WEAR_BKP_WORN       0x8000u
+#define WEAR_BKP_BASE_MSK   0x0FFFu
+#define WEAR_BKP_BASE_UNIT  16.0f
+static uint32_t s_bkp_word = 0; /* last word written/read (0 = nothing yet) */
+
+static void wear_bkp_store(void)
+{
+    uint32_t q = 0;
+    if (ctx.worn_dc_base > 0.0f)
+    {
+        q = (uint32_t)(ctx.worn_dc_base / WEAR_BKP_BASE_UNIT + 0.5f);
+        if (q > WEAR_BKP_BASE_MSK) q = WEAR_BKP_BASE_MSK;
+    }
+    uint32_t w = ((uint32_t)WEAR_BKP_MAGIC << 16) |
+                 (ctx.status == WEAR_STATUS_WEARING ? WEAR_BKP_WORN : 0u) | q;
+    if (w == s_bkp_word)
+        return;
+    s_bkp_word = w;
+    HAL_Set_backup((uint8_t)WEAR_BKP_IDX, w);
+}
+
+/* Resume WEARING from the register. Called from wear_detect_init() after the
+ * memset; a base below the absolute floor is not a pulse-seeded wrist, so the
+ * cold default stands. */
+static void wear_bkp_restore(void)
+{
+    uint32_t v = HAL_Get_backup((uint8_t)WEAR_BKP_IDX);
+    if ((v >> 16) != WEAR_BKP_MAGIC)
+        return;
+    s_bkp_word = v;
+    float base = (float)(v & WEAR_BKP_BASE_MSK) * WEAR_BKP_BASE_UNIT;
+    if (!(v & WEAR_BKP_WORN) || base < (float)DC_ABS_FLOOR)
+        return;
+    ctx.status = WEAR_STATUS_WEARING;
+    ctx.worn_dc_base = base;
+    ctx.on_anchor_pulse = true; /* the base was learned under a pulse */
+    LOG_W("Wear: resumed WEARING across reboot (base=%.0f)", base);
+}
+
 /* [DC-led] Motion-triggered PPG probe window. PPG power lives in hr_service;
  * wear_detect asks it to power up (probe) and back down when nothing is worn. */
 extern void hr_set_power(uint8_t arg);
 static bool s_probe_active = false;
 static uint32_t s_probe_until_ms = 0;
 static uint32_t s_last_probe_open_ms = 0;
+static uint32_t s_last_ppg_power_ms = 0; /* last (re)open of the PPG, any requester */
 
 /* One-shot SOFT timer used to open a probe from a safe context after a
  * hardware wrist-wake interrupt (see wear_detect_on_motion_wake). Static
@@ -622,6 +691,40 @@ static bool is_ppg_stale(uint32_t now)
     return (now - ctx.last_ppg_ms) > PPG_STALE_MS;
 }
 
+/* A probe window is a promise that the PPG is lit until it expires, but nothing
+ * in it holds the light: every HCPU standby asks the LCPU to power the PPG DOWN
+ * (HCPU_SUSPEND -> PpgSensorPowerManage -> hr_set_power(0); the veto in
+ * hr_set_power knows bursts and raw collection, not probes). The usual daytime
+ * sequence is a lift (screen on, motion opens the probe) followed by the screen
+ * timing out a few seconds later: PPG dark, s_probe_active still set. Motion
+ * then only EXTENDS an active window (probe_open_or_extend) and a moving wrist
+ * keeps extending it before it can lapse, so the probe never re-opens and the
+ * only PPG left is the few seconds of each screen wake, which restart the
+ * settle and wipe the alive ring before 7 of 10 evals can accumulate.
+ *
+ * wear_diag fits that: 2026-10-22 10:23-14:39 (no PROBE_OPEN at all for 4 h
+ * with the wrist moving throughout, SAMPLEs with an empty ring) and 10-25
+ * 14:52-15:15 (one PROBE_OPEN, then 23 min of dc=0 SAMPLEs). At night the probe
+ * opens with the screen already off, nobody powers the PPG down behind it, and
+ * the same code confirms the wrist in 25-45 s.
+ *
+ * So the window checks its own light: open, PPG silent past the grace period,
+ * nobody else (a burst) holding the sensor -> open it again. Self-limiting: the
+ * window itself still ends 2 min after the last motion. */
+static void probe_ensure_ppg(uint32_t now)
+{
+    if (!s_probe_active || ctx.status == WEAR_STATUS_WEARING)
+        return;
+    if (!is_ppg_stale(now))
+        return;
+    if ((uint32_t)(now - s_last_ppg_power_ms) < PROBE_REPOWER_GRACE_MS)
+        return;
+    if (hr_service_bg_burst_active())
+        return; /* the burst owns the light; it is lit, or it is being torn down */
+    LOG_I("Wear: probe open but PPG dark -> re-open PPG");
+    hr_set_power(1); /* arms the settle via wear_detect_on_ppg_restart() */
+}
+
 static void notify_wear_status(bool wearing)
 {
     if (watch_sys_sync.soft_adt_status_callback)
@@ -677,6 +780,7 @@ static void set_status(wear_status_t new_status)
         return;
 
     ctx.status = new_status;
+    wear_bkp_store(); /* the base was (re)seeded before this call on a cold ON */
     /* A streak only means something within one stretch of a single state. */
     ctx.flat_streak = 0;
     ctx.last_flat_check_dc = 0.0f;
@@ -824,6 +928,7 @@ static int evaluate_once(uint32_t now)
                 diag_emit_last(WEAR_DIAG_EVT_PROBE_EXPIRE);
                 return 0;
             }
+            probe_ensure_ppg(now);
             return evaluate_imu_only();
         }
 
@@ -987,6 +1092,7 @@ static int evaluate_once(uint32_t now)
             ctx.pi_hist_count >= PI_HISTORY_LEN)
         {
             ctx.last_flat_check_ms = now;
+            wear_bkp_store(); /* base EMA drift; a no-op unless the word changed */
             /* Streak TTL (see FLAT_STREAK_TTL_MS). */
             if (ctx.flat_streak > 0 && ctx.flat_streak < FLAT_CHECKS_TO_OFF &&
                 (now - ctx.last_flat_count_ms) > FLAT_STREAK_TTL_MS)
@@ -1291,6 +1397,15 @@ static void try_evaluate(void)
     {
         initial_notified = true;
         notify_wear_status(ctx.status == WEAR_STATUS_WEARING);
+        if (ctx.status == WEAR_STATUS_WEARING)
+        {
+            /* Resumed across a reboot (wear_bkp_restore). Mark it in wear_diag
+             * as an ON with dc=0/pi=0 and a non-zero base: no measurement
+             * stands behind it, which is how a resume is told from a real ON.
+             * No bg_hr kick: the 10-min tick is the cadence the watch had
+             * before the reboot, and boot is a bad moment to light the PPG. */
+            diag_emit_last(WEAR_DIAG_EVT_ON);
+        }
     }
 
 #ifdef PPG_RACE_DEBUG
@@ -1386,6 +1501,7 @@ void wear_detect_init(void)
         s_motion_probe_timer_ready = true;
     }
     ctx.status = WEAR_STATUS_NOT_WEARING; /* start OFF (cold): the first wear of a session must be pulse-confirmed, so booting/resting on a table is never latched as worn */
+    wear_bkp_restore();                   /* ...unless this is a reboot of a session that was already confirmed */
     ctx.last_eval_ms = rt_tick_get_millisecond();
     ctx.initialized = true;
     LOG_I("Wear detection initialized (DC-session-led v2, eval every %u ms)", EVAL_PERIOD_MS);
@@ -1486,6 +1602,7 @@ static void probe_open_or_extend(uint32_t now, const char *why, float imu_var)
             LOG_D("Wear: %s while probing -> probe extended to +%us", why,
                   (unsigned)(PROBE_WINDOW_MS / 1000u));
         }
+        probe_ensure_ppg(now); /* extending a window whose light someone put out is not probing */
         return;
     }
 #if kReleaseMode
@@ -1560,6 +1677,7 @@ void wear_detect_on_ppg_restart(void)
     if (!ctx.initialized)
         return;
     uint32_t now = rt_tick_get_millisecond();
+    s_last_ppg_power_ms = now; /* any requester: probe, burst, HCPU resume, subscriber */
     /* Every real (re)open is a full gh30x module stop/start, so the settle
      * restarts from NOW on each one: the put-on sequence opens twice inside
      * one 6 s window (LCPU motion probe, then the lift-wake hr_set_power(1))
