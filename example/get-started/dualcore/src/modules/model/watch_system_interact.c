@@ -59,6 +59,7 @@
 #include "ui_handler.h"
 #include "ui_helper.h"
 #include "disp_refr_governor.h"
+#include "skai_trail.h"
 #ifdef BSP_USING_MAHONY_AHRS
     #include "sensor_fusion.h"
 #endif
@@ -874,6 +875,7 @@ void watch_system_sleep(void)
 
 void watch_system_ble_on_screen(bool screen_on)
 {
+    skai_trail(TR_SCREEN, screen_on ? 1 : 0, RT_NULL); /* every wake / sleep funnels through here */
     /* Only meaningful on a live phone link — otherwise set_performance would
        just log a failed conn-param request. MEDIUM is the screen-on idle tier;
        SLOW the screen-off idle tier. (main.c additionally remaps any

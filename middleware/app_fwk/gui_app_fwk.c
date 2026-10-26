@@ -946,11 +946,41 @@ app_sche_state app_schedule_state_get(void)
     return s_sche_state;
 }
 
+/* Pre-reboot event trail (dualcore hcpu/log_file_backend.c). Weak no-op so other
+   app_fwk users that don't link the black box still build; the PC simulator
+   gets a strong stub from pc_link_stubs.c instead (MSVC has no weak symbols). */
+#ifndef BSP_USING_PC_SIMULATOR
+RT_WEAK void skai_trail(uint8_t evt, uint16_t arg, const char *tag)
+{
+    (void)evt;
+    (void)arg;
+    (void)tag;
+}
+#else
+extern void skai_trail(uint8_t evt, uint16_t arg, const char *tag);
+#endif
+
 static void subpage_msg_handler(gui_page_msg_cb_t func, gui_app_msg_type_t msg_id, const char *app_id, const char *subpage_id)
 {
     //LOG_I("%s.%s do [%d]",app_id,subpage_id, msg_id);
 
     (void) subpage_id;
+
+    /* Event trail: which app was asked to start / resume / pause / stop.
+       2 = TR_APP in dualcore skai_trail.h (middleware cannot include it). */
+    {
+        uint16_t code = '?';
+        switch (msg_id)
+        {
+        case GUI_APP_MSG_ONSTART:  code = 'S'; break;
+        case GUI_APP_MSG_ONRESUME: code = 'R'; break;
+        case GUI_APP_MSG_ONPAUSE:  code = 'P'; break;
+        case GUI_APP_MSG_ONSTOP:   code = 'X'; break;
+        default: break;
+        }
+        skai_trail(2, code, app_id);
+    }
+
     func(msg_id, (void *)app_id);
 }
 

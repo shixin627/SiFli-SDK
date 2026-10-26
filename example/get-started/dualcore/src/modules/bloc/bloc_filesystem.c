@@ -70,6 +70,7 @@
 #endif
 #include "ui_helper.h"
 #include "ui_img_helper.h"
+#include "skai_trail.h"
 
 // 動態媒體圖片路徑定義
 char MEDIA_IMG[40] = "/assets/images/media_img.jpg";
@@ -738,6 +739,43 @@ INIT_APP_EXPORT(bloc_file_system_register);
 /********************************************************************************
  * File Receive Functions
  ********************************************************************************/
+/* Event trail entry for a file transfer; the tag keeps the first 8 chars of the
+   file name (not the directory). op: 1 start, 2 done, 3 failed. */
+static void file_trail(uint16_t op, const char *path)
+{
+    const char *slash = strrchr(path, '/');
+    skai_trail(TR_FILE, op, slash != RT_NULL ? slash + 1 : path);
+}
+
+/* Data chunks keep arriving for a while after a receive was refused or aborted
+   (phone-side retries), and each one used to print its own line. Those ERROR
+   lines flooded the 8 KB crash ring and evicted everything older. One line per
+   second is enough, with a count of what was skipped. */
+static void log_no_active_receive(void)
+{
+    static rt_tick_t last_tick;
+    static bool logged_once;
+    static uint32_t suppressed;
+    rt_tick_t now = rt_tick_get();
+
+    if (logged_once && (rt_tick_t)(now - last_tick) < rt_tick_from_millisecond(1000))
+    {
+        suppressed++;
+        return;
+    }
+    if (suppressed > 0)
+    {
+        LOG_E("No active file receive (+%u more suppressed)", (unsigned)suppressed);
+        suppressed = 0;
+    }
+    else
+    {
+        LOG_E("No active file receive");
+    }
+    logged_once = true;
+    last_tick = now;
+}
+
 /**
  * @brief Start receiving a file from remote (post message to queue)
  * @param file_path Destination file path
@@ -828,6 +866,7 @@ int bloc_start_receive_file(const char *file_path, uint32_t total_size)
     g_file_receive.last_receive_tick = rt_tick_get();
 
     LOG_I("Started receiving file: %s (%d bytes)", temp_file_path, total_size);
+    file_trail(1, temp_file_path);
     skaiwatch_ble_set_performance(BLE_PERF_FAST);
     return RT_EOK;
 }
@@ -848,7 +887,7 @@ int bloc_receive_file_data(const uint8_t *data, uint16_t length)
 
     if (!g_file_receive.is_active)
     {
-        LOG_E("No active file receive");
+        log_no_active_receive();
         return -RT_ERROR;
     }
 
@@ -883,7 +922,7 @@ int bloc_end_receive_file(void)
 {
     if (!g_file_receive.is_active)
     {
-        LOG_E("No active file receive");
+        log_no_active_receive();
         return -RT_ERROR;
     }
 
@@ -893,6 +932,7 @@ int bloc_end_receive_file(void)
     {
         LOG_E("Incomplete file: received %d/%d bytes",
               g_file_receive.received_size, g_file_receive.total_size);
+        file_trail(3, g_file_receive.file_path);
         remove(g_file_receive.file_path);
         g_file_receive.is_active = false;
         return -RT_ERROR;
@@ -900,6 +940,7 @@ int bloc_end_receive_file(void)
 
     LOG_I("File receive completed: %s (%d bytes)", g_file_receive.file_path,
           g_file_receive.received_size);
+    file_trail(2, g_file_receive.file_path);
 
     /* Check if file has .temp extension and rename to final name */
     char *temp_ext = strstr(g_file_receive.file_path, ".temp");

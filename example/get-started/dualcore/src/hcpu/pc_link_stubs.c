@@ -117,6 +117,7 @@ typedef struct { uint8_t addr[6]; } bd_addr_t;
 /* communicate_update_image.h */ bool is_ble_dfu_thread_running(void) { return false; }
 /* log_file_backend.c */ int log_file_backend_is_enabled(void) { return 0; }
 /* log_file_backend.c */ int log_file_backend_set_enabled(int enable) { return 0; }
+/* log_file_backend.c */ void skai_trail(uint8_t evt, uint16_t arg, const char *tag) { (void)evt; (void)arg; (void)tag; }
 /* PC sim: return a minimal lv_obj on `parent` so callers that immediately
  * lv_obj_align/lv_obj_set_size on the result don't NULL-deref. */
 /* lv_message_list_layout.c */ lv_obj_t * lv_media_widget_builder(lv_obj_t * parent) { return parent ? lv_obj_create(parent) : NULL; }
