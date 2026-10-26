@@ -34,6 +34,7 @@
 #include "bloc_setting.h"
 #include "bloc_notification.h"
 #include "watch_system_interact.h"
+#include "skai_trail.h"
 #include "gui_app_pm.h" /* gui_is_active() — screen-state gate for BLE perf */
 #ifdef BSP_USING_UI_HANDLER
     #include "ui_handler.h"
@@ -547,6 +548,7 @@ static void adv_backoff_stop(void);
 
 void skaiwalk_ble_gap_connected_ind(ble_gap_connect_ind_t *ind)
 {
+    skai_trail(TR_BLE, 1, RT_NULL);
     if (phone_device_idx == ind->conn_idx)
     {
         SkaiWatchSys.watch_conn_id = ind->conn_idx;
@@ -579,6 +581,7 @@ void skaiwalk_ble_gap_update_conn_param_ind(
 
 void skaiwalk_disconnected_ind(ble_gap_disconnected_ind_t *ind)
 {
+    skai_trail(TR_BLE, (uint16_t)((uint16_t)ind->reason << 8), RT_NULL);
     if (phone_device_idx == ind->conn_idx)
     {
         LOG_I("Disconnected from %d", ind->conn_idx);

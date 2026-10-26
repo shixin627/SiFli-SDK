@@ -78,6 +78,7 @@
     #include "watch_system_interact.h"
 #endif
 #include "gui_app_int.h"
+#include "skai_trail.h"
 
 #ifdef APP_ID_MAIN
 
@@ -509,6 +510,13 @@ void check_is_at_home(void)
                !lv_top_panel_mouse_mode() && !chat_page_is_overlay_open();
     if (yes != _at_home)
     {
+        /* Pre-reboot event trail: face <-> some page/overlay, with the flags that hold it. */
+        skai_trail(TR_HOME,
+                   (uint16_t)((yes ? 1 : 0) | (_at_instruction_list ? 2 : 0) | (_at_message ? 4 : 0) |
+                              (_at_control_center ? 8 : 0) | (_at_mouse_mode ? 16 : 0) |
+                              (_at_ai_interface ? 32 : 0) | (_at_speech_interface ? 64 : 0) |
+                              (on_device_page ? 128 : 0) | (lv_top_panel_mouse_mode() ? 256 : 0)),
+                   RT_NULL);
         /* R22 診斷:假錶盤 = 畫面是錶盤但 _at_home 為 false(四條 zone 不開)。
            翻轉當下印出每個否決條件,直接看是誰把它壓住。 */
         LOG_W("[ATHOME] %d->%d inst=%d msg=%d cc=%d mouse=%d ai=%d speech=%d "

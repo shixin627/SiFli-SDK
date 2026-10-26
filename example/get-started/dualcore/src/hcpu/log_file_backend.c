@@ -38,6 +38,7 @@
 #include "mem_section.h"   /* L1_NON_RET_BSS_SECT_* — noinit SRAM for the black box */
 #include "communicate_update_image.h"
 #include "bloc_filesystem.h"   /* watch -> phone file push (0x52/0x53/0x54) */
+#include "skai_trail.h"        /* pre-reboot event trail (TR_* ids) */
 
 extern void rt_assert_set_hook(void (*hook)(const char *ex, const char *func,
                                             rt_size_t line));
@@ -106,15 +107,179 @@ static struct ulog_backend log_file_be;
 #define BB_STATE_RUNNING    0x0000A11Eu   /* session live, not cleanly ended */
 #define BB_STATE_CLEAN      0x0000C1EAu   /* intentional reboot / crash handled */
 
+/* Event trail record (see skai_trail.h). 16 bytes x 128 = 2 KB in the same
+ * retained region as the text ring, so it survives the same warm resets. */
+#define TRAIL_MAGIC         0x7A11E5E7u   /* fixed nonce: trail layout is valid */
+#define TRAIL_N             128           /* MUST be power of 2 */
+typedef struct
+{
+    rt_uint32_t tick;      /* ulog_get_tick(): the 32 kHz clock behind the "[tick]" in the log text */
+    rt_uint8_t  evt;       /* TR_* */
+    rt_uint8_t  rsv;
+    rt_uint16_t arg;
+    char        tag[8];    /* up to 8 chars, NOT necessarily NUL-terminated */
+} trail_rec_t;
+typedef char trail_rec_size_check[(sizeof(trail_rec_t) == 16) ? 1 : -1];
+
 L2_RET_BSS_SECT_BEGIN(blackbox)
 static rt_uint32_t bb_magic L2_RET_BSS_SECT(blackbox);
 static rt_uint32_t bb_state L2_RET_BSS_SECT(blackbox);
 static char ring_buf[LOG_RING_BUF_SIZE] L2_RET_BSS_SECT(blackbox);
 static volatile rt_uint32_t ring_head L2_RET_BSS_SECT(blackbox);   /* producer */
 static volatile rt_uint32_t ring_tail L2_RET_BSS_SECT(blackbox);   /* flush thread */
+static rt_uint32_t trail_magic L2_RET_BSS_SECT(blackbox);
+static volatile rt_uint32_t trail_head L2_RET_BSS_SECT(blackbox);  /* events ever recorded */
+static trail_rec_t trail_buf[TRAIL_N] L2_RET_BSS_SECT(blackbox);
 L2_RET_BSS_SECT_END
 
 static volatile rt_uint32_t dropped_bytes;
+
+/* trail_head as it stood right after this boot's TR_BOOT marker, when the
+ * previous session ended in a silent reboot. The dump stops here so events the
+ * new boot logs while the dump is pending do not leak in. */
+static rt_uint32_t trail_dump_end;
+
+/* Record one event. Any thread or ISR; ignored until log_file_backend_init has
+ * validated the trail (a cold power-on leaves random PSRAM, so trail_magic
+ * does not match yet). */
+void skai_trail(uint8_t evt, uint16_t arg, const char *tag)
+{
+    if (trail_magic != TRAIL_MAGIC)
+    {
+        return;
+    }
+
+    rt_base_t flags = rt_hw_interrupt_disable();
+    trail_rec_t *r = &trail_buf[trail_head & (TRAIL_N - 1)];
+    int i = 0;
+
+    r->tick = (rt_uint32_t)ulog_get_tick();   /* NOT rt_tick_get(): that one is 1 kHz */
+    r->evt = evt;
+    r->rsv = 0;
+    r->arg = arg;
+    if (tag != RT_NULL)
+    {
+        for (; i < 8 && tag[i] != '\0'; i++)
+        {
+            r->tag[i] = tag[i];
+        }
+    }
+    for (; i < 8; i++)
+    {
+        r->tag[i] = '\0';
+    }
+    trail_head++;
+    rt_hw_interrupt_enable(flags);
+}
+
+/* One record as a text line, e.g. "[275683302] APP    hid_mous R\n". */
+static int trail_format(char *out, size_t n, const trail_rec_t *r)
+{
+    static const char *const dfu_op[]  = {"?", "start", "abort", "done", "failed"};
+    static const char *const file_op[] = {"?", "start", "done", "failed"};
+    char tag[9];
+    unsigned t = (unsigned)r->tick;
+    unsigned a = r->arg;
+    unsigned op;
+
+    memcpy(tag, r->tag, 8);
+    tag[8] = '\0';
+
+    switch (r->evt)
+    {
+    case TR_BOOT:
+        return rt_snprintf(out, n, "[%u] BOOT   %s\n", t,
+                           a ? "previous session ended in a silent reboot" : "normal boot");
+    case TR_APP:
+        return rt_snprintf(out, n, "[%u] APP    %s %c\n", t, tag, (char)a);
+    case TR_GESTURE:
+        return rt_snprintf(out, n, "[%u] GESTURE %s (0x%x)\n", t, tag, a);
+    case TR_BLE:
+        if (a & 0xff)
+        {
+            return rt_snprintf(out, n, "[%u] BLE    up\n", t);
+        }
+        return rt_snprintf(out, n, "[%u] BLE    down reason=0x%02x\n", t, a >> 8);
+    case TR_SCREEN:
+        return rt_snprintf(out, n, "[%u] SCREEN %s\n", t, a ? "on" : "off");
+    case TR_DFU:
+        op = a & 0xff;
+        return rt_snprintf(out, n, "[%u] DFU    id=%u %s\n", t, a >> 8, dfu_op[op < 5 ? op : 0]);
+    case TR_FILE:
+        op = a & 0xff;
+        return rt_snprintf(out, n, "[%u] FILE   %s %s\n", t, tag, file_op[op < 4 ? op : 0]);
+    case TR_HOME:
+    {
+        static const char *const flag[] = {"inst", "msg", "cc", "mouse", "ai", "speech", "dev", "hosted"};
+        size_t l;
+
+        rt_snprintf(out, n, "[%u] HOME   %s", t, (a & 1) ? "face" : "left-face");
+        l = strlen(out);
+        for (unsigned b = 0; b < 8; b++)
+        {
+            if (a & (2u << b))
+            {
+                rt_snprintf(out + l, n - l, " %s", flag[b]);
+                l = strlen(out);
+            }
+        }
+        if (l + 1 < n)
+        {
+            out[l++] = '\n';
+            out[l] = '\0';
+        }
+        return (int)l;
+    }
+    default:
+        return rt_snprintf(out, n, "[%u] ?%u arg=0x%x %s\n", t, (unsigned)r->evt, a, tag);
+    }
+}
+
+/* Append the trail (oldest first) to `fd`: at most the TRAIL_N newest events
+ * that are still intact and were recorded before `end`. Flush thread only (the
+ * buffers are static, not on its small stack). */
+static void trail_write_fd(int fd, rt_uint32_t end)
+{
+    static char blk[384];
+    static char line[128];
+    static const char hdr[] =
+        "\n=== EVENT TRAIL (oldest first; [tick] is the same clock as the log above) ===\n";
+    rt_uint32_t head_now = trail_head;
+    rt_uint32_t start = (end > TRAIL_N) ? (end - TRAIL_N) : 0;
+    rt_uint32_t oldest_intact = (head_now > TRAIL_N) ? (head_now - TRAIL_N) : 0;
+    int used = 0;
+
+    if (start < oldest_intact)
+    {
+        start = oldest_intact;   /* the new boot has already wrapped over the oldest few */
+    }
+    write(fd, hdr, sizeof(hdr) - 1);
+    for (rt_uint32_t i = start; i != end && (rt_int32_t)(end - i) > 0; i++)
+    {
+        trail_rec_t r = trail_buf[i & (TRAIL_N - 1)];
+        int l = trail_format(line, sizeof(line), &r);
+
+        if (l <= 0)
+        {
+            continue;
+        }
+        if (l > (int)sizeof(line) - 1)
+        {
+            l = (int)sizeof(line) - 1;
+        }
+        if (used + l > (int)sizeof(blk))
+        {
+            write(fd, blk, used);
+            used = 0;
+        }
+        memcpy(blk + used, line, (size_t)l);
+        used += l;
+    }
+    if (used > 0)
+    {
+        write(fd, blk, used);
+    }
+}
 
 static rt_sem_t flush_sem;
 static rt_thread_t flush_tid;
@@ -976,6 +1141,7 @@ static void dump_survived_ring(rt_uint32_t tail, rt_uint32_t head)
         write(fd, &ring_buf[t_idx], contig);
         write(fd, &ring_buf[0], used - contig);
     }
+    trail_write_fd(fd, trail_dump_end);
     static const char mk[] =
         "\n=== CRASH: SILENT-REBOOT (involuntary reset; ring above is pre-reboot) ===\n"
         "=== CRASH END ===\n";
@@ -1030,11 +1196,24 @@ static int log_file_backend_init(void)
          * hundred bytes onto the newest end before the dump, costing the tail of
          * the lead-up but keeping the crash-adjacent bulk of the last 8 KB. */
         bb_dump_pending = 1;
+        /* Keep the event trail too: it is the "what was happening" half of the
+         * dump. A trail left by a different firmware layout fails the magic
+         * check and is dropped. */
+        if (trail_magic != TRAIL_MAGIC)
+        {
+            trail_head = 0;
+        }
+        trail_magic = TRAIL_MAGIC;
+        skai_trail(TR_BOOT, 1, RT_NULL);
+        trail_dump_end = trail_head;
     }
     else
     {
         ring_head = 0;
         ring_tail = 0;
+        trail_head = 0;
+        trail_magic = TRAIL_MAGIC;
+        skai_trail(TR_BOOT, 0, RT_NULL);
     }
     bb_magic = BB_MAGIC;
     bb_state = BB_STATE_RUNNING;
@@ -1215,5 +1394,54 @@ static void logfe_enable(int argc, char **argv)
     log_file_backend_set_enabled(atoi(argv[1]));
 }
 MSH_CMD_EXPORT(logfe_enable, enable or disable file log backend);
+
+/* Shell: print the event trail, oldest first. Usage: trail_show [count] */
+static void trail_show(int argc, char **argv)
+{
+    char line[128];
+    rt_uint32_t head = trail_head;
+    rt_uint32_t n = (argc >= 2) ? (rt_uint32_t)atoi(argv[1]) : 64;
+
+    if (trail_magic != TRAIL_MAGIC)
+    {
+        rt_kprintf("trail: not initialised\n");
+        return;
+    }
+    if (n == 0 || n > TRAIL_N)
+    {
+        n = TRAIL_N;
+    }
+    if (n > head)
+    {
+        n = head;
+    }
+    rt_kprintf("trail: %u events recorded, showing newest %u\n", (unsigned)head, (unsigned)n);
+    for (rt_uint32_t i = head - n; i != head; i++)
+    {
+        trail_rec_t r = trail_buf[i & (TRAIL_N - 1)];
+        trail_format(line, sizeof(line), &r);
+        rt_kprintf("%s", line);
+    }
+}
+MSH_CMD_EXPORT(trail_show, print the pre-reboot event trail [count]);
+
+/* Shell: choose black-box mode (RAM ring only, no NAND drain -- what the
+ * release build runs) for the NEXT enable, so the silent-reboot dump can be
+ * exercised on a dev watch. Usage: logfe_bb 1 ; logfe_enable 1 ; ... ; reboot ;
+ * (after boot) logfe_enable 1 -> the survived ring + trail is written to /logs. */
+static void logfe_bb(int argc, char **argv)
+{
+    if (argc >= 2)
+    {
+        if (backend_ready)
+        {
+            rt_kprintf("[log_file_be] disable first (logfe_enable 0)\n");
+            return;
+        }
+        blackbox_mode = atoi(argv[1]) ? 1 : 0;
+    }
+    rt_kprintf("[log_file_be] blackbox_mode=%d\n", blackbox_mode);
+}
+MSH_CMD_EXPORT(logfe_bb, select black-box (RAM ring only) mode for the next enable);
 
 #endif /* !kReleaseMode — MSH dev commands only; the backend itself ships */

@@ -42,6 +42,7 @@
 
 #include <rtthread.h>
 #include "gesture_handler.h"
+#include "skai_trail.h"
 #ifdef BSP_USING_MODEL_WATCH_SYS_INTERACT
 #include "watch_system_interact.h"
 #endif
@@ -121,6 +122,40 @@ void send_virtual_gesture_event(rt_uint32_t e)
   }
   rt_event_send(virtual_gesture_detect_event, e);
   last_gesture_event = e;
+}
+
+/* Short name (<= 8 chars) for the pre-reboot event trail. */
+static const char *gesture_event_name(rt_uint32_t e)
+{
+  switch (e)
+  {
+  case GESTURE_EVENT_PRESS:
+    return "PRESS";
+  case GESTURE_EVENT_TAP:
+    return "TAP";
+  case GESTURE_EVENT_DOUBLE_TAP:
+    return "DBLTAP";
+  case GESTURE_EVENT_HOLD:
+    return "HOLD";
+  case GESTURE_EVENT_FINGER_RELEASE:
+    return "FINGREL";
+  case GESTURE_EVENT_FORCE_RELEASE:
+    return "FORCEREL";
+  case GESTURE_EVENT_LONGPRESS:
+    return "LONGPRS";
+  case GESTURE_EVENT_BACK:
+    return "BACK";
+  case GESTURE_EVENT_WRIST_PRONATION:
+    return "PRONATE";
+  case GESTURE_EVENT_HAND_RELEASE:
+    return "HANDREL";
+  case GESTURE_EVENT_MOVE_FORWARD:
+    return "FWD";
+  case GESTURE_EVENT_MOVE_BACKWARD:
+    return "BWD";
+  default:
+    return "?"; /* several bits at once */
+  }
 }
 
 static void print_gesture_event(rt_uint32_t recv_set)
@@ -344,6 +379,7 @@ static void gesture_event_handler_hcpu(rt_uint32_t recv_set)
 {
   rt_tick_t current_time = rt_tick_get();
   print_gesture_event(recv_set);
+  skai_trail(TR_GESTURE, (uint16_t)recv_set, gesture_event_name(recv_set));
   switch (recv_set)
   {
   // 偵測到手指按下，視為press

@@ -47,6 +47,7 @@
 #include "communicate_protocol.h"
 #include "communicate_task.h"
 #include "communicate_update_image.h"
+#include "skai_trail.h"
 #include "gui_app_fwk.h"
 #include "watch_system_interact.h"
 #include "ui_helper.h"
@@ -122,6 +123,8 @@ volatile uint32_t watch_image_size;
 volatile uint32_t watch_image_end_addr;
 volatile bool is_end_addr_equal_to_last_writed_addr = false;
 volatile dfu_img_id_t watch_img_id;
+#define IMG_PROGRESS_LOG_STEP 0x10000   /* one progress line per 64 KB of image */
+static uint32_t s_img_log_addr;         /* cur_addr at the last progress line */
 static uint32_t binary_image_size_max;
 static bool dfu_started_mark = false;
 
@@ -415,8 +418,11 @@ static bool watch_binary_image_update_handler(uint8_t *buf, uint16_t len)
 			s_write_buffer_count = 0;
 		}
 	}
-	else
+	else if ((uint32_t)(watch_image_cur_addr - s_img_log_addr) >= IMG_PROGRESS_LOG_STEP)
 	{
+		/* This runs for the whole transfer. One WARN per 4 KB page flooded the
+		   8 KB crash ring and evicted everything logged before the transfer. */
+		s_img_log_addr = watch_image_cur_addr;
 		LOG_W("Current address(0x%08X) not equal to end address(0x%08X)", watch_image_cur_addr, watch_image_end_addr);
 	}
 	return true;
@@ -433,10 +439,12 @@ static int dfu_completed_handler(void)
 		header.length = get_cur_watch_image_size();
 		temp_header[watch_img_id] = header;
 		LOG_I("firmware id(%d) transmission(%d bytes) success", watch_img_id, header.length);
+		skai_trail(TR_DFU, (uint16_t)(((unsigned)watch_img_id << 8) | 3), RT_NULL);
 	}
 	else
 	{
 		ret = -1;
+		skai_trail(TR_DFU, (uint16_t)(((unsigned)watch_img_id << 8) | 4), RT_NULL);
 		/* Show how short the upload came so it's clear whether the phone sent
 		   END too early or our pipeline dropped bytes. Most often this is the
 		   phone-side OTA logic giving up — single-frame chunks arrive in order
@@ -481,6 +489,7 @@ static int ota_progress = -1;
 static void terminate_ble_dfu_process(void)
 {
 	if (!ble_dfu_thread_run) return;
+	skai_trail(TR_DFU, (uint16_t)(((unsigned)watch_img_id << 8) | 2), RT_NULL);
 
 	notify_update_status_to_client(0);
 	set_ble_dfu_thread_run(0);
@@ -713,6 +722,8 @@ void init_ble_dfu_thread(dfu_img_id_t id, uint32_t dest_addr, uint32_t size)
 	watch_image_cur_addr = dest_addr;
 	watch_image_size = size;
 	watch_image_end_addr = dest_addr + size;
+	s_img_log_addr = dest_addr;
+	skai_trail(TR_DFU, (uint16_t)(((unsigned)id << 8) | 1), RT_NULL);
 	ota_progress = -1;
 	/* Defensive reset: if a previous session aborted mid-image without going
 	   through terminate_ble_dfu_process (e.g., process crash before that ran),
