@@ -144,6 +144,7 @@ typedef struct file_system_msg_data
         {
             char *file_path;
             bool delete_after_sync;
+            void (*done)(const char *file_path, int ok); /* SYNC_FILE_MSG only, may be NULL */
         } sync;
 
         /* For SYNC_MULTI_FILES_MSG */
@@ -159,6 +160,9 @@ static file_receive_state_t g_file_receive = {0};
 
 /* Global variables */
 static sync_progress_t sync_progress = {0};
+/* Did the last sync_file_to_remote_client() get every frame accepted by BLE?
+ * Only the file-system thread touches it. */
+static int s_send_ok;
 static rt_mq_t file_system_mq = RT_NULL;
 BLocFileSystem bloc_file_system;
 
@@ -199,6 +203,9 @@ static int sync_file_to_remote_client(const char *file_path)
     int fd, read_bytes;
     char buf[FILE_SYNC_BUFFER_SIZE];
     lvgl_msg_t ui_msg;
+    bool ok;
+
+    s_send_ok = 0;
 
     // Get file size first
     if (stat(file_path, &file_stat) == 0)
@@ -221,7 +228,7 @@ static int sync_file_to_remote_client(const char *file_path)
     }
 
     // Send start sync event with file size
-    commu_send_start_sync_file(sync_progress.total_bytes);
+    ok = commu_send_start_sync_file(sync_progress.total_bytes);
     rt_thread_mdelay(50);
 
     // Send file data in chunks
@@ -230,6 +237,7 @@ static int sync_file_to_remote_client(const char *file_path)
         if (!commu_send_sync_file((uint8_t *)buf, read_bytes))
         {
             LOG_E("Failed to send file data for %s", file_path);
+            ok = false;
             goto exit_sync;
         }
 
@@ -251,7 +259,11 @@ static int sync_file_to_remote_client(const char *file_path)
 exit_sync:
     close(fd);
     rt_thread_mdelay(50);
-    commu_send_end_sync_file();
+    if (!commu_send_end_sync_file())
+    {
+        ok = false;
+    }
+    s_send_ok = ok;
 
     return 1;
 }
@@ -477,6 +489,10 @@ static void file_system_entry(void *parameter)
                 skaiwatch_ble_set_performance(BLE_PERF_FAST);
                 sync_file_to_remote_client(msg_data.data.sync.file_path);
                 skaiwatch_ble_set_performance(BLE_PERF_SLOW);
+                if (msg_data.data.sync.done)
+                {
+                    msg_data.data.sync.done(msg_data.data.sync.file_path, s_send_ok);
+                }
                 // Delete file if requested
                 if (msg_data.data.sync.delete_after_sync)
                 {
@@ -635,7 +651,8 @@ static int file_system_task_init(void)
    `msg_type` must be SYNC_FILE_MSG or DELETE_FILE_MSG (both share the
    `data.sync` shape). */
 static int post_path_msg(file_system_msg_t msg_type, const char *file_path,
-                         bool delete_after_sync)
+                         bool delete_after_sync,
+                         void (*done)(const char *file_path, int ok))
 {
     if (file_path == NULL)
     {
@@ -646,6 +663,7 @@ static int post_path_msg(file_system_msg_t msg_type, const char *file_path,
     file_system_msg_data_t msg_data;
     msg_data.msg_type = msg_type;
     msg_data.data.sync.delete_after_sync = delete_after_sync;
+    msg_data.data.sync.done = done;
 
     size_t path_len = strlen(file_path) + 1;
     msg_data.data.sync.file_path = (char *)rt_malloc(path_len);
@@ -670,7 +688,16 @@ static int post_path_msg(file_system_msg_t msg_type, const char *file_path,
  */
 int bloc_system_sync(const char *file_path, bool delete_after_sync)
 {
-    return post_path_msg(SYNC_FILE_MSG, file_path, delete_after_sync);
+    return post_path_msg(SYNC_FILE_MSG, file_path, delete_after_sync, NULL);
+}
+
+/**
+ * @brief Synchronize a file and report the outcome (see BLocFileSystem)
+ */
+int bloc_system_sync_notify(const char *file_path, bool delete_after_sync,
+                            void (*done)(const char *file_path, int ok))
+{
+    return post_path_msg(SYNC_FILE_MSG, file_path, delete_after_sync, done);
 }
 
 /**
@@ -717,7 +744,7 @@ int bloc_sync_folder_files(const char *folder_path, bool delete_after_sync)
  */
 int bloc_system_delete_file(const char *file_path)
 {
-    return post_path_msg(DELETE_FILE_MSG, file_path, false);
+    return post_path_msg(DELETE_FILE_MSG, file_path, false, NULL);
 }
 
 /**
@@ -727,6 +754,7 @@ int bloc_system_delete_file(const char *file_path)
 static int bloc_file_system_register(void)
 {
     bloc_file_system.sync_file = bloc_system_sync;
+    bloc_file_system.sync_file_notify = bloc_system_sync_notify;
     bloc_file_system.sync_folder_files = bloc_sync_folder_files;
     bloc_file_system.delete_file = bloc_system_delete_file;
     return 0;

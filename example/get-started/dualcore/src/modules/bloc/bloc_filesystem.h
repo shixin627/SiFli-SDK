@@ -39,6 +39,10 @@ extern "C"
 	typedef struct
 	{
 		int (*sync_file)(const char *file_path, bool delete_after_sync);
+		/* Same, plus done(file_path, ok) on the file-system thread after the transfer. ok = every
+		   frame was accepted by BLE (there is no phone-side ack for watch -> phone files). */
+		int (*sync_file_notify)(const char *file_path, bool delete_after_sync,
+								void (*done)(const char *file_path, int ok));
 		int (*sync_folder_files)(const char *folder_path, bool delete_after_sync);
 		int (*delete_file)(const char *file_path);
 	} BLocFileSystem;

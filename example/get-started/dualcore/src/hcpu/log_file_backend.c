@@ -38,6 +38,7 @@
 #include "mem_section.h"   /* L1_NON_RET_BSS_SECT_* — noinit SRAM for the black box */
 #include "communicate_update_image.h"
 #include "bloc_filesystem.h"   /* watch -> phone file push (0x52/0x53/0x54) */
+#include "watch_global_data.h" /* SkaiWatchSys.connected_to_phone */
 #include "skai_trail.h"        /* pre-reboot event trail (TR_* ids) */
 
 extern void rt_assert_set_hook(void (*hook)(const char *ex, const char *func,
@@ -649,8 +650,9 @@ static void flush_thread_entry(void *param)
         }
 
         /* A crash log inherited from the previous boot waits here until BLE
-         * has had time to reconnect — pushing it at boot just fails. Runs at
-         * most once per boot: push_pending_crash_log() clears the path. */
+         * has had time to reconnect — pushing it at boot just fails. The path
+         * stays set while the phone is away or a transfer fails; it is cleared
+         * once a push is handed to BLE (see crash_push_done()). */
         if (pending_crash_path[0] != '\0' &&
             rt_tick_get() >= crash_push_due_tick)
         {
@@ -882,6 +884,8 @@ static void log_file_assert_hook(const char *ex, const char *func,
 #define CRASH_MARKER            "=== CRASH:"
 #define CRASH_TAIL_SCAN         512      /* marker is always at end of file */
 #define CRASH_PUSH_DELAY_MS     60000    /* give BLE time to reconnect */
+#define CRASH_PUSH_RETRY_MS     30000    /* phone not connected / transfer failed: look again */
+#define CRASH_PUSH_MAX_TRIES    10       /* failed transfers per boot; then it stays .log for the next boot's scan */
 
 /* Read the tail of `path` and report whether an assert / HardFault marker is
  * in it. Only the last CRASH_TAIL_SCAN bytes are read — the device reset
@@ -955,10 +959,52 @@ static void find_crashed_log(const char *keep_path)
     closedir(dir);
 }
 
+static char crash_retry_path[LOG_PATH_MAX];   /* .log name to restore if a push fails */
+static int crash_push_tries;
+
+/* Queue `path` for push_pending_crash_log() after the retry delay. The due tick
+ * goes first: the flush thread polls pending_crash_path[0]. */
+static void crash_push_rearm(const char *path)
+{
+    crash_push_due_tick = rt_tick_get() + rt_tick_from_millisecond(CRASH_PUSH_RETRY_MS);
+    rt_strncpy(pending_crash_path, path, sizeof(pending_crash_path) - 1);
+    pending_crash_path[sizeof(pending_crash_path) - 1] = '\0';
+}
+
+/* Runs on the file-system thread after the transfer. ok = BLE accepted every
+ * frame (the phone sends no ack). A failed push goes back to its .log name, so
+ * it is retried here after a delay and, once CRASH_PUSH_MAX_TRIES is used up,
+ * by the next boot's crash scan -- instead of sitting as .sent forever. */
+static void crash_push_done(const char *sent_path, int ok)
+{
+    if (ok)
+    {
+        crash_push_tries = 0;
+        return;
+    }
+    if (rename(sent_path, crash_retry_path) != 0)
+    {
+        return;   /* can't restore it: leave it as .sent */
+    }
+    rt_kprintf("[log_file_be] crash log push failed, kept %s\n", crash_retry_path);
+    if (++crash_push_tries < CRASH_PUSH_MAX_TRIES)
+    {
+        crash_push_rearm(crash_retry_path);
+    }
+}
+
 static void push_pending_crash_log(void)
 {
     char sent[LOG_PATH_MAX];
     char *ext = strrchr(pending_crash_path, '.');
+
+    /* No phone to receive it: keep the .log name and look again later. */
+    if (!SkaiWatchSys.connected_to_phone)
+    {
+        crash_push_due_tick = rt_tick_get() + rt_tick_from_millisecond(CRASH_PUSH_RETRY_MS);
+        rt_kprintf("[log_file_be] phone not connected, %s waits\n", pending_crash_path);
+        return;
+    }
 
     if (ext != NULL)
     {
@@ -984,12 +1030,16 @@ static void push_pending_crash_log(void)
      * whether or not the transfer succeeded, which would throw the only copy
      * of the evidence away whenever BLE happened to be down. The .sent file
      * stays for manual retrieval and is reclaimed by the normal prune. */
-    if (bloc_file_system.sync_file != NULL)
+    rt_strncpy(crash_retry_path, pending_crash_path, sizeof(crash_retry_path) - 1);
+    crash_retry_path[sizeof(crash_retry_path) - 1] = '\0';
+    pending_crash_path[0] = '\0';   /* before the post: crash_push_done() may re-arm it */
+
+    rt_kprintf("[log_file_be] pushing crash log %s\n", sent);
+    if (bloc_file_system.sync_file_notify == NULL ||
+        bloc_file_system.sync_file_notify(sent, false, crash_push_done) != RT_EOK)
     {
-        rt_kprintf("[log_file_be] pushing crash log %s\n", sent);
-        bloc_file_system.sync_file(sent, false);
+        crash_push_done(sent, 0);   /* not queued: put the .log name back */
     }
-    pending_crash_path[0] = '\0';
 }
 
 /* Seal the CURRENT log file (it already contains the [FT-DBLFREE] line the FT
