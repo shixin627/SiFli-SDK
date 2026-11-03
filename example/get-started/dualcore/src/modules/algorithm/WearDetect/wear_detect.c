@@ -76,12 +76,19 @@
 /* Evaluation period in milliseconds (continuous, not event-driven) */
 #define EVAL_PERIOD_MS          1500
 
-/* Absolute DC floor: below this, nothing skin-like touches the sensor.
- * Overnight CSV (sleep unit, 2026-06-11): off-wrist surfaces read 30.5k-35.5k,
- * worn sleep dips bottom out at 36.4k, worn band 39k-44k. The floor sits in
- * the 35.5k-36.4k gap. It is only a safety net / cold-entry sanity check —
- * the working ON/OFF decisions use the per-session learned baseline below. */
-#define DC_ABS_FLOOR            36000
+/* Absolute DC floor: a safety net only, far below any worn reading. The
+ * working ON/OFF decisions use the per-session learned baseline below.
+ *
+ * It was 36000, fitted on ONE unit's night (2026-06-11: worn sleep dips bottom
+ * out at 36.4k). That is a property of that unit, not of the sensor: worn DC
+ * differs by well over 4k between units and with strap fit and posture. The
+ * unit put on 2026-11-02 reads 39k by day and 31.6k asleep (founder confirmed
+ * worn 23:00-07:00): 94% of those samples sat under 36000, min 21.0k. The
+ * floor then dominated the exit (0.85 x a 36-39k base is below it), cast OFF
+ * votes on a wrist with a clear pulse, and gated the way back in (warm and cold
+ * entry both demand dc >= floor): 3 of 152 samples that night were judged worn.
+ * Set under the lowest worn reading seen (21.0k) with margin. */
+#define DC_ABS_FLOOR            15000
 
 /* Per-session DC baseline (learned, replaces any fixed worn threshold —
  * measured worn DC differs >4k between units and with strap fit):
@@ -1069,6 +1076,31 @@ static int evaluate_once(uint32_t now)
                                    ? ctx.imu_count : IMU_WINDOW_SIZE;
             float imu_var = (imu_len > 0)
                                 ? compute_imu_variance(ctx.acce_mag, imu_len) : 0.0f;
+            /* A DC drop on a STILL wrist that still shows a live pulse is a
+             * gain step or a posture change (sleep: arm pressed under the body),
+             * not a take-off: air reads a static reflection (pulse share
+             * ~0.04-0.07), a desk reads no pulse at all, and a wrist being
+             * carried away is not still. Founder asleep and wearing it
+             * 2026-11-03 00:00-07:00: all 7 OFF verdicts came with pi >= 0.0006
+             * and pulse share >= 0.30, 6 of them with imu_var ~0.0005 (the 7th,
+             * 05:10, was moving and keeps the take-off path). Hold, and let the baseline
+             * follow the wrist down instead of staying pinned to a transient high
+             * seed (01:28 seeded 47.8k, the resting level was 31k). Anything with
+             * motion in it keeps the take-off behaviour below. */
+            bool imu_fresh = (imu_len > 0) &&
+                             ((now - ctx.last_imu_ms) <= IMU_STALE_MS);
+            if (imu_fresh && imu_var < IMU_VARIANCE_THD &&
+                pi >= PI_THD_TO_ON && pi_range <= PI_RANGE_MAX &&
+                (pi_range / pi) >= PI_AC_RATIO_THD)
+            {
+                ctx.last_imu_var = imu_var;
+                if (!plugged && ctx.on_anchor_pulse && ctx.worn_dc_base > 0.0f)
+                    ctx.worn_dc_base += (dc_mean - ctx.worn_dc_base) /
+                                        (float)(1 << BASE_EMA_SHIFT);
+                LOG_I("Eval: DC=%.0f (< %.0f) but still wrist with live pulse -> hold (base=%.0f)",
+                      dc_mean, off_thr, ctx.worn_dc_base);
+                return 1;
+            }
             if (imu_var >= IMU_VARIANCE_THD)
                 ctx.off_streak_motion = true;
             ctx.last_imu_var = imu_var;
