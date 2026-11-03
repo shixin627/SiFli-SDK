@@ -24,20 +24,28 @@
  *
  *         State machine:
  *         - COLD OFF→ON: windowed pulse gate (PI ≥ threshold + variability,
- *           3-of-8 evals). Seeds worn_dc_base = current DC.
+ *           3-of-8 evals). Seeds worn_dc_base = median of the recent DC.
  *         - WARM OFF→ON: DC back inside [0.88, 1.15] × worn_dc_base AND a
  *           minimum pulse, for 3-of-8 evals → ON. Still what makes a wrong OFF
  *           cheap (seconds) instead of catastrophic (hours) — 98% of
  *           genuinely-worn samples clear the pulse floor — while no longer
  *           re-admitting a desk.
- *         - ON hold: DC above max(0.85 × base, DC_ABS_FLOOR). Baseline EMA
+ *         - ON hold: DC above 0.85 × base, OR a live pulse. Baseline EMA
  *           adapts slowly while in-band (per-unit / per-fit calibration —
- *           measured worn DC differs >4k between our two units).
- *         - ON→OFF: sustained sub-threshold DC — fast (~12 s) when the dip
- *           came with motion (take-off signature), slow (~30 s) when still
- *           (protects sleep dips). Charger (is_plugged) blocks WARM entry
- *           and freezes the EMA, so a charging cradle can't be learned or
- *           warm-recovered into.
+ *           measured worn DC differs by a third between our two units).
+ *         - ON→OFF: sustained sub-threshold DC WITH NO PULSE — fast (~12 s)
+ *           when the dip came with motion (take-off signature), slow (~30 s)
+ *           when still (protects sleep dips). Charger (is_plugged) blocks WARM
+ *           entry and freezes the EMA, so a charging cradle can't be learned
+ *           or warm-recovered into.
+ *
+ *         2026-11-03: no decision rests on an absolute DC number any more.
+ *         DC level is the one signal that does not transfer between units
+ *         (31.6k vs 47.5k worn, AGC steps of 29%, a desk that reads HIGHER
+ *         than a wrist) so it may only say "contact probably changed"; the
+ *         verdict needs evidence that is a ratio (pulse share, DC stability,
+ *         motion) or is learned from the unit itself (the baseline). The
+ *         constants that still are absolute are listed at PI_THD_TO_ON.
  *
  *         That trade-off used to be accepted and documented here as "a surface
  *         whose DC coincides with the learned worn band can warm-recover to a
@@ -76,19 +84,22 @@
 /* Evaluation period in milliseconds (continuous, not event-driven) */
 #define EVAL_PERIOD_MS          1500
 
-/* Absolute DC floor: a safety net only, far below any worn reading. The
- * working ON/OFF decisions use the per-session learned baseline below.
+/* Below this the PPG produced no light measurement at all (LED off, sensor not
+ * powered, ring still empty), so nothing computed from it means anything. It is
+ * a validity check, not a worn/not-worn threshold, and sits far under every DC
+ * ever logged while a sensor was running (lowest seen 11.5k, 2 of 8836 rows
+ * under 15k).
  *
- * It was 36000, fitted on ONE unit's night (2026-06-11: worn sleep dips bottom
- * out at 36.4k). That is a property of that unit, not of the sensor: worn DC
- * differs by well over 4k between units and with strap fit and posture. The
- * unit put on 2026-11-02 reads 39k by day and 31.6k asleep (founder confirmed
- * worn 23:00-07:00): 94% of those samples sat under 36000, min 21.0k. The
- * floor then dominated the exit (0.85 x a 36-39k base is below it), cast OFF
- * votes on a wrist with a clear pulse, and gated the way back in (warm and cold
- * entry both demand dc >= floor): 3 of 152 samples that night were judged worn.
- * Set under the lowest worn reading seen (21.0k) with margin. */
-#define DC_ABS_FLOOR            15000
+ * This used to be a worn threshold, and every value of it failed on some unit:
+ * 36000 (fitted on one unit's night: sleep dips bottom out at 36.4k) judged the
+ * unit put on 2026-11-02 not worn for a whole night it was worn (it reads 39k by
+ * day, 31.6k asleep, min 21.0k; 3 of 152 samples judged worn), and it had
+ * already cast 8 of the old unit's 43 OFF verdicts in October, each reversed
+ * within 10 minutes. 15000 only moved the failure to the next unit. DC level
+ * cannot carry a verdict: it differs between units by a third, AGC gain steps
+ * move it 29% on a wrist that never left, and a desk reads higher than a wrist.
+ * So the verdict no longer depends on it; see the WEARING branch. */
+#define DC_VALID_MIN            5000
 
 /* Per-session DC baseline (learned, replaces any fixed worn threshold —
  * measured worn DC differs >4k between units and with strap fit):
@@ -96,7 +107,8 @@
  * - EMA-adapts while ON and in-band (alpha 1/64 per 1.5s eval ≈ 96s to 63%).
  * - WORN_BAND: DC within [LO,HI]×base counts as wrist contact (hold + warm
  *   re-entry). Night data: worn dips reach 0.90×base, so LO=0.88 keeps them.
- * - OFF_THR: DC below OFF_THR×base (clamped up to DC_ABS_FLOOR) votes OFF. */
+ * - OFF_THR: DC below OFF_THR×base is a take-off CANDIDATE; it votes OFF only
+ *   when no live pulse is seen (see the WEARING branch). */
 #define WORN_BAND_LO            0.88f
 #define WORN_BAND_HI            1.15f
 /* 2026-08-31: was 0.80f. Measured on the wearer's own watch across three
@@ -173,7 +185,15 @@
 /* Minimum perfusion INDEX (AC/DC) to call something a wrist. 0.0006 clears
  * 92.7% of the founder's genuinely-worn minutes and 11.7% of desk minutes;
  * the desk survivors are the PPG-facing-air pose, which the accelerometer
- * leg of the alive test then rejects. */
+ * leg of the alive test then rejects.
+ *
+ * ABSOLUTE CONSTANTS THAT REMAIN (the part of this detector that is still
+ * fitted to the units seen, not learned or scale-free): this one, and
+ * PI_RANGE_FLAT_THD / PI_RANGE_MAX. Margin on the units measured: the older
+ * unit's sleeping wrist has p10 pi 0.00072, median 0.0012 (a third unit with
+ * clearly weaker perfusion would fail to enter); the 2026-11-02 unit reads
+ * 0.0033. Making them relative needs raw PPG from more units, which
+ * wear_diag (one-minute summaries) cannot supply. */
 #define PI_THD_TO_ON            0.0006f
 
 /* IMU variance threshold (m/s^2)^2: "the wrist is moving" marker, used to
@@ -507,6 +527,11 @@ typedef struct
     uint16_t alive_ring;         /* bit i = eval i (of last ALIVE_WINDOW_EVALS) was alive */
     uint8_t  alive_ring_n;
     uint32_t last_off_verdict_ms;
+    /* DC of the last evals since the PPG settled: the baseline is seeded from
+     * their median, not from the one reading the vote happened to land on. */
+    float    dc_recent[ALIVE_WINDOW_EVALS];
+    uint8_t  dc_recent_n;
+    uint8_t  dc_recent_i;
 
     /* Current output */
     wear_status_t status;
@@ -569,7 +594,7 @@ static void wear_bkp_restore(void)
         return;
     s_bkp_word = v;
     float base = (float)(v & WEAR_BKP_BASE_MSK) * WEAR_BKP_BASE_UNIT;
-    if (!(v & WEAR_BKP_WORN) || base < (float)DC_ABS_FLOOR)
+    if (!(v & WEAR_BKP_WORN) || base < (float)DC_VALID_MIN)
         return;
     ctx.status = WEAR_STATUS_WEARING;
     ctx.worn_dc_base = base;
@@ -689,6 +714,37 @@ static void compute_ppg_metrics(float *dc_mean, float *ac_pp, float *pi)
         *pi = *ac_pp / *dc_mean;
     else
         *pi = 0.0f;
+}
+
+/* "A pulse is present", asked with ratios only: perfusion variability as a
+ * fraction of perfusion level (a static reflection, however bright, does not
+ * modulate), and not so wild that it is an AGC step or motion artefact. The
+ * one absolute leg is PI_THD_TO_ON, see there. Every pulse question in this
+ * file goes through here so entry, hold and exit cannot disagree. */
+static bool pulse_live(float pi, float pi_range)
+{
+    return pi >= PI_THD_TO_ON && pi_range <= PI_RANGE_MAX &&
+           (pi_range / pi) >= PI_AC_RATIO_THD;
+}
+
+/* Median of the DC readings since the PPG settled (ring of ALIVE_WINDOW_EVALS).
+ * A single reading is a poor seed for the session baseline: the 2026-11-03
+ * 01:28 ON seeded 47.8k on a wrist that rested at 31k, and everything measured
+ * against that baseline for the next minutes was wrong. */
+static float median_recent_dc(void)
+{
+    uint8_t n = ctx.dc_recent_n;
+    if (n < 3)
+        return ctx.last_dc;
+    float t[ALIVE_WINDOW_EVALS];
+    for (uint8_t i = 0; i < n; i++)
+    {
+        float v = ctx.dc_recent[i];
+        uint8_t j = i;
+        while (j > 0 && t[j - 1] > v) { t[j] = t[j - 1]; j--; }
+        t[j] = v;
+    }
+    return t[n / 2];
 }
 
 static bool is_ppg_stale(uint32_t now)
@@ -1007,6 +1063,8 @@ static int evaluate_once(uint32_t now)
         ctx.on_vote_window = 0;
         ctx.alive_ring = 0;
         ctx.alive_ring_n = 0;
+        ctx.dc_recent_n = 0;
+        ctx.dc_recent_i = 0;
         LOG_I("PPG settle complete, cleared buffers");
         return 0; /* wait for fresh data next eval */
     }
@@ -1040,6 +1098,9 @@ static int evaluate_once(uint32_t now)
     ctx.last_dc = dc_mean;
     ctx.last_pi = pi;
     ctx.last_pi_range = pi_range;
+    ctx.dc_recent[ctx.dc_recent_i] = dc_mean;
+    ctx.dc_recent_i = (uint8_t)((ctx.dc_recent_i + 1u) % ALIVE_WINDOW_EVALS);
+    if (ctx.dc_recent_n < ALIVE_WINDOW_EVALS) ctx.dc_recent_n++;
     if (now - ctx.last_diag_sample_ms >= 60000)
     {
         ctx.last_diag_sample_ms = now;
@@ -1059,9 +1120,10 @@ static int evaluate_once(uint32_t now)
 
     if (ctx.status == WEAR_STATUS_WEARING)
     {
-        /* OFF threshold: relative collapse below the worn baseline, never
-         * below the absolute floor (protects against a stale/低 baseline). */
-        float off_thr = (float)DC_ABS_FLOOR;
+        /* Take-off CANDIDATE: DC collapsed below this unit's own baseline. The
+         * level alone proves nothing (see DC_VALID_MIN), so it only opens the
+         * question below. DC_VALID_MIN is the sensor-gave-no-light guard. */
+        float off_thr = (float)DC_VALID_MIN;
         if (ctx.worn_dc_base > 0.0f &&
             ctx.worn_dc_base * OFF_THR_FACTOR > off_thr)
         {
@@ -1070,37 +1132,46 @@ static int evaluate_once(uint32_t now)
 
         if (dc_mean < off_thr)
         {
-            /* Sub-threshold: vote OFF. Motion during the streak marks a
-             * take-off signature -> try_evaluate uses the fast hysteresis. */
             uint16_t imu_len = (ctx.imu_count < IMU_WINDOW_SIZE)
                                    ? ctx.imu_count : IMU_WINDOW_SIZE;
             float imu_var = (imu_len > 0)
                                 ? compute_imu_variance(ctx.acce_mag, imu_len) : 0.0f;
-            /* A DC drop on a STILL wrist that still shows a live pulse is a
-             * gain step or a posture change (sleep: arm pressed under the body),
-             * not a take-off: air reads a static reflection (pulse share
-             * ~0.04-0.07), a desk reads no pulse at all, and a wrist being
-             * carried away is not still. Founder asleep and wearing it
-             * 2026-11-03 00:00-07:00: all 7 OFF verdicts came with pi >= 0.0006
-             * and pulse share >= 0.30, 6 of them with imu_var ~0.0005 (the 7th,
-             * 05:10, was moving and keeps the take-off path). Hold, and let the baseline
-             * follow the wrist down instead of staying pinned to a transient high
-             * seed (01:28 seeded 47.8k, the resting level was 31k). Anything with
-             * motion in it keeps the take-off behaviour below. */
-            bool imu_fresh = (imu_len > 0) &&
-                             ((now - ctx.last_imu_ms) <= IMU_STALE_MS);
-            if (imu_fresh && imu_var < IMU_VARIANCE_THD &&
-                pi >= PI_THD_TO_ON && pi_range <= PI_RANGE_MAX &&
-                (pi_range / pi) >= PI_AC_RATIO_THD)
+            /* ...is there still a pulse? A DC drop with a live pulse is a gain
+             * step, a posture change (sleep: arm pressed under the body) or a
+             * strap that loosened -- not a take-off: a watch in air reads a
+             * static reflection (pulse share ~0.04-0.07) and a desk reads no
+             * pulse at all. So DC low votes OFF only together with NO pulse.
+             *
+             * Replayed on the daily unit's October wear_diag (43 OFF verdicts, no
+             * ground truth; "back ON within 10 min" as the false-OFF proxy): 23 came
+             * back within 10 min. A 36000 floor accounted for 8 of those, this
+             * rule for 12 more; it gives up 2 of the 20 that stayed off (one with
+             * the wrist moving, off for 3 h), which the stillness exit still
+             * ends a few minutes later. On the 2026-11-02 unit's worn night it
+             * removes the OFF votes the floor produced (7 OFF verdicts, all with
+             * a clear pulse).
+             *
+             * The baseline follows the wrist DOWN while the wrist is still, so a
+             * transient high seed (01:28 seeded 47.8k, the resting level was 31k)
+             * stops being the yardstick. Motion rows hold but do not teach: a
+             * moving wrist's DC carries pressure and artefact. */
+            if (dc_mean >= (float)DC_VALID_MIN && pulse_live(pi, pi_range))
             {
-                ctx.last_imu_var = imu_var;
-                if (!plugged && ctx.on_anchor_pulse && ctx.worn_dc_base > 0.0f)
-                    ctx.worn_dc_base += (dc_mean - ctx.worn_dc_base) /
-                                        (float)(1 << BASE_EMA_SHIFT);
-                LOG_I("Eval: DC=%.0f (< %.0f) but still wrist with live pulse -> hold (base=%.0f)",
+                bool imu_fresh = (imu_len > 0) &&
+                                 ((now - ctx.last_imu_ms) <= IMU_STALE_MS);
+                if (imu_fresh && imu_var < IMU_VARIANCE_THD)
+                {
+                    ctx.last_imu_var = imu_var;
+                    if (!plugged && ctx.on_anchor_pulse && ctx.worn_dc_base > 0.0f)
+                        ctx.worn_dc_base += (dc_mean - ctx.worn_dc_base) /
+                                            (float)(1 << BASE_EMA_SHIFT);
+                }
+                LOG_I("Eval: DC=%.0f (< %.0f) but live pulse -> hold (base=%.0f)",
                       dc_mean, off_thr, ctx.worn_dc_base);
                 return 1;
             }
+            /* No pulse: vote OFF. Motion during the streak marks a take-off
+             * signature -> try_evaluate uses the fast hysteresis. */
             if (imu_var >= IMU_VARIANCE_THD)
                 ctx.off_streak_motion = true;
             ctx.last_imu_var = imu_var;
@@ -1166,8 +1237,7 @@ static int evaluate_once(uint32_t now)
                  * times PI_THD_TO_ON -- so the level says "pulse" and the exit
                  * never counted a single minute (observed 2026-09-04 17:30
                  * onward). Its ratio is 0.037 against a worn median of 0.262. */
-                bool no_pulse = (pi < PI_THD_TO_ON) ||
-                                (pi > 0.0f && (pi_range / pi) < PI_AC_RATIO_THD);
+                bool no_pulse = !pulse_live(pi, pi_range);
                 bool dc_steady = false;
                 if (ctx.last_flat_check_dc > 0.0f && dc_mean > 0.0f)
                 {
@@ -1228,8 +1298,7 @@ static int evaluate_once(uint32_t now)
              * baseline. Level alone let a suspended desk (pi ~0.002) walk the
              * baseline down 47140 -> 45252 in one minute on 2026-09-04, which
              * kills the DC-collapse exit exactly as the face-down desk did. */
-            pi >= PI_THD_TO_ON &&
-            (pi > 0.0f && (pi_range / pi) >= PI_AC_RATIO_THD) &&
+            pulse_live(pi, pi_range) &&
             dc_mean >= ctx.worn_dc_base * WORN_BAND_LO &&
             dc_mean <= ctx.worn_dc_base * WORN_BAND_HI)
         {
@@ -1289,9 +1358,7 @@ static int evaluate_once(uint32_t now)
      * delivering PPG expired on its original clock even under motion. */
     if (s_probe_active && alive_imu_fresh && alive_imu_var >= IMU_RETRIGGER_THD)
         probe_open_or_extend(now, "motion", alive_imu_var);
-    bool alive_now = (pi >= PI_THD_TO_ON) &&
-                     (pi_range <= PI_RANGE_MAX) &&
-                     (pi > 0.0f && (pi_range / pi) >= PI_AC_RATIO_THD) &&
+    bool alive_now = pulse_live(pi, pi_range) &&
                      alive_imu_fresh && (alive_imu_var >= IMU_FLAT_THD);
     ctx.alive_ring = (uint16_t)((ctx.alive_ring << 1) | (alive_now ? 1u : 0u));
     ctx.alive_ring &= (uint16_t)((1u << ALIVE_WINDOW_EVALS) - 1u);
@@ -1304,8 +1371,8 @@ static int evaluate_once(uint32_t now)
     /* WARM re-entry: this session already proved a wrist once (pulse-seeded
      * baseline), so DC back inside the worn band is evidence the wrist has
      * returned. Blocked while charging so a cradle is never warm-recovered
-     * into. The DC_ABS_FLOOR clamp keeps the entry set a subset of the hold
-     * set (entry below the hold threshold would oscillate ON/OFF).
+     * into. The band sits inside the hold set (entry below the hold
+     * threshold would oscillate ON/OFF).
      *
      * 2026-08-30: a minimum pulse is now demanded here too. This branch used
      * to take DC alone, and DC alone cannot tell a desk from a wrist — measured
@@ -1332,7 +1399,7 @@ static int evaluate_once(uint32_t now)
      * comparison of the decision function, NOT a full state-machine replay —
      * the vote windows and hysteresis are not reproduced. */
     if (!plugged && ctx.worn_dc_base > 0.0f &&
-        dc_mean >= (float)DC_ABS_FLOOR &&
+        dc_mean >= (float)DC_VALID_MIN &&
         pi >= PI_THD_TO_ON && pi_range <= PI_RANGE_MAX &&
         !warm_cooldown &&
         ctx.alive_ring_n >= ALIVE_WINDOW_EVALS &&
@@ -1372,7 +1439,7 @@ static int evaluate_once(uint32_t now)
     if (!warm_cooldown &&
         ctx.alive_ring_n >= ALIVE_WINDOW_EVALS &&
         alive_count >= ALIVE_EVALS_TO_ON &&
-        dc_mean >= (float)DC_ABS_FLOOR &&
+        dc_mean >= (float)DC_VALID_MIN &&
         pi >= PI_THD_TO_ON && pi_range <= PI_RANGE_MAX)
     {
         LOG_I("Eval: DC=%.0f, AC_pp=%.0f, PI=%.5f, range=%.5f -> live wrist -> ON",
@@ -1479,9 +1546,9 @@ static void try_evaluate(void)
                  * seeded 56.9k and locked the real 43.4k wrist out), and
                  * keeps entry ⊆ hold monotonic (off_thr becomes 0.8×this
                  * DC, so a fresh pulse confirm can never oscillate). */
-                ctx.worn_dc_base = ctx.last_dc;
-                LOG_I("Wear: session baseline (re)seeded at DC=%.0f",
-                      ctx.worn_dc_base);
+                ctx.worn_dc_base = median_recent_dc();
+                LOG_I("Wear: session baseline (re)seeded at DC=%.0f (last %.0f)",
+                      ctx.worn_dc_base, ctx.last_dc);
             }
             /* Warm re-entry keeps the existing pulse-seeded baseline; the
              * anchor flag gates EMA learning to pulse-proven stretches. */
