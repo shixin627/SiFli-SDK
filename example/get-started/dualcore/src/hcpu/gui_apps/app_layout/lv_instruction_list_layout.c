@@ -766,15 +766,13 @@ static void update_indicator_dots_position(int input_value)
      * dots 上下散開比較廣，視覺上跟 exercise 不一樣。
      * center_x 往左偏 30 px：中央 dot zoom 到 1.3x（130 px 寬）時，沒偏的話
      * 右邊會跑出螢幕；偏 30 後最右邊大約在 448，剛好在 466 螢幕內 */
-    /* 卡片模式(s_dot_scale<1)圖示縮成一半後要貼著錶盤邊緣(founder 2026-10-01:「要貼著錶盤邊緣」):
-       圖示中心 = center_x + R*cos - 15(dot_bg 的位移),所以 center_x = 螢幕中心 + 15 才會跟螢幕同心;
-       半徑 = 螢幕半徑 233 - 最大那顆圖示的半徑 26 - 3px 留白 = 204。 */
+    /* 卡片模式:圖標放大 2 倍後,中央約 104px;半徑內縮以保留 3px 圓屏邊距。 */
     const bool compact = (s_dot_scale < 1.0f);
-    const int circle_radius = compact ? 204 : 200;
+    const int circle_radius = compact ? (LV_HOR_RES / 2 - 52 - 3) : 200;
     const int center_x = compact ? (LV_HOR_RES / 2 + 15) : (LV_HOR_RES / 2 - 20);
     const int center_y = LV_VER_RES / 2;
 
-    const float angle_per_dot = 36.0f * s_dot_scale; /* 跟 app_exercise.c 的 ICON_SLOT_ANGLE_DEG=36 對齊 */
+    const float angle_per_dot = 36.0f * s_dot_scale * (compact ? 3.0f : 1.0f); /* 卡片角距 18° → 54° */
 
     float base_input = 63.0f;
     float degrees_per_200_input = angle_per_dot;
@@ -842,7 +840,9 @@ static void update_indicator_dots_position(int input_value)
          * 平滑漸層。current_angle 現在是 signed [-90,90]，直接 fabsf 就是
          * 從水平右軸算起的 abs_angle */
         float abs_angle_deg = fabsf(current_angle);
-        float ratio = cosf(abs_angle_deg * (float)M_PI / 180.0f);
+        /* 透明度保留原角距的柔和變化;圖標尺寸在下面獨立做線性縮放。 */
+        float ratio = cosf((compact ? abs_angle_deg / 3.0f : abs_angle_deg) *
+                           (float)M_PI / 180.0f);
 
         int dot_size = DOT_BG_SIZE;
         int opacity = (int)(LV_OPA_30 + (LV_OPA_COVER - LV_OPA_30) * ratio);
@@ -864,11 +864,11 @@ static void update_indicator_dots_position(int input_value)
                     name, (lv_opa_t)(((uint16_t)opacity * 140) / 255), 0);
         }
 
-        /* 用指數曲線 ratio^N 取代線性 ratio：N>1 時，中央 dot 大幅放大，
-         * 邊緣 dot 快速縮小，視覺上中央更突出 */
-        float zoom_ratio = powf(ratio, DOT_ZOOM_EXPONENT);
+        /* 卡片模式從中央到上下可見邊界(±90°)線性縮小,一般列清單沿用原曲線。 */
+        float zoom_ratio = compact ? (1.0f - abs_angle_deg / 90.0f)
+                                   : powf(ratio, DOT_ZOOM_EXPONENT);
         uint16_t zoom =
-            (uint16_t)(255 * DOT_ICON_SCALE * s_dot_scale *
+            (uint16_t)(255 * DOT_ICON_SCALE * s_dot_scale * (compact ? 2.0f : 1.0f) *
                        (DOT_SMOLL_PROPORTION +
                         (DOT_BIG_PROPORTION - DOT_SMOLL_PROPORTION) * zoom_ratio));
         if (abs((int)zoom - (int)last_zoom[i]) > 5)
@@ -7335,7 +7335,7 @@ static void lc_set_rows_hidden(bool hide)
         else
             lv_obj_clear_flag(list, LV_OBJ_FLAG_HIDDEN);
     }
-    /* 右緣點點:不藏,沿用原本那圈圖示輪盤,卡片模式縮成 50%、浮到卡片上面、不接點擊(點擊歸卡片),
+    /* 右緣點點:不藏,卡片模式圖標為原先的 2 倍、角距 3 倍,浮到卡片上面、不接點擊(點擊歸卡片),
        位置由卡片翻頁連續驅動(lc_scroll_cb)。 */
     s_dot_scale = hide ? 0.5f : 1.0f;
     for (uint8_t i = 0; i < MAX_LIST_ITEMS; i++)
@@ -9508,8 +9508,9 @@ static void inst_arc_drag_cb(lv_coord_t scroll_delta_px, void *ctx)
     /* d_input = -d_scroll * 100 / pitch；instruction_list 的 pitch =
      * LIST_ITEM_SLOT_HEIGHT，dots_value 公式裡是 1:1（因為 SLOT_HEIGHT=100），
      * 寫成 generic 式更安全 */
-    /* 輪盤縮小時每格角度也縮小(s_dot_scale),手指滑過同樣角度要轉過更多格,圖示才會跟著手 */
-    const int pitch = (int)(LIST_ITEM_SLOT_HEIGHT * s_dot_scale);
+    /* 拖動比例跟顯示角距一致:卡片模式每格 54°,一般列表每格 36°。 */
+    const int pitch = (int)(LIST_ITEM_SLOT_HEIGHT * s_dot_scale *
+                            (s_dot_scale < 1.0f ? 3.0f : 1.0f));
     int target_input = s_inst_drag_input - ((int)scroll_delta_px * 100) / pitch;
 
     int min_input = 100 - 63;             /* idx=N-1 */

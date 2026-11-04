@@ -20,11 +20,11 @@
 #define TITLE_Y 98    /* 圖示+標題那一列的上緣 */
 #define SUB_Y 170     /* 說明上緣 */
 #define SUB_BOTTOM 376 /* 說明最多往下排到這裡(圓內放得下、在麥克風列上面) */
-#define SUB_W 280      /* 右緣讓出點點輪盤(最大那顆縮成一半後約 66px) */
+#define SUB_W 270      /* 右緣讓出放大後約 104px 的圖標輪盤 */
 #define CHIP_W 236    /* 選項晶片:半透明白底的膠囊,單行 */
 #define CHIP_H 40
 #define CHIP_GAP 8
-#define BIG_W 280     /* 大字版面(計時器)整排寬度:箭頭 + 大字,底下膠囊同寬 */
+#define BIG_W 270     /* 大字版面(計時器)整排寬度:箭頭 + 大字,底下膠囊同寬 */
 #define STEP_W 48     /* 步進箭頭的點擊區寬 */
 #define BIG_Y 208     /* 大字上緣 */
 #define SW_W 112      /* 開關軌道 */
@@ -324,100 +324,22 @@ static uint8_t page_from_scroll(void)
     return (uint8_t)idx;
 }
 
-/* 底色層(founder 2026-10-01:「切換過程中保持顏色不變,切換完 0.5 秒沒動後才慢慢變換顏色」)。
-   整組卡片共用**一張**底色層(卡片本身是透明的、只帶內容),所以上下翻頁時背景不會跟著一張一張換色;
-   最後一次捲動之後再等 BG_SETTLE_MS 才用 BG_FADE_MS 淡到目前停的那一頁的顏色。每一次捲動(翻頁、撥輪盤)
-   都把倒數重新計時、把進行到一半的淡入凍在當下顏色,下次停穩再從那個顏色接著淡 —— 不依賴「捲動結束」事件:
-   LVGL 會在貼齊動畫跑完之前就先發一次結束事件,之後還有捲動事件,靠事件順序會永遠等不到。
-   水平滑入時的圓弧前緣也改畫在這一層(radius),光暈跟著它的顏色。 */
-#define BG_SETTLE_MS 500
-#define BG_FADE_MS 700
+/* 共用黑底,只有上半屏繪製主題色到黑色的漸層;不建立全屏點陣圖。 */
 static lv_obj_t *s_bg = NULL;
-static lv_color_t s_bg_cur;
-static lv_color_t s_bg_from;
-static lv_color_t s_bg_to;
-static lv_timer_t *s_bg_timer = NULL;
-static int32_t s_bg_anim_var;
-
-static void halo_set_color(void)
-{
-    if (s_halo_img == NULL)
-        return;
-    lv_obj_set_style_img_recolor(s_halo_img, s_bg_cur, 0);
-}
+static lv_obj_t *s_tint = NULL;
+static uint8_t s_scroll_page = 0;
 
 static void bg_apply(lv_color_t top)
 {
-    s_bg_cur = top;
-    if (s_bg != NULL)
-    {
-        lv_obj_set_style_bg_color(s_bg, top, 0);
-        lv_obj_set_style_bg_grad_color(s_bg, accent_bottom(top), 0);
-    }
-    halo_set_color();
-}
-
-static void bg_anim_cb(void *var, int32_t t)
-{
-    (void)var;
-    bg_apply(lv_color_mix(s_bg_to, s_bg_from, (lv_opa_t)t));
-}
-
-static void bg_cancel(void)
-{
-    if (s_bg_timer != NULL)
-    {
-        lv_timer_del(s_bg_timer);
-        s_bg_timer = NULL;
-    }
-    lv_anim_del(&s_bg_anim_var, bg_anim_cb);
-}
-
-static void bg_hold(void);
-
-static void bg_timer_cb(lv_timer_t *t)
-{
-    (void)t;
-    s_bg_timer = NULL; /* 單發計時器,回呼結束後 LVGL 自己刪 */
-    if (s_pager == NULL || s_get == NULL)
-        return;
-    if (left_cards_busy())
-    {
-        bg_hold(); /* 手指還按著在拖、或還在滑:接著等 */
-        return;
-    }
-    uint8_t pg = page_from_scroll();
-    s_bg_from = s_bg_cur;
-    s_bg_to = lv_color_hex(card_accent(pg));
-    if (lv_color_eq(s_bg_to, s_bg_from))
-        return;
-    lv_anim_t a;
-    lv_anim_init(&a);
-    lv_anim_set_var(&a, &s_bg_anim_var);
-    lv_anim_set_exec_cb(&a, bg_anim_cb);
-    lv_anim_set_values(&a, 0, 255);
-    lv_anim_set_time(&a, BG_FADE_MS);
-    lv_anim_set_path_cb(&a, lv_anim_path_ease_in_out);
-    lv_anim_start(&a);
-}
-
-/* 每次捲動(以及停到某一頁)呼叫:凍結顏色,並把「停穩後才換色」的倒數重新計時。 */
-static void bg_hold(void)
-{
-    lv_anim_del(&s_bg_anim_var, bg_anim_cb);
-    if (s_bg_timer != NULL)
-    {
-        lv_timer_reset(s_bg_timer);
-        return;
-    }
-    s_bg_timer = lv_timer_create(bg_timer_cb, BG_SETTLE_MS, NULL);
-    lv_timer_set_repeat_count(s_bg_timer, 1);
+    if (s_tint != NULL)
+        lv_obj_set_style_bg_color(s_tint, top, 0);
 }
 
 static void settle_page(uint8_t idx)
 {
     s_cur = idx;
-    bg_hold();
+    s_scroll_page = idx;
+    bg_apply(lv_color_hex(card_accent(idx)));
     for (uint8_t i = 0; i < s_n; i++)
     {
         if (i + 1 >= idx && i <= idx + 1)
@@ -438,7 +360,12 @@ static void pager_event_cb(lv_event_t *e)
         return;
     if (code == LV_EVENT_SCROLL)
     {
-        bg_hold(); /* 翻頁途中顏色不動(進行到一半的淡入也凍在當下),停穩 0.5 秒後才換 */
+        uint8_t idx = page_from_scroll();
+        if (idx != s_scroll_page)
+        {
+            s_scroll_page = idx;
+            bg_apply(lv_color_hex(card_accent(idx)));
+        }
         if (s_on_scroll != NULL)
             s_on_scroll((int32_t)lv_obj_get_scroll_y(s_pager) * 256 / CARD_H);
         return;
@@ -446,6 +373,7 @@ static void pager_event_cb(lv_event_t *e)
     if (code != LV_EVENT_SCROLL_END)
         return;
     uint8_t idx = page_from_scroll();
+    bg_apply(lv_color_hex(card_accent(idx)));
     if (idx != s_cur)
         settle_page(idx);
 }
@@ -463,6 +391,7 @@ lv_obj_t *left_cards_show(lv_obj_t *parent, left_cards_get_cb_t get, uint8_t n, 
         start = n - 1;
     s_get = get;
     s_n = n;
+    s_scroll_page = start;
     s_on_tap = on_tap;
     s_on_page = on_page;
     s_on_scroll = on_scroll;
@@ -481,7 +410,7 @@ lv_obj_t *left_cards_show(lv_obj_t *parent, left_cards_get_cb_t get, uint8_t n, 
     lv_obj_set_pos(s_halo_img, (CARD_W - LEFT_CARDS_HALO_N) / 2, (CARD_H - LEFT_CARDS_HALO_N) / 2);
     /* A8 圖的顏色來自 recolor;recolor_opa 在 A8 上就是整體不透明度(lv_gpu_new_api.c draw_img),
        濃淡已經烤在圖的透明度裡,所以給滿 */
-    lv_obj_set_style_img_recolor(s_halo_img, lv_color_hex(card_accent(start)), 0);
+    lv_obj_set_style_img_recolor(s_halo_img, lv_color_black(), 0);
     lv_obj_set_style_img_recolor_opa(s_halo_img, LV_OPA_COVER, 0);
     lv_obj_clear_flag(s_halo_img, LV_OBJ_FLAG_CLICKABLE | LV_OBJ_FLAG_SCROLLABLE);
     lv_obj_add_flag(s_halo_img, LV_OBJ_FLAG_HIDDEN);
@@ -492,7 +421,16 @@ lv_obj_t *left_cards_show(lv_obj_t *parent, left_cards_get_cb_t get, uint8_t n, 
     lv_obj_set_size(s_bg, CARD_W, CARD_H);
     lv_obj_set_pos(s_bg, 0, 0);
     lv_obj_set_style_bg_opa(s_bg, LV_OPA_COVER, 0);
-    lv_obj_set_style_bg_grad_dir(s_bg, LV_GRAD_DIR_VER, 0);
+    lv_obj_set_style_bg_color(s_bg, lv_color_black(), 0);
+
+    s_tint = lv_obj_create(s_bg);
+    lv_obj_remove_style_all(s_tint);
+    lv_obj_set_size(s_tint, CARD_W, CARD_H / 2);
+    lv_obj_set_pos(s_tint, 0, 0);
+    lv_obj_set_style_bg_opa(s_tint, LV_OPA_COVER, 0);
+    lv_obj_set_style_bg_grad_color(s_tint, lv_color_black(), 0);
+    lv_obj_set_style_bg_grad_dir(s_tint, LV_GRAD_DIR_VER, 0);
+    lv_obj_clear_flag(s_tint, LV_OBJ_FLAG_CLICKABLE | LV_OBJ_FLAG_SCROLLABLE);
     lv_obj_clear_flag(s_bg, LV_OBJ_FLAG_CLICKABLE | LV_OBJ_FLAG_SCROLLABLE);
     bg_apply(lv_color_hex(card_accent(start)));
 
@@ -528,9 +466,9 @@ lv_obj_t *left_cards_show(lv_obj_t *parent, left_cards_get_cb_t get, uint8_t n, 
 void left_cards_hide(void)
 {
     /* 先把指標清掉再刪:刪除回呼裡任何人回頭問「還在嗎」都要得到否 */
-    bg_cancel();
     lv_obj_t *bg = s_bg;
     s_bg = NULL;
+    s_tint = NULL;
     lv_obj_t *halo = s_halo_img;
     s_halo_img = NULL;
     lv_obj_t *pager = s_pager;
@@ -567,6 +505,8 @@ void left_cards_set_slide(lv_coord_t tx)
        水平滑動途中視窗裡只有目前這一張,圓盤形的底板不會在垂直翻頁時露出縫。 */
     if (s_bg != NULL)
         lv_obj_set_style_radius(s_bg, sliding ? CARD_W / 2 : 0, 0);
+    if (s_tint != NULL)
+        lv_obj_set_style_radius(s_tint, sliding ? CARD_W / 2 : 0, 0);
     if (s_halo_img != NULL)
     {
         if (sliding)
@@ -632,6 +572,8 @@ void left_cards_scroll_to(uint8_t idx, bool anim)
     if (!left_cards_visible() || idx >= s_n)
         return;
     lv_obj_scroll_to_y(s_pager, (lv_coord_t)idx * CARD_H, anim ? LV_ANIM_ON : LV_ANIM_OFF);
+    /* 呼叫端已選中目標:立即換色;動畫開始時仍在舊頁不應把顏色切回去。 */
+    bg_apply(lv_color_hex(card_accent(idx)));
 }
 
 bool left_cards_busy(void)

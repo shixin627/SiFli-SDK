@@ -44,6 +44,9 @@
 #include "ble_connection_manager.h"
 #include "ble_device_manager.h"
 #include "ble_hid.h"
+#ifdef BT_FINSH
+    #include "bts2_app_inc.h"
+#endif
 
 #define DBG_TAG "ble.app"
 #define DBG_LVL DBG_LOG
@@ -1776,11 +1779,30 @@ int mnt_init(void)
 INIT_ENV_EXPORT(mnt_init);
 #endif
 
+#ifdef BT_FINSH
+/* Classic audio BT has its own name and EIR, separate from BLE advertising. */
+static int audio_bt_name_event(uint16_t type, uint16_t event_id,
+                               uint8_t *data, uint16_t data_len)
+{
+    (void)data;
+    (void)data_len;
+    if (type == BT_NOTIFY_COMMON && event_id == BT_NOTIFY_COMMON_BT_STACK_READY)
+        bt_interface_set_local_name(sizeof(DEFAULT_LOCAL_NAME) - 1,
+                                     (void *)DEFAULT_LOCAL_NAME);
+    return 0;
+}
+#endif
+
 int ble_app_init(void)
 {
     rt_thread_t tid;
     app_env_t *env = ble_app_get_env();
     env->mb_handle = rt_mb_create("ble_app", 8, RT_IPC_FLAG_FIFO);
+#ifdef BT_FINSH
+    if (bt_interface_register_bt_event_notify_callback(audio_bt_name_event) !=
+        BT_INTERFACE_STATUS_OK)
+        LOG_W("Failed to register audio BT name callback");
+#endif
     sifli_ble_enable();
     tid = rt_thread_create("ble_app", ble_app_entry, NULL, 4096, 15,
                            RT_THREAD_TICK_DEFAULT);

@@ -440,10 +440,8 @@ extern void write_clock_widget_number(void);
 static lv_obj_t *dial_widget = NULL;
 
 // Level bar for flat detection
-// Flat zone threshold: see original geometry — dot range vs arc bracket position.
-// Original constants: LEVEL_BAR_WIDTH=200, LEVEL_CENTER_BOX_W=40
-// |value| flat when ((40/2) * 100 / ((200-20)/2)) - 5 == ~17
-#define LEVEL_FLAT_THRESHOLD ((40 / 2) * 100 / ((200 - 20) / 2)) - 5
+// gravity.x * 100: 原水平容許值 17 (約 9.8°),角度加倍後約 19.6° = 34。
+#define LEVEL_FLAT_THRESHOLD 34
 
 static bool level_is_flat = false;
 
