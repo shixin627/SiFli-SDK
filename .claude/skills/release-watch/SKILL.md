@@ -25,7 +25,8 @@ version comes from OSS:
 gh workflow run watch-release.yml --repo shixin627/SiFli-SDK
 ```
 
-Inputs: `version` (**留空 = 讀 OSS `skaiwatch/<board>/info.json` 的版號 +1**),
+Inputs: `ref`（留空 = 本次 workflow 的 commit；正式發布建議指定完整 SHA）、
+`version` (**留空 = 讀 OSS `skaiwatch/<board>/info.json` 的版號 +1**),
 `board` (`sf32lb56-watch` 量產 / `sf32lb56w-watch` 開發機), `notes`,
 `with_watchface`, `flash` (預設 true；`-f flash=false` = 只編譯打包),
 `flash_port` (default COM4), `hcpu_port` (default COM3), `skip_hwtest`,
@@ -63,19 +64,20 @@ also in `_watch_build.log`, flashing errors in
 
 ## What it does not do
 
-- **No `actions/checkout`.** The job builds `C:\skaiwalk\SiFli-SDK` as it sits
-  on disk, uncommitted changes included, because the Keil toolchain, the watch
-  fixture and `oss_credentials.json` all live there. The run summary records
-  `git rev-parse HEAD` and any dirty files — check it before publishing.
-  **The bench never pulls on its own**, so releasing work done on another
-  machine means passing `-f ref=<branch-or-sha>` (push it first): the job then
-  fetches and `checkout -f --detach`es that commit *in the same tree*, keeping
-  the untracked toolchain/credentials/fixture. `-f` discards whatever the tree
-  was carrying — normally just the RELEASE-mode flags the previous run left
-  behind — and the discarded list goes into the run summary. Leave `ref` empty
-  to keep the old behaviour.
-- **No `set_build_mode.py dev` afterwards.** The tree is left in RELEASE mode;
-  switch back in the GUI (「切換到開發模式」) before resuming development.
+- **No bench-tree reset or dirty-source release.** `actions/checkout` checks
+  out `ref` (or the workflow commit) under `GITHUB_WORKSPACE/watch-release-src`.
+  Only `middleware/bluetooth` is initialized at its committed gitlink; the
+  unused, unavailable `tools/SiliconSchema` submodule is not fetched. The job
+  records the resolved source SHA and rejects a dirty checkout before build.
+  Existing developer working trees and their uncommitted work are untouched.
+- **No credential copy.** SiFli env and Keil remain installed on the runner.
+  Supply OSS settings through its existing environment; `OSS_CREDENTIALS_FILE`
+  can point to an existing credential file outside the checkout. Never put
+  credentials in source, logs or release artifacts.
+- **No `set_build_mode.py dev` afterwards.** RELEASE-mode edits stay inside
+  the disposable Actions checkout; the developer tree's build mode is untouched.
+- **No metadata before its archive.** Upload `watchOS.zip` first, then publish
+  `info.json`. An archive-upload failure leaves the previous release discoverable.
 - **No RSSI gate.** The BLE step assigns a new MAC and verifies advertising +
   GATT, but signal strength is not a pass/fail criterion — the threshold is
   pinned to -100 dBm. The calibrated 治具 threshold stays in `release_gui.py`.
@@ -88,6 +90,12 @@ also in `_watch_build.log`, flashing errors in
 `C:\actions-runner-sifli` — runner `skaiwalk-watch-bench`, labels
 `self-hosted, Windows, X64, watch-bench`. (`C:\actions-runner` is a separate
 runner bound to `shixin627/SkaiLink`; one runner serves one repo.)
+
+A runner registered only to `SkaiLink` cannot receive this repository's jobs,
+even with matching labels. An independently registered ephemeral runner with
+the `watch-bench` label can run one release on a toolchain-equipped Windows
+machine without changing an existing runner service. Set its external OSS
+environment before starting it.
 
 Installed as a Windows service, start type Automatic, running as
 `DESKTOP-QNDMPS1\skaiwalk` — **not** the default NETWORK SERVICE account, which

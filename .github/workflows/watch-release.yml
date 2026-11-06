@@ -8,19 +8,16 @@ name: Watch Release
 # strength is not gated: the RSSI threshold is pinned to the weakest value the
 # helper accepts, so a weak-but-working watch still passes.
 #
-# There is deliberately no actions/checkout: the toolchain (SiFli env, Keil),
-# the watch fixture and the OSS credentials all live in the working tree at
-# WATCH_REPO, and a fresh clone would rebuild ~2.5 MB of firmware from zero.
-# `ref` instead moves that same tree onto the commit you want to release, which
-# keeps the untracked toolchain/credentials/fixture in place. Leave it empty to
-# build the bench disk exactly as it stands. The commit that was actually
-# released is recorded in the run summary either way.
+# Build committed source in the runner workspace. Never reset or build the
+# developer's bench working tree. SiFli env and Keil remain external installs;
+# publishing credentials come from the runner environment (for example an
+# OSS_CREDENTIALS_FILE pointing outside this checkout).
 
 on:
   workflow_dispatch:
     inputs:
       ref:
-        description: "要發布的 commit / branch（留空 = bench 工作樹當下的狀態）"
+        description: "要發布的 commit / branch（留空 = 本次 workflow 的 commit）"
         default: ""
       version:
         description: "發布版號 X.Y.Z（留空 = OSS 上最新版號 +1）"
@@ -64,50 +61,32 @@ concurrency:
   group: watch-bench
   cancel-in-progress: false
 
+permissions:
+  contents: read
+
 jobs:
   release:
     runs-on: [self-hosted, windows, watch-bench]
     timeout-minutes: 60
     env:
-      WATCH_REPO: C:\skaiwalk\SiFli-SDK
+      WATCH_REPO: ${{ github.workspace }}\watch-release-src
       PYTHONUTF8: "1"
       PYTHONIOENCODING: utf-8
 
     steps:
-      - name: Sync working tree to the requested ref
-        if: inputs.ref != ''
+      - name: Check out release source
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.ref || github.sha }}
+          path: watch-release-src
+          persist-credentials: false
+
+      - name: Initialize build dependency
         working-directory: ${{ env.WATCH_REPO }}
-        env:
-          IN_REF: ${{ inputs.ref }}
         run: |
-          # `checkout -f` throws away whatever the tree is carrying. Usually
-          # that is only the RELEASE-mode flags the previous run left behind
-          # (set_build_mode.py rewrites them anyway), but record it first so a
-          # discarded local edit is at least traceable afterwards.
-          $dirty = git status --short
-          if ($dirty) {
-            "### Discarded before checkout" | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Append -Encoding utf8
-            '```' + "`n$dirty`n" + '```' | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Append -Encoding utf8
-          }
-          git fetch origin --prune --tags
-          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-          # Resolve remote-first: a stale local branch of the same name would
-          # otherwise build older code than the one that was just pushed.
-          $target = git rev-parse --verify --quiet ("origin/" + $env:IN_REF + '^{commit}')
-          if (-not $target) {
-            $target = git rev-parse --verify --quiet ($env:IN_REF + '^{commit}')
-          }
-          if (-not $target) { Write-Error "找不到 ref: $env:IN_REF"; exit 1 }
-          # Detached on purpose: nothing here should move a branch pointer.
-          git checkout -f --detach $target
-          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-          # Named explicitly rather than swept: tools/SiliconSchema is
-          # registered in the bench's .git/config but its URL resolves to a
-          # repo this fork does not have, so any blanket `submodule update`
-          # tries to clone it and aborts the release over a submodule the
-          # firmware build never touches. middleware/bluetooth is the one that
-          # matters.
-          git submodule update -- middleware/bluetooth
+          # SiliconSchema is unavailable and unused by this target. Initialize
+          # only the public Bluetooth dependency at the committed gitlink.
+          git submodule update --init -- middleware/bluetooth
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
       - name: Record working tree state
@@ -118,9 +97,17 @@ jobs:
           "## Watch release ${{ inputs.version }} (${{ inputs.board }})" | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Append -Encoding utf8
           "- commit: ``$sha``" | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Append -Encoding utf8
           if ($dirty) {
-            "- working tree is DIRTY:" | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Append -Encoding utf8
+            "- release checkout is DIRTY:" | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Append -Encoding utf8
             '```' + "`n$dirty`n" + '```' | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Append -Encoding utf8
+            Write-Error "Release checkout must be clean before building."
+            exit 1
           }
+
+      - name: Test release upload ordering
+        working-directory: ${{ env.WATCH_REPO }}
+        run: |
+          python tests/test_release_upload.py
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
       - name: Build, flash, test and publish
         working-directory: ${{ env.WATCH_REPO }}\example\get-started\dualcore\project\hcpu
@@ -147,7 +134,7 @@ jobs:
           if ('${{ inputs.skip_hwtest }}' -eq 'true') { $argv += '--skip-hwtest' }
           if ('${{ inputs.upload }}'      -eq 'true') { $argv += '--upload' }
           Write-Host "release_ci.py args: $($argv -join ' ')"
-          py -3 @argv
+          python @argv
           $rc = $LASTEXITCODE
           # A blank `version` input is resolved from OSS inside release_ci.py,
           # so the real version is only knowable here - read it back from the

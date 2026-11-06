@@ -208,13 +208,15 @@ def step_upload():
     board = rg.read_board()
     _, version, _ = rg.read_status()
 
-    key = rg.oss.info_json_key(board)
-    emit("=== 上傳 info.json → %s ===" % key)
-    emit("OK: %s" % rg.oss.put_object(creds, key, rg.INFO_JSON))
-
+    # Publish the archive before making it discoverable. If this upload fails,
+    # the previous info.json must continue to point at its working release.
     key = rg.oss.watchos_zip_key(board, version)
     emit("=== 上傳 watchOS.zip → %s ===" % key)
     emit("OK: %s" % rg.oss.put_object(creds, key, rg.WATCHOS_ZIP))
+
+    key = rg.oss.info_json_key(board)
+    emit("=== 上傳 info.json → %s ===" % key)
+    emit("OK: %s" % rg.oss.put_object(creds, key, rg.INFO_JSON))
     emit("=== 上傳完成 ===")
     return 0
 
