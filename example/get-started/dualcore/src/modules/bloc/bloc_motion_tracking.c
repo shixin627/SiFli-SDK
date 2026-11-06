@@ -2481,19 +2481,6 @@ static void air_mouse_process(rt_uint32_t ts, Quaternion *quaternion,
        2026-07-06 logo 飛鼠實機驗出「上下抓錯軸」 */
     float gyro_x = watch_sensor.imu_data.gyro.x * DPS_TO_RADS;
 
-#ifdef BSP_USING_COMMUNICATE
-    /* Independent physical angles for opted-in phone pages. Sample BEFORE
-       cursor acceleration, movement locks and dial/handwriting early returns.
-       This does not change either touch-mouse or air-mouse behavior. */
-    {
-        static float web_cs[2] = {1.0f, 0.0f};
-        float h, v;
-        air_gyro_to_world_hv(web_cs, gyro_x, watch_sensor.motion_data.gravity.x,
-                             gyro_z, &h, &v);
-        commu_web_control_motion(-h / DPS_TO_RADS, -v / DPS_TO_RADS);
-    }
-#endif
-
     /* ── 側立圓盤/手寫:gyro 直接餵各自的積分器,不進游標 pipeline。置於一切分支
        之前——期間資料收集/游標 report/moving-state 全不動作。兩者互斥(pose_begin
        gate s_hw_active;手寫 arm 需要按著觸控板,側立時不會)。
@@ -3273,6 +3260,21 @@ static void motion_tracking_in_hcpu(motion_data_t *motion_data)
     /* 錶盤長按+搖兩下:錶盤就是 is_at_home,必須放在下面那個 early return 之前。
        armed 才做事(arm 只發生在錶面被長按時),平時是一個 bool 判斷。 */
     watchface_shake_process(motion_data);
+#if defined(BSP_USING_AIR_MOUSE) && defined(BSP_USING_COMMUNICATE)
+    /* The standalone mouse destroys Main, whose cached is_at_home() can stay
+       true. Web control has its own enabled/active/web-route gates and must
+       sample before that unrelated navigation-cache early return. Preserve
+       the existing touch/air mouse pipeline below without changing its gates. */
+    {
+        static float web_cs[2] = {1.0f, 0.0f};
+        float h, v;
+        air_gyro_to_world_hv(web_cs,
+                             watch_sensor.imu_data.gyro.x * DPS_TO_RADS,
+                             motion_data->gravity.x,
+                             watch_sensor.imu_data.gyro.z * DPS_TO_RADS, &h, &v);
+        commu_web_control_motion(-h / DPS_TO_RADS, -v / DPS_TO_RADS);
+    }
+#endif
     if (is_at_home() && !is_at_speech_interface() && !is_at_control_center())
     {
         return;
