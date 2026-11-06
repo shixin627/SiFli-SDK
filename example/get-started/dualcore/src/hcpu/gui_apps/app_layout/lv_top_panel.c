@@ -16,6 +16,7 @@
 #include "ui_img_helper.h"
 #include "watch_global_data.h"
 #include "ble_hid.h"
+#include "communicate_task.h"
 #include "lv_ext_resource_manager.h"
 
 #define DBG_TAG "app.top_panel"
@@ -159,6 +160,7 @@ void lv_top_panel_mouse_layer_set_covered(bool covered)
 {
     if (!s_mouse_mode || s_mouse_layer == NULL || !lv_obj_is_valid(s_mouse_layer))
         return;
+    commu_web_control_active(!covered);
     if (covered)
         lv_obj_add_flag(s_mouse_layer, LV_OBJ_FLAG_HIDDEN);
     else

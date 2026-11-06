@@ -3260,6 +3260,21 @@ static void motion_tracking_in_hcpu(motion_data_t *motion_data)
     /* 錶盤長按+搖兩下:錶盤就是 is_at_home,必須放在下面那個 early return 之前。
        armed 才做事(arm 只發生在錶面被長按時),平時是一個 bool 判斷。 */
     watchface_shake_process(motion_data);
+#if defined(BSP_USING_AIR_MOUSE) && defined(BSP_USING_COMMUNICATE)
+    /* The standalone mouse destroys Main, whose cached is_at_home() can stay
+       true. Web control has its own enabled/active/web-route gates and must
+       sample before that unrelated navigation-cache early return. Preserve
+       the existing touch/air mouse pipeline below without changing its gates. */
+    {
+        static float web_cs[2] = {1.0f, 0.0f};
+        float h, v;
+        air_gyro_to_world_hv(web_cs,
+                             watch_sensor.imu_data.gyro.x * DPS_TO_RADS,
+                             motion_data->gravity.x,
+                             watch_sensor.imu_data.gyro.z * DPS_TO_RADS, &h, &v);
+        commu_web_control_motion(-h / DPS_TO_RADS, -v / DPS_TO_RADS);
+    }
+#endif
     if (is_at_home() && !is_at_speech_interface() && !is_at_control_center())
     {
         return;

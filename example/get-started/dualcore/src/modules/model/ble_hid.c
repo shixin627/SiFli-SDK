@@ -994,6 +994,7 @@ bool ble_hid_mouse_app_route(void)
 
 void ble_hid_mouse_set_web_route(bool on)
 {
+    commu_web_control_route(on);
     s_mouse_web_route = on;
 }
 

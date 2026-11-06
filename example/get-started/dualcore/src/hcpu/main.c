@@ -28,6 +28,7 @@
 
 #include "watch_global_data.h"
 #include "communicate_protocol.h"
+#include "communicate_task.h"
 #include "bloc_control.h"
 #include "bloc_peripheral.h"
 #include "bloc_weather.h"
@@ -1896,6 +1897,7 @@ int ble_app_event_handler(uint16_t event_id, uint8_t *data, uint16_t len,
         env->data.is_audio_subscribed = 0;
 
         // Reset HID configuration on disconnect
+        commu_web_control_disconnect();
         ble_hid_reset_on_disconnect();
 
         LOG_I("BLE_GAP_DISCONNECTED_IND reason:%d", ind->reason);

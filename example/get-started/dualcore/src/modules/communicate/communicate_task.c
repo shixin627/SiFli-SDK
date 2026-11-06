@@ -16,6 +16,8 @@
 #include "communicate_protocol.h"
 #include "communicate_parse.h"
 #include "communicate_parse_skailink.h"
+#include "web_control_state.h"
+#include <stdlib.h>
 #include "cJSON.h"
 #include "watch_global_data.h"
 #include "watch_system_interact.h"
@@ -854,10 +856,93 @@ bool commu_send_skaiapp_action(const char *app_id, const char *action_id)
     return ok;
 }
 
-/* watch→phone (SKAI_LINK): device-page trackpad relay. The right-side device
-   page hosts the hid_mouse trackpad; rather than emitting BLE HID reports, its
-   events stream here and the phone actuates them on the active target device.
-   JSON shapes match communicate_parse_skailink.h / the dart SkaiLinkKey doc. */
+/* Serialize state updates AND their notifications: a queued heartbeat must not
+   overtake a release from the GUI thread. Never hold an IRQ lock while BLE sends. */
+static web_control_state_t s_web_control;
+static struct rt_mutex s_web_control_mutex;
+static int web_control_init(void)
+{
+    return rt_mutex_init(&s_web_control_mutex, "webctrl", RT_IPC_FLAG_PRIO);
+}
+INIT_BOARD_EXPORT(web_control_init); /* Before any GUI/app init can change mouse mode. */
+
+static void web_control_send(void)
+{
+    int yaw = (int)(s_web_control.yaw * 100);
+    int pitch = (int)(s_web_control.pitch * 100);
+    char json[84];
+    /* Integer formatting avoids requiring float printf in embedded libc. */
+    int n = rt_snprintf(json, sizeof(json),
+        "{\"touching\":%u,\"yaw\":%s%d.%02d,\"pitch\":%s%d.%02d}",
+        s_web_control.touching ? 1u : 0u,
+        yaw < 0 ? "-" : "", abs(yaw) / 100, abs(yaw) % 100,
+        pitch < 0 ? "-" : "", abs(pitch) / 100, abs(pitch) % 100);
+    if (n > 0 && n < (int)sizeof(json))
+        commu_send_string(SKAI_LINK_COMMAND_ID, KEY_WEB_CONTROL_STATE, json);
+    s_web_control.sent_ms = rt_tick_get_millisecond();
+}
+
+void commu_web_control_enable(bool enabled)
+{
+    rt_mutex_take(&s_web_control_mutex, RT_WAITING_FOREVER);
+    web_control_release(&s_web_control, rt_tick_get_millisecond());
+    if (s_web_control.enabled && !enabled) web_control_send();
+    s_web_control.enabled = enabled;
+    if (enabled) web_control_send(); /* Capability acknowledgement, even off-page. */
+    rt_mutex_release(&s_web_control_mutex);
+}
+
+void commu_web_control_route(bool web_route)
+{
+    rt_mutex_take(&s_web_control_mutex, RT_WAITING_FOREVER);
+    if (s_web_control.route != web_route)
+    {
+        web_control_release(&s_web_control, rt_tick_get_millisecond());
+        if (s_web_control.enabled && !web_route) web_control_send();
+        s_web_control.route = web_route;
+    }
+    rt_mutex_release(&s_web_control_mutex);
+}
+
+void commu_web_control_active(bool active)
+{
+    rt_mutex_take(&s_web_control_mutex, RT_WAITING_FOREVER);
+    if (s_web_control.active != active)
+    {
+        web_control_release(&s_web_control, rt_tick_get_millisecond());
+        if (s_web_control.enabled && !active) web_control_send();
+        s_web_control.active = active;
+    }
+    rt_mutex_release(&s_web_control_mutex);
+}
+
+void commu_web_control_touch(bool down)
+{
+    rt_mutex_take(&s_web_control_mutex, RT_WAITING_FOREVER);
+    bool was_down = s_web_control.touching;
+    web_control_touch(&s_web_control, down, rt_tick_get_millisecond());
+    if (web_control_ready(&s_web_control) || was_down) web_control_send();
+    rt_mutex_release(&s_web_control_mutex);
+}
+
+void commu_web_control_motion(float yaw_right_dps, float pitch_down_dps)
+{
+    rt_mutex_take(&s_web_control_mutex, RT_WAITING_FOREVER);
+    if (web_control_sample(&s_web_control, rt_tick_get_millisecond(),
+                           yaw_right_dps, pitch_down_dps)) web_control_send();
+    rt_mutex_release(&s_web_control_mutex);
+}
+
+void commu_web_control_disconnect(void)
+{
+    rt_mutex_take(&s_web_control_mutex, RT_WAITING_FOREVER);
+    /* Keep physical page visibility: reconnect does not re-enter the UI. */
+    s_web_control.enabled = s_web_control.route = false;
+    web_control_release(&s_web_control, rt_tick_get_millisecond());
+    rt_mutex_release(&s_web_control_mutex);
+}
+
+/* Existing device-page trackpad relay: preserve mouse deltas/buttons/wheel. */
 bool commu_send_mouse_move(int dx, int dy)
 {
     char json[28];

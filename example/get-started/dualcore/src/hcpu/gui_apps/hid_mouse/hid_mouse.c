@@ -3757,6 +3757,7 @@ static void handle_pressing_event(lv_indev_t *indev,
                     // 開 device-change 選單;裝置切換已由名稱條拖曳/輪播/箭頭取代，
                     // hosted 下選單入口讓位給回家手勢。
                     home_pull_active = true;
+                    commu_web_control_touch(false); /* This press now navigates home. */
                     home_pull_prog = app_clock_status_bar_pull_home(
                         current_point->x - start_point.x);
                     LOG_D("right-arc swipe left -> pull home (finger-follow)");
@@ -4184,6 +4185,7 @@ static void motion_drag_end(void)
    可安全重複呼叫(founder 2026-07-17 卡住根因)。 */
 static void dial_drag_state_reset(void)
 {
+    commu_web_control_touch(false); /* UI takeover / input station / teardown. */
     dial_hold_cancel();
     s_hw_hold_armed = false;
     s_pose_dial_touch = false;
@@ -4222,6 +4224,7 @@ static void plain_event_cb(lv_event_t *e)
         /* 側立中按下畫面=開側立圓盤(founder 2026-07-20 二改:按住=桌面圓盤現形、
            手腕比方向、放開=執行)。跳過一般 press 機制——不送 BLE HID touch、
            不 arm 手寫、不進 click 判定,這個 press 從頭到尾屬於圓盤。 */
+        commu_web_control_touch(true); /* Actual control-area contact, not a mouse button. */
         if (bloc_dial_pose_touch_ready())
         {
             s_pose_dial_touch = true;
@@ -4384,6 +4387,7 @@ static void plain_event_cb(lv_event_t *e)
 
     case LV_EVENT_RELEASED:
         s_edge_swipe_armed = false;
+        commu_web_control_touch(false);
         bloc_press_free_move_set(false); /* 放開=停按住期間的 gyro 自由移動 */
         bloc_cursor_owner_reset(); /* 放開=互鎖歸零。不清的話 s_touch_cursor_owned 殘留會把
                                       handfree 飛鼠一路鎖到下次按下 */
@@ -4445,6 +4449,7 @@ static void plain_event_cb(lv_event_t *e)
         break;
 
     case LV_EVENT_PRESS_LOST:
+        commu_web_control_touch(false);
         /* press 被搶（上層 UI 亮出 / 手指滑出）→ 沒有 RELEASED，必須在這裡收尾，否則
            s_hw_hold_armed / s_dial_drag 殘留會讓下次 PRESSING 走錯分支（founder 2026-07-16
            同型教訓）。 */
@@ -12015,7 +12020,8 @@ static void ptab_apply_target(bool force)
     const char *dev = s_ptabs[s_ptab_cur].dev;
     if (dev[0] == '\0')
     {
-        hid_mouse_clear_active_device();
+        /* A title/list refresh on the same phone page must not interrupt contact. */
+        if (s_dev_active_id[0] != '\0') hid_mouse_clear_active_device();
         ble_hid_mouse_set_web_route(true); /* 網頁頁:app 在網頁上自己畫游標 */
     }
     else if (force || strncmp(dev, s_dev_active_id, SYNCED_DEVICE_ID_LEN) != 0)

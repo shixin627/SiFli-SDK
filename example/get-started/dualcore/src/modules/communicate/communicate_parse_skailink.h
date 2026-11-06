@@ -321,6 +321,12 @@ extern "C"
            Keep in lockstep with WatchProtocol.kt SKAILINK_KEY_PHONE_TABS / _PHONE_TAB_PICK。 ── */
         KEY_PHONE_TABS = 0x2c,
         KEY_PHONE_TAB_PICK = 0x2d,
+        /* Opt-in phone web-page controller. phone->watch {"enabled":0|1};
+           watch->phone {"touching":0|1,"yaw":degrees,"pitch":degrees} at 20Hz,
+           plus immediate contact edges. Angles reset at each touch-down;
+           yaw right / pitch down positive, bounded to [-180,180]. This is
+           separate from mouse buttons and preserves existing HID behavior. */
+        KEY_WEB_CONTROL_STATE = 0x2f,
     } SKAI_LINK_KEY;
 
     /* Dispatched from communicate_parse.c for cmd_id == SKAI_LINK_COMMAND_ID.
