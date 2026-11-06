@@ -761,6 +761,21 @@ void resolve_skailink_command(uint8_t key, uint8_t *pValue, uint16_t length)
         /* Device-page trackpad relay — uplink-only (watch→phone); never received. */
         LOG_W("skailink: mouse key 0x%02x is uplink-only", key);
         break;
+    case KEY_WEB_CONTROL_STATE:
+    {
+        /* Never retain the BLE parse buffer; accept only the tiny opt-in shape. */
+        if (pValue == NULL || length == 0 || length > 32) break;
+        char json[33];
+        memcpy(json, pValue, length);
+        json[length] = '\0';
+        cJSON *root = cJSON_Parse(json);
+        cJSON *enabled = cJSON_GetObjectItem(root, "enabled");
+        if (cJSON_IsObject(root) && cJSON_IsNumber(enabled) &&
+            (enabled->valuedouble == 0 || enabled->valuedouble == 1))
+            commu_web_control_enable(enabled->valueint == 1);
+        cJSON_Delete(root);
+        break;
+    }
     case KEY_CONV_STATE:
         /* phone→watch (DOWNLINK): folded chat state for the open @-conversation. */
         handle_conv_state(pValue, length);

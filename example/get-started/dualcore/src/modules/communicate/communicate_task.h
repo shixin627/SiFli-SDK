@@ -30,6 +30,14 @@ bool commu_send_active_device(const char *device_id);
 void commu_active_device_forget(void); /* link down → phone dropped the target; next send must not be de-duped */
 bool commu_send_active_device_force(const char *device_id); /* mouse page: always send (phone ignores same id) */
 
+/* Opt-in developer web control (0x20/0x2f); no effect on ordinary mouse reports. */
+void commu_web_control_enable(bool enabled);
+void commu_web_control_route(bool web_route);
+void commu_web_control_active(bool active);
+void commu_web_control_touch(bool down);
+void commu_web_control_motion(float yaw_right_dps, float pitch_down_dps);
+void commu_web_control_disconnect(void);
+
 bool commu_send_bond_success(void);
 bool commu_send_bond_fail(void);
 bool commu_send_login_success(void);

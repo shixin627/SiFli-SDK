@@ -632,6 +632,7 @@ bool app_control_get_mouse_mode(void)
 }
 void app_control_set_mouse_mode(bool flag)
 {
+	commu_web_control_active(flag); /* Covers hosted, standalone, pause and resume. */
 	isMouseMode = flag;
 }
 /* Game */

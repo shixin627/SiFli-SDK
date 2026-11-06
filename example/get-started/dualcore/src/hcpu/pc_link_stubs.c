@@ -164,6 +164,12 @@ typedef struct { uint8_t addr[6]; } bd_addr_t;
 /* communicate_task.h */ bool commu_send_mouse_button(uint8_t btn, uint8_t act) { (void)btn; (void)act; return false; }
 /* communicate_task.h */ bool commu_send_mouse_scroll(int dx, int dy) { (void)dx; (void)dy; return false; }
 /* communicate_task.h */ bool commu_send_mouse_back(void) { return false; }
+/* communicate_task.h */ void commu_web_control_enable(bool enabled) { (void)enabled; }
+/* communicate_task.h */ void commu_web_control_route(bool web_route) { (void)web_route; }
+/* communicate_task.h */ void commu_web_control_active(bool active) { (void)active; }
+/* communicate_task.h */ void commu_web_control_touch(bool down) { (void)down; }
+/* communicate_task.h */ void commu_web_control_motion(float yaw, float pitch) { (void)yaw; (void)pitch; }
+/* communicate_task.h */ void commu_web_control_disconnect(void) {}
 /* communicate_task.h */ bool commu_send_gesture_click_mode(bool on) { (void)on; return false; }
 /* communicate_task.h */ bool commu_send_media_relay(const char *cmd) { (void)cmd; return false; }
 /* gui_app_pm.h */ void sys_poweron_fsm(sys_pwron_evt_t evt) {  }
