@@ -38,6 +38,12 @@ Inputs: `ref`（留空 = 本次 workflow 的 commit；正式發布建議指定�
 讓它自己 +1，或明確指定下一號。`release_ci.py` 現在會在編譯前擋下不高於 OSS
 已發布版號的 `--version`（僅在 `--upload` 時檢查），但別靠它來想版號。
 
+An unpublished infrastructure retry may reuse its intended version only if
+the failed job stopped before any upload and an authenticated OSS metadata
+read still shows the previous version. The 2026-11-07 path-length failure
+met both conditions: OSS still held 1.1.180, so retrying 1.1.181 was safe.
+Never reuse a version that has already been published.
+
 **A failed flash wedges the watch, and a wedged watch lies about which port is
 which.** After `DownLoadUart fail`, the next attempt fails too — sometimes on
 the *other* port, and `EnterDebugMode success` can even appear on the HCPU port.
@@ -96,6 +102,10 @@ even with matching labels. An independently registered ephemeral runner with
 the `watch-bench` label can run one release on a toolchain-equipped Windows
 machine without changing an existing runner service. Set its external OSS
 environment before starting it.
+
+Use a short Windows runner root, such as `C:\sifli-ci`. Deep user/profile/scratch
+roots can exceed Windows path limits in the bootloader build directories even
+when the source checkout succeeds.
 
 Installed as a Windows service, start type Automatic, running as
 `DESKTOP-QNDMPS1\skaiwalk` — **not** the default NETWORK SERVICE account, which
