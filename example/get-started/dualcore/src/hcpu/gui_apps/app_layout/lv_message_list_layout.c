@@ -3062,6 +3062,10 @@ static lv_obj_t *dial_header_img = NULL;
 static lv_obj_t *dial_header_red_dot = NULL;
 static lv_obj_t *dial_header_bg_mask = NULL;
 static bool dial_header_was_music_before_notif = false;
+/* A header pop has been prepared but its buzz has not fired yet. Pop (content
+   swap) and buzz are separate steps so a wake can finish the first and only
+   then tell the user -- see dial_header_prepare_new_notification(). */
+static bool dial_header_buzz_owed = false;
 static rt_timer_t dial_header_music_pause_timer = NULL;
 #define MUSIC_PAUSE_HIDE_TIMEOUT_MS 30000
 static void dial_header_music_pause_timer_stop(void);
@@ -3194,8 +3198,10 @@ static void dial_header_show_notification(void)
         LOG_D("Dial header show notification: %s", notification->title);
         if (notification)
         {
-            LOG_W("[wake] header pop + buzz");
-            motor_pattern_notification();
+            /* Content is swapped below; the buzz is deferred to
+               dial_header_buzz_if_owed() so the caller picks the moment the
+               user is told (see dial_header_prepare_new_notification()). */
+            dial_header_buzz_owed = true;
             /* Hide red dot when showing full header */
             if (lv_obj_is_valid(dial_header_red_dot))
                 lv_obj_add_flag(dial_header_red_dot, LV_OBJ_FLAG_HIDDEN);
@@ -3349,7 +3355,14 @@ static void dial_header_event_cb(lv_event_t *evt)
    comparing the monotonic arrival seq catches every genuine new
    notification regardless of buffer state. */
 static uint32_t dial_header_prev_arrival_seq = 0;
-static void handle_dial_header_new_notification(void)
+/* Swap the dial header to the newest notification (labels, icon, shrink timer,
+   list anchor) WITHOUT buzzing; a buzz that is owed is fired by
+   dial_header_buzz_if_owed(). Split so a wake from sleep can do this while the
+   black wake overlay still covers the panel, paint the first frame with the
+   new header already on it, and only then buzz -- the user is told once, and
+   what they see is already the notification. Safe to call on any wake: with
+   no new arrival it returns at the seq check. */
+void dial_header_prepare_new_notification(void)
 {
     if (!lv_obj_is_valid(dial_header_bg))
     {
@@ -3406,6 +3419,23 @@ static void handle_dial_header_new_notification(void)
        為 true 的此處主動 reset。 */
     if (p_app_notification && p_app_notification->list)
         reset_list(false);
+}
+
+/* Fire the buzz dial_header_prepare_new_notification() left owed, if any. */
+void dial_header_buzz_if_owed(void)
+{
+    if (!dial_header_buzz_owed)
+        return;
+    dial_header_buzz_owed = false;
+    LOG_W("[wake] header pop + buzz");
+    motor_pattern_notification();
+}
+
+/* Normal path (screen already on): prepare, then buzz straight away. */
+static void handle_dial_header_new_notification(void)
+{
+    dial_header_prepare_new_notification();
+    dial_header_buzz_if_owed();
 }
 
 void lv_dial_header_builder(lv_obj_t *parent)

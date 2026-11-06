@@ -96,6 +96,10 @@ extern void ui_datac_init(void);
 
 #ifdef BSP_USING_PM
 extern bool lv_refreshing_done(void);
+/* lv_message_list_layout.c: the dial-header swap and its buzz are split so the
+ * wake path can put a new notification on the header BEFORE the first frame. */
+extern void dial_header_prepare_new_notification(void);
+extern void dial_header_buzz_if_owed(void);
 #endif /* BSP_USING_PM */
 
 static void handle_back_in_mainmenu(bool is_button)
@@ -1118,6 +1122,14 @@ void app_watch_entry(void *parameter)
                 /* reset activity timer */
                 lv_disp_trig_activity(NULL);
 
+                /* A notification woke us: put it on the dial header NOW, while the
+                 * overlay still hides the panel, so the first frame the user sees
+                 * already carries it. The buzz is held back until that frame is
+                 * painted (below) -- the user is told only once all of it is in
+                 * place. A few ms, and a no-op when nothing new arrived (button
+                 * wake). The slow list rebuild stays queued behind the frame. */
+                dial_header_prepare_new_notification();
+
                 /* Drop the black overlay FIRST, then paint one frame directly.
                  * This used to be lv_timer_handler() with the overlay still up
                  * and the overlay deleted afterwards. lv_timer_handler() also
@@ -1136,6 +1148,9 @@ void app_watch_entry(void *parameter)
                 }
                 lv_refr_now(NULL);
                 LOG_W("[wake] first frame painted, overlay off");
+                /* Panel now shows the new header: this is the moment to tell the
+                 * user. (No-op unless prepare above popped a header.) */
+                dial_header_buzz_if_owed();
             }
             else if (ms > 0)
             {
