@@ -313,10 +313,14 @@ static void notify_media_image(uint8_t msg_type, char *path)
     lvgl_send_msg(msg);
 }
 
+/* Runs on KE_EVT2 (the BLE thread), so: no sleeping and no LVGL calls here.
+   The image-cache invalidate happens on the GUI thread when the message is
+   handled (ui_handler.c). The old 200/500 ms sleeps held KE_EVT2 long enough
+   that the phone's 500 ms compare-result wait timed out, it sent the file
+   data anyway ("No active file receive"), retried, and the BLE kernel heap
+   ran out (ke_malloc_internal_ext ASSERT, 11-04 / 11-11 / 11-12 dumps). */
 static void refresh_media_images(void)
 {
-    lv_img_cache_invalidate_src(MEDIA_HEADER_IMG);
-    rt_thread_mdelay(200);
     notify_media_image(LVGL_MSG_TYPE_MEDIA_HEADER_IMG, MEDIA_HEADER_IMG);
     LOG_I("Received media header image file: %s", MEDIA_HEADER_IMG);
 }
@@ -324,7 +328,6 @@ static void refresh_media_images(void)
 static char prev_media_img_path[40];
 void received_file_handler(const char *path)
 {
-    rt_thread_mdelay(500); // Small delay to ensure file is closed
     /* Check if it's a gesture model file */
     if (strstr(path, "gesture_release.tflite") != NULL)
     {
@@ -348,10 +351,7 @@ void received_file_handler(const char *path)
         prev_media_img_path[sizeof(prev_media_img_path) - 1] = '\0';
         strncpy(MEDIA_IMG, path, sizeof(MEDIA_IMG) - 1);
         MEDIA_IMG[sizeof(MEDIA_IMG) - 1] = '\0';
-        LOG_I("Invalidate image cache for src: %s", MEDIA_IMG);
-        lv_img_cache_invalidate_src(prev_media_img_path);
-        lv_img_cache_invalidate_src(MEDIA_IMG);
-        rt_thread_mdelay(200);
+        /* cache invalidate for both paths: GUI thread, see ui_handler.c */
         notify_media_image(LVGL_MSG_TYPE_MEDIA_IMG, prev_media_img_path);
         LOG_I("Received media image file: %s,rm:%s", MEDIA_IMG,
               prev_media_img_path);
@@ -833,8 +833,9 @@ int bloc_start_receive_file(const char *file_path, uint32_t total_size)
             LOG_I("File already exists with matching size: %s (%d bytes)",
                   file_path, total_size);
             send_file_compare_result(0); /* 0 = skip update */
-
-            refresh_media_images();
+            /* Nothing changed on disk, so nothing to refresh. This used to
+               re-post the media header for EVERY skipped file (icons, avatars…),
+               ~1200 dropped msgs in the crash dumps. */
             return RT_EOK;
         }
         LOG_I("File exists but size differs: %s (existing: %d, new: %d)",

@@ -217,6 +217,11 @@ static void process_lvgl_message(lvgl_msg_t *msg)
         }
         break;
     case LVGL_MSG_TYPE_MEDIA_IMG:
+    {
+        /* invalidate lives here, not on the BLE thread (bloc_filesystem.c) */
+        extern char MEDIA_IMG[40];
+        lv_img_cache_invalidate_src(MEDIA_IMG);
+    }
         if (lvgl_msg_handler.handle_app_media_img)
         {
             lvgl_msg_handler.handle_app_media_img(msg->data.media_data.title);
@@ -229,6 +234,7 @@ static void process_lvgl_message(lvgl_msg_t *msg)
         lv_img_cache_invalidate_src(msg->data.media_data.img_path);
         break;
     case LVGL_MSG_TYPE_MEDIA_HEADER_IMG:
+        lv_img_cache_invalidate_src(msg->data.media_data.img_path);
         if (lvgl_msg_handler.handle_dial_media_header_img)
         {
             lvgl_msg_handler.handle_dial_media_header_img(
@@ -1006,6 +1012,10 @@ static void lvgl_task(void *param)
    one refresh each. */
 #define PENDING_REFRESH_NOTIFICATION (1u << 0)
 #define PENDING_REFRESH_RESET_INSTR  (1u << 1)
+/* Media header art: payload is the fixed MEDIA_HEADER_IMG path + current
+   title, so it collapses to a bit too. It was 1193 of the ~1650 drops in the
+   11/2026 crash dumps; dropped meant the image cache never got invalidated. */
+#define PENDING_REFRESH_MEDIA_HEADER (1u << 2)
 static volatile rt_uint32_t s_pending_refresh;
 
 static void ui_refresh_task_entry(struct _lv_timer_t *task)
@@ -1030,6 +1040,15 @@ static void ui_refresh_task_entry(struct _lv_timer_t *task)
     if (pending & PENDING_REFRESH_RESET_INSTR)
     {
         msg.type = LVGL_MSG_TYPE_RESET_INSTRUCTION_LIST;
+        process_lvgl_message(&msg);
+    }
+    if (pending & PENDING_REFRESH_MEDIA_HEADER)
+    {
+        extern char MEDIA_HEADER_IMG[40];
+        extern char *get_media_title(void);
+        msg.type = LVGL_MSG_TYPE_MEDIA_HEADER_IMG;
+        msg.data.media_data.img_path = MEDIA_HEADER_IMG;
+        msg.data.media_data.title = get_media_title();
         process_lvgl_message(&msg);
     }
 }
@@ -1081,7 +1100,8 @@ void lvgl_send_msg(lvgl_msg_t msg)
 #ifdef USE_LV_TIMER
     rt_uint32_t bit =
         (msg.type == LVGL_MSG_TYPE_NOTIFICATION) ? PENDING_REFRESH_NOTIFICATION :
-        (msg.type == LVGL_MSG_TYPE_RESET_INSTRUCTION_LIST) ? PENDING_REFRESH_RESET_INSTR : 0;
+        (msg.type == LVGL_MSG_TYPE_RESET_INSTRUCTION_LIST) ? PENDING_REFRESH_RESET_INSTR :
+        (msg.type == LVGL_MSG_TYPE_MEDIA_HEADER_IMG) ? PENDING_REFRESH_MEDIA_HEADER : 0;
     if (bit)
     {
         /* see s_pending_refresh: picked up by ui_refresh_task_entry */
@@ -1097,6 +1117,13 @@ void lvgl_send_msg(lvgl_msg_t msg)
         /* Dropped UI messages were previously silent; the display just went
          * stale with no trace. */
         LOG_W("lvgl_mq full, dropped msg type %d (err %d)", msg.type, err);
+        /* these own a heap copy that only the GUI-side handler frees */
+        if (msg.type == LVGL_MSG_TYPE_TOAST ||
+            msg.type == LVGL_MSG_TYPE_MESSAGE_STREAM ||
+            msg.type == LVGL_MSG_TYPE_UPDATE_PROCESS_TOOLKIT)
+        {
+            lv_mem_free(msg.data.app_message);
+        }
     }
     // process_lvgl_message(&msg);
 }
