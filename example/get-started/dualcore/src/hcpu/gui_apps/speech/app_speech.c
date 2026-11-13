@@ -51,6 +51,9 @@
 #include "lv_ext_resource_manager.h"
 #include "lv_ex_data.h"
 #include "app_speech.h"
+#include "bloc_v2t.h"
+#include "bloc_setting.h"
+#include "notification_reply.h"
 #include "common_widget.h"
 #include "voice_ai_logo.h"
 #include "app_mainmenu.h"
@@ -93,6 +96,19 @@ static void reply_msg_handler(gui_app_msg_type_t msg, void *param);
 static app_speech_t *p_app_speech = NULL;
 
 static uint8_t incoming_intent = V2T_INTENT_NOTHING;
+static uint32_t reply_input, reply_revision;
+static notification_reply_state_t reply_seen;
+static char reply_instance[33];
+static lv_timer_t *reply_timer;
+static lv_obj_t *reply_send_button;
+static lv_obj_t *reply_voice_logo;
+static lv_obj_t *reply_query_button;
+static void reply_query_clicked(lv_event_t *event)
+{
+    if (lv_event_get_code(event) == LV_EVENT_CLICKED && !notification_reply_query(reply_input))
+        ui_show_hint_toast("暫時無法查詢，文字已保留");
+}
+bool app_speech_is_notification_reply(void) { return incoming_intent == V2T_INTENT_REMOTE_INPUT; }
 
 static lv_obj_t *speech_indicator_builder(lv_obj_t *src, lv_event_cb_t event_cb)
 {
@@ -160,6 +176,13 @@ static void check_and_send_v2t_result_for_reply(void)
     {
         stop_voice_recognition(V2T_INTENT_NOTHING);
         const char *text = get_combined_voice2text();
+        if (app_speech_is_notification_reply()) {
+            notification_reply_state_t state = notification_reply_submit(reply_input, text);
+            if (state == NOTIFICATION_REPLY_WAITING || state == NOTIFICATION_REPLY_UNKNOWN) {
+                if (reply_send_button) lv_obj_add_state(reply_send_button, LV_STATE_DISABLED);
+            } else ui_show_hint_toast("未能傳送，文字已保留");
+            return;
+        }
         send_message((char *)text);
         clearVoice2Text();
         gui_app_exit(APP_ID_MESSAGE);
@@ -179,7 +202,19 @@ static void clear_v2t_result(void)
 {
     if (isTextEmpty() == false)
     {
+        bool resume = app_speech_is_notification_reply() && s_speech_listening;
+        if (app_speech_is_notification_reply()) {
+            stop_voice_recognition(V2T_INTENT_NOTHING);
+            s_speech_listening = false;
+            reply_input = notification_reply_clear(reply_input);
+        }
         clearVoice2Text();
+        if (app_speech_is_notification_reply() && p_app_speech)
+            lv_label_set_text(p_app_speech->lbl_content, "");
+        if (resume && notification_reply_listen(reply_input)) {
+            start_voice_recognition(V2T_INTENT_REMOTE_INPUT);
+            s_speech_listening = true;
+        }
     }
 }
 
@@ -194,7 +229,7 @@ static void handle_back_for_reply(void)
 {
     if (isTextEmpty() == false)
     {
-        clearVoice2Text();
+        clear_v2t_result();
     }
     else
     {
@@ -269,13 +304,26 @@ lv_obj_t *app_speech_main_init(lv_obj_t *parent)
     lv_obj_t *send_button;
 
     send_button = common_icon_button(p_window, ICON_SAND, send_btn_event_callback_for_reply);
+    reply_send_button = send_button;
     lvgl_msg_handler.handle_tap_indicator = press_check_and_send_v2t_result_for_reply;
     lvgl_msg_handler.handle_back_event = handle_back_for_reply;
     lv_obj_align_to(send_button, p_window, LV_ALIGN_BOTTOM_RIGHT, -30, -20);
 
     /* 語音 AI logo:垃圾桶與送出之間。 */
     lv_obj_t *vai = voice_ai_logo_create(p_window, &s_speech_vai_ops, 56);
+    reply_voice_logo = vai;
     lv_obj_align(vai, LV_ALIGN_BOTTOM_MID, 0, -22);
+
+    if (app_speech_is_notification_reply()) {
+        reply_query_button = lv_btn_create(p_window);
+        lv_obj_set_size(reply_query_button, 230, 52);
+        lv_obj_align(reply_query_button, LV_ALIGN_BOTTOM_MID, 0, -85);
+        lv_obj_add_event_cb(reply_query_button, reply_query_clicked, LV_EVENT_CLICKED, NULL);
+        lv_obj_t *label = lv_label_create(reply_query_button);
+        lv_obj_set_style_text_font(label, LV_EXT_FONT_GET(get_system_font_size(0)), 0);
+        lv_label_set_text(label, "查詢狀態"); lv_obj_center(label);
+        lv_obj_add_flag(reply_query_button, LV_OBJ_FLAG_HIDDEN);
+    }
 
     return p_window;
 }
@@ -301,6 +349,11 @@ static lv_obj_t *on_start_main(lv_obj_t *parent)
 
 static void on_start_reply(void)
 {
+    reply_seen = NOTIFICATION_REPLY_NONE;
+    reply_input = intent_get_uint32(gui_app_get_intent(), "reply_input", 0);
+    reply_revision = intent_get_uint32(gui_app_get_intent(), "reply_revision", 0);
+    const char *instance = intent_get_string(gui_app_get_intent(), "reply_instance");
+    rt_snprintf(reply_instance, sizeof(reply_instance), "%s", instance ? instance : "");
     LOG_D("on_start_reply");
     RT_ASSERT(NULL == p_app_speech);
     p_app_speech = (app_speech_t *)lv_mem_alloc(sizeof(app_speech_t));
@@ -322,10 +375,67 @@ static void on_start_reply(void)
     app_speech_set_content((const uint8_t *)"");
 
     p_app_speech->main_window = app_speech_main_init(lv_scr_act());
+    const char *draft = intent_get_string(gui_app_get_intent(), "reply_draft");
+    if (draft) {
+        clearVoice2Text(); setVoice2Text((char *)draft);
+        lv_label_set_text(p_app_speech->lbl_content, draft);
+    }
 }
 
+static void refresh_reply(lv_timer_t *timer)
+{
+    (void)timer;
+    notification_reply_state_t state = notification_reply_state(reply_input);
+    if (state != reply_seen) {
+        const char *hint = state == NOTIFICATION_REPLY_WAITING ? "等待手機確認回覆" :
+            state == NOTIFICATION_REPLY_UNKNOWN ? "回覆結果未確認，可查詢狀態" :
+            state == NOTIFICATION_REPLY_FAILED ? "未能派送，文字已保留" :
+            state == NOTIFICATION_REPLY_INVALID ? "通知已變更，請重新確認" :
+            state == NOTIFICATION_REPLY_SENT ? "此通知已派送回覆" : NULL;
+        if (hint) ui_show_hint_toast(hint);
+        reply_seen = state;
+    }
+    if (reply_voice_logo && lv_obj_is_valid(reply_voice_logo)) {
+        if (notification_reply_can_submit(reply_input)) lv_obj_clear_state(reply_voice_logo, LV_STATE_DISABLED);
+        else lv_obj_add_state(reply_voice_logo, LV_STATE_DISABLED);
+    }
+    if (reply_query_button) {
+        if (state == NOTIFICATION_REPLY_UNKNOWN) lv_obj_clear_flag(reply_query_button, LV_OBJ_FLAG_HIDDEN);
+        else lv_obj_add_flag(reply_query_button, LV_OBJ_FLAG_HIDDEN);
+    }
+    if (notification_reply_can_finish(reply_input)) {
+        clearVoice2Text();
+        gui_app_self_exit();
+        return;
+    }
+    if (reply_send_button && lv_obj_is_valid(reply_send_button)) {
+        if (!notification_reply_can_submit(reply_input)) lv_obj_add_state(reply_send_button, LV_STATE_DISABLED);
+        else lv_obj_clear_state(reply_send_button, LV_STATE_DISABLED);
+    }
+}
+static void render_reply_transcript(uint32_t input, const char *text)
+{
+    if (input != reply_input || !p_app_speech) return;
+    setVoice2Text((char *)text);
+    lv_label_set_text(p_app_speech->lbl_content, text);
+}
 static void on_resume(void)
 {
+    if (app_speech_is_notification_reply()) {
+        if (!reply_input) {
+            notification_reply_view_t view = notification_reply_open_version(reply_instance, reply_revision);
+            reply_input = view.input;
+            if (view.draft) {
+                clearVoice2Text(); setVoice2Text((char *)view.draft);
+                lv_label_set_text(p_app_speech->lbl_content, view.draft);
+            }
+        }
+        notification_reply_bind_transcript(reply_input, render_reply_transcript);
+        if (!reply_timer) reply_timer = lv_timer_create(refresh_reply, 250, NULL);
+        refresh_reply(NULL);
+        if (!notification_reply_can_submit(reply_input)) return;
+        if (!notification_reply_listen(reply_input)) { ui_show_hint_toast("無法開始回覆，請確認連線與通知"); return; }
+    }
     // switch_watch_motion_control_mode(true, true);
     start_voice_recognition(incoming_intent);
     s_speech_listening = true;
@@ -336,6 +446,10 @@ static void on_resume(void)
 
 static void on_pause(void)
 {
+    if (app_speech_is_notification_reply()) {
+        notification_reply_cancel(reply_input); reply_input = 0;
+        if (reply_timer) { lv_timer_del(reply_timer); reply_timer = NULL; }
+    }
     stop_voice_recognition(V2T_INTENT_NOTHING);
     s_speech_listening = false;
 #ifdef BSP_USING_UI_HANDLER
@@ -345,6 +459,9 @@ static void on_pause(void)
 
 static void on_stop(void)
 {
+    reply_voice_logo = NULL;
+    reply_query_button = NULL;
+    reply_send_button = NULL;
     // switch_watch_motion_control_mode(false, false);
     stop_voice_recognition(V2T_INTENT_NOTHING);
 #ifdef BSP_USING_UI_HANDLER

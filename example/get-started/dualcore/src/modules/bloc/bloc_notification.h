@@ -42,6 +42,8 @@ extern "C"
 		char message[NOTIFICATION_MESSAGE_LEN];
 		uint32_t sec_time;
 		uint16_t type; // app type
+        char reply_instance[33];
+        uint32_t reply_revision;
 		bool can_reply;
 		bool calling;
 		/* Titles of the phone notification's non-RemoteInput action buttons
@@ -67,7 +69,6 @@ extern "C"
 		uint16_t str_content_buffer[32];
 	} notification_ui_t;
 
-	extern char replying_notification_id[NOTIFICATION_ID_LEN];
 	extern uint32_t notification_center_get_info_count(void);
 	extern uint32_t notification_center_get_arrival_seq(void);
 	extern uint8_t notification_items_amount;

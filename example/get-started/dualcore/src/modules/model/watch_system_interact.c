@@ -506,6 +506,13 @@ void interact_voice_recognition(VOICE_RECOGNITION_PAYLOAD *msgData)
             return;
         }
     }
+    /* Notification dictation arrives with its input context on 0x20/0x30.
+       An unscoped old caption cannot alter another notification's draft. */
+    {
+        extern bool app_speech_is_notification_reply(void);
+        if (gui_app_is_actived(APP_ID_MESSAGE) ||
+            (gui_app_is_actived(APP_ID_SPEECH) && app_speech_is_notification_reply())) return;
+    }
     if (get_speech_coding() != msgData->header)
     {
         /* TEMP DIAG(2026-07-31):coding 不匹配會把整筆轉錄丟掉,是「文字沒出現」的候選原因
@@ -1080,19 +1087,7 @@ static int utest_user_speech_intent(int argc, char *argv[])
     {
         if (strcmp(argv[1], "-reply") == 0)
         {
-            if (argc == 3)
-            {
-                app_voice_set_voice2text_intent(V2T_INTENT_REMOTE_INPUT);
-                strcpy(replying_notification_id, get_cur_notification()->id);
-                setVoice2Text(argv[2]);
-                char *text = get_combined_voice2text();
-                handle_user_speech_intent(V2T_INTENT_REMOTE_INPUT, text);
-                clearVoice2Text();
-            }
-            else
-            {
-                LOG_E("Please input the text to reply");
-            }
+            LOG_W("Direct notification reply retired; use the notification page");
         }
         else if (strcmp(argv[1], "-chat") == 0)
         {

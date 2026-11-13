@@ -1,6 +1,11 @@
 #ifndef RTCONFIG_PROJECT_H__
 #define RTCONFIG_PROJECT_H__
 
+/* Thirty 466px list pages exceed LVGL's default 8191px style-coordinate range.
+ * Use its native large coordinates consistently in the project and simulator. */
+#define LV_USE_LARGE_COORD 1
+
+
 #if defined(PKG_USING_QUICKJS) && !defined(_MSC_VER)
     /* Re-enable QuickJS's stack-overflow guard, which the vendored source
      * disables for RT-Thread builds:

@@ -14,6 +14,7 @@
 #include "ui_helper.h"
 #include "ui_img_helper.h"
 #include "bloc_notification.h"
+#include "notification_reply.h"
 #include "ui_handler.h"
 #include "custom_trans_anim.h"
 #include "app_message.h"
@@ -55,6 +56,15 @@ static app_message_ctx_t *p_app_message_ctx = NULL;
 static app_message_t *p_app_message = NULL;
 
 static notification_t notification;
+static uint32_t reply_input;
+static notification_reply_state_t reply_seen;
+static lv_timer_t *reply_timer;
+static lv_obj_t *reply_query_button;
+static void reply_query_clicked(lv_event_t *event)
+{
+    if (lv_event_get_code(event) == LV_EVENT_CLICKED && !notification_reply_query(reply_input))
+        ui_show_hint_toast("暫時無法查詢，文字已保留");
+}
 
 static bool open_from_message_list = false;
 void app_message_set_open_from_message_list(bool open)
@@ -180,14 +190,10 @@ static void message_voice_send(void)
         stop_voice_recognition(V2T_INTENT_NOTHING);
         const char *text = get_combined_voice2text();
         LOG_D("message_voice_send id:%s text:%s", notification.id, text);
-        strcpy(replying_notification_id, notification.id);
-        handle_user_speech_intent(V2T_INTENT_REMOTE_INPUT, (char *)text);
-        count_speech_coding();
-        clearVoice2Text();
-        /* Ensure notification is removed from list after reply */
-        extern void remove_notification_by_id(const char *id);
-        remove_notification_by_id(notification.id);
-        gui_app_self_exit();
+        notification_reply_state_t state = notification_reply_submit(reply_input, text);
+        if (state == NOTIFICATION_REPLY_WAITING || state == NOTIFICATION_REPLY_UNKNOWN)
+            lv_obj_add_state(voice_send_btn, LV_STATE_DISABLED);
+        else ui_show_hint_toast("未能傳送，文字已保留");
     }
     #endif
 }
@@ -197,9 +203,18 @@ static void message_voice_clear(void)
     #ifdef BSP_USING_BLOC_V2T
     if (isTextEmpty() == false)
     {
+        bool resume = s_msg_listening;
+        stop_voice_recognition(V2T_INTENT_NOTHING);
+        s_msg_listening = false;
+        reply_input = notification_reply_clear(reply_input);
         count_speech_coding();
         clearVoice2Text();
         app_speech_set_content((const uint8_t *)"");
+        if (voice_text_label) voice_text_label_set_text(voice_text_label, "");
+        if (resume && notification_reply_listen(reply_input)) {
+            start_voice_recognition(V2T_INTENT_REMOTE_INPUT);
+            s_msg_listening = true;
+        }
     }
     else
     {
@@ -346,11 +361,11 @@ static void message_option_chip_cb(lv_event_t *e)
     if (idx < 0 || idx >= notification.option_count)
         return;
     LOG_D("message option tap idx=%d", idx);
-    /* Same path as message_voice_send: 0x20 {"id","m"} then drop + exit. */
-    strcpy(replying_notification_id, notification.id);
-    handle_user_speech_intent(V2T_INTENT_REMOTE_INPUT, notification.options[idx]);
-    remove_notification_by_id(notification.id);
-    gui_app_self_exit();
+    notification_reply_state_t state = notification_reply_submit(reply_input, notification.options[idx]);
+    if (state == NOTIFICATION_REPLY_WAITING || state == NOTIFICATION_REPLY_UNKNOWN) {
+        for (unsigned i = 0; s_opt_box && i < lv_obj_get_child_cnt(s_opt_box); i++)
+            lv_obj_add_state(lv_obj_get_child(s_opt_box, i), LV_STATE_DISABLED);
+    } else ui_show_hint_toast("未能傳送，通知已保留");
 }
 
 static void message_self_input_chip_cb(lv_event_t *e)
@@ -601,11 +616,16 @@ lv_obj_t *app_message_init(lv_obj_t *parent)
                 lv_obj_add_flag(s_voice_objs[i], LV_OBJ_FLAG_HIDDEN);
     }
 
+    reply_query_button = message_chip(parent, "查詢狀態", reply_query_clicked, 0);
+    lv_obj_set_width(reply_query_button, 230);
+    lv_obj_align(reply_query_button, LV_ALIGN_BOTTOM_MID, 0, -25);
+    lv_obj_add_flag(reply_query_button, LV_OBJ_FLAG_HIDDEN);
     return p_window;
 }
 
 static void on_start(void)
 {
+    reply_seen = NOTIFICATION_REPLY_NONE;
     RT_ASSERT(NULL == p_app_message);
     p_app_message = (app_message_t *)lv_mem_alloc(sizeof(app_message_t));
     memset(p_app_message, 0, sizeof(app_message_t));
@@ -614,11 +634,20 @@ static void on_start(void)
     for (int i = 0; i < notification_items_amount; i++)
     {
         notification_t *n = get_notification(i);
-        if (n && strcmp(n->id, notification.id) == 0)
+        bool matches = n && (notification.reply_revision ?
+            (n->reply_revision == notification.reply_revision && !strcmp(n->reply_instance, notification.reply_instance)) :
+            (!n->reply_revision && !strcmp(n->id, notification.id)));
+        if (matches)
         {
             notification = *n;
             break;
         }
+    }
+    notification_reply_view_t view = notification_reply_open(&notification);
+    reply_input = view.input;
+    if (messagr_can_reply && !notification_reply_available() && !view.draft) {
+        messagr_can_reply = false;
+        ui_show_hint_toast("無法回覆，請確認連線與手機 App 版本");
     }
     /* Init voice recognition for inline reply */
     if (messagr_can_reply)
@@ -636,11 +665,70 @@ static void on_start(void)
         voice_reply_active = false;
     }
     p_app_message->main_window = app_message_init(lv_scr_act());
+    if (view.draft) {
+        clearVoice2Text(); setVoice2Text((char *)view.draft);
+        if (voice_text_label) voice_text_label_set_text(voice_text_label, view.draft);
+    }
     cust_trans_anim_config(CUST_ANIM_TYPE_1, NULL);
 }
 
+static void refresh_reply(lv_timer_t *timer)
+{
+    (void)timer;
+    notification_reply_process();
+    notification_reply_state_t state = notification_reply_state(reply_input);
+    if (notification_reply_can_finish(reply_input)) {
+        clearVoice2Text();
+        gui_app_self_exit();
+        return;
+    }
+    bool editable = notification_reply_can_submit(reply_input);
+    if (state != reply_seen) {
+        const char *hint = state == NOTIFICATION_REPLY_WAITING ? "等待手機確認回覆" :
+            state == NOTIFICATION_REPLY_UNKNOWN ? "回覆結果未確認，可查詢狀態" :
+            state == NOTIFICATION_REPLY_FAILED ? "未能派送，文字已保留" :
+            state == NOTIFICATION_REPLY_INVALID ? "通知已變更，請重新確認" :
+            state == NOTIFICATION_REPLY_SENT ? "此通知已派送回覆" : NULL;
+        if (hint) ui_show_hint_toast(hint);
+        reply_seen = state;
+    }
+    if (s_msg_vai_logo && lv_obj_is_valid(s_msg_vai_logo)) {
+        if (editable) lv_obj_clear_state(s_msg_vai_logo, LV_STATE_DISABLED);
+        else lv_obj_add_state(s_msg_vai_logo, LV_STATE_DISABLED);
+    }
+    if (reply_query_button) {
+        if (state == NOTIFICATION_REPLY_UNKNOWN) lv_obj_clear_flag(reply_query_button, LV_OBJ_FLAG_HIDDEN);
+        else lv_obj_add_flag(reply_query_button, LV_OBJ_FLAG_HIDDEN);
+    }
+    if (voice_send_btn && lv_obj_is_valid(voice_send_btn)) {
+        if (!editable) lv_obj_add_state(voice_send_btn, LV_STATE_DISABLED);
+        else lv_obj_clear_state(voice_send_btn, LV_STATE_DISABLED);
+    }
+    for (unsigned i = 0; s_opt_box && i < lv_obj_get_child_cnt(s_opt_box); i++) {
+        if (!editable) lv_obj_add_state(lv_obj_get_child(s_opt_box, i), LV_STATE_DISABLED);
+        else lv_obj_clear_state(lv_obj_get_child(s_opt_box, i), LV_STATE_DISABLED);
+    }
+}
+
+static void render_reply_transcript(uint32_t input, const char *text)
+{
+    if (input != reply_input) return;
+    setVoice2Text((char *)text);
+    if (voice_text_label) voice_text_label_set_text(voice_text_label, text);
+}
 static void on_resume(void)
 {
+    if (!reply_input) {
+        notification_reply_view_t view = notification_reply_open(&notification);
+        reply_input = view.input;
+        if (view.draft) {
+            clearVoice2Text(); setVoice2Text((char *)view.draft);
+            if (voice_text_label) voice_text_label_set_text(voice_text_label, view.draft);
+        }
+    }
+    notification_reply_bind_transcript(reply_input, render_reply_transcript);
+    if (!reply_timer) reply_timer = lv_timer_create(refresh_reply, 250, NULL);
+    refresh_reply(NULL);
     setting_provider.set_power_save_mode(0);
     #ifdef BSP_USING_UI_HANDLER
     if (voice_reply_active)
@@ -648,7 +736,12 @@ static void on_resume(void)
         lvgl_msg_handler.handle_vad_status = handle_message_mic_status;
         lvgl_msg_handler.handle_tap_indicator = message_tap_send;
         lvgl_msg_handler.handle_back_event = message_voice_clear;
+        if (!notification_reply_can_submit(reply_input)) return;
         #ifdef BSP_USING_BLOC_V2T
+        if (!notification_reply_listen(reply_input)) {
+            ui_show_hint_toast("無法開始回覆，請確認連線與通知");
+            return;
+        }
         start_voice_recognition(V2T_INTENT_REMOTE_INPUT);
         #endif
         s_msg_listening = true;
@@ -663,6 +756,9 @@ static void on_resume(void)
 
 static void on_pause(void)
 {
+    notification_reply_cancel(reply_input);
+    reply_input = 0;
+    if (reply_timer) { lv_timer_del(reply_timer); reply_timer = NULL; }
     setting_provider.set_power_save_mode(1);
     #ifdef BSP_USING_UI_HANDLER
     if (voice_reply_active)
@@ -683,31 +779,32 @@ static void on_pause(void)
 
 static void on_stop(void)
 {
+    if (reply_query_button) { lv_obj_del(reply_query_button); reply_query_button = NULL; }
     LOG_D("message_on_stop");
     /* Clean up voice reply resources */
     if (voice_reply_active)
     {
     #ifdef BSP_USING_BLOC_V2T
         stop_voice_recognition(V2T_INTENT_NOTHING);
-        /* Unbind our voice text label from speech content data */
-        if (voice_text_bind_handle)
-        {
-            extern lv_ex_data_t *app_speech_get_content_data(void);
-            lv_ex_data_t *speech_content = app_speech_get_content_data();
-            if (speech_content)
-            {
-                lv_ex_unbind_data(speech_content, voice_text_bind_handle);
-            }
-            voice_text_bind_handle = NULL;
-        }
     #endif
-        voice_reply_active = false;
-        voice_text_label = NULL;
-        voice_send_btn = NULL;
-        s_msg_vai_logo = NULL;
-        voice_send_icon = NULL;
-        voice_reply_window = NULL;
     }
+    /* The binding exists even when option chips kept the microphone off. */
+    if (voice_text_bind_handle)
+    {
+        extern lv_ex_data_t *app_speech_get_content_data(void);
+        lv_ex_data_t *speech_content = app_speech_get_content_data();
+        if (speech_content)
+        {
+            lv_ex_unbind_data(speech_content, voice_text_bind_handle);
+        }
+        voice_text_bind_handle = NULL;
+    }
+    voice_reply_active = false;
+    voice_text_label = NULL;
+    voice_send_btn = NULL;
+    s_msg_vai_logo = NULL;
+    voice_send_icon = NULL;
+    voice_reply_window = NULL;
     s_opt_box = NULL;
     s_msg_widget = NULL;
     memset(s_voice_objs, 0, sizeof(s_voice_objs));
@@ -833,6 +930,9 @@ static int app_message_main(intent_t i)
     {
         // Entry message main page
         const char *id = intent_get_string(i, "noti_id");
+        const char *instance = intent_get_string(i, "noti_instance");
+        rt_snprintf(notification.reply_instance, sizeof(notification.reply_instance), "%s", instance ? instance : "");
+        notification.reply_revision = intent_get_uint32(i, "noti_revision", 0);
         if (id)
         {
             strncpy(notification.id, id, NOTIFICATION_ID_LEN - 1);

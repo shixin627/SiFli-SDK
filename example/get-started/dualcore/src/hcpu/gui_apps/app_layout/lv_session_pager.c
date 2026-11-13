@@ -8,6 +8,7 @@
 #include "lvgl.h"
 #include "app_mem.h" /* app_cache_alloc(IMAGE_CACHE_PSRAM) — session 倉庫在 PSRAM */
 #include "lv_session_pager.h"
+#include "instruction_list.h"
 #include "communicate_task.h"
 #include "ui_handler.h"
 #include "bloc_v2t.h"
@@ -56,21 +57,7 @@ LV_IMG_DECLARE(micro_icon);
 #define SP_MSG_MAX 12
 #define SP_MSG_LEN 192
 
-typedef struct
-{
-    char id[SESSION_ID_LEN];
-    char title[SESSION_TITLE_LEN];
-    char preview[SESSION_PREVIEW_LEN];
-    uint32_t ts; /* epoch 秒(牆鐘偽 UTC,同手錶其他 timestamp);0 = 手機沒給 */
-    /* 擁有這個 session 的 Bot(Hermes profile 名)。滑鼠 app 聊天室左右滑
-       只在同 bot 的 session 間切換(founder 2026-08-30)。"" = 舊桌面沒送。 */
-    char bot[SESSION_BOT_LEN];
-    /* 這個 Bot 的頭像鍵(內容雜湊)。空 = 手機沒給(舊手機/沒頭像),右緣照舊畫設備名。 */
-    char av[SESSION_AV_LEN];
-    /* preview 是「這個 Bot 的一句話」(手機掛的 AI 主動提醒),不是這個對話的最後一則訊息:
-       只給左頁列的預覽行用,開聊天室時不能拿它當第一個氣泡(會閃出不相干的內容)。 */
-    bool glance;
-} session_meta_t;
+
 
 typedef struct
 {
@@ -82,13 +69,7 @@ typedef struct
    Storage stays PER DESKTOP (a flat list cannot say which desktop a row belongs to,
    so convOpen would route at the wrong machine); ADR-0020 merges only the VIEW:
    one list, every device's sessions sorted by ts (absent ts = grouped by device). */
-typedef struct
-{
-    char id[SESSION_ID_LEN];
-    char name[SESSION_DEVICE_NAME_LEN];
-    session_meta_t items[SESSION_PAGER_MAX];
-    int count;
-} device_sessions_t;
+
 
 /* 倉庫本體在 PSRAM(2026-08-30):SESSION_PAGER_MAX 提到 25(5 bot × 5 session)後,
    committed+pending 兩份 × 4 台 ≈ 54KB,SRAM 塞不下。app_cache_alloc(IMAGE_CACHE_PSRAM)
@@ -166,7 +147,7 @@ static bool sp_storage_ensure(void)
     size_t sz_pend = sizeof(pending_list_t) * SESSION_DEVICE_MAX;
     size_t sz_work = sizeof(session_meta_t) * SESSION_PAGER_MAX;
     uint8_t *blk = (uint8_t *)app_cache_alloc(sz_dev + sz_pend + sz_work,
-                                              IMAGE_CACHE_PSRAM);
+                                              IMAGE_CACHE_PSRAM_ONLY);
     if (blk == NULL)
     {
         LOG_E("session store PSRAM alloc failed (%u bytes)",
@@ -609,286 +590,19 @@ static void sp_append_actions(lv_obj_t *view)
    黑底、文字置中、右緣圓形圖標輪播、底部麥克風)。session 以 '@' item 塞進那份
    清單,點了走既有 '@' 路徑(conv_open + chat_page);這裡的自有列表/聊天層退役成
    隱藏備援。upsert/移除都有變動才 refresh,避免 refresh→hook→inject 迴圈。 */
-/* 這一列該不該併進「同一個 Bot 已經有代表列」裡 —— sp_visible_for_device 與注入迴圈
-   共用同一條判準。
-
-   平常一律併(一列一個 Bot)。搜尋開著時只併「因為 **bot 名**比中而留下來的」那些 ——
-   使用者講的是 Bot 的名字,要的是那一個 Bot,不是它底下五間房各一列(而且那五列的標題
-   都會是同一個 bot 名,根本分不出來)。因為 **session 標題**比中而留下的照舊一列一間房。 */
-static bool sp_row_collapses_by_bot(const session_meta_t *s)
-{
-    extern bool instruction_list_filter_active(void);
-    extern bool instruction_list_title_matches_filter(const char *title);
-    if (s->bot[0] == '\0')
-        return false; /* 舊桌面沒送 profile:彼此不是「同一個 Bot」,併起來會憑空少房 */
-    if (!instruction_list_filter_active())
-        return true;
-    return instruction_list_title_matches_filter(s->bot) &&
-           !instruction_list_title_matches_filter(s->title);
-}
-
-/* 每台桌面在清單上要露出哪幾筆 —— founder 2026-08-24:「每個設備只會有最新的 5 個
-   session,除非我有搜尋 session,才改成每個設備搜尋到的最新 5 個」。
-
-   為什麼是挑、不是少存:搜尋字是在**手錶本地**比對標題的(instruction list 的
-   pack_text_filter),池子只有露出來的那幾筆的話,搜尋永遠只能命中畫面上已經看得到的
-   東西 —— 那就不叫搜尋了。所以儲存維持 SESSION_PAGER_MAX 筆/台,這裡只決定哪
-   幾筆變成清單列;搜尋開著時同一支函式改用「比中查詢的最新 5 筆」。
-
-   ── 名額是給 BOT 的,不是給 SESSION 的(founder 2026-09-02) ──────────────────
-   收斂**必須在取前 N 筆之前**做。原本的順序是先挑「這台最新的 5 個 session」、注入時
-   才併成 Bot 列:一個 Bot 被連續談過五次就把五個名額全吃光,收斂完只剩它一列,同一台
-   桌面上的其他 Bot 一個都進不來。真機:手機送了 1234 五間 + default 五間,1234 的五間
-   都比較新 → 手錶只看得到 1234,default 從頭到尾沒出現過。
-   這個順序在 8/24 是對的(那時左頁列的是 session);8/30 改成「一列一個 Bot」之後,
-   cap 就套錯層了 —— 要的是「最新 5 個 **Bot**」。
-
-   out[] 收 items[] 的 index,ts 由新到舊(同 ts / 都沒 ts 時取陣列在前者 —— 手機推
-   來的順序本來就是新→舊)。回傳筆數。 */
 static int sp_visible_for_device(int slot, uint8_t *out, int max)
 {
-    /* 空查詢時恆真 = 平常就是「最新 N 筆」。 */
-    extern bool instruction_list_title_matches_filter(const char *title);
-    const device_sessions_t *dev;
-    bool taken[SESSION_PAGER_MAX];
-    int n = 0;
-    if (slot < 0 || slot >= s_device_count || out == NULL || max <= 0)
-        return 0;
-    dev = &s_devices[slot];
-    memset(taken, 0, sizeof(taken));
-    while (n < max)
-    {
-        int best = -1;
-        bool dup = false;
-        for (int k = 0; k < dev->count && k < SESSION_PAGER_MAX; k++)
-        {
-            if (taken[k])
-                continue;
-            /* 標題**或 bot 名**任一比中就留(founder 2026-08-30:「點下面的麥克風輸入
-               文字要先查看有沒有輸入文字的 bot 或是 session 存在」)。左頁改成列 Bot 之後
-               只比標題就不對了:講一個 Bot 的名字會一個都沒中,於是清單給你「開新對話」——
-               明明那個 Bot 就在上面。比中之後 real_matches>0,合成的「開新對話」列本來
-               就會被丟掉,所以「先查有沒有、有就別開新的」這半自然成立。 */
-            if (!instruction_list_title_matches_filter(dev->items[k].title) &&
-                !instruction_list_title_matches_filter(dev->items[k].bot))
-                continue;
-            if (best < 0 || dev->items[k].ts > dev->items[best].ts)
-                best = k;
-        }
-        if (best < 0)
-            break;
-        taken[best] = true;
-        /* 已經有同 Bot 的代表列了就跳過,而且**不佔名額** —— 這一行就是「名額給 Bot」。
-           標成 taken 後繼續掃,所以它底下更舊的那幾間也不會反覆被挑到。 */
-        if (sp_row_collapses_by_bot(&dev->items[best]))
-        {
-            for (int j = 0; j < n && !dup; j++)
-                dup = (strncmp(dev->items[out[j]].bot, dev->items[best].bot,
-                               SESSION_BOT_LEN) == 0);
-        }
-        if (dup)
-            continue;
-        out[n++] = (uint8_t)best;
-    }
-    return n;
+    return instruction_list_selected_sessions((uint8_t)slot, out, (uint8_t)max);
 }
 
-static void sp_inject_sessions_into_actions(void)
+const device_sessions_t *session_list_pool(int *count)
 {
-    extern void add_or_update_custom_instruction(const char *id, const char *title,
-                                                 const char *trigger_type,
-                                                 uint32_t interval_sec, bool enabled,
-                                                 uint32_t version, const char *open_app);
-    extern void set_instruction_category(const char *id, char cat);
-    extern void remove_custom_instruction(const char *id);
-    extern void refresh_custom_instructions(void);
-    extern uint8_t return_total_list_count(void);
-    extern const char *instruction_list_export_id(uint8_t i);
-    extern const char *instruction_list_export_title(uint8_t i);
-
-    /* 滑鼠 app 單設備模式(搜尋抽屜/立起面板)佔用共享清單期間**整段跳過**:那份清單是
-       「正在控制那一台電腦」面板的鏡像(0x03),把 s_devices 全部設備的 session upsert
-       進去=別台的 session 混進單設備搜尋結果(2026-08-15 真機抓到)。抽屜收掉
-       restore_base 還原錶盤清單後,下一次 0x20/輪詢會照常補注入,不會漏。 */
-    {
-        extern bool instruction_list_single_device_active(void);
-        if (instruction_list_single_device_active())
-            return;
-    }
-
-    bool changed = false;
-
-    /* 這一輪每台桌面要露出的那幾筆(見 sp_visible_for_device)。清單上的 conv 段
-       **只由這份集合決定** —— 沒被挑中的(第 6 筆之後、或搜尋沒比中的)就跟被桌面
-       刪掉的一樣從清單移除,只是仍留在 s_devices 裡供下一次搜尋比對。 */
-    uint8_t vis[SESSION_DEVICE_MAX][SESSION_VISIBLE_MAX];
-    int vis_n[SESSION_DEVICE_MAX];
-    for (int d = 0; d < SESSION_DEVICE_MAX; d++)
-        vis_n[d] = (d < s_device_count) ? sp_visible_for_device(d, vis[d], SESSION_VISIBLE_MAX) : 0;
-
-    /* ── 一列一個 BOT(founder 2026-08-30:「改成顯示前幾個最新的 bot」)──────────
-       同一個 Bot 被談過六次就佔掉六列、把別的 Bot 擠出畫面。代表列 = 該 Bot 最新的那個
-       session,所以列上的 id 仍是真的 session key,點下去的路由一個位元都不用改;左右滑
-       切同 Bot 的其他 session 由 chat page 的 switcher 接手(wf_chat_bind_switcher)。
-
-       收斂本身已經做在 sp_visible_for_device 裡(2026-09-02 移進去的):在那裡做,五個
-       名額才是給 BOT 的。留在這裡做等於先讓最吵的 Bot 吃光名額、再把它自己收成一列,
-       同一台桌面的其他 Bot 就永遠進不來(真機:1234 五間都比 default 新 → 手錶只
-       看得到 1234)。vis[][] 因此已經是「每台最新 N 個 Bot 的代表列」,下面的移除迴圈
-       拿它判斷「這輪還在不在」也還是同一份真相。 */
-
-    /* 移除:清單裡 conv: 開頭、但這一輪沒被挑中的(桌面刪了 session、或落在最新 5 筆
-       之外 / 搜尋沒比中)。 */
-    for (int i = (int)return_total_list_count() - 1; i >= 0; i--)
-    {
-        const char *iid = instruction_list_export_id((uint8_t)i);
-        if (iid == NULL || strncmp(iid, "conv:", 5) != 0)
-            continue;
-        bool still = false;
-        for (int d = 0; d < s_device_count && !still; d++)
-            for (int v = 0; v < vis_n[d] && !still; v++)
-                still = (strcmp(s_devices[d].items[vis[d][v]].id, iid) == 0);
-        if (!still)
-        {
-            remove_custom_instruction(iid);
-            changed = true;
-        }
-    }
-
-    /* upsert:按 ts **舊→新**(注入順序 = 清單由上而下的順序,所以最新的落在 session
-       段最下面 —— founder 2026-08-12:「希望它是按照時間最新的在最下面」)。
-       R81(founder 2026-09-10:「bot 在 actions 最下面,每次進去都在 bot 的位置」):
-       conv 段整段搬到 actions **下面**(instruction_list_order_conv_items),所以最新的
-       session = 整份清單最後一項 = 進場落點;往上捲是愈舊的 bot,再往上才是 actions。title 沒變就不動(add_or_update
-       恆觸發重繪成本)。無 ts 的(舊韌體/桌面沒給)ts=0,排在最上面=最舊,合理。 */
-    struct
-    {
-        uint8_t slot;
-        uint8_t idx;
-        uint32_t ts;
-    } order[SESSION_DEVICE_MAX * SESSION_VISIBLE_MAX];
-    int cnt = 0;
-    for (int d = 0; d < s_device_count; d++)
-        for (int v = 0; v < vis_n[d]; v++)
-        {
-            uint8_t k = vis[d][v];
-            order[cnt].slot = (uint8_t)d;
-            order[cnt].idx = k;
-            order[cnt].ts = s_devices[d].items[k].ts;
-            cnt++;
-        }
-    for (int i = 1; i < cnt; i++)
-    {
-        /* stable insertion, ts 小(舊)者在前 → 最新的排在最後 = 清單最下面 */
-        int j = i;
-        while (j > 0 && order[j - 1].ts > order[j].ts)
-        {
-            uint8_t t_slot = order[j].slot, t_idx = order[j].idx;
-            uint32_t t_ts = order[j].ts;
-            order[j] = order[j - 1];
-            order[j - 1].slot = t_slot;
-            order[j - 1].idx = t_idx;
-            order[j - 1].ts = t_ts;
-            j--;
-        }
-    }
-    for (int o = 0; o < cnt; o++)
-    {
-        const session_meta_t *s = &s_devices[order[o].slot].items[order[o].idx];
-        /* R11(founder):來源設備不併進標題,改由 instruction list 在標題右下角
-           畫小字半透明副標(session_list_device_name_for 反查)。 */
-        /* 標題的規則只有一條硬性要求:**注入的標題必須能通過 pack_text_filter 的同一支
-           比對**,否則這一列會在打包階段被再篩掉一次,`real_matches` 歸零、清單改給
-           「開新對話」——明明東西就在上面(那正是上面那段註解警告的「兩邊語意分岔」)。
-
-           於是:session 標題比中就用 session 標題(使用者搜的是那間房);否則用 bot 名
-           (沒搜尋時恆走這條 = 一列一個 Bot;搜尋時走這條的一定是因 bot 名比中而留下的,
-           所以 bot 名必然也比得中)。兩種情況都滿足上面那條要求。
-           沒有 bot 的舊資料一律退回 session 標題。 */
-        extern bool instruction_list_filter_active(void);
-        extern bool instruction_list_title_matches_filter(const char *t);
-        bool title_hit = instruction_list_filter_active() &&
-                         instruction_list_title_matches_filter(s->title);
-        const char *title = (!title_hit && s->bot[0])
-                                ? s->bot
-                                : (s->title[0] ? s->title : "Session");
-        bool same = false;
-        uint8_t n = return_total_list_count();
-        for (uint8_t i = 0; i < n; i++)
-        {
-            const char *iid = instruction_list_export_id(i);
-            const char *it = instruction_list_export_title(i);
-            if (iid && it && strcmp(iid, s->id) == 0 && strcmp(it, title) == 0)
-            {
-                same = true;
-                break;
-            }
-        }
-        if (!same)
-        {
-            add_or_update_custom_instruction(s->id, title, "", 0, false, 0, "");
-            changed = true;
-        }
-        set_instruction_category(s->id, '@'); /* 冪等 */
-        /* Bot 頭像(founder 2026-08-31:「右邊的設備名稱改成顯示跟電腦一樣的 bot 頭像」)。
-           這裡只交出鍵,檔案在不在、要不要跟手機要,由 instruction list 那邊決定 —— 它才是
-           畫那個右緣槽位的人。搜尋時列的是 session 不是 Bot,頭像仍屬於同一個 Bot,照給。 */
-        {
-            extern void set_instruction_avatar(const char *id, const char *av);
-            set_instruction_avatar(s->id, s->av);
-        }
-        /* 預覽行:代表列(該 Bot 最新的 session)帶的 preview 就是這個 Bot 的「大概瀏覽」。
-           手機只在代表列填,其他列 preview 為空;旁表以 id 為鍵,空的只清自己那一格。
-           內容變了要重建清單,label 才會補建。 */
-        {
-            extern bool set_instruction_sub(const char *id, const char *sub);
-            extern bool set_instruction_sub_long(const char *id, const char *text);
-            if (set_instruction_sub(s->id, s->preview))
-                changed = true;
-            /* 超過旁表 95B 的那句 headline 另存一份長的,卡片才顯示得完整 */
-            if (set_instruction_sub_long(s->id, s->glance ? s->preview : ""))
-                changed = true;
-        }
-    }
-
-    /* R27:每次注入都把 conv 段**強制排成上面算好的 ts 舊→新順序**。只靠 upsert 的呼叫
-       順序不夠 —— add_or_update 對已存在的 id 位置原地不動,所以早就在清單裡的 session
-       會停在第一次插入時的位置(founder:改了排序但「最新的還是在最上面」)。這支自己回報
-       有沒有真的動到順序,沒動就不 refresh,輪詢才不會每 5s 重繪。 */
-    {
-        extern bool instruction_list_order_conv_items(const char *const *ids, uint8_t n);
-        const char *ids[SESSION_DEVICE_MAX * SESSION_VISIBLE_MAX];
-        uint8_t idn = 0;
-        for (int o = 0; o < cnt && idn < (uint8_t)(sizeof(ids) / sizeof(ids[0])); o++)
-            ids[idn++] = s_devices[order[o].slot].items[order[o].idx].id;
-        if (instruction_list_order_conv_items(ids, idn))
-            changed = true;
-    }
-
-    LOG_W("[land] inject changed=%d devs=%d", (int)changed, s_device_count);
-    if (changed)
-        refresh_custom_instructions();
+    if (count) *count = s_devices ? s_device_count : 0;
+    return s_devices;
 }
 
-/** actions 清單有更新(手機推播 0x65/0x6B 落地)時由 instruction list 呼叫:
-    把 session 重新注入(replace-all 會把它們洗掉)。 */
-void session_list_actions_changed(void)
+void session_list_refresh_view(void)
 {
-    sp_inject_sessions_into_actions();
-}
-
-/** 語音搜尋字變了 → 重挑可見集合並重新注入。
-    為什麼要單獨一支:平常的注入路徑在搜尋期間被 R60 的清單凍結擋掉(手機每 5 秒
-    replace-all 會把選中項與捲動位置踩掉),但「換查詢字」本來就要重建清單一次,
-    所以這條由 instruction_list_set_text_filter 呼叫、並在期間解除凍結。
-    只在真的有東西動到時才會走到 refresh(sp_inject 自己判斷)。 */
-void session_list_text_filter_changed(void)
-{
-    extern void instruction_list_session_inject_begin(void);
-    extern void instruction_list_session_inject_end(void);
-    instruction_list_session_inject_begin();
-    sp_inject_sessions_into_actions();
-    instruction_list_session_inject_end();
     sp_rebuild_list();
 }
 
@@ -990,6 +704,7 @@ bool session_list_owner_of(const char *conv_id,
                            char *out_device, size_t device_len,
                            char *out_bot, size_t bot_len)
 {
+    if (instruction_list_resolve_owner(conv_id, out_device, device_len, out_bot, bot_len)) return true;
     if (conv_id == NULL || conv_id[0] == '\0')
         return false;
     for (int d = 0; d < s_device_count; d++)
@@ -1138,6 +853,8 @@ const char *session_list_device_name_at(int i)
 /** conv id → 來源設備名(instruction list 畫右下角副標用)。找不到回 NULL。 */
 const char *session_list_device_name_for(const char *conv_id)
 {
+    const char *displayed = instruction_list_device_name_for_row(conv_id);
+    if (displayed) return displayed;
     if (conv_id == NULL || conv_id[0] == '\0')
         return NULL;
     for (int d = 0; d < s_device_count; d++)
@@ -1687,7 +1404,10 @@ static void sp_apply_list(void)
 
     /* 合併視圖(隱藏備援)重畫 + 把 session 注入浮動 actions 清單(左頁的真身)。 */
     sp_rebuild_list();
-    sp_inject_sessions_into_actions();
+    {
+        extern void instruction_list_sessions_changed(void);
+        instruction_list_sessions_changed();
+    }
 
     /* The mic asked for a new session and here it is — walk straight in (founder:
        開新 session 之後就在那個聊天室裡). Only when the tile is on screen.

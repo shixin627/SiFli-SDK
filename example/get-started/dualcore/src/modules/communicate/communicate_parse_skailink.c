@@ -27,6 +27,8 @@
 
 #include "communicate_parse.h"
 #include "communicate_task.h"
+#include "instruction_list.h"
+#include "notification_reply.h"
 #include <rtthread.h>   /* rt_malloc / rt_hw_interrupt_* (media_state KE_EVT2→GUI 轉送) */
 #include "ui_handler.h" /* lvgl_send_msg(LVGL_MSG_TYPE_MEDIA_STATE_RAW) */
 #include "watch_global_data.h"
@@ -730,6 +732,15 @@ void resolve_skailink_command(uint8_t key, uint8_t *pValue, uint16_t length)
 {
     switch ((SKAI_LINK_KEY)key)
     {
+    case KEY_NOTIFICATION_REPLY:
+        notification_reply_receive(pValue, length);
+        break;
+    case KEY_INSTRUCTION_LIST_SYNC:
+    {
+        instruction_list_delivery_t delivery = {key, pValue, length, SKAI_LINK_COMMAND_ID};
+        instruction_list_submit_phone(&delivery);
+        break;
+    }
     case KEY_DEVICE_LIST_BATCH:
         handle_device_list_batch(pValue, length);
         break;

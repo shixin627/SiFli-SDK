@@ -165,11 +165,12 @@ struct _lv_event_dsc_t * lv_obj_add_event_cb(lv_obj_t * obj, lv_event_cb_t event
     LV_ASSERT_OBJ(obj, MY_CLASS);
     lv_obj_allocate_spec_attr(obj);
 
+    if(obj->spec_attr == NULL) return NULL;
+    lv_event_dsc_t * events = lv_mem_realloc(obj->spec_attr->event_dsc,
+                             (obj->spec_attr->event_dsc_cnt + 1) * sizeof(lv_event_dsc_t));
+    if(events == NULL) return NULL;
+    obj->spec_attr->event_dsc = events;
     obj->spec_attr->event_dsc_cnt++;
-    obj->spec_attr->event_dsc = lv_mem_realloc(obj->spec_attr->event_dsc,
-                                               obj->spec_attr->event_dsc_cnt * sizeof(lv_event_dsc_t));
-    LV_ASSERT_MALLOC(obj->spec_attr->event_dsc);
-
     obj->spec_attr->event_dsc[obj->spec_attr->event_dsc_cnt - 1].cb = event_cb;
     obj->spec_attr->event_dsc[obj->spec_attr->event_dsc_cnt - 1].filter = filter;
     obj->spec_attr->event_dsc[obj->spec_attr->event_dsc_cnt - 1].user_data = user_data;

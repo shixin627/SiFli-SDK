@@ -12,6 +12,8 @@
 #include "communicate_parse.h"
 #include "communicate_protocol.h"
 #include "communicate_task.h"
+#include "instruction_list.h"
+#include "notification_reply.h"
 
 #include "string.h"
 #include "watch_system_interact.h"
@@ -47,6 +49,12 @@ void resolve_settings_config_command(uint8_t key, const uint8_t *pValue,
                 SkaiWatchSys.paired_info.paired_flag); // 0x01:ios,0x02:android
 
             SkaiWatchSys.phone_os_version = pValue[0];
+            notification_reply_peer(true, pValue[0] == 2 && (pValue[1] & 0x02) != 0);
+            {
+                instruction_list_delivery_t delivery = {key, pValue, length, SET_CONFIG_COMMAND_ID};
+                instruction_list_submit_phone(&delivery);
+            }
+
 
             if (IOS == SkaiWatchSys.phone_os_version &&
                 !SkaiWatchSys.paired_info.paired_flag)

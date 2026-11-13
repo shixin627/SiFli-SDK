@@ -228,6 +228,8 @@ bool commu_send_file_sync_result(uint8_t result); /* watch -> phone: 1 = file wr
 bool commu_send_bluetooth_log(const char *log);
 bool commu_send_watch_system_sync(void);
 bool commu_send_ota_status(uint8_t status);
+bool commu_send_instruction_list_resync(uint32_t id, uint32_t scope);
+bool commu_send_notification_reply(const char *json, uint16_t length);
 bool commu_send_device_info(void);
 bool commu_send_model_versions(void);
 

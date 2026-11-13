@@ -58,6 +58,7 @@
 #include <rtthread.h>
 #ifdef BSP_USING_BLOC_NOTIFY
     #include "bloc_notification.h"
+    #include "notification_reply.h"
     #include "bloc_motor.h"
     #include "bloc_motion_tracking.h"
 #endif
@@ -1387,7 +1388,6 @@ static bool new_touching_obj = true;
 // 點擊判定：紀錄按壓時間 + 是否在按壓過程中有過任何 x 方向移動
 static uint32_t press_start_tick = 0;
 static bool press_had_movement = false;
-extern void remove_notification_by_id(const char *id);
 /* Forward decl — used by do_drag_delete to cancel any running drag anim. */
 static void set_drag_translate_x(void *obj, int32_t value);
 static void apply_drag_opa_to_children(lv_obj_t *node, lv_opa_t opa);
@@ -1413,7 +1413,7 @@ static void do_drag_delete(void)
        starts clean. */
     lv_obj_t *card_to_reset = dragging_widget;
 
-    remove_notification_by_id(notification->id);
+    if (!notification_reply_dismiss(notification)) ui_show_hint_toast("暫時無法關閉，通知已保留");
 
     if (card_to_reset && lv_obj_is_valid(card_to_reset))
     {
@@ -2965,7 +2965,7 @@ static void on_tap(void)
         LOG_D("message on_tap :control%d", gesture_control);
         notification_t *notification =
             get_notification_in_reversed_ui(selected_message_index);
-        remove_notification_by_id(notification->id);
+        if (!notification_reply_dismiss(notification)) ui_show_hint_toast("暫時無法關閉，通知已保留");
         gesture_control = 1;
         return; // 如果是拖拽動作，則不處理點擊
     }

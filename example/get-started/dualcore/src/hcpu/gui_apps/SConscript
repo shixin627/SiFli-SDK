@@ -65,7 +65,7 @@ if GetDepend('PKG_USING_LITTLEVGL2RTT'):
 	# hid_mouse removed from pc_skip (T1 part 3: ARM seam) — UI layer now
 	# compiles under PC sim; ARM-only HID/motion calls are stubbed in
 	# pc_link_stubs.c. bf0_hal includes #ifdef'd out for PC.
-	pc_skip = ('gesture', 'speech', 'skai', 'recorder', 'camera',
+	pc_skip = ('gesture', 'skai', 'recorder', 'camera',
 	           'incoming_call', 'media', 'exercise', 'game') \
 	          if GetDepend('BSP_USING_PC_SIMULATOR') else ()
 	for d in list:

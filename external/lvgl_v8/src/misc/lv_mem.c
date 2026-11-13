@@ -60,6 +60,18 @@
 #endif
 
 static uint32_t zero_mem = ZERO_MEM_SENTINEL; /*Give the address of this variable if 0 byte should be allocated*/
+static lv_mem_allocator_t app_allocator;
+
+void lv_mem_set_allocator(const lv_mem_allocator_t * allocator)
+{
+    if(allocator) app_allocator = *allocator;
+    else memset(&app_allocator, 0, sizeof(app_allocator));
+}
+
+bool lv_mem_is_fallible(void)
+{
+    return app_allocator.fallible && app_allocator.fallible();
+}
 
 /**********************
  *      MACROS
@@ -129,6 +141,7 @@ void * lv_mem_alloc(size_t size)
         MEM_TRACE("using zero_mem");
         return &zero_mem;
     }
+    if(app_allocator.alloc) return app_allocator.alloc(size);
 
 #if LV_MEM_CUSTOM == 0
     void * alloc = lv_tlsf_malloc(tlsf, size);
@@ -171,6 +184,7 @@ void lv_mem_free(void * data)
     MEM_TRACE("freeing %p", data);
     if(data == &zero_mem) return;
     if(data == NULL) return;
+    if(app_allocator.free) { app_allocator.free(data); return; }
 
 #if LV_MEM_CUSTOM == 0
 #  if LV_MEM_ADD_JUNK
@@ -201,6 +215,7 @@ void * lv_mem_realloc(void * data_p, size_t new_size)
     }
 
     if(data_p == &zero_mem) return lv_mem_alloc(new_size);
+    if(app_allocator.realloc) return app_allocator.realloc(data_p, new_size);
 
 #if LV_MEM_CUSTOM == 0
     void * new_p = lv_tlsf_realloc(tlsf, data_p, new_size);

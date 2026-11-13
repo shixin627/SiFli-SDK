@@ -151,6 +151,9 @@ CJSON_PUBLIC(cJSON *) cJSON_ParseWithLength(const char *value, size_t buffer_len
 /* If you supply a ptr in return_parse_end and parsing fails, then return_parse_end will contain a pointer to the error so will match cJSON_GetErrorPtr(). */
 CJSON_PUBLIC(cJSON *) cJSON_ParseWithOpts(const char *value, const char **return_parse_end, cJSON_bool require_null_terminated);
 CJSON_PUBLIC(cJSON *) cJSON_ParseWithLengthOpts(const char *value, size_t buffer_length, const char **return_parse_end, cJSON_bool require_null_terminated);
+/* Hooks belong to this parse only. Release the tree with matching hooks. */
+CJSON_PUBLIC(cJSON *) cJSON_ParseWithLengthHooks(const char *value, size_t buffer_length, const char **return_parse_end, cJSON_bool require_null_terminated, const cJSON_Hooks *hooks);
+CJSON_PUBLIC(void) cJSON_DeleteWithHooks(cJSON *item, const cJSON_Hooks *hooks);
 
 /* Render a cJSON entity to text for transfer/storage. */
 CJSON_PUBLIC(char *) cJSON_Print(const cJSON *item);

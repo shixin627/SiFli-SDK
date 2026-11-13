@@ -263,6 +263,7 @@ extern "C"
            (bloc_motion_tracking 的 watchface_shake_process),gui_app_run 只能在
            LVGL thread 呼叫,故走 msg 轉一手。 */
         LVGL_MSG_TYPE_WATCHFACE_SHAKE_OPEN_MOUSE,
+        LVGL_MSG_TYPE_NOTIFICATION_REPLY,
     };
 
     typedef struct

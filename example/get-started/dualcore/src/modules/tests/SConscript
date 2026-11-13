@@ -34,6 +34,19 @@ if GetDepend('BSP_USING_PC_SIMULATOR'):
     # (e.g. what sits above the watch face's first hour digit).
     src += ['test_obj_overlap.c']
 
-group = DefineGroup('Unit_tests', src, depend = [''], CPPPATH = path)
+# Explicit firmware-test build; never include data-injecting checks in a
+# normal watch image. The same cases execute on PC and the physical watch.
+if GetDepend('BSP_USING_PC_SIMULATOR') or (
+        ARGUMENTS.get('list_tdd', '0') == '1' and GetDepend('BSP_USING_UI_HANDLER')):
+    src += ['test_instruction_list.c']
+
+if GetDepend('BSP_USING_PC_SIMULATOR') or (
+        ARGUMENTS.get('notification_tdd', '0') in ('1', 'ble', 'voice') and GetDepend('BSP_USING_UI_HANDLER')):
+    src += ['test_notification_reply.c']
+
+defines = ['NOTIFICATION_REPLY_BLE_TEST'] if ARGUMENTS.get('notification_tdd') in ('ble', 'voice') else []
+if ARGUMENTS.get('notification_tdd') == 'voice':
+    defines += ['NOTIFICATION_REPLY_VOICE_TEST']
+group = DefineGroup('Unit_tests', src, depend = [''], CPPPATH = path, LOCAL_CPPDEFINES = defines)
 
 Return('group')

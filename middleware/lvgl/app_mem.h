@@ -35,7 +35,8 @@ typedef enum
 {
     IMAGE_CACHE_HEAP,
     IMAGE_CACHE_SRAM,
-    IMAGE_CACHE_PSRAM
+    IMAGE_CACHE_PSRAM,
+    IMAGE_CACHE_PSRAM_ONLY /* Fail instead of allocating from the system heap. */
 } image_cache_t;
 
 #ifndef CACHE_HEAP

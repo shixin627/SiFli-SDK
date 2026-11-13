@@ -16,6 +16,7 @@ if GetDepend('BSP_USING_BLOC_CALENDAR'):
     src += Glob('bloc_calendar.c')
 if GetDepend('BSP_USING_BLOC_NOTIFY'):
     src += Glob('bloc_notification.c')
+    src += ['notification_reply.c']
 if GetDepend('BSP_USING_BLOC_SETTING'):
     src += Glob('bloc_setting.c')
 if GetDepend('BSP_USING_BLOC_SKAIWALK'):

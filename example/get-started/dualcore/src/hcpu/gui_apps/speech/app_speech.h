@@ -5,6 +5,8 @@
 #define _APP_SPEECH_H
 
 #include <stdint.h>
+#include <stdbool.h>
+bool app_speech_is_notification_reply(void);
 
 void app_speech_data_init(void);
 void app_speech_set_title(const uint8_t *s);

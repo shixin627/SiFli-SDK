@@ -27,6 +27,8 @@
 #include "bf0_sibles_advertising.h"
 
 #include "watch_global_data.h"
+#include "instruction_list.h"
+#include "notification_reply.h"
 #include "communicate_protocol.h"
 #include "communicate_task.h"
 #include "bloc_control.h"
@@ -427,6 +429,8 @@ static uint8_t ble_app_set_cbk(uint8_t conn_idx, sibles_set_cbk_t *para)
         bool subscribed = *(para->value) == 1;
         LOG_I("BLE_APP_RX_CCCD %d,%d", *(para->value), subscribed);
         SkaiWatchSys.connected_to_phone = subscribed;
+        instruction_list_link_changed(subscribed);
+        notification_reply_link(subscribed);
         notify_provider.bluetooth_connection();
         if (subscribed)
         {
@@ -560,6 +564,8 @@ void skaiwalk_ble_gap_connected_ind(ble_gap_connect_ind_t *ind)
         SkaiWatchSys.conn_latency = ind->con_latency;
         SkaiWatchSys.conn_superv_tout = ind->sup_to;
         SkaiWatchSys.connected_to_phone = false; // is subscribed?
+        instruction_list_link_changed(false);
+        notification_reply_link(false);
         LOG_D("Connected to %d with interval=%d", ind->conn_idx,
               ind->con_interval);
 
@@ -590,6 +596,8 @@ void skaiwalk_disconnected_ind(ble_gap_disconnected_ind_t *ind)
     {
         LOG_I("Disconnected from %d", ind->conn_idx);
         SkaiWatchSys.connected_to_phone = false;
+        instruction_list_link_changed(false);
+        notification_reply_link(false);
         SkaiWatchSys.gap_conn_state = GAP_CONN_STATE_DISCONNECTED;
         notify_provider.bluetooth_connection();
         /* 音樂 widget 的操作全部要送回手機 — 連線沒了就不該再擺在那裡讓人按。 */

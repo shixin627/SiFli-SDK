@@ -845,6 +845,12 @@ static void process_lvgl_message(lvgl_msg_t *msg)
         break;
     }
 
+    case LVGL_MSG_TYPE_NOTIFICATION_REPLY:
+    {
+        extern void notification_reply_process(void);
+        notification_reply_process();
+        break;
+    }
     case LVGL_MSG_TYPE_APPLY_INSTRUCTION_BATCH:
     {
         extern void apply_pending_instruction_batch(void);

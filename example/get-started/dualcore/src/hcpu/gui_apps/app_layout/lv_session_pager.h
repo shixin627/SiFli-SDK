@@ -51,6 +51,34 @@ extern "C"
    /assets/images/bot/<av>.bin。內容變了鍵就變,所以永遠不必作廢快取,也不會拿到舊圖。 */
 #define SESSION_AV_LEN 16
 
+typedef struct
+{
+    char id[SESSION_ID_LEN];
+    char title[SESSION_TITLE_LEN];
+    char preview[SESSION_PREVIEW_LEN];
+    uint32_t ts; /* epoch 秒(牆鐘偽 UTC,同手錶其他 timestamp);0 = 手機沒給 */
+    /* 擁有這個 session 的 Bot(Hermes profile 名)。滑鼠 app 聊天室左右滑
+       只在同 bot 的 session 間切換(founder 2026-08-30)。"" = 舊桌面沒送。 */
+    char bot[SESSION_BOT_LEN];
+    /* 這個 Bot 的頭像鍵(內容雜湊)。空 = 手機沒給(舊手機/沒頭像),右緣照舊畫設備名。 */
+    char av[SESSION_AV_LEN];
+    /* preview 是「這個 Bot 的一句話」(手機掛的 AI 主動提醒),不是這個對話的最後一則訊息:
+       只給左頁列的預覽行用,開聊天室時不能拿它當第一個氣泡(會閃出不相干的內容)。 */
+    bool glance;
+} session_meta_t;
+
+typedef struct
+{
+    char id[SESSION_ID_LEN];
+    char name[SESSION_DEVICE_NAME_LEN];
+    session_meta_t items[SESSION_PAGER_MAX];
+    int count;
+} device_sessions_t;
+
+/* GUI-thread borrowed pool. Ownership and conversation routing stay here. */
+const device_sessions_t *session_list_pool(int *count);
+void session_list_refresh_view(void);
+
     /** Build the merged list into [parent] (the watch-face LEFT tile (0,1)). */
     lv_obj_t *lv_session_pager_create(lv_obj_t *parent);
 
@@ -65,13 +93,6 @@ extern "C"
 
     /** 左緣入口把頁面拉出來之前呼叫:回到列表頂端。 */
     void session_list_reset_scroll(void);
-
-    /** actions 清單有更新(手機推播落地)時由 instruction list 呼叫,重畫合併列表。 */
-    void session_list_actions_changed(void);
-
-    /** 語音搜尋字變了(instruction list 的 s_text_filter)時由 instruction list 呼叫:
-        重挑每台桌面要露出的那 5 筆(有查詢字 = 比中的最新 5 筆)並重新注入。 */
-    void session_list_text_filter_changed(void);
 
     /** 對 [device_id] 開新 session 並武裝 walk-in(清單推回來自動進聊天室)。
         滑鼠頁底部 skaibar tap 用;呼叫端負責把畫面切到左頁。 */
