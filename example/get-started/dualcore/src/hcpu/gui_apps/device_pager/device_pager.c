@@ -37,6 +37,7 @@
 #include "lvgl.h"
 #include "ble_device_manager.h"
 #include "ble_hid.h"                   /* ble_hid_set_conn_idx (drill-down target) */
+#include "instruction_list.h"
 #include "ui_helper.h"                 /* get_system_font_size */
 #include "lv_ext_resource_manager.h"   /* LV_EXT_FONT_GET font idiom */
 #include "hid_mouse.h"                 /* mouse component, hosted as the base */
@@ -621,33 +622,13 @@ static void refresh(void)
    set_active and device_pager_refresh; the E7 path defers to the LVGL thread). */
 static void feed_active_device_options_to_list(void)
 {
+    const char *options[MAX_TILE_ITEMS];
+    unsigned count = 0;
     if (!p || p->count == 0 || p->current >= p->count) return;
-    extern void clear_custom_instructions(void);
-    extern void add_or_update_custom_instruction(const char *id,
-            const char *title, const char *trigger_type, uint32_t interval_sec,
-            bool enabled, uint32_t version, const char *open_app);
-    extern void refresh_custom_instructions(void);
-    extern void instruction_list_save_base(void);
-    static uint32_t s_dev_opt_ver = 0;
     dev_page_t *d = &p->model[p->current];
-    /* snapshot the watch-face instruction list before we overwrite it with this
-       device's options, so leaving the device page can restore it (guarded: only
-       the first feed of a visit actually snapshots). */
-    instruction_list_save_base();
-    /* Device options are 0-based with no pinned Settings entry — drop the
-       watch-face Settings pin so they fill from index 0 (restore_base re-pins it
-       on the way out). */
-    extern void instruction_list_drop_pinned_for_device(void);
-    instruction_list_drop_pinned_for_device();
-    s_dev_opt_ver++;
-    clear_custom_instructions();
-    for (uint8_t i = 0; i < d->item_count; i++)
-    {
-        if (d->items[i][0] == '\0') continue;
-        add_or_update_custom_instruction(d->items[i], d->items[i], "once", 0,
-                                         true, s_dev_opt_ver, NULL);
-    }
-    refresh_custom_instructions();
+    for (unsigned i = 0; i < d->item_count && i < MAX_TILE_ITEMS; i++)
+        if (d->items[i][0]) options[count++] = d->items[i];
+    instruction_list_refresh_device_options(d->id_str, options, count);
 }
 
 /* Public: re-load the (phone-streamed) device list from the registry and

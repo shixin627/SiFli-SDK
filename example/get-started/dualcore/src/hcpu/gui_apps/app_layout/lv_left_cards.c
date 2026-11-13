@@ -5,6 +5,7 @@
  * 左頁整頁彩色卡片 —— 設計與限制見 lv_left_cards.h。
  */
 #include "lv_left_cards.h"
+#include "instruction_list_render_memory.h"
 #include <string.h>
 #include <math.h>
 #include "ui_helper.h"
@@ -34,15 +35,63 @@
 #define SW_ANIM_MS 160
 #define ACT_H 54      /* 主動作膠囊高 */
 
-static lv_obj_t *s_pager = NULL;
-static left_cards_get_cb_t s_get = NULL;
-static uint8_t s_n = 0;
-static uint8_t s_cur = 0;
-static lv_obj_t *s_card[LEFT_CARDS_MAX];
-static bool s_filled[LEFT_CARDS_MAX];
-static lv_obj_t *s_sw_knob[LEFT_CARDS_MAX]; /* 有開關的卡:圓點物件(清卡時跟著清掉) */
-static bool s_rounded = false; /* 滑動中:目前那張卡是圓盤,後面疊光暈 */
 
+
+
+
+
+
+ /* 有開關的卡:圓點物件(清卡時跟著清掉) */
+ /* 滑動中:目前那張卡是圓盤,後面疊光暈 */
+
+typedef struct {
+    lv_obj_t *pager, *card[LEFT_CARDS_MAX], *knob[LEFT_CARDS_MAX], *halo, *bg, *tint;
+    left_cards_get_cb_t get;
+    left_cards_tap_cb_t tap;
+    left_cards_page_cb_t page;
+    left_cards_scroll_cb_t scroll;
+    left_cards_option_cb_t option;
+    uint8_t n, cur, scroll_page;
+    bool filled[LEFT_CARDS_MAX], rounded;
+} left_cards_state_t;
+static left_cards_state_t s_states[2], *s_state = &s_states[0], *s_committed = &s_states[0];
+#define s_pager (s_state->pager)
+#define s_card (s_state->card)
+#define s_sw_knob (s_state->knob)
+#define s_halo_img (s_state->halo)
+#define s_bg (s_state->bg)
+#define s_tint (s_state->tint)
+#define s_get (s_state->get)
+#define s_on_tap (s_state->tap)
+#define s_on_page (s_state->page)
+#define s_on_scroll (s_state->scroll)
+#define s_on_option (s_state->option)
+#define s_n (s_state->n)
+#define s_cur (s_state->cur)
+#define s_scroll_page (s_state->scroll_page)
+#define s_filled (s_state->filled)
+#define s_rounded (s_state->rounded)
+
+void left_cards_prepare_begin(void)
+{
+    s_state = s_committed == &s_states[0] ? &s_states[1] : &s_states[0];
+    memset(s_state, 0, sizeof(*s_state));
+}
+void left_cards_prepare_end(void) { s_state = s_committed; }
+void left_cards_hide_committed(void)
+{
+    if(s_pager) lv_obj_add_flag(s_pager, LV_OBJ_FLAG_HIDDEN);
+    if(s_bg) lv_obj_add_flag(s_bg, LV_OBJ_FLAG_HIDDEN);
+    if(s_halo_img) lv_obj_add_flag(s_halo_img, LV_OBJ_FLAG_HIDDEN);
+}
+void left_cards_publish_prepared(void) { s_state = s_committed == &s_states[0] ? &s_states[1] : &s_states[0]; }
+void left_cards_finish_prepared(bool committed)
+{
+    left_cards_state_t *keep = committed ? s_state : s_committed;
+    s_state = keep == &s_states[0] ? &s_states[1] : &s_states[0];
+    left_cards_hide();
+    s_state = s_committed = keep;
+}
 /* 柔邊(founder 2026-09-30 給的小米照片:滑入那一頁的前緣是一圈柔化的漸層,不是清楚的線)。
    第一版疊 6 層同色半透明圓盤 → 真機照片(2026-10-01)是一圈一圈清楚分界的亮綠環:幀緩衝是 RGB565,
    暗色區可用色階很少,每一層的一點點變化都被截斷到同幾個色階上,疊起來就是一階一階的斷層(改走漸層
@@ -51,7 +100,7 @@ static bool s_rounded = false; /* 滑動中:目前那張卡是圓盤,後面疊�
    EPIC 做內插(2x2 漸層貼圖放大就是靠這個),不會有「每層截斷」的累積誤差。
    只在水平滑動時顯示(靜止與垂直翻頁不付這一次整畫面合成)。 */
 #include "lv_left_cards_halo.h"
-static lv_obj_t *s_halo_img = NULL;
+
 static const lv_img_dsc_t s_halo_dsc = {
     .header.cf = LV_IMG_CF_ALPHA_8BIT,
     .header.always_zero = 0,
@@ -60,10 +109,10 @@ static const lv_img_dsc_t s_halo_dsc = {
     .data_size = LEFT_CARDS_HALO_N * LEFT_CARDS_HALO_N,
     .data = left_cards_halo_map,
 };
-static left_cards_tap_cb_t s_on_tap = NULL;
-static left_cards_page_cb_t s_on_page = NULL;
-static left_cards_scroll_cb_t s_on_scroll = NULL;
-static left_cards_option_cb_t s_on_option = NULL;
+
+
+
+
 
 static void card_click_cb(lv_event_t *e)
 {
@@ -79,6 +128,14 @@ static void chip_click_cb(lv_event_t *e)
     if (lv_event_get_code(e) != LV_EVENT_CLICKED)
         return;
     uint32_t ud = (uint32_t)(uintptr_t)lv_event_get_user_data(e);
+    if (s_on_option != NULL)
+        s_on_option((uint8_t)(ud >> 8), (uint8_t)(ud & 0xFF));
+}
+
+static void option_chip_cb(lv_event_t *e)
+{
+    if (lv_event_get_code(e) != LV_EVENT_CLICKED) return;
+    uint32_t ud = (uint32_t)(uintptr_t)lv_event_get_user_data(e) - 1;
     if (s_on_option != NULL)
         s_on_option((uint8_t)(ud >> 8), (uint8_t)(ud & 0xFF));
 }
@@ -114,6 +171,7 @@ static void fill_card(uint8_t i)
     char sb[LEFT_CARD_SUB_BUF];
     if (s_get == NULL || !s_get(i, &cv, sb))
         return;
+    void *memory_scope = instruction_render_enter(s_card[i]);
     const left_card_t *c = &cv;
     lv_obj_t *card = s_card[i];
     /* 字級索引:LVSF_FONT_SMALL..SUPER 由小到大,系統預設是 TITLE,現有介面的一般文字都是
@@ -131,6 +189,7 @@ static void fill_card(uint8_t i)
     if (c->icon != NULL)
     {
         lv_obj_t *box = lv_obj_create(card);
+    if (!box) { instruction_render_leave(memory_scope); return; }
         lv_obj_remove_style_all(box);
         lv_obj_set_size(box, ICON_PX, ICON_PX);
         lv_obj_set_pos(box, X0, row_y);
@@ -138,6 +197,7 @@ static void fill_card(uint8_t i)
         lv_obj_clear_flag(box, LV_OBJ_FLAG_CLICKABLE | LV_OBJ_FLAG_SCROLLABLE);
         lv_obj_add_flag(box, LV_OBJ_FLAG_EVENT_BUBBLE);
         lv_obj_t *img = lv_img_create(box);
+    if (!img) { instruction_render_leave(memory_scope); return; }
         lv_img_set_src(img, c->icon);
         lv_img_header_t hdr;
         if (lv_img_decoder_get_info(c->icon, &hdr) == LV_RES_OK && hdr.w > 0)
@@ -156,6 +216,7 @@ static void fill_card(uint8_t i)
        長標題折成 3 行就往下長進說明。現在先量出折行後的高度,夾在 2 行以內(再多就 … 收尾),並對著圖示垂直置中;
        2 行(約 60px)置中在 52px 的圖示上,下緣還在說明(SUB_Y)上面。 */
     lv_obj_t *title = lv_label_create(card);
+    if (!title) { instruction_render_leave(memory_scope); return; }
     lv_label_set_text(title, c->title != NULL ? c->title : "");
     lv_label_set_long_mode(title, LV_LABEL_LONG_DOT);
     lv_coord_t tw = CARD_W - tx - X0 + 14;
@@ -178,6 +239,7 @@ static void fill_card(uint8_t i)
     {
         /* 軌道不變色(半透明白),只有圓點左右移動。兩個都不吃點擊:點它 = 點整張卡。 */
         lv_obj_t *trk = lv_obj_create(card);
+    if (!trk) { instruction_render_leave(memory_scope); return; }
         lv_obj_remove_style_all(trk);
         lv_obj_set_size(trk, SW_W, SW_H);
         lv_obj_set_pos(trk, X0, SUB_Y);
@@ -187,6 +249,7 @@ static void fill_card(uint8_t i)
         lv_obj_clear_flag(trk, LV_OBJ_FLAG_CLICKABLE | LV_OBJ_FLAG_SCROLLABLE);
         lv_obj_add_flag(trk, LV_OBJ_FLAG_EVENT_BUBBLE);
         lv_obj_t *kn = lv_obj_create(trk);
+    if (!kn) { instruction_render_leave(memory_scope); return; }
         lv_obj_remove_style_all(kn);
         lv_obj_set_size(kn, SW_KNOB, SW_KNOB);
         lv_obj_set_style_radius(kn, LV_RADIUS_CIRCLE, 0);
@@ -200,6 +263,7 @@ static void fill_card(uint8_t i)
     if (has_sub)
     {
         lv_obj_t *sub = lv_label_create(card);
+    if (!sub) { instruction_render_leave(memory_scope); return; }
         lv_label_set_text(sub, c->sub);
         lv_label_set_long_mode(sub, LV_LABEL_LONG_DOT);
         /* 有選項晶片 → 只留 2 行把位置讓給晶片;沒有選項 → 往下排滿(founder 2026-10-01:AI 字卡沒給選項時
@@ -229,6 +293,7 @@ static void fill_card(uint8_t i)
         for (uint8_t k = 0; k < c->n_opts && k < 3; k++)
         {
             lv_obj_t *chip = lv_obj_create(card);
+    if (!chip) { instruction_render_leave(memory_scope); return; }
             lv_obj_remove_style_all(chip);
             lv_obj_set_size(chip, CHIP_W, CHIP_H);
             lv_obj_set_pos(chip, X0, chip_y + k * (CHIP_H + CHIP_GAP));
@@ -236,16 +301,19 @@ static void fill_card(uint8_t i)
             lv_obj_set_style_bg_color(chip, lv_color_white(), 0);
             lv_obj_set_style_bg_opa(chip, LV_OPA_20, 0);
             lv_obj_add_flag(chip, LV_OBJ_FLAG_CLICKABLE);
+            if (c->opts_disabled) lv_obj_add_state(chip, LV_STATE_DISABLED);
             lv_obj_clear_flag(chip, LV_OBJ_FLAG_SCROLLABLE);
-            lv_obj_add_event_cb(chip, chip_click_cb, LV_EVENT_CLICKED,
-                                (void *)(uintptr_t)(((uint32_t)i << 8) | k));
+            lv_obj_add_event_cb(chip, option_chip_cb, LV_EVENT_CLICKED,
+                                (void *)(uintptr_t)((((uint32_t)i << 8) | k) + 1));
             lv_obj_t *cl = lv_label_create(chip);
-            lv_label_set_text(cl, c->opts[k] != NULL ? c->opts[k] : "");
-            lv_label_set_long_mode(cl, LV_LABEL_LONG_DOT);
-            lv_obj_set_width(cl, CHIP_W - 28);
+    if (!cl) { instruction_render_leave(memory_scope); return; }
+            lv_obj_set_size(cl, CHIP_W - 28, lv_font_get_line_height(f_btn));
             lv_obj_set_style_text_font(cl, f_btn, 0);
             lv_obj_set_style_text_color(cl, lv_color_white(), 0);
             lv_obj_set_style_text_align(cl, LV_TEXT_ALIGN_CENTER, 0);
+            lv_obj_update_layout(cl);
+            lv_label_set_long_mode(cl, LV_LABEL_LONG_DOT);
+            lv_label_set_text(cl, c->opts[k] != NULL ? c->opts[k] : "");
             lv_obj_center(cl);
         }
     }
@@ -256,6 +324,7 @@ static void fill_card(uint8_t i)
         const lv_font_t *f_big = LV_EXT_FONT_GET(get_system_font_size(strlen(c->big) > 5 ? 1 : 2));
         lv_coord_t big_h = lv_font_get_line_height(f_big);
         lv_obj_t *bl = lv_label_create(card);
+    if (!bl) { instruction_render_leave(memory_scope); return; }
         lv_label_set_text(bl, c->big);
         lv_label_set_long_mode(bl, LV_LABEL_LONG_CLIP);
         lv_obj_set_size(bl, BIG_W - 2 * STEP_W, big_h);
@@ -271,6 +340,7 @@ static void fill_card(uint8_t i)
             for (uint8_t k = 1; k <= 2; k++)
             {
                 lv_obj_t *hit = lv_obj_create(card);
+    if (!hit) { instruction_render_leave(memory_scope); return; }
                 lv_obj_remove_style_all(hit);
                 lv_obj_set_size(hit, STEP_W, big_h);
                 lv_obj_set_pos(hit, (k == 1) ? X0 : (X0 + BIG_W - STEP_W), BIG_Y);
@@ -282,6 +352,7 @@ static void fill_card(uint8_t i)
                 lv_obj_add_event_cb(hit, chip_click_cb, LV_EVENT_CLICKED,
                                     (void *)(uintptr_t)(((uint32_t)i << 8) | k));
                 lv_obj_t *ln = lv_line_create(hit);
+    if (!ln) { instruction_render_leave(memory_scope); return; }
                 lv_line_set_points(ln, k_chev[k - 1], 3);
                 lv_obj_set_style_line_width(ln, 4, 0);
                 lv_obj_set_style_line_color(ln, lv_color_white(), 0);
@@ -292,6 +363,7 @@ static void fill_card(uint8_t i)
         if (c->act != NULL)
         {
             lv_obj_t *pill = lv_obj_create(card);
+    if (!pill) { instruction_render_leave(memory_scope); return; }
             lv_obj_remove_style_all(pill);
             lv_obj_set_size(pill, BIG_W, ACT_H);
             lv_obj_set_pos(pill, X0, BIG_Y + big_h + 12);
@@ -303,6 +375,7 @@ static void fill_card(uint8_t i)
             lv_obj_clear_flag(pill, LV_OBJ_FLAG_SCROLLABLE);
             lv_obj_add_event_cb(pill, chip_click_cb, LV_EVENT_CLICKED, (void *)(uintptr_t)(((uint32_t)i << 8) | 0));
             lv_obj_t *al = lv_label_create(pill);
+    if (!al) { instruction_render_leave(memory_scope); return; }
             lv_label_set_text(al, c->act);
             lv_obj_set_style_text_font(al, f_btn, 0);
             lv_obj_set_style_text_color(al, accent_bottom(lv_color_hex(c->accent)), 0);
@@ -311,6 +384,7 @@ static void fill_card(uint8_t i)
     }
 
     s_filled[i] = true;
+    instruction_render_leave(memory_scope);
 }
 
 static uint8_t page_from_scroll(void)
@@ -325,9 +399,9 @@ static uint8_t page_from_scroll(void)
 }
 
 /* 共用黑底,只有上半屏繪製主題色到黑色的漸層;不建立全屏點陣圖。 */
-static lv_obj_t *s_bg = NULL;
-static lv_obj_t *s_tint = NULL;
-static uint8_t s_scroll_page = 0;
+
+
+
 
 static void bg_apply(lv_color_t top)
 {
@@ -404,6 +478,7 @@ lv_obj_t *left_cards_show(lv_obj_t *parent, left_cards_get_cb_t get, uint8_t n, 
     /* 柔邊圖比浮層大:預設子物件會被父物件的範圍裁掉,會在浮層邊界被切成一條直線 */
     lv_obj_add_flag(parent, LV_OBJ_FLAG_OVERFLOW_VISIBLE);
     s_halo_img = lv_img_create(parent);
+    if (!s_halo_img) return NULL;
     lv_img_set_src(s_halo_img, &s_halo_dsc);
     lv_img_set_pivot(s_halo_img, LEFT_CARDS_HALO_N / 2, LEFT_CARDS_HALO_N / 2);
     lv_img_set_zoom(s_halo_img, LEFT_CARDS_HALO_ZOOM);
@@ -417,6 +492,7 @@ lv_obj_t *left_cards_show(lv_obj_t *parent, left_cards_get_cb_t get, uint8_t n, 
 
     /* 底色層:在光暈與翻頁容器之間,整組卡片共用 */
     s_bg = lv_obj_create(parent);
+    if (!s_bg) return NULL;
     lv_obj_remove_style_all(s_bg);
     lv_obj_set_size(s_bg, CARD_W, CARD_H);
     lv_obj_set_pos(s_bg, 0, 0);
@@ -424,6 +500,7 @@ lv_obj_t *left_cards_show(lv_obj_t *parent, left_cards_get_cb_t get, uint8_t n, 
     lv_obj_set_style_bg_color(s_bg, lv_color_black(), 0);
 
     s_tint = lv_obj_create(s_bg);
+    if (!s_tint) return NULL;
     lv_obj_remove_style_all(s_tint);
     lv_obj_set_size(s_tint, CARD_W, CARD_H / 2);
     lv_obj_set_pos(s_tint, 0, 0);
@@ -435,6 +512,7 @@ lv_obj_t *left_cards_show(lv_obj_t *parent, left_cards_get_cb_t get, uint8_t n, 
     bg_apply(lv_color_hex(card_accent(start)));
 
     s_pager = lv_obj_create(parent);
+    if (!s_pager) return NULL;
     lv_obj_remove_style_all(s_pager);
     lv_obj_set_size(s_pager, CARD_W, CARD_H);
     lv_obj_set_pos(s_pager, 0, 0);
@@ -448,6 +526,7 @@ lv_obj_t *left_cards_show(lv_obj_t *parent, left_cards_get_cb_t get, uint8_t n, 
     for (uint8_t i = 0; i < n; i++)
     {
         lv_obj_t *card = lv_obj_create(s_pager);
+    if (!card) return NULL;
         lv_obj_remove_style_all(card);
         lv_obj_set_size(card, CARD_W, CARD_H);
         lv_obj_set_pos(card, 0, (lv_coord_t)i * CARD_H);
@@ -526,6 +605,24 @@ void left_cards_refresh(void)
             clear_card(i);
             fill_card(i);
         }
+}
+
+void left_cards_refresh_option_state(void)
+{
+    for (uint8_t i = 0; i < s_n; i++)
+    {
+        if (!s_filled[i] || !s_card[i]) continue;
+        left_card_t c;
+        char sb[LEFT_CARD_SUB_BUF];
+        if (!s_get || !s_get(i, &c, sb)) continue;
+        for (uint32_t j = 0; j < lv_obj_get_child_cnt(s_card[i]); j++)
+        {
+            lv_obj_t *chip = lv_obj_get_child(s_card[i], j);
+            if (!lv_obj_get_event_user_data(chip, option_chip_cb)) continue;
+            if (c.opts_disabled) lv_obj_add_state(chip, LV_STATE_DISABLED);
+            else lv_obj_clear_state(chip, LV_STATE_DISABLED);
+        }
+    }
 }
 
 static void sw_knob_anim_cb(void *var, int32_t v)

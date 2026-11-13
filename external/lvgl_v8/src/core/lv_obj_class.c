@@ -85,17 +85,12 @@ lv_obj_t * lv_obj_class_create_obj(const lv_obj_class_t * class_p, lv_obj_t * pa
             lv_obj_allocate_spec_attr(parent);
         }
 
-        if(parent->spec_attr->children == NULL) {
-            parent->spec_attr->children = lv_mem_alloc(sizeof(lv_obj_t *));
-            parent->spec_attr->children[0] = obj;
-            parent->spec_attr->child_cnt = 1;
-        }
-        else {
-            parent->spec_attr->child_cnt++;
-            parent->spec_attr->children = lv_mem_realloc(parent->spec_attr->children,
-                                                         sizeof(lv_obj_t *) * parent->spec_attr->child_cnt);
-            parent->spec_attr->children[parent->spec_attr->child_cnt - 1] = obj;
-        }
+        if(parent->spec_attr == NULL) { lv_mem_free(obj); return NULL; }
+        lv_obj_t ** children = lv_mem_realloc(parent->spec_attr->children,
+                                               sizeof(lv_obj_t *) * (parent->spec_attr->child_cnt + 1));
+        if(children == NULL) { lv_mem_free(obj); return NULL; }
+        parent->spec_attr->children = children;
+        children[parent->spec_attr->child_cnt++] = obj;
     }
 
     return obj;
@@ -103,6 +98,7 @@ lv_obj_t * lv_obj_class_create_obj(const lv_obj_class_t * class_p, lv_obj_t * pa
 
 void lv_obj_class_init_obj(lv_obj_t * obj)
 {
+    if(obj == NULL) return;
     lv_obj_mark_layout_as_dirty(obj);
     lv_obj_enable_style_refresh(false);
 

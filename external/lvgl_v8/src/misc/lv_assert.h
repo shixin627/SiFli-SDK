@@ -73,7 +73,7 @@ extern "C" {
 #endif
 
 #if LV_USE_ASSERT_MALLOC
-#   define LV_ASSERT_MALLOC(p) LV_ASSERT_MSG(p != NULL, "Out of memory");
+#   define LV_ASSERT_MALLOC(p) LV_ASSERT_MSG(p != NULL || lv_mem_is_fallible(), "Out of memory");
 #else
 #   define LV_ASSERT_MALLOC(p)
 #endif

@@ -40,6 +40,11 @@
 #include "bsp_board.h"
 #define DBG_LVL BSP_DBG_LVL
 #include <rtdbg.h>
+bool commu_send_notification_reply(const char *json, uint16_t length)
+{
+    if (!json || !length || length > 3584 || !SkaiWatchSys.connected_to_phone) return false;
+    return skaiwatch_ble_send_l2(SKAI_LINK_COMMAND_ID, KEY_NOTIFICATION_REPLY, (const uint8_t *)json, length);
+}
 
 /*============================================================================*
  *                              Constants
@@ -1040,6 +1045,14 @@ bool commu_send_skaibar_dismiss(void)
     LOG_I("send skaibar dismiss -> %s", ok ? "ok" : "FAIL");
     return ok;
 }
+bool commu_send_instruction_list_resync(uint32_t id, uint32_t scope)
+{
+    char json[96];
+    rt_snprintf(json, sizeof(json), "{\"op\":\"request\",\"id\":%lu,\"scope\":%lu}",
+                (unsigned long)id, (unsigned long)scope);
+    return commu_send_string(SKAI_LINK_COMMAND_ID, KEY_INSTRUCTION_LIST_SYNC, json);
+}
+
 bool commu_send_skaibar_view(char cat)
 {
     /* ADR-0024 round-trip: tell the phone which skaibar view just opened so it fans the

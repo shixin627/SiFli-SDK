@@ -8,6 +8,10 @@ cwd = GetCurrentDir()
 src = []
 path = [cwd]
 
+# Exercise the real instruction ingress on the simulator, not a no-op queue.
+if GetDepend('BSP_USING_PC_SIMULATOR'):
+    src += ['communicate_parse_notify.c']
+
 if GetDepend('BSP_BLE_SIBLES'):
     if GetDepend('BSP_USING_COMMUNICATE'):
         src += Glob('communicate_protocol.c')

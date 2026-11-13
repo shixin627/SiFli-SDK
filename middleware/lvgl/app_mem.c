@@ -624,7 +624,7 @@ void *app_cache_alloc(size_t size, image_cache_t cache_type)
     }
 #endif
 
-    if (!p)
+    if (!p && cache_type != IMAGE_CACHE_PSRAM_ONLY)
     {
         p = (uint8_t *)rt_malloc(size);
         if (p)((uint32_t *) p)[0] = SYS_HEAP;

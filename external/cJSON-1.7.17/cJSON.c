@@ -255,7 +255,7 @@ static cJSON *cJSON_New_Item(const internal_hooks * const hooks)
 }
 
 /* Delete a cJSON structure. */
-CJSON_PUBLIC(void) cJSON_Delete(cJSON *item)
+static void delete_with_hooks(cJSON *item, const internal_hooks *hooks)
 {
     cJSON *next = NULL;
     while (item != NULL)
@@ -263,19 +263,32 @@ CJSON_PUBLIC(void) cJSON_Delete(cJSON *item)
         next = item->next;
         if (!(item->type & cJSON_IsReference) && (item->child != NULL))
         {
-            cJSON_Delete(item->child);
+            delete_with_hooks(item->child, hooks);
         }
         if (!(item->type & cJSON_IsReference) && (item->valuestring != NULL))
         {
-            global_hooks.deallocate(item->valuestring);
+            hooks->deallocate(item->valuestring);
         }
         if (!(item->type & cJSON_StringIsConst) && (item->string != NULL))
         {
-            global_hooks.deallocate(item->string);
+            hooks->deallocate(item->string);
         }
-        global_hooks.deallocate(item);
+        hooks->deallocate(item);
         item = next;
     }
+}
+
+CJSON_PUBLIC(void) cJSON_Delete(cJSON *item)
+{
+    delete_with_hooks(item, &global_hooks);
+}
+
+CJSON_PUBLIC(void) cJSON_DeleteWithHooks(cJSON *item, const cJSON_Hooks *hooks)
+{
+    internal_hooks local = global_hooks;
+    if (hooks != NULL && hooks->free_fn != NULL)
+        local.deallocate = hooks->free_fn;
+    delete_with_hooks(item, &local);
 }
 
 /* get the decimal point character of the current locale */
@@ -1102,7 +1115,8 @@ CJSON_PUBLIC(cJSON *) cJSON_ParseWithOpts(const char *value, const char **return
 }
 
 /* Parse an object - create a new root, and populate. */
-CJSON_PUBLIC(cJSON *) cJSON_ParseWithLengthOpts(const char *value, size_t buffer_length, const char **return_parse_end, cJSON_bool require_null_terminated)
+static cJSON *parse_with_hooks(const char *value, size_t buffer_length, const char **return_parse_end,
+                               cJSON_bool require_null_terminated, const internal_hooks *hooks)
 {
     parse_buffer buffer = { 0, 0, 0, 0, { 0, 0, 0 } };
     cJSON *item = NULL;
@@ -1119,9 +1133,9 @@ CJSON_PUBLIC(cJSON *) cJSON_ParseWithLengthOpts(const char *value, size_t buffer
     buffer.content = (const unsigned char*)value;
     buffer.length = buffer_length;
     buffer.offset = 0;
-    buffer.hooks = global_hooks;
+    buffer.hooks = *hooks;
 
-    item = cJSON_New_Item(&global_hooks);
+    item = cJSON_New_Item(hooks);
     if (item == NULL) /* memory fail */
     {
         goto fail;
@@ -1152,7 +1166,7 @@ CJSON_PUBLIC(cJSON *) cJSON_ParseWithLengthOpts(const char *value, size_t buffer
 fail:
     if (item != NULL)
     {
-        cJSON_Delete(item);
+        delete_with_hooks(item, hooks);
     }
 
     if (value != NULL)
@@ -1179,6 +1193,27 @@ fail:
     }
 
     return NULL;
+}
+
+CJSON_PUBLIC(cJSON *) cJSON_ParseWithLengthOpts(const char *value, size_t buffer_length, const char **return_parse_end, cJSON_bool require_null_terminated)
+{
+    internal_hooks hooks = global_hooks;
+    return parse_with_hooks(value, buffer_length, return_parse_end, require_null_terminated, &hooks);
+}
+
+/* Per-call allocation: do not change global hooks used by concurrent parsers. */
+CJSON_PUBLIC(cJSON *) cJSON_ParseWithLengthHooks(const char *value, size_t buffer_length,
+                                               const char **return_parse_end, cJSON_bool require_null_terminated,
+                                               const cJSON_Hooks *hooks)
+{
+    internal_hooks local = global_hooks;
+    if (hooks != NULL)
+    {
+        if (hooks->malloc_fn != NULL) local.allocate = hooks->malloc_fn;
+        if (hooks->free_fn != NULL) local.deallocate = hooks->free_fn;
+        local.reallocate = NULL;
+    }
+    return parse_with_hooks(value, buffer_length, return_parse_end, require_null_terminated, &local);
 }
 
 /* Default options for cJSON_Parse */
@@ -1548,7 +1583,7 @@ success:
 fail:
     if (head != NULL)
     {
-        cJSON_Delete(head);
+        delete_with_hooks(head, &input_buffer->hooks);
     }
 
     return false;
@@ -1723,7 +1758,7 @@ success:
 fail:
     if (head != NULL)
     {
-        cJSON_Delete(head);
+        delete_with_hooks(head, &input_buffer->hooks);
     }
 
     return false;

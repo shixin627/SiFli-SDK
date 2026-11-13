@@ -16,6 +16,7 @@ extern "C" {
 #include "../lv_conf_internal.h"
 
 #include <stdint.h>
+#include <stdbool.h>
 #include <stddef.h>
 #include <string.h>
 
@@ -59,6 +60,17 @@ typedef lv_mem_buf_t lv_mem_buf_arr_t[LV_MEM_BUF_MAX_NUM];
  * Initialize the dyn_mem module (work memory and other variables)
  */
 void lv_mem_init(void);
+
+/* Optional application allocator. Install once; free/realloc must recognize
+ * allocations made before installation. NULL restores the configured allocator. */
+typedef struct {
+    void * (*alloc)(size_t);
+    void (*free)(void *);
+    void * (*realloc)(void *, size_t);
+    bool (*fallible)(void);
+} lv_mem_allocator_t;
+void lv_mem_set_allocator(const lv_mem_allocator_t * allocator);
+bool lv_mem_is_fallible(void);
 
 /**
  * Clean up the memory buffer which frees all the allocated memories.

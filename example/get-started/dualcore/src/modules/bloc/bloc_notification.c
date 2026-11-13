@@ -50,6 +50,7 @@
 
 /* Bloc modules */
 #include "bloc_notification.h"
+#include "notification_reply.h"
 #include "bloc_control.h"
 #include "bloc_skaiwalk.h"
 #include "bloc_v2t.h"
@@ -102,7 +103,6 @@ static char temp_send_json_string[512];
 
 static char temp_speech_text[512];
 
-char replying_notification_id[NOTIFICATION_ID_LEN];
 
 static notification_t _notification_list[ITEM_AMOUNT_NOTIFICATION];
 
@@ -139,6 +139,18 @@ const notification_t notifications_constant[] = {
 
 uint8_t notification_items_amount = 0;
 uint8_t selected_notification_index = 0;
+
+static struct rt_mutex notification_mutex;
+static bool notification_mutex_ready;
+static int notification_store_init(void)
+{
+    int result = rt_mutex_init(&notification_mutex, "notif", RT_IPC_FLAG_PRIO);
+    notification_mutex_ready = result == RT_EOK;
+    return result;
+}
+INIT_COMPONENT_EXPORT(notification_store_init);
+static void notification_store_lock(void) { if (notification_mutex_ready) rt_mutex_take(&notification_mutex, RT_WAITING_FOREVER); }
+static void notification_store_unlock(void) { if (notification_mutex_ready) rt_mutex_release(&notification_mutex); }
 
 /**
  * @brief Mark a notification as read/seen
@@ -202,9 +214,11 @@ notification_t *get_notification_in_reversed_ui(int index)
 
 void set_notification(const notification_t *notification, int index)
 {
+    notification_store_lock();
     _notification_list[index] = *notification;
     _notification_list[index].index = index + 1;
     notifyNotification(index);
+    notification_store_unlock();
 }
 
 notification_t *get_cur_notification(void)
@@ -212,12 +226,13 @@ notification_t *get_cur_notification(void)
     return &_notification_list[selected_notification_index];
 }
 
-static void update_notification(const notification_t *newNotification)
+static void update_notification_locked(const notification_t *newNotification)
 {
     /* If the user already dismissed this notification (within the persisted
      * ring), drop it silently. Covers the BLE-reconnect re-sync case where
      * the phone re-pushes ids we've already processed but locally removed. */
-    if (bloc_notification_is_dismissed(newNotification->id))
+    if ((!newNotification->reply_revision && bloc_notification_is_dismissed(newNotification->id)) ||
+        notification_reply_was_processed(newNotification->reply_instance, newNotification->reply_revision))
     {
         LOG_I("update_notification: id=%s previously dismissed, skipping",
               newNotification->id);
@@ -236,11 +251,22 @@ static void update_notification(const notification_t *newNotification)
     bool dup = false;
     for (int i = notification_items_amount - 1; i >= 0; i--)
     {
-        dup = (strcmp(_notification_list[i].id, newNotification->id) == 0);
+        if (newNotification->reply_revision &&
+            !strcmp(_notification_list[i].reply_instance, newNotification->reply_instance) &&
+            _notification_list[i].reply_revision > newNotification->reply_revision) return;
+        dup = (newNotification->reply_revision && _notification_list[i].reply_revision) ?
+            !strcmp(_notification_list[i].reply_instance, newNotification->reply_instance) :
+            (strcmp(_notification_list[i].id, newNotification->id) == 0);
         if (dup &&
             strcmp(_notification_list[i].title, newNotification->title) == 0 &&
             strcmp(_notification_list[i].message, newNotification->message) == 0)
         {
+            memcpy(_notification_list[i].id, newNotification->id, sizeof(newNotification->id));
+            _notification_list[i].can_reply = newNotification->can_reply;
+            _notification_list[i].reply_revision = newNotification->reply_revision;
+            memcpy(_notification_list[i].reply_instance, newNotification->reply_instance, 33);
+            _notification_list[i].option_count = newNotification->option_count;
+            memcpy(_notification_list[i].options, newNotification->options, sizeof(newNotification->options));
             /* Identical reconnect re-push (the phone re-sends its whole
                active list on every reconnect): entry is already exactly
                here — keep position and sec_time, and no seq bump, so the
@@ -253,7 +279,8 @@ static void update_notification(const notification_t *newNotification)
            delivered) or across a bridge process restart. Adopt the phone's
            current id in place so watch-side dismiss/reply keep addressing
            the live notification — position, sec_time and seq untouched. */
-        if (!dup && _notification_list[i].type == newNotification->type &&
+        if (!dup && !newNotification->reply_revision && !_notification_list[i].reply_revision &&
+            _notification_list[i].type == newNotification->type &&
             strcmp(_notification_list[i].title, newNotification->title) == 0 &&
             strcmp(_notification_list[i].message, newNotification->message) == 0)
         {
@@ -321,6 +348,28 @@ static void update_notification(const notification_t *newNotification)
     SkaiWatchSys.notification_number = notification_items_amount;
 }
 
+static void update_notification(const notification_t *notification)
+{
+    notification_store_lock();
+    update_notification_locked(notification);
+    notification_store_unlock();
+}
+
+/* A reply decision must not borrow a pointer that BLE ingress can replace. */
+bool notification_reply_target_current(const char *instance, uint32_t revision, bool require_reply)
+{
+    if (!instance || !revision) return false;
+    bool found = false;
+    notification_store_lock();
+    for (unsigned i = 0; i < notification_items_amount; i++) {
+        const notification_t *item = &_notification_list[i];
+        if (item->reply_revision == revision && !strcmp(item->reply_instance, instance) &&
+            (!require_reply || item->can_reply)) { found = true; break; }
+    }
+    notification_store_unlock();
+    return found;
+}
+
 /**
  * @brief Parse notification data from JSON string
  * @param json_str JSON string containing notification data
@@ -355,6 +404,18 @@ static bool parse_notification(const char *json_str,
     cJSON *message_json = cJSON_GetObjectItem(root, "message");
     cJSON *reply_json   = cJSON_GetObjectItem(root, "reply");
     cJSON *calling_json = cJSON_GetObjectItem(root, "calling");
+    cJSON *instance_json = cJSON_GetObjectItemCaseSensitive(root, "ri");
+    cJSON *revision_json = cJSON_GetObjectItemCaseSensitive(root, "rv");
+    notification->reply_instance[0] = 0;
+    notification->reply_revision = 0;
+    if (cJSON_IsString(instance_json) && strlen(instance_json->valuestring) == 32 &&
+        strspn(instance_json->valuestring, "0123456789abcdef") == 32 &&
+        cJSON_IsNumber(revision_json) && revision_json->valuedouble >= 1 &&
+        revision_json->valuedouble <= 4294967295.0 &&
+        revision_json->valuedouble == (uint32_t)revision_json->valuedouble) {
+        memcpy(notification->reply_instance, instance_json->valuestring, 33);
+        notification->reply_revision = (uint32_t)revision_json->valuedouble;
+    }
     notification->calling = calling_json ? cJSON_IsTrue(calling_json) : false;
 
     /* Copy a cJSON string into a fixed-size dst array, falling back to `def`
@@ -509,6 +570,8 @@ void navigate_notification_info(notification_t *notification)
     app_message_set_from_temp(notification);
     intent_t intent = intent_init("message");
     intent_set_string(intent, "noti_id", notification->id);
+    intent_set_string(intent, "noti_instance", notification->reply_instance);
+    intent_set_uint32(intent, "noti_revision", notification->reply_revision);
     intent_set_string(intent, "noti_can_reply",
                       notification->can_reply ? "true" : "false");
     if (!is_at_instruction_list())
@@ -746,45 +809,25 @@ static void remove_notification(notification_t *notifications, uint8_t *size,
     *size = output_index;
 }
 
-static void generate_json_for_remote_input(const char *message, const char *id)
+/* Reply module's GUI-thread commit: never dismiss another notification revision. */
+bool notification_reply_remove_version(const char *instance, uint32_t revision)
 {
-    temp_send_json_string[0] = '\0';
-    cJSON *obj = cJSON_CreateObject();
-    if (!obj)
-    {
-        return;
+    bool removed = false;
+    notification_store_lock();
+    for (unsigned i = 0; i < notification_items_amount; i++) {
+        notification_t *item = &_notification_list[i];
+        if (item->reply_revision != revision || strcmp(item->reply_instance, instance)) continue;
+        if (item->calling) incoming_call_close_if_active(item->id);
+        for (unsigned next = i + 1; next < notification_items_amount; next++)
+            _notification_list[next - 1] = _notification_list[next];
+        notification_items_amount--;
+        SkaiWatchSys.notification_number = notification_items_amount;
+        removed = true;
+        break;
     }
-    cJSON_AddStringToObject(obj, "id", id);
-    cJSON_AddStringToObject(obj, "m", message);
-    char *json = cJSON_PrintUnformatted(obj);
-    if (json)
-    {
-        strncpy(temp_send_json_string, json, sizeof(temp_send_json_string) - 1);
-        temp_send_json_string[sizeof(temp_send_json_string) - 1] = '\0';
-        cJSON_free(json);
-    }
-    cJSON_Delete(obj);
-}
-
-static void remote_input_to_notification(const char *id, const char *message)
-{
-    if (strlen(message) == 0)
-    {
-        LOG_E("[%s]message is empty", __func__);
-        return;
-    }
-    if (strlen(id) == 0)
-    {
-        LOG_E("[%s]id is empty", __func__);
-        return;
-    }
-    LOG_D("[%s]id:%s, message:%s", __func__, id, message);
-    generate_json_for_remote_input(message, id);
-    commu_send_remote_input(temp_send_json_string);
-    /* Reply implies user dealt with it -- block phone re-push after reconnect. */
-    bloc_notification_mark_dismissed(id);
-    remove_notification(_notification_list, &notification_items_amount, id);
-    notify_provider.notification_refresh();
+    notification_store_unlock();
+    if (removed) notify_provider.notification_refresh();
+    return removed;
 }
 
 /**
@@ -793,29 +836,43 @@ static void remote_input_to_notification(const char *id, const char *message)
  */
 void remove_notification_by_id(const char *id)
 {
-    if (!id || strlen(id) == 0)
-    {
-        LOG_E("[%s]id is empty", __func__);
-        return;
+    if (!id || !id[0]) return;
+    notification_t match;
+    bool found = false, ambiguous = false;
+    notification_store_lock();
+    for (unsigned i = 0; i < notification_items_amount; i++) {
+        if (strcmp(_notification_list[i].id, id)) continue;
+        if (found) { ambiguous = true; break; }
+        match = _notification_list[i]; found = true;
     }
-    LOG_I("[%s] id:%s", __func__, id);
+    notification_store_unlock();
+    if (found && !ambiguous) notification_reply_dismiss(&match);
+}
 
-    /* Send dismiss to phone via BLE */
-    strncpy(temp_send_json_string, id, sizeof(temp_send_json_string) - 1);
-    temp_send_json_string[sizeof(temp_send_json_string) - 1] = '\0';
-
-    commu_send_dismiss_notification(temp_send_json_string);
-
-    /* Mark BEFORE remove so a hypothetical re-push that races our broadcast
-     * doesn't slip through. The send-to-phone above may not arrive if BLE
-     * is down/lossy -- the dismissed-ids ring is what actually blocks the
-     * re-pop on reconnect. */
-    bloc_notification_mark_dismissed(id);
-
-    /* Remove locally */
-    remove_notification(_notification_list, &notification_items_amount, id);
-    SkaiWatchSys.notification_number = notification_items_amount;
-    notify_provider.notification_refresh();
+/* Legacy compatibility adapter, called only by the complete dismiss operation. */
+bool notification_reply_remove_legacy(const notification_t *notification)
+{
+    if (!notification || notification->reply_revision || !notification->id[0]) return false;
+    char id[NOTIFICATION_ID_LEN] = {0};
+    bool removed = false;
+    notification_store_lock();
+    for (unsigned i = 0; i < notification_items_amount; i++) {
+        const notification_t *item = &_notification_list[i];
+        if (item->reply_revision || strcmp(item->id, notification->id) ||
+            item->sec_time != notification->sec_time || strcmp(item->title, notification->title) ||
+            strcmp(item->message, notification->message)) continue;
+        memcpy(id, item->id, sizeof(id));
+        bloc_notification_mark_dismissed(id);
+        for (unsigned next = i + 1; next < notification_items_amount; next++)
+            _notification_list[next - 1] = _notification_list[next];
+        notification_items_amount--;
+        SkaiWatchSys.notification_number = notification_items_amount;
+        removed = true;
+        break;
+    }
+    notification_store_unlock();
+    if (removed) { commu_send_dismiss_notification(id); notify_provider.notification_refresh(); }
+    return removed;
 }
 
 /**
@@ -830,6 +887,11 @@ void dismiss_notification_from_phone(const char *id)
         LOG_E("[%s]id is empty", __func__);
         return;
     }
+    /* Modern notifications need a versioned removal on 0x20/0x30. A delayed
+       legacy dismiss must never remove a replacement under the same old ID. */
+    notification_store_lock();
+    for (unsigned i = 0; i < notification_items_amount; i++)
+        if (!strcmp(_notification_list[i].id, id) && _notification_list[i].reply_revision) { notification_store_unlock(); return; }
     LOG_I("[%s] phone dismiss → watch remove id:%s", __func__, id);
     /* Same reason as remove_notification_by_id: persist the dismiss so a
      * later reconnect re-push from the phone doesn't re-pop. */
@@ -837,6 +899,7 @@ void dismiss_notification_from_phone(const char *id)
     incoming_call_close_if_active(id);
     remove_notification(_notification_list, &notification_items_amount, id);
     SkaiWatchSys.notification_number = notification_items_amount;
+    notification_store_unlock();
     notify_provider.notification_refresh();
 }
 
@@ -877,6 +940,10 @@ static void set_user_speech_text(char *text)
 
 void handle_user_speech_intent(uint8_t intent, char *message)
 {
+    if (intent == V2T_INTENT_REMOTE_INPUT) {
+        LOG_W("Notification replies require a fixed input context");
+        return;
+    }
     if (message == NULL || strlen(message) == 0)
     {
         LOG_E("[%s]message is empty", __func__);
@@ -886,14 +953,6 @@ void handle_user_speech_intent(uint8_t intent, char *message)
     set_user_speech_text(message);
     switch (intent)
     {
-    case V2T_INTENT_REMOTE_INPUT:
-    {
-#ifdef BSP_USING_BLOC_NOTIFY
-        remote_input_to_notification(replying_notification_id,
-                                     temp_speech_text);
-#endif
-        break;
-    }
     case V2T_INTENT_CHAT:
     {
 #ifdef BSP_USING_BLOC_NOTIFY
@@ -1034,10 +1093,15 @@ static void send_refresh_notification_cmd(void)
 // 導航至回覆通知頁面
 static void bloc_notification_navigate_to_reply(notification_t *notification)
 {
-    strcpy(replying_notification_id, notification->id);
+    notification_reply_view_t view = notification_reply_open(notification);
+    if (!view.input) { ui_show_hint_toast("無法回覆，請確認通知與手機版本"); return; }
     intent_t intent = intent_init("speech");
     intent_set_string(intent, "intent", "reply");
     intent_set_string(intent, "title", notification->title);
+    intent_set_uint32(intent, "reply_input", view.input);
+    if (view.draft) intent_set_string(intent, "reply_draft", view.draft);
+    intent_set_string(intent, "reply_instance", notification->reply_instance);
+    intent_set_uint32(intent, "reply_revision", notification->reply_revision);
     intent_runapp(intent);
 }
 

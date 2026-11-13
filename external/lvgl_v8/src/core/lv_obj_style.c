@@ -88,8 +88,10 @@ void lv_obj_add_style(lv_obj_t * obj, lv_style_t * style, lv_style_selector_t se
     /*Now `i` is at the first normal style. Insert the new style before this*/
 
     /*Allocate space for the new style and shift the rest of the style to the end*/
+    _lv_obj_style_t * styles = lv_mem_realloc(obj->styles, (obj->style_cnt + 1) * sizeof(_lv_obj_style_t));
+    if(styles == NULL) return;
+    obj->styles = styles;
     obj->style_cnt++;
-    obj->styles = lv_mem_realloc(obj->styles, obj->style_cnt * sizeof(_lv_obj_style_t));
 
     uint32_t j;
     for(j = obj->style_cnt - 1; j > i ; j--) {
@@ -271,6 +273,7 @@ void lv_obj_set_local_style_prop(lv_obj_t * obj, lv_style_prop_t prop, lv_style_
                                  lv_style_selector_t selector)
 {
     lv_style_t * style = get_local_style(obj, selector);
+    if(style == NULL) return;
     lv_style_set_prop(style, prop, value);
     lv_obj_refresh_style(obj, selector, prop);
 }
@@ -512,8 +515,10 @@ static lv_style_t * get_local_style(lv_obj_t * obj, lv_style_selector_t selector
         }
     }
 
+    _lv_obj_style_t * styles = lv_mem_realloc(obj->styles, (obj->style_cnt + 1) * sizeof(_lv_obj_style_t));
+    if(styles == NULL) return NULL;
+    obj->styles = styles;
     obj->style_cnt++;
-    obj->styles = lv_mem_realloc(obj->styles, obj->style_cnt * sizeof(_lv_obj_style_t));
     LV_ASSERT_MALLOC(obj->styles);
 
     for(i = obj->style_cnt - 1; i > 0 ; i--) {
@@ -525,6 +530,10 @@ static lv_style_t * get_local_style(lv_obj_t * obj, lv_style_selector_t selector
 
     lv_memset_00(&obj->styles[i], sizeof(_lv_obj_style_t));
     obj->styles[i].style = lv_mem_alloc(sizeof(lv_style_t));
+    if(obj->styles[i].style == NULL) {
+        for(uint32_t j = i; j + 1 < obj->style_cnt; j++) obj->styles[j] = obj->styles[j + 1];
+        obj->style_cnt--; return NULL;
+    }
     lv_style_init(obj->styles[i].style);
     obj->styles[i].is_local = 1;
     obj->styles[i].selector = selector;

@@ -58,6 +58,8 @@
 #include "lv_chat_page.h"
 #include "lv_session_pager.h"
 #include "lv_left_cards.h"
+#include "instruction_list.h"
+#include "instruction_list_render_memory.h"
 #include "app_mem.h" /* app_cache_alloc(IMAGE_CACHE_PSRAM) */
 #include <ctype.h>
 #ifdef BSP_USING_BLOC_NOTIFY
@@ -69,6 +71,7 @@
     #define M_PI 3.14159265358979323846
 #endif
 #include "ui_handler.h"
+#include "notification_reply.h"
 #ifdef BSP_USING_GESTURE_HANDLER
     #include "gesture_handler.h"
 #endif
@@ -116,6 +119,8 @@ LV_IMG_DECLARE(erth);
  * Unified List Item
  ******************************************************************************/
 #define MAX_LIST_ITEMS 30
+#define LIST_SUB_LEN 96 /* 手機端 WATCH_PREVIEW_MAX_BYTES=95 的對口:兩行 CJK 約 31 字 */
+#define SW_SLOTS MAX_LIST_ITEMS
 #define LIST_ITEM_ID_LEN 64
 #define LIST_ITEM_TITLE_LEN 64
 
@@ -129,7 +134,6 @@ typedef struct
        解碼快取。手機每次開清單都會 replace-all 重推一份**內容相同**的清單,那種情況不
        該丟 —— 丟了就得重讀 NAND 重解碼,使用者看到「文字先進來、右邊圖標晚一拍」。 */
     bool img_dirty;
-    lv_obj_t *widget;      // app widget obj, NULL for instructions
     bool is_instruction;   // true = custom instruction, false = app
     bool is_interval;      // for instructions: has toggle switch
     bool enabled;          // toggle state
@@ -149,20 +153,12 @@ typedef struct
                            // stay untagged (treated as action in the "/" view).
 } list_item_t;
 
-static list_item_t list_items[MAX_LIST_ITEMS];
 /* R3: set by the explicit CANCEL-close paths (bar tap / swipe-right) right before
    they call close_ai_widget, so close_ai_widget tells the phone to dismiss the
    active skaibar. A COMMIT close (tapping an option) leaves this false, so the
    phone keeps its normal "run action + return to list" flow. Consumed (reset) at
    the top of close_ai_widget. */
 static bool s_close_is_cancel = false;
-static uint8_t list_item_count =
-    0; // total count of all items (app + instructions)
-static uint8_t app_base_count =
-    0; // pinned prefix protected from clear. Stays 0 since the index-0 Settings
-       // pin was removed (2026-07-02); the prefix machinery is kept for the
-       // device_pager save/feed/restore bracket.
-
 /* Phone-coupled list mode (founder direction 2026-06-04):
    DEFAULT_APPS — no phone list yet (boot / never-connected): body [1..] holds the
                   watch's built-in apps, treated as default "instructions".
@@ -174,20 +170,165 @@ typedef enum
     LIST_MODE_DEFAULT_APPS = 0,
     LIST_MODE_PHONE,
 } list_mode_t;
-static list_mode_t s_list_mode = LIST_MODE_DEFAULT_APPS;
+/* One committed model and at most one candidate, all in retained PSRAM. */
+typedef struct {
+    char id[SESSION_ID_LEN], device[SESSION_ID_LEN];
+    char bot[SESSION_BOT_LEN], name[SESSION_DEVICE_NAME_LEN];
+} instruction_route_t;
+#define INSTRUCTION_ROUTES (SESSION_DEVICE_MAX * SESSION_VISIBLE_MAX)
+typedef struct
+{
+    list_item_t items[MAX_LIST_ITEMS], category_items[MAX_LIST_ITEMS], disconnected_items[MAX_LIST_ITEMS];
+    uint8_t count, base_count;
+    list_mode_t mode;
+    bool phone_connected;
+    list_item_t *disconnected;
+    uint8_t disconnected_count;
+    char category_filter, view_category, query[48];
+    uint8_t category_count;
+    bool category_valid;
+    uint16_t selected;
+    uint32_t sub_key[MAX_LIST_ITEMS];
+    char sub_text[MAX_LIST_ITEMS][LIST_SUB_LEN];
+    uint8_t sub_next;
+    uint32_t sub_long_key;
+    char sub_long_text[128];
+    uint32_t switch_key[SW_SLOTS];
+    uint8_t switch_pos[SW_SLOTS];
+    bool switch_on[SW_SLOTS];
+    uint8_t switch_next;
+    uint32_t accent_key[MAX_LIST_ITEMS];
+    uint8_t accent_index[MAX_LIST_ITEMS], accent_next;
+    instruction_route_t routes[INSTRUCTION_ROUTES];
+    uint8_t route_count;
+    bool single_device;
+    char device_target[SYNCED_DEVICE_ID_LEN];
+} instruction_list_model_t;
 
-/* Phone link state mirrored from the BT connection hook. Only meaningful in
-   PHONE mode: when disconnected we render the phone list filtered to the items
-   the watch can complete on its own (apps + openApp instructions), hiding the
-   phone-relay ones — without dropping them, so reconnect restores the full list
-   even if the phone does NOT re-push. */
-static bool s_phone_connected = false;
-/* Full PHONE-mode list snapshot, held only while disconnect-filtered. Heap-backed
-   (rt_malloc'd, freed on reconnect / fresh push) to avoid a permanent duplicate,
-   same idiom as instruction_list_save_base. NULL = not currently filtered. */
-static list_item_t *s_disc_backup = NULL;
-static uint8_t s_disc_backup_count = 0;
+APP_L2_RET_BSS_SECT_BEGIN(instruction_list_models)
+APP_L2_RET_BSS_SECT(instruction_list_models, ALIGN(8) static instruction_list_model_t s_models[2]);
+APP_L2_RET_BSS_SECT(instruction_list_models, ALIGN(8) static list_item_t s_order_work[MAX_LIST_ITEMS]);
+APP_L2_RET_BSS_SECT(instruction_list_models, ALIGN(8) static instruction_list_model_t s_base_storage);
+APP_L2_RET_BSS_SECT_END
 
+static instruction_list_model_t *s_model = &s_models[0];
+static instruction_list_model_t *s_committed_model = &s_models[0];
+static bool s_model_candidate_active, s_model_ui_dirty;
+
+#define s_bar_single_device      (s_model->single_device)
+#define s_single_device_id       (s_model->device_target)
+#define list_items               (s_model->items)
+#define list_item_count          (s_model->count)
+#define app_base_count           (s_model->base_count)
+#define s_list_mode              (s_model->mode)
+#define s_phone_connected        (s_model->phone_connected)
+#define s_disc_backup            (s_model->disconnected)
+#define s_disc_backup_count      (s_model->disconnected_count)
+#define s_cat_filter             (s_model->category_filter)
+#define s_cat_backup_count       (s_model->category_count)
+#define s_cat_backup_valid       (s_model->category_valid)
+#define s_text_filter            (s_model->query)
+#define s_view_cat               (s_model->view_category)
+#define selected_item_index      (s_model->selected)
+#define s_sub_key                (s_model->sub_key)
+#define s_sub_next               (s_model->sub_next)
+#define s_sub_long_key           (s_model->sub_long_key)
+#define s_sub_long_txt           (s_model->sub_long_text)
+#define s_sw_key                 (s_model->switch_key)
+#define s_sw_pos                 (s_model->switch_pos)
+#define s_sw_on                  (s_model->switch_on)
+#define s_sw_next                (s_model->switch_next)
+#define s_acc_key                (s_model->accent_key)
+#define s_acc_idx                (s_model->accent_index)
+#define s_acc_next               (s_model->accent_next)
+
+static int instruction_list_model_init(void)
+{
+    /* Retained PSRAM is UNINIT on this board. Initialize at cold boot before GUI. */
+    memset(s_models, 0, sizeof(s_models));
+    s_model = s_committed_model = &s_models[0];
+    s_model_candidate_active = s_model_ui_dirty = false;
+    return RT_EOK;
+}
+INIT_PREV_EXPORT(instruction_list_model_init);
+
+bool instruction_list_layout_begin_candidate(void)
+{
+    instruction_list_model_t *candidate;
+    if (s_model_candidate_active) return false;
+    candidate = s_committed_model == &s_models[0] ? &s_models[1] : &s_models[0];
+    memcpy(candidate, s_committed_model, sizeof(*candidate));
+    if (candidate->disconnected != NULL) candidate->disconnected = candidate->disconnected_items;
+    s_model = candidate;
+    s_model_candidate_active = true;
+    return true;
+}
+
+void instruction_list_layout_finish_candidate(bool accepted)
+{
+    extern bool instruction_list_is_visible(void);
+    if (!s_model_candidate_active) return;
+    if (accepted)
+    {
+        s_committed_model = s_model;
+    }
+    else s_model = s_committed_model;
+    s_model_candidate_active = false;
+}
+
+bool instruction_list_layout_set_route(unsigned index, const char *id, const char *device,
+                                       const char *bot, const char *name)
+{
+    instruction_route_t next = {0};
+    bool changed;
+    if(index >= INSTRUCTION_ROUTES) return false;
+    rt_strncpy(next.id, id, sizeof(next.id) - 1);
+    rt_strncpy(next.device, device, sizeof(next.device) - 1);
+    rt_strncpy(next.bot, bot, sizeof(next.bot) - 1);
+    rt_strncpy(next.name, name, sizeof(next.name) - 1);
+    changed = index >= s_model->route_count || memcmp(&next, &s_model->routes[index], sizeof(next)) != 0;
+    s_model->routes[index] = next;
+    return changed;
+}
+
+bool instruction_list_layout_finish_routes(unsigned count)
+{
+    bool changed = count != s_model->route_count;
+    s_model->route_count = (uint8_t)count;
+    return changed;
+}
+
+static const instruction_route_t *instruction_list_route(const char *id)
+{
+    unsigned i;
+    bool displayed = false;
+    if(!id) return NULL;
+    for(i = 0; i < list_item_count; i++)
+        if(strcmp(list_items[i].id, id) == 0) displayed = true;
+    if(!displayed) return NULL;
+    for(i = 0; i < s_model->route_count; i++)
+        if(strcmp(s_model->routes[i].id, id) == 0) return &s_model->routes[i];
+    return NULL;
+}
+
+bool instruction_list_resolve_owner(const char *id, char *device, size_t device_len,
+                                    char *bot, size_t bot_len)
+{
+    const instruction_route_t *route = instruction_list_route(id);
+    if(!route) return false;
+    if(device && device_len) { rt_strncpy(device, route->device, device_len - 1); device[device_len - 1] = '\0'; }
+    if(bot && bot_len) { rt_strncpy(bot, route->bot, bot_len - 1); bot[bot_len - 1] = '\0'; }
+    return true;
+}
+
+const char *instruction_list_device_name_for_row(const char *id)
+{
+    const instruction_route_t *route = instruction_list_route(id);
+    return route ? route->name : NULL;
+}
+
+
+/* Bounded model snapshots replace transient system-heap backups. */
 /* P2 S2 — transient @-chat / /-action view filter. Same compaction idiom as the
    disconnect filter above (list_items[] is BOTH source and displayed list, and
    create_list_items_ui / create_indicator_dots index it by position — a subset
@@ -195,41 +336,16 @@ static uint8_t s_disc_backup_count = 0;
    TRANSIENT: live only while a filtered browse view is up, dropped by any
    structural op (phone push / disconnect change) and re-derived on the next open.
    s_cat_filter: 0 = all, '@' = chat, '/' = action (untagged counts as action). */
-static char s_cat_filter = 0;
-/* Pre-filter full-list backup. WAS rt_malloc'd per reveal (sizeof(list_items) ≈ 8KB);
-   under heap pressure that allocation could FAIL, and the old code then silently
-   skipped the re-pack — so the @ / and main views all showed the SAME full list (the
-   "no filtering at all" bug). A fixed BSS buffer makes the filter deterministic: it
-   never hinges on a large transient malloc succeeding. s_cat_backup_valid replaces the
-   old "s_cat_backup != NULL" filtered-state flag. */
-/* 2026-10-03:這份備份和 instruction_list_order_conv_items 的暫存各 ~9KB,原本是常駐 SRAM 的
-   static —— 而 SRAM 少一塊就是系統堆少一塊(link.sct 的 RW_IRAM0/1 首尾相接、堆從 ZI 尾巴開始)。
-   聊天室實測靜止時系統堆只剩 ~10KB、整頁一幀要 ~10KB,真機 `sys memory is full!` 重開機。
-   改成**第一次用到才從 PSRAM 配、之後常駐**:仍然是確定性的(PSRAM 圖片池 1.6MB 空著,不會像當年
-   per-reveal 的 rt_malloc 被吃緊的堆弄失敗而悄悄跳過篩選),但不再佔堆 → 堆 +18KB。
-   list_scratch(0)=備份、(1)=排序暫存;配不到回 NULL,呼叫端各自安全退出。 */
 static list_item_t *list_scratch(int slot)
 {
-#ifdef BSP_USING_PC_SIMULATOR
-    static list_item_t sim_buf[2][MAX_LIST_ITEMS];
-    return sim_buf[slot];
-#else
-    static list_item_t *s_psram[2];
-    if (s_psram[slot] == NULL)
-        s_psram[slot] = (list_item_t *)app_cache_alloc(sizeof(list_item_t) * MAX_LIST_ITEMS,
-                                                       IMAGE_CACHE_PSRAM);
-    return s_psram[slot];
-#endif
+    return slot == 0 ? s_model->category_items : s_order_work;
 }
 #define s_cat_backup list_scratch(0)
-static uint8_t s_cat_backup_count = 0;
-static bool s_cat_backup_valid = false;
 /* R55(founder 2026-08-13):左頁的麥克風 = 先開輸入框,說出來的字**即時篩上面的清單**
    (actions 的標題 + 各設備的 session 標題);全部篩掉了才變成「開新 session」那一個選項。
    這是**第二層**檢視篩選,跟 s_cat_filter 疊在一起用同一份 s_cat_backup 打包 —— 另外開
    一份備份是 sizeof(list_items) ≈ 8KB 的 BSS,而這台的 heap 已經吃緊(進滑鼠頁的大配置
    失敗就 NULL deref)。空字串 = 不篩。 */
-static char s_text_filter[48] = {0};
 static void pack_text_filter(void); /* 定義在後段(要用 item/字串輔助函式);refresh 出口呼叫 */
 static bool search_freeze_active(void); /* 搜尋期間清單凍結(R60) */
 /* 篩不到任何東西時補上的合成列:點它 = 用目前控制中的那台開新 session。id 用一個
@@ -241,14 +357,13 @@ static bool search_freeze_active(void); /* 搜尋期間清單凍結(R60) */
    push so apply_pending_instruction_batch can re-apply the view afterwards — fixing "a
    push that lands while the @/-list is open reverts it to all". Set on reveal (every
    set_category_filter), cleared when the list slides shut. */
-static char s_view_cat = 0;
 /* SINGLE-DEVICE skaibar mode for the STANDALONE mouse app (APP_ID_MOUSE). Set by
    instruction_list_bar_tap_device(): the list shows ONE controlled device's options (fed
    from the E7 registry, not the watch-face / aggregated list) and the round-trip is
    single-target (settle sends commu_send_skaibar_open_device, NOT the aggregated
    commu_send_skaibar_view broadcast). Cleared + watch-face list restored when the list
    slides shut (inst_list_slide_out_done_cb) or the mouse app dismisses it on exit. */
-static bool s_bar_single_device = false;
+
 /* Does the box the standalone mouse app (APP_ID_MOUSE) is controlling RIGHT NOW have a
    genuinely focused native text input? Pushed down by the phone (KEY_REMOTE_TEXT_FOCUS 0x17,
    see communicate_parse_skailink.c) edge-triggered after every relayed click, so this is a
@@ -270,6 +385,7 @@ static char s_pending_reveal_filter = 0;
    list object mirrors in from either edge. */
 static bool s_reveal_from_left = false;
 static void cat_filter_restore_full(void);
+static bool instruction_list_reapply_view_filter(void);
 static void instruction_list_set_category_filter(char cat);
 
 /* Callback: tapped or toggled. Receives id string and enabled state. */
@@ -670,7 +786,6 @@ static void animate_label_vertical(lv_obj_t *obj, bool move_up)
 
 lv_obj_t *app_icon_shadow[MAX_LIST_ITEMS];
 static bool is_indicator_dots_visible = true;
-static uint16_t selected_item_index = 0;
 static uint16_t last_zoom[MAX_LIST_ITEMS] = {0};
 /* 右緣點點輪盤的整體縮放(圖示大小與每格角度一起縮,輪盤只是變成縮小版):1 = 列清單模式的原樣,
    整頁卡片模式縮成 50%(founder 2026-10-01:「還是要像之前的樣式一樣,只是變小 50%」)。 */
@@ -909,6 +1024,7 @@ static void create_indicator_dots(lv_obj_t *parent)
     for (int i = 0; i < total_dots; i++)
     {
         lv_obj_t *dot_bg = lv_obj_create(parent);
+        if (!dot_bg) return;
         lv_obj_set_size(dot_bg, DOT_BG_SIZE, DOT_BG_SIZE);
         lv_obj_set_style_bg_opa(dot_bg, LV_OPA_0, 0);
         lv_obj_clear_flag(dot_bg, LV_OBJ_FLAG_SCROLLABLE);
@@ -926,12 +1042,14 @@ static void create_indicator_dots(lv_obj_t *parent)
         lv_obj_add_flag(dot_bg, LV_OBJ_FLAG_EVENT_BUBBLE);
 
         app_icon_shadow[i] = lv_img_create(dot_bg);
+        if (!app_icon_shadow[i]) return;
         lv_img_set_src(app_icon_shadow[i], &app_icon_frame);
         lv_obj_align(app_icon_shadow[i], LV_ALIGN_CENTER, 0, 0);
         lv_obj_add_flag(app_icon_shadow[i], LV_OBJ_FLAG_HIDDEN);
         lv_obj_add_flag(app_icon_shadow[i], LV_OBJ_FLAG_EVENT_BUBBLE);
 
         lv_obj_t *dot = lv_img_create(dot_bg);
+        if (!dot) return;
         lv_obj_center(dot);
         lv_obj_add_flag(dot, LV_OBJ_FLAG_EVENT_BUBBLE);
         if (list_items[i].img_path[0] != '\0')
@@ -983,6 +1101,7 @@ static void create_indicator_dots(lv_obj_t *parent)
                 lv_obj_add_flag(dot, LV_OBJ_FLAG_HIDDEN);
                 lv_obj_add_flag(dot_bg, LV_OBJ_FLAG_OVERFLOW_VISIBLE);
                 lv_obj_t *name = lv_label_create(dot_bg);
+        if (!name) return;
                 lv_font_t *f = lvsf_get_font_from_size(18);
                 if (f != NULL)
                     lv_obj_set_style_text_font(name, f, 0);
@@ -1245,26 +1364,12 @@ lv_obj_t *app_label[MAX_LIST_ITEMS];
    s_base_items 各複製一份,每列多 96B = 憑空多出 8KB 常駐 SRAM,而 R31~R33 才剛把 heap
    用盡的當機救回來。旁表只有一份,以 id 雜湊為鍵 —— 清單被重排/篩選時 list_items 會搬
    位置,鍵不會。 */
-#define LIST_SUB_LEN 96 /* 手機端 WATCH_PREVIEW_MAX_BYTES=95 的對口:兩行 CJK 約 31 字 */
 #define LIST_SUB_MAX_W 260 /* 標題置中偏左 20px、右緣讓出圖標,弦長內放得下的寬度 */
 static lv_obj_t *app_sub[MAX_LIST_ITEMS];
-static uint32_t s_sub_key[MAX_LIST_ITEMS]; /* 0 = 空槽 */
-/* 旁表的文字區 30x96B=2.9KB 原本常駐 SRAM static,SRAM 少一塊就是系統堆少一塊(link.sct 首尾相接)。
-   改成第一次用到才從 PSRAM 配、之後常駐(跟 list_scratch 同一招);配不到回 NULL,呼叫端當「沒有預覽」。 */
 static char (*sub_txt_tbl(void))[LIST_SUB_LEN]
 {
-#ifdef BSP_USING_PC_SIMULATOR
-    static char sim_buf[MAX_LIST_ITEMS][LIST_SUB_LEN];
-    return sim_buf;
-#else
-    static char(*s_psram)[LIST_SUB_LEN];
-    if (s_psram == NULL)
-        s_psram = (char(*)[LIST_SUB_LEN])app_cache_alloc(sizeof(char[MAX_LIST_ITEMS][LIST_SUB_LEN]),
-                                                         IMAGE_CACHE_PSRAM);
-    return s_psram;
-#endif
+    return s_model->sub_text;
 }
-static uint8_t s_sub_next; /* 旁表滿了才輪流覆寫 */
 static lv_coord_t s_sub_dy; /* 預覽區塊中心相對標題中心的下移量,建列時算 */
 
 static uint32_t sub_key_of(const char *id)
@@ -1278,11 +1383,26 @@ static uint32_t sub_key_of(const char *id)
     return h ? h : 1u; /* 0 保留給空槽 */
 }
 
+/* At most 30 rows: reclaim metadata for a removed row before touching a
+   surviving row, including rows temporarily hidden by category/search. */
+static int unused_metadata_slot(const uint32_t *keys, unsigned slots)
+{
+    const list_item_t *rows = list_items;
+    unsigned count = list_item_count, i, j;
+    if (s_disc_backup) { rows = s_disc_backup; count = s_disc_backup_count; }
+    else if (s_cat_backup_valid) { rows = s_cat_backup; count = s_cat_backup_count; }
+    for (i = 0; i < slots; i++) {
+        bool retained = false;
+        for (j = 0; j < count; j++)
+            if (keys[i] == sub_key_of(rows[j].id)) { retained = true; break; }
+        if (!retained) return (int)i;
+    }
+    return -1;
+}
+
 /* Bot 那句主動提醒的「長版」(founder 2026-10-01:「字沒有顯示完,我只看到『...下午降』」):旁表一格只有 95B,
    手機推來的 preview 其實有 127B(SESSION_PREVIEW_LEN-1)。只有 Bot 的代表列有 glance,所以另開**一格** 128B
    (鍵=id 雜湊),不放大 30 格的旁表。比旁表短的(<96B)不存,由旁表照舊負責。 */
-static uint32_t s_sub_long_key; /* 0 = 空 */
-static char s_sub_long_txt[128];
 
 static const char *sub_long_of(const char *id)
 {
@@ -1370,7 +1490,8 @@ bool set_instruction_sub(const char *id, const char *sub)
         return false;
     if (slot < 0)
     {
-        slot = (empty >= 0) ? empty : (int)(s_sub_next++ % MAX_LIST_ITEMS);
+        slot = (empty >= 0) ? empty : unused_metadata_slot(s_sub_key, MAX_LIST_ITEMS);
+        if (slot < 0) slot = (int)(s_sub_next++ % MAX_LIST_ITEMS);
         s_sub_key[slot] = k;
     }
     memcpy(tbl[slot], sub, n);
@@ -1383,11 +1504,6 @@ bool set_instruction_sub(const char *id, const char *sub)
    下面畫一顆不變色的開關;點下去的當下圓點立刻滑到另一邊(+ 震動),不等手機回覆。圓點位置是手錶自己記的 ——
    手機每次整份重推只決定「這一列有沒有開關」與第一次出現時的位置,不會把圓點拉回去。旁表以 id 雜湊為鍵
    (不動 list_item_t)。永遠在 LVGL 執行緒(批次佇列的 drain 端 / 點擊處理)。 */
-#define SW_SLOTS 8
-static uint32_t s_sw_key[SW_SLOTS]; /* 0 = 空槽 */
-static uint8_t s_sw_pos[SW_SLOTS];  /* 0 = 左 / 1 = 右 */
-static bool s_sw_on[SW_SLOTS];      /* 最近一份批次裡這一列有標 sw */
-static uint8_t s_sw_next;
 
 static int sw_slot_of(const char *id)
 {
@@ -1396,6 +1512,26 @@ static int sw_slot_of(const char *id)
         if (s_sw_key[i] == k)
             return i;
     return -1;
+}
+
+/* Make room only for new switch rows. Protect every switch in the incoming
+   complete list, including rows whose turn in the JSON has not arrived yet. */
+void instruction_list_layout_prepare_switches(const char *const *ids, unsigned count)
+{
+    unsigned available = 0, needed = 0, i, j;
+    for (i = 0; i < SW_SLOTS; i++) if (s_sw_key[i] == 0) available++;
+    for (i = 0; i < count; i++) if (sw_slot_of(ids[i]) < 0) needed++;
+    for (i = 0; i < SW_SLOTS && available < needed; i++) {
+        bool retained = false;
+        if (!s_sw_key[i]) continue;
+        for (j = 0; j < count; j++)
+            if (s_sw_key[i] == sub_key_of(ids[j])) { retained = true; break; }
+        if (!retained) {
+            s_sw_key[i] = 0;
+            s_sw_on[i] = false;
+            available++;
+        }
+    }
 }
 
 /* sw < 0:這一列不是開關(清掉標記,位置保留);sw >= 0:標成開關,第一次出現才用 sw 當初始位置。 */
@@ -1415,6 +1551,8 @@ void set_instruction_switch(const char *id, int sw)
         for (int i = 0; i < SW_SLOTS && s < 0; i++)
             if (s_sw_key[i] == 0)
                 s = i;
+        if (s < 0)
+            s = unused_metadata_slot(s_sw_key, SW_SLOTS);
         if (s < 0)
             s = (int)(s_sw_next++ % SW_SLOTS);
         s_sw_key[s] = sub_key_of(id);
@@ -1455,9 +1593,6 @@ static const uint32_t s_accent_rgb[ACC_COUNT] = {
     0xA9801B, /* notify */   0x555B66, /* camera */   0x1F7A85, /* watch app */
     0x2A7B4F, /* chat */     0x465A78, /* generic */
 };
-static uint32_t s_acc_key[MAX_LIST_ITEMS];
-static uint8_t s_acc_idx[MAX_LIST_ITEMS];
-static uint8_t s_acc_next;
 
 static uint8_t accent_idx_for_slug(const char *slug)
 {
@@ -1521,6 +1656,9 @@ static uint8_t accent_idx_of(const char *id)
 
 static void left_cards_sync(void);
 static void left_cards_release(void);
+static bool s_preparing_view, s_preparing_open, s_preparing_voice;
+static lv_obj_t *s_list_host;
+static bool s_list_ui_released = false;
 static lv_obj_t *widget_img = NULL;
 static bool left_hand_mode = true;
 static bool need_correction = false;
@@ -3482,7 +3620,7 @@ static bool lift_input_has_text(void)
 }
 
 /* fwd — all defined further down this file. */
-static void feed_single_device_options(const char *device_id);
+static bool feed_single_device_options(const char *device_id, bool selecting);
 void instruction_list_bar_device_dismiss(void);
 void instruction_list_open_browse(void);
 void instruction_list_close_lift_input_view(void);
@@ -3954,12 +4092,11 @@ bool instruction_list_open_lift_input_view(const char *device_id)
         if (!p_instruction_list_layout)
             return false;
     }
-    s_bar_single_device = true;
+    if (!feed_single_device_options(device_id, true)) return false;
     extern bool commu_send_skaibar_open_device_ex(bool force_open, bool input_only);
     commu_send_skaibar_open_device_ex(true, true);
     /* 先把 registry 的 default_actions 餵進共享清單當 placeholder(清單此刻是隱藏的,看不到)。
        這一步同時把 device_id 記進 s_single_device_id —— logo 送出後要開清單時用得到。 */
-    feed_single_device_options(device_id);
     instruction_list_bar_set_visible(true);
     /* 共享層上的 mic_bar 會跟著露出來、和面板疊在一起 —— 這條流程用面板自己的小麥克風,
        把它藏掉(同舊大麥克風流程的做法;instruction_list_floating_bar_visible() 也已把
@@ -4155,71 +4292,31 @@ static void mic_bar_event_cb(lv_event_t *evt)
 /* P3:記住目前單設備 skaibar 控制的那台 id。bar tap 是非同步的(tap→送 0x0E→電腦回 0x03
    選項要 ~1s),所以 0x03 一定晚到、要靠它更新後重餵清單。standalone 滑鼠 app 把錶盤拆了、
    device_pager UI 沒了,device_pager_refresh 改呼叫 instruction_list_refeed_single_device。 */
-static char s_single_device_id[SYNCED_DEVICE_ID_LEN] = {0};
 
-static void feed_single_device_options(const char *device_id)
+
+static bool feed_single_device_options(const char *device_id, bool selecting)
 {
-    /* These are defined later in this file (no header prototype); declare locally —
-       same convention the device-page restore/save call sites use above. */
-    extern void instruction_list_save_base(void);
-    extern void instruction_list_drop_pinned_for_device(void);
-    extern void clear_custom_instructions(void);
-    extern void add_or_update_custom_instruction(const char *id, const char *title,
-            const char *trigger_type, uint32_t interval_sec, bool enabled,
-            uint32_t version, const char *open_app);
-    extern void refresh_custom_instructions(void);
-    if (device_id == NULL || device_id[0] == '\0')
-        return;
-    /* 記住這台(即使下面因 usable==0 早退):0x03 晚到時 refeed 用得到。 */
-    strncpy(s_single_device_id, device_id, sizeof(s_single_device_id) - 1);
-    s_single_device_id[sizeof(s_single_device_id) - 1] = '\0';
     const T_SYNCED_DEVICE *dev = NULL;
-    uint8_t n = SkaiWatchSys.device_registry.count;
+    const char *options[MAX_DEFAULT_ACTIONS];
+    unsigned count = 0;
+    if (!device_id || !device_id[0]) return false;
+    unsigned n = SkaiWatchSys.device_registry.count;
     if (n > MAX_SYNCED_DEVICES) n = MAX_SYNCED_DEVICES;
-    for (uint8_t i = 0; i < n; i++)
-    {
-        if (strncmp(SkaiWatchSys.device_registry.devices[i].id, device_id,
-                    SYNCED_DEVICE_ID_LEN) == 0)
-        {
-            dev = &SkaiWatchSys.device_registry.devices[i];
-            break;
+    for (unsigned i = 0; i < n; i++)
+        if (strncmp(SkaiWatchSys.device_registry.devices[i].id, device_id, SYNCED_DEVICE_ID_LEN) == 0) {
+            dev = &SkaiWatchSys.device_registry.devices[i]; break;
         }
+    if (dev) {
+        unsigned ic = dev->default_action_count;
+        if (ic > MAX_DEFAULT_ACTIONS) ic = MAX_DEFAULT_ACTIONS;
+        /* Registry order is desktop top-down; the existing watch tap order is reversed. */
+        for (int i = (int)ic - 1; i >= 0; i--)
+            if (dev->default_actions[i][0]) options[count++] = dev->default_actions[i];
     }
-    if (dev == NULL)
-    {
-        LOG_I("[bar_dev] device id not in registry (count=%u) -> keep current list",
-              (unsigned)SkaiWatchSys.device_registry.count);
-        return;
-    }
-    uint8_t ic = dev->default_action_count;
-    if (ic > MAX_DEFAULT_ACTIONS) ic = MAX_DEFAULT_ACTIONS;
-    /* 先數可用選項:0 個就不 feed —— 空清單會讓 open_browse 的 reset_list_internal 捲到
-       不存在的 child。保留現有(錶盤)清單(≥1 項、含 Settings pin)、不 save_base/drop_pinned,
-       電腦端 skaibar 仍會 summon(settle 送 open_device);restore_base 因沒 save 而 no-op。 */
-    uint8_t usable = 0;
-    for (uint8_t i = 0; i < ic; i++)
-        if (dev->default_actions[i][0] != '\0') usable++;
-    LOG_I("[bar_dev] device found, usable options=%u", (unsigned)usable);
-    if (usable == 0)
-        return;
-    instruction_list_save_base();              /* 快照錶盤清單(每段只快照一次,離開時還原) */
-    instruction_list_drop_pinned_for_device(); /* 設備選項 0-based、無 Settings pin */
-    static uint32_t s_dev_opt_ver = 0;
-    s_dev_opt_ver++;
-    clear_custom_instructions();
-    /* 反轉加入:手錶清單 bottom-up 渲染(option 0 在最下),電腦 skaibar 是 top-down。倒著加 →
-       option 0(最下)= registry 最後一筆 = 電腦最下那列;最上 = registry 第一筆 = 電腦最上那列
-       → 顯示與電腦對齊(不倒反)。commit 的 focus 翻轉(N-1-opt_idx,本檔 ~1188)正是為此反轉設計、
-       兩者一致 → 點選也對到正確的電腦列。registry(0x03 device_actions)本身是電腦 top-down 原序。 */
-    for (int i = (int)ic - 1; i >= 0; i--)
-    {
-        if (dev->default_actions[i][0] == '\0') continue;
-        add_or_update_custom_instruction(dev->default_actions[i],
-                                         dev->default_actions[i], "once", 0, true,
-                                         s_dev_opt_ver, NULL);
-    }
-    refresh_custom_instructions();
+    return selecting ? instruction_list_set_device_options(device_id, count ? options : NULL, count)
+                     : instruction_list_refresh_device_options(device_id, count ? options : NULL, count);
 }
+const char *instruction_list_layout_device_target(void) { return s_bar_single_device ? s_single_device_id : ""; }
 
 /* P3 公開:device-sync(0x03 等)更新 registry 後重餵 standalone 滑鼠 skaibar 清單。給
    device_pager_refresh 在「滑鼠 app active(錶盤已被 gui_app_exit 拆掉、device_pager UI 是
@@ -4227,17 +4324,18 @@ static void feed_single_device_options(const char *device_id)
    設備時動作。必須在 LVGL 執行緒呼叫(device_pager_refresh 已是,skai_device_ui_refresh 有 defer)。 */
 void instruction_list_refeed_single_device(void)
 {
-    if (!s_bar_single_device || s_single_device_id[0] == '\0')
-        return;
+    extern const char *instruction_list_device_target(void);
+    const char *device = instruction_list_device_target();
+    if (!device || !device[0]) return;
     /* 手機 push 的即時選項(帶 @-contact service logo)優先於 registry placeholder。registry 的
        default_actions 不帶 svc,一旦 refeed 就把 push 設好的 service icon clear+rebuild 成預設框
        (真機 log 2026-06-30 證實:set_svc 設好 icon → 隨後的 refeed 把 icon 歸零 → logo 消失)。
        所以清單只要已顯示帶 logo 的 @ 列,就保留 push 版、不用 registry 覆蓋。push 會持續帶來電腦
        skaibar 的即時更新,不需要 registry placeholder 再蓋一次。 */
     for (uint8_t i = 0; i < list_item_count; i++)
-        if (list_items[i].icon != NULL && list_items[i].category == '@')
+        if (strcmp(device, s_single_device_id) == 0 && list_items[i].icon != NULL && list_items[i].category == '@')
             return;
-    feed_single_device_options(s_single_device_id);
+    feed_single_device_options(device, false);
 }
 
 /* 公開：phone 下行 KEY_REMOTE_TEXT_FOCUS(0x17)呼叫 —— 更新「控制中那台設備目前有沒有聚焦
@@ -4271,18 +4369,7 @@ bool instruction_list_prepare_single_device(const char *device_id)
         if (!p_instruction_list_layout)
             return false;
     }
-    /* R32/R33(2026-08-15 真機抓到「點 bar 沒有選項」):hosted 滑鼠進場會 release 列 UI
-       換 heap,此後 refresh 一律 defer —— 底下 feed 的 refresh 會靜默無效=空清單;
-       長按直開語音框(animate_open_ai_widget)那條更完全不經 open_browse 的 ensure。
-       用 for_feed 輕量版:只解除 deferral,讓 feed 的 refresh 一次建出單設備清單
-       (完整 ensure_ui 會先建舊清單再拆,heap 尖峰壓垮過聊天室,見該函式註解)。 */
-    {
-        extern void instruction_list_ensure_ui_for_feed(void);
-        instruction_list_ensure_ui_for_feed();
-    }
-    s_bar_single_device = true;
-    feed_single_device_options(device_id); /* 同時把 device_id 記進 s_single_device_id */
-    return true;
+    return feed_single_device_options(device_id, true);
 }
 
 /* 公開：讀那個快取旗標。滑鼠 app 的語音站要靠它決定 icon_send 出不出現(它自己有一份
@@ -4306,6 +4393,9 @@ bool instruction_list_single_device_active(void)
    通知電腦收掉它的 skaibar、清旗標,避免設備選項殘留在下次錶盤底部 bar。idempotent。 */
 void instruction_list_bar_device_dismiss(void)
 {
+    extern void instruction_list_cancel_device(void), instruction_list_cancel_open(void);
+    instruction_list_cancel_device();
+    instruction_list_cancel_open();
     if (!s_bar_single_device)
         return;
     s_bar_single_device = false;
@@ -4334,19 +4424,22 @@ void instruction_list_bar_device_dismiss(void)
     { extern void hid_mouse_set_own_bar_hidden(bool); hid_mouse_set_own_bar_hidden(false); } /* 浮層 bar 收→當幀還原滑鼠自有 bar */
 }
 
-/* P3 公開:給 STANDALONE 滑鼠 app(把錶盤 gui_app_exit 拆掉那種)退出用。只通知電腦收 skaibar
-   (0x0C)+ 清單設備旗標 + 忘掉記住的設備 id,【不】做 restore_base / hide overlay —— 因為
-   standalone 退出時框架會重建錶盤(Main)自己的 instruction_list + overlay,任何對共享清單的
-   操作都會打到 Main 的新清單(bar 消失 + WDT 凍結)。embedded device_pager 路徑(Main 活著、清單
-   不重建)仍走完整的 instruction_list_bar_device_dismiss(restore_base + hide)。 */
+/* Standalone page exit may run after Main recreated its UI. Restore only
+   model data here; opening Main will prepare its frame before displaying it. */
 void instruction_list_skaibar_dismiss_notify_only(void)
 {
+    extern void instruction_list_cancel_device(void), instruction_list_cancel_open(void);
+    instruction_list_cancel_device();
+    instruction_list_cancel_open();
     if (!s_bar_single_device)
         return;
+    extern bool commu_send_skaibar_dismiss(void);
+    extern void instruction_list_restore_base(void);
+    commu_send_skaibar_dismiss();
+    instruction_list_restore_base();
     s_bar_single_device = false;
     s_single_device_id[0] = '\0';
-    extern bool commu_send_skaibar_dismiss(void);
-    commu_send_skaibar_dismiss();
+    instruction_list_scope_changed();
 }
 
 /* Forwarder for the upward tap-helper band (mic_hit). Forwards a TAP to
@@ -4640,18 +4733,18 @@ void instruction_list_drawer_push_up(void)
 
 /* 從語音站下拉收合回抽屜:重建列 UI、用**最新**的鏡像資料重餵(founder:「拉回已經
    有對應輸入變更過的選項」),清單再從上方滑回原位。 */
-void instruction_list_drawer_slide_in(void)
+void instruction_list_drawer_slide_in(void) { instruction_list_open_device_drawer(); }
+
+bool instruction_list_layout_open_drawer(void)
 {
     if (!p_instruction_list_layout || !s_bar_single_device)
-        return;
+        return false;
     lv_obj_t *list_bg = p_instruction_list_layout->p_instruction_list_bg;
     if (!list_bg || !lv_obj_is_valid(list_bg))
-        return;
-    {
-        extern void instruction_list_ensure_ui_for_feed(void);
-        instruction_list_ensure_ui_for_feed();
-    }
-    feed_single_device_options(s_single_device_id); /* 語音搜尋後的最新選項 */
+        return false;
+    if (!feed_single_device_options(s_single_device_id, true)) return false;
+    extern bool instruction_list_prepare_open(char category);
+    if (!instruction_list_prepare_open(s_view_cat)) return false;
     if (s_global_bar_layer && lv_obj_is_valid(s_global_bar_layer))
         lv_obj_clear_flag(s_global_bar_layer, LV_OBJ_FLAG_HIDDEN);
     drawer_row_engage(true);
@@ -4673,6 +4766,7 @@ void instruction_list_drawer_slide_in(void)
         extern void check_main_page(void);
         check_main_page();
     }
+    return true;
 }
 
 /* 收下鍵:清單往下收掉,落地走 inst_list_slide_out_done_cb 那條既有的完整收尾
@@ -4812,6 +4906,9 @@ static void skai_widget_restore_full_opa(void)
     }
 }
 
+
+
+
 void tap_on_ai_widget(void);
 
 /* ---- bottom mic-bar → input-box MORPH (mirrors the right device_pager skaibar)
@@ -4942,6 +5039,13 @@ static void inst_list_slide_out_done_cb(lv_anim_t *a)
     s_list_sliding_out = false; /* 列表此時已 HIDDEN(見上),清 flag 讓 off-screen restore 照常重繪 */
     cat_filter_restore_full();
     s_view_cat = 0;
+    extern bool clock_main_page_is_home(void);
+    if (!s_bar_single_device && clock_main_page_is_home()) {
+        extern void instruction_list_restore_base(void);
+        instruction_list_restore_base();
+        cat_filter_restore_full();
+        s_view_cat = 0;
+    }
     /* 滑鼠 app 單設備模式:列表完全收掉 → 把共享清單還原成錶盤清單、退出單設備模式,
        否則設備選項會殘留到下次錶盤底部 bar。錶盤 / device_pager 路徑 flag 為 false,無影響。 */
     if (s_bar_single_device)
@@ -5202,12 +5306,8 @@ void instruction_list_reveal_drag_begin(void)
        pager 已經握有的 session 資料注入進來,第一幀就是完整清單、落點一次到位。
        (資料早就在 pager 的 s_devices 裡 —— 手機每 5 秒推一次;缺的只是「注入」這個動作。) */
     {
-        extern void session_list_actions_changed(void);
-        session_list_actions_changed();
-    }
-    {
-        extern void instruction_list_ensure_ui(void);
-        instruction_list_ensure_ui();
+        extern bool instruction_list_prepare_open(char category);
+        if (!instruction_list_prepare_open(s_pending_reveal_filter)) { s_reveal_drag_active = false; return; }
     }
     instruction_list_bar_set_visible(true); /* idempotent on HOME */
     lv_anim_del(list_bg, inst_list_slide_anim_cb);
@@ -5247,13 +5347,14 @@ void instruction_list_reveal_drag_begin(void)
        shows the CORRECT content. (Previously applied at settle, which left the
        prior reveal's content visible during the whole pull.) s_pending_reveal_filter
        was set by the caller — the edge overlay at lock, or open_browse to 0 (all). */
-    instruction_list_set_category_filter(s_pending_reveal_filter);
+    /* The list module prepared this category before exposing the frame. */
     s_reveal_drag_active = true;
     /* 整頁卡片要在「浮層被掀開」的這一刻就建好(founder 2026-09-30:「一開始劃進去看到的還是本來的 UI,
        滑動才變卡片」)。原本只掛在 refresh_custom_instructions 尾端,而 refresh 有 500ms 去抖,進場那
        一連串刷新常被延後 → 使用者先看到舊列清單,等到下一次刷新(手機推資料/5 秒輪詢)才換成卡片。
        這裡浮層已 un-hide 但還停在畫面外(尚未滑進來),建好再滑進來,第一眼就是卡片。 */
     left_cards_sync();
+    lv_obj_update_layout(list_bg);
     /* The list is now shown — surface the bottom mic pill with it (the bar that
        used to sit on the bare watch face). */
     instruction_list_refresh_home_bar();
@@ -5353,7 +5454,9 @@ void instruction_list_reveal_drag_end(lv_coord_t dx, lv_coord_t vx)
    nav — the LEFT tile is empty post-R3. Reuses the reveal begin (un-hide + park +
    backdrop) then runs the SAME settle-open animation the drag-release uses, so the
    dial blur ramps through and it lands in browse via reveal_settle_browse_done_cb. */
-void instruction_list_open_browse(void)
+void instruction_list_open_browse(void) { instruction_list_open(0); }
+
+void instruction_list_layout_open_browse(char category)
 {
     if (!p_instruction_list_layout)
         return;
@@ -5362,10 +5465,7 @@ void instruction_list_open_browse(void)
         return;
     /* R32:進滑鼠頁時把列的 UI 釋放掉換 heap,這裡是開清單的共同入口 —— 先原路
        重建回來(沒被 release 過就是 no-op)。 */
-    {
-        extern void instruction_list_ensure_ui(void);
-        instruction_list_ensure_ui();
-    }
+
     /* 自癒:關閉旗標卡住超過 LEFT_CLOSING_STALE_TICKS 就當它是死的,強制收尾後照常開。
        沒有這一段的話,一次被中斷的關閉動畫會讓 bar 從此永遠點不開(founder 2026-08-17)。 */
     if (s_left_closing &&
@@ -5392,10 +5492,11 @@ void instruction_list_open_browse(void)
     {
         motor_pattern_scrolling_app();
     }
-    s_pending_reveal_filter = 0; /* bar / IMU browse → all (@ + /) view */
+    s_pending_reveal_filter = category; /* bar / IMU browse → all (@ + /) view */
     s_reveal_from_left = true;   /* IMU release brings the LEFT list in (the right-edge
                                     drawer is legacy); park on the left, slide to 0 */
     instruction_list_reveal_drag_begin(); /* un-hide + park + backdrop */
+    if (lv_obj_has_flag(list_bg, LV_OBJ_FLAG_HIDDEN)) return;
     /* 滑鼠 app 單設備抽屜:底部換成語音站同款三鍵列(地球/麥克風/收下),原本那條
        mic_bar 與它的大 tap 區讓開(founder 2026-08-17)。錶盤路徑不進這裡。
        **一定要排在 reveal_drag_begin() 之後** —— 它的最後一行就是
@@ -5437,11 +5538,8 @@ void instruction_list_open_browse(void)
    app_mainmenu need not reach into our internals. */
 bool instruction_list_is_visible(void)
 {
-    return p_instruction_list_layout &&
-           p_instruction_list_layout->p_instruction_list_bg &&
-           lv_obj_is_valid(p_instruction_list_layout->p_instruction_list_bg) &&
-           !lv_obj_has_flag(p_instruction_list_layout->p_instruction_list_bg,
-                            LV_OBJ_FLAG_HIDDEN);
+    return s_list_host && lv_obj_is_valid(s_list_host) &&
+           !lv_obj_has_flag(s_list_host, LV_OBJ_FLAG_HIDDEN);
 }
 
 /* 浮層 bar 容器(s_global_bar_layer)實際是否可見 —— 滑鼠 app 用來 frame-對齊它自有底部 bar
@@ -5653,6 +5751,17 @@ void animate_open_ai_widget(void)
               "opening box");
         return;
     }
+    instruction_list_open_voice();
+}
+
+bool instruction_list_layout_open_voice(void)
+{
+    extern bool get_bluetooth_connection_status(void);
+    extern void instruction_list_cancel_open(void);
+    if (!get_bluetooth_connection_status()) {
+        instruction_list_cancel_open();
+        return false;
+    }
     /* Ignore re-triggers while the morph is opening, already shown, or animating
        shut (would restart the grow mid-flight and glitch). Gate on the box's
        ACTUAL visibility, not the is_open flag — a stuck-true flag would
@@ -5664,7 +5773,12 @@ void animate_open_ai_widget(void)
         !lv_obj_has_flag(p_instruction_list_layout->p_instruction_list_ai_bg,
                          LV_OBJ_FLAG_HIDDEN);
     if (s_left_morph_busy || s_left_closing || box_visible)
-        return;
+        return true;
+    extern bool instruction_list_prepare_voice_open(char category);
+    s_preparing_voice = true;
+    bool prepared = instruction_list_prepare_voice_open(s_view_cat);
+    s_preparing_voice = false;
+    if (!prepared) return false;
     last_ai_widget_open_time = rt_tick_get();
     /* R3: snapshot the current instruction list before in-session options (voice
        suggestions on the watch face / device options on the device page) overwrite
@@ -5751,6 +5865,7 @@ void animate_open_ai_widget(void)
     {
         lmic_open_reveal_cb(NULL); /* no bar — reveal directly */
     }
+    return true;
 }
 
 /* ---- reverse-morph close (mirrors the right device_pager skaibar_close) ----
@@ -5849,22 +5964,7 @@ void close_ai_widget(void)
        watch list keeps the in-session options. */
     if (!keep_list)
     {
-        /* Watch face: reset our own list to the snapshot taken on open — the phone
-           launcher's in-session options overwrote it (both a cancel and a commit
-           end back on the instruction list). Device page: skip — s_base is the
-           watch-face list kept for the page-leave restore, and the dismissed device
-           re-streams its default options which we re-feed. */
-        extern bool clock_main_page_is_home(void);
-        /* 滑鼠 app 單設備模式(s_bar_single_device=true):restore_base 交給滑出動畫完成後的
-           inst_list_slide_out_done_cb —— 它先把列表設 HIDDEN 再 restore,使用者看不到內容變。
-           若在這裡(動畫開始前)提前 restore,會同步 refresh_custom_instructions() 把單設備
-           選項換成錶盤 base 清單,而滑出動畫仍在跑、列表還可見 → 退出途中閃一下變成 actions。
-           錶盤/一般路徑(flag=false)維持原本的提前 restore 不變。 */
-        if (clock_main_page_is_home() && !s_bar_single_device)
-        {
-            extern void instruction_list_restore_base(void);
-            instruction_list_restore_base();
-        }
+        /* Restore the saved model only after the slide hides the old frame. */
         /* Any explicit CANCEL close (not a commit) tells the phone to dismiss the
            active skaibar so the device's / launcher's panel closes too. */
         if (is_cancel)
@@ -6023,6 +6123,9 @@ void instruction_list_cancel_ai_widget(void)
    the box's REAL visibility (not the is_open flag, which can get stuck). */
 void instruction_list_close_ai_on_leave(void)
 {
+    extern void instruction_list_cancel_device(void), instruction_list_cancel_open(void);
+    instruction_list_cancel_device();
+    instruction_list_cancel_open();
     if (!p_instruction_list_layout)
         return;
     /* Close on leave whenever the LIST is up (voice OR browse state) — not just
@@ -6044,6 +6147,8 @@ void instruction_list_close_ai_on_leave(void)
    never runs — so without this it rides in with the page. */
 void instruction_list_hide_now(void)
 {
+    extern void instruction_list_cancel_open(void);
+    instruction_list_cancel_open();
     if (!p_instruction_list_layout)
         return;
     lv_obj_t *list_bg = p_instruction_list_layout->p_instruction_list_bg;
@@ -6061,6 +6166,15 @@ void instruction_list_hide_now(void)
     }
 }
 
+
+void instruction_list_layout_close_now(void)
+{
+    if (!p_instruction_list_layout) return;
+    mic_bar_voice_stop();
+    finalize_close_ai_widget();
+    instruction_list_hide_now();
+    inst_list_slide_out_done_cb(NULL);
+}
 
 void tap_on_ai_widget(void)
 {
@@ -6877,8 +6991,8 @@ static void lc_rebuild_rows_cb(void *arg)
 
 static bool left_cards_wanted(void)
 {
-    return s_session_page_mode && !s_bar_single_device && s_text_filter[0] == '\0' &&
-           !is_open_instruction_list_ai && list_item_count > 0;
+    return (s_session_page_mode || s_preparing_open) && !s_bar_single_device && s_text_filter[0] == '\0' &&
+           !is_open_instruction_list_ai && !s_preparing_voice && !s_left_morph_busy && list_item_count > 0;
 }
 
 /* 卡片底色。手機對「開錶上 app」的列一律標同一個類型(watchapp),只靠類型色整排都變成同一個藍綠
@@ -7115,7 +7229,8 @@ static uint32_t lc_hash(uint32_t h, const char *s)
    去通知清單找「可回覆、有選項、內文壓平後以這句開頭」的那一則,把它的選項畫在卡片上;點選項 = 在通知頁
    點同一顆晶片(replying_notification_id + REMOTE_INPUT + 移除通知)。找不到就不畫,卡片照舊。 */
 static char s_lc_opt_txt[3][36]; /* NOTIFICATION_OPTION_LEN */
-static char s_lc_opt_nid[48];    /* NOTIFICATION_ID_LEN */
+static char s_lc_opt_instance[33];
+static uint32_t s_lc_opt_revision;
 /* Bot 卡片的完整內文(founder 2026-10-01:「AI 的字卡沒給選項的話,可以讓它能顯示的字增加多一些」):
    手機推來的那句只有 95 位元組(旁表一格 96B、30 格不能再放大),而同一則 AI 主動提醒的全文本來就在錶上的
    通知清單裡(最多 768B)。找到對應通知就改顯示它的全文(壓平空白、截 299B),找不到仍用那一句。 */
@@ -7175,6 +7290,10 @@ static uint32_t lc_opt_sig_of(const notification_t *nt)
     if (nt == NULL)
         return h;
     h = lc_hash(h, nt->id);
+    h = lc_hash(h, nt->reply_instance);
+    h = lc_hash(h, notification_reply_available() ? "reply-enabled" : "read-only");
+    h ^= nt->reply_revision * 16777619u;
+    h ^= notification_reply_pending(nt->reply_instance, nt->reply_revision) ? 1u : 0u;
     for (uint8_t k = 0; k < nt->option_count && k < 3; k++)
         h = lc_hash(h, nt->options[k]);
     return h;
@@ -7232,14 +7351,12 @@ static void lc_option_cb(uint8_t card, uint8_t opt)
         return;
     if (card != s_lc_opt_card || opt >= s_lc_opt_n)
         return;
-    char nid[sizeof(s_lc_opt_nid)];
-    strncpy(nid, s_lc_opt_nid, sizeof(nid) - 1);
-    nid[sizeof(nid) - 1] = '\0';
-    /* 跟通知頁 message_option_chip_cb 同一條路:0x20 {"id","m"},然後把通知移掉 */
-    strcpy(replying_notification_id, nid);
-    handle_user_speech_intent(V2T_INTENT_REMOTE_INPUT, s_lc_opt_txt[opt]);
-    remove_notification_by_id(nid);
-    left_cards_sync(); /* 通知沒了 → 晶片收掉 */
+    char instance[33];
+    memcpy(instance, s_lc_opt_instance, sizeof(instance));
+    notification_reply_state_t state = notification_reply_option_version(instance, s_lc_opt_revision, s_lc_opt_txt[opt]);
+    if (state != NOTIFICATION_REPLY_WAITING && state != NOTIFICATION_REPLY_UNKNOWN)
+        ui_show_hint_toast("未能傳送，請確認通知與手機版本");
+    left_cards_sync();
 #else
     (void)card;
     (void)opt;
@@ -7378,7 +7495,7 @@ static void left_cards_release(void)
     s_lc_opt_sig = 2166136261u;
     /* 沒建列的狀態下改回列清單模式(語音搜尋、滑鼠單設備抽屜、AI 輸入框):列要補建,否則清單是空的。
        只有「現在不要卡片」才補(只是浮層沒開著的 release 不需要列)。 */
-    if (s_lc_rows_skipped && !left_cards_wanted())
+    if (s_lc_rows_skipped && !left_cards_wanted() && !s_preparing_view)
     {
         s_lc_rows_skipped = false;
         lv_async_call(lc_rebuild_rows_cb, NULL);
@@ -7403,6 +7520,7 @@ static bool lc_card_at(uint8_t idx, left_card_t *c, char *subbuf)
     c->icon = (it->img_path[0] != '\0') ? (const void *)it->img_path : it->icon;
     c->accent = lc_accent_of(it, ai);
     c->n_opts = 0;
+    c->opts_disabled = false;
     for (uint8_t k = 0; k < 3; k++)
         c->opts[k] = NULL;
     c->big = NULL;
@@ -7435,6 +7553,7 @@ static bool lc_card_at(uint8_t idx, left_card_t *c, char *subbuf)
         for (uint8_t k = 0; k < s_lc_opt_n && k < 3; k++)
             c->opts[k] = s_lc_opt_txt[k];
         c->n_opts = s_lc_opt_n;
+        c->opts_disabled = notification_reply_pending(s_lc_opt_instance, s_lc_opt_revision);
     }
     return true;
 }
@@ -7470,7 +7589,7 @@ static void left_cards_sync(void)
     lv_obj_t *bg = p_instruction_list_layout->p_instruction_list_bg;
     if (bg == NULL || !lv_obj_is_valid(bg))
         return;
-    if (!left_cards_wanted() || !instruction_list_is_visible())
+    if (!left_cards_wanted() || (!s_preparing_view && !instruction_list_is_visible()))
     {
         left_cards_release();
         return;
@@ -7495,10 +7614,10 @@ static void left_cards_sync(void)
             continue;
         lc_ai_text_from(nt->message);
         s_lc_ai_card = i;
-        s_lc_opt_n = (nt->option_count > 3) ? 3 : nt->option_count;
+        s_lc_opt_n = (notification_reply_available() && nt->reply_revision) ? ((nt->option_count > 3) ? 3 : nt->option_count) : 0;
         s_lc_opt_card = i;
-        strncpy(s_lc_opt_nid, nt->id, sizeof(s_lc_opt_nid) - 1);
-        s_lc_opt_nid[sizeof(s_lc_opt_nid) - 1] = '\0';
+        memcpy(s_lc_opt_instance, nt->reply_instance, sizeof(s_lc_opt_instance));
+        s_lc_opt_revision = nt->reply_revision;
         for (uint8_t k = 0; k < s_lc_opt_n; k++)
         {
             strncpy(s_lc_opt_txt[k], nt->options[k], sizeof(s_lc_opt_txt[k]) - 1);
@@ -7514,6 +7633,7 @@ static void left_cards_sync(void)
         char sb[LEFT_CARD_SUB_BUF];
         lc_card_at(i, &c, sb);
         s_lc_item[i] = i;
+        sig = lc_hash(sig, list_items[i].id);
         sig = lc_hash(sig, c.title);
         ssig = lc_hash(ssig, c.sub);
         ssig = lc_hash(ssig, c.big); /* 大字版面(計時器)的字/膠囊/箭頭變了也要重畫 */
@@ -7538,6 +7658,7 @@ static void left_cards_sync(void)
     bool shown = left_cards_visible();
     if (shown && n == s_lc_n && sig == s_lc_sig)
     {
+        left_cards_refresh_option_state();
         /* 只有說明文字變了(步數多一步、換了一首歌):原地重畫卡片內容,不重建翻頁容器 */
         if (ssig != s_lc_ssig && !left_cards_busy())
         {
@@ -7556,14 +7677,11 @@ static void left_cards_sync(void)
     /* 停在哪張:使用者動過就留在他看的那張;沒動過(剛進場、或資料晚到重建)就停在「選中的那一列」
        (進場落點規則 = 最新的 session,Bot 晚到幾秒也要補正過去,不是留在重建前那一張) */
     uint8_t start = (uint8_t)(n - 1);
-    if (shown && s_lc_moved)
-        start = left_cards_current();
-    else
-    {
-        for (uint8_t k = 0; k < n; k++)
-            if (s_lc_item[k] == selected_item_index)
-                start = k;
-    }
+    /* selected_item_index has been resolved from the old identity. An old
+       numeric card index can refer to a different item after replacement. */
+    for (uint8_t k = 0; k < n; k++)
+        if (s_lc_item[k] == selected_item_index)
+            start = k;
     if (start >= n)
         start = (uint8_t)(n - 1);
     s_lc_n = n;
@@ -8032,6 +8150,9 @@ void clear_custom_instructions(void)
 {
     if (search_freeze_active())
         return;
+    /* Retire the view backup before replacing the source list. Otherwise the
+       first upsert restores that backup and resurrects deleted phone rows. */
+    cat_filter_restore_full();
     /* BATCH replace (0x6B) clears here before re-appending. A clear is always a
        phone push, so enter PHONE mode and treat the link as connected; any stale
        disconnect-filter snapshot is now superseded by the incoming list. */
@@ -8040,9 +8161,44 @@ void clear_custom_instructions(void)
     s_phone_connected = true;
     if (s_disc_backup)
     {
-        rt_free(s_disc_backup);
+
         s_disc_backup = NULL;
     }
+}
+
+uint8_t instruction_list_phone_capacity(void)
+{
+    return MAX_LIST_ITEMS - app_base_count;
+}
+
+bool instruction_list_layout_can_upsert(const char *id)
+{
+    const list_item_t *rows = list_items;
+    unsigned count = list_item_count, i;
+    if(s_list_mode == LIST_MODE_DEFAULT_APPS) return true;
+    if(s_disc_backup) { rows = s_disc_backup; count = s_disc_backup_count; }
+    else if(s_cat_backup_valid) { rows = s_cat_backup; count = s_cat_backup_count; }
+    if(count < MAX_LIST_ITEMS) return true;
+    for(i = 0; i < count; i++) if(strcmp(rows[i].id, id) == 0) return true;
+    return false;
+}
+
+bool instruction_list_layout_sessions_fit(const char *const *ids, unsigned n)
+{
+    const list_item_t *rows = list_items;
+    unsigned count = list_item_count, total = 0, i, j;
+    if(s_disc_backup) { rows = s_disc_backup; count = s_disc_backup_count; }
+    else if(s_cat_backup_valid) { rows = s_cat_backup; count = s_cat_backup_count; }
+    for(i = 0; i < count; i++) if(strncmp(rows[i].id, "conv:", 5) != 0) total++;
+    for(i = 0; i < n; i++)
+    {
+        bool present = false;
+        for(j = 0; j < count; j++)
+            if(strncmp(rows[j].id, "conv:", 5) != 0 && strcmp(rows[j].id, ids[i]) == 0) present = true;
+        for(j = 0; j < i; j++) if(strcmp(ids[j], ids[i]) == 0) present = true;
+        if(!present) total++;
+    }
+    return total <= MAX_LIST_ITEMS;
 }
 
 /* 根據 id 找到已有的指令，回傳 index，找不到回傳 -1 */
@@ -8058,6 +8214,7 @@ static int find_instruction_by_id(const char *id)
 
 void remove_custom_instruction(const char *id)
 {
+    cat_filter_restore_full();
     int idx = find_instruction_by_id(id);
     if (idx < 0)
     {
@@ -8065,13 +8222,7 @@ void remove_custom_instruction(const char *id)
         return;
     }
 
-    /* Delete image file if exists */
-    if (list_items[idx].img_path[0] != '\0')
-    {
-        remove(list_items[idx].img_path);
-        LOG_I("Deleted instruction image: %s", list_items[idx].img_path);
-    }
-
+    /* A row does not own shared cached files or assets retained by an old frame. */
     /* Shift remaining items left */
     for (uint8_t i = idx; i < list_item_count - 1; i++)
     {
@@ -8145,7 +8296,7 @@ void add_or_update_custom_instruction(const char *id, const char *title,
     {
         memcpy(list_items, s_disc_backup, sizeof(list_items));
         list_item_count = s_disc_backup_count;
-        rt_free(s_disc_backup);
+
         s_disc_backup = NULL;
     }
     /* First phone instruction while still showing the built-in apps (a 0x65 single
@@ -8211,7 +8362,6 @@ void add_or_update_custom_instruction(const char *id, const char *title,
     instr->icon = (open_app && open_app[0] != '\0')
                       ? get_app_icon(app_id_from_name(open_app))
                       : NULL; /* @-contact service logo is applied later via set_instruction_service_icon */
-    instr->widget = NULL;
     instr->is_instruction = true;
     instr->is_interval = is_interval;
     instr->enabled = enabled;
@@ -8450,6 +8600,7 @@ void instruction_list_on_bot_avatar_file(const char *path)
         return;
     }
 
+    cat_filter_restore_full();
     char full[64];
     bot_avatar_path(av, full, sizeof(full));
     bot_avatar_mark_ready(av);
@@ -8460,10 +8611,12 @@ void instruction_list_on_bot_avatar_file(const char *path)
             continue;
         strncpy(list_items[i].img_path, full, sizeof(list_items[i].img_path) - 1);
         list_items[i].img_path[sizeof(list_items[i].img_path) - 1] = '\0';
+        if (s_model_candidate_active) list_items[i].img_dirty = true;
         touched = true;
     }
     if (!touched)
         return;
+    if (s_model_candidate_active) return;
     lv_img_cache_invalidate_src(full);
     LOG_I("[bot-av] landed %s", av);
     refresh_custom_instructions();
@@ -8611,6 +8764,7 @@ static void create_list_items_ui(lv_obj_t *list, uint8_t start_idx,
     {
         lv_obj_t *widget = NULL;
         lv_obj_t *item = lv_simplified_obj_create(list);
+        if (!item) return;
         lv_obj_clear_flag(item, LV_OBJ_FLAG_CLICKABLE);
         /* R3: bubble events up to the list so a RIGHT-swipe that lands on an item
            (items fill most of the panel) still reaches the list's GESTURE handler
@@ -8672,6 +8826,7 @@ static void create_list_items_ui(lv_obj_t *list, uint8_t start_idx,
 
         /* Create touch overlay */
         touch_obj[i] = lv_obj_create(item);
+        if (!touch_obj[i]) return;
         lv_obj_set_size(touch_obj[i], LIST_ITEM_WIDGET_WIDTH,
                         LIST_ITEM_WIDGET_HEIGHT);
         lv_obj_set_style_bg_opa(touch_obj[i], LV_OPA_0, 0);
@@ -8682,10 +8837,10 @@ static void create_list_items_ui(lv_obj_t *list, uint8_t start_idx,
                             LV_EVENT_CLICKED, (void *)&list_items[i]);
 
         app_widget[i] = widget;
-        list_items[i].widget = widget;
 
         /* Create app icon */
         p_instruction_list_layout->p_app_indicator_btn[i] = lv_img_create(item);
+        if (!p_instruction_list_layout->p_app_indicator_btn[i]) return;
         if (list_items[i].img_path[0] != '\0')
         {
             lv_img_set_src(p_instruction_list_layout->p_app_indicator_btn[i],
@@ -8713,6 +8868,7 @@ static void create_list_items_ui(lv_obj_t *list, uint8_t start_idx,
 
         /* Create label */
         app_label[i] = lv_label_create(item);
+        if (!app_label[i]) return;
         lv_label_set_text(app_label[i], list_items[i].title);
         lv_obj_set_style_text_font(app_label[i],
                                    LV_EXT_FONT_GET(get_system_font_size(1)), 0);
@@ -8732,6 +8888,7 @@ static void create_list_items_ui(lv_obj_t *list, uint8_t start_idx,
                 const lv_font_t *title_font = LV_EXT_FONT_GET(get_system_font_size(1));
                 lv_coord_t sub_h = lv_font_get_line_height(sub_font) * 2 + 4;
                 app_sub[i] = lv_label_create(item);
+        if (!app_sub[i]) return;
                 lv_label_set_text(app_sub[i], sub);
                 lv_label_set_long_mode(app_sub[i], LV_LABEL_LONG_DOT);
                 lv_obj_set_size(app_sub[i], LIST_SUB_MAX_W, sub_h);
@@ -8756,6 +8913,7 @@ static void create_list_items_ui(lv_obj_t *list, uint8_t start_idx,
 
             /* 開關底座 */
             lv_obj_t *sw_bg = lv_obj_create(item);
+        if (!sw_bg) return;
             lv_obj_set_size(sw_bg, 50, 26);
             lv_obj_align(sw_bg, LV_ALIGN_RIGHT_MID, -30, 0);
             lv_obj_set_style_radius(sw_bg, 13, 0);
@@ -8765,6 +8923,7 @@ static void create_list_items_ui(lv_obj_t *list, uint8_t start_idx,
 
             /* 圓形 knob */
             lv_obj_t *knob = lv_obj_create(sw_bg);
+        if (!knob) return;
             lv_obj_set_size(knob, 20, 20);
             lv_obj_set_style_radius(knob, LV_RADIUS_CIRCLE, 0);
             lv_obj_set_style_bg_color(knob, lv_color_hex(0xFFFFFF), 0);
@@ -8842,6 +9001,343 @@ static bool s_force_scroll_to_last = false;
    layout places dots in the TOP half (angles -72..0°), which users
    intuitively read as "scrolled to the top of the list". */
 static bool s_force_visual_at_bottom = false;
+static const char *s_publishing_focus;
+
+typedef struct {
+    instruction_list_layout_t layout;
+    lv_obj_t * app_icon[MAX_LIST_ITEMS];
+    lv_obj_t * app_widget[MAX_LIST_ITEMS];
+    lv_obj_t * touch_obj[MAX_LIST_ITEMS];
+    lv_obj_t * app_label[MAX_LIST_ITEMS];
+    lv_obj_t * app_sub[MAX_LIST_ITEMS];
+    lv_obj_t * switch_objs[MAX_LIST_ITEMS];
+    lv_obj_t * app_icon_shadow[MAX_LIST_ITEMS];
+    uint16_t last_zoom[MAX_LIST_ITEMS];
+    uint8_t s_lc_item[MAX_LIST_ITEMS];
+    uint8_t s_lc_n;
+    uint32_t s_lc_sig;
+    uint32_t s_lc_ssig;
+    bool s_lc_rows_hidden;
+    bool s_lc_moved;
+    bool s_lc_rows_skipped;
+    int s_lc_ai_card;
+    uint8_t s_lc_opt_n;
+    uint8_t s_lc_opt_card;
+    uint32_t s_lc_opt_sig;
+    int s_lc_ring_idx;
+    float s_dot_scale;
+    uint16_t old_selected_item_index;
+    uint16_t app_scroll_target_item;
+    uint16_t gesture_starting_value;
+    bool open_scroll_motor;
+    bool s_entry_landing_pending;
+    rt_tick_t s_entry_landing_tick;
+    bool s_force_scroll_to_last;
+    bool s_force_visual_at_bottom;
+    bool s_model_ui_dirty, s_list_ui_released;
+    char options[3][36], notification[33], ai_text[300];
+    uint32_t notification_revision;
+} instruction_view_state_t;
+APP_L2_RET_BSS_SECT_BEGIN(instruction_list_views)
+APP_L2_RET_BSS_SECT(instruction_list_views, ALIGN(8) static instruction_view_state_t s_old_view);
+APP_L2_RET_BSS_SECT(instruction_list_views, ALIGN(8) static instruction_view_state_t s_next_view);
+APP_L2_RET_BSS_SECT_END
+typedef char instruction_model_budget_fits[
+    (sizeof(s_models) + sizeof(s_order_work) + sizeof(s_base_storage) +
+     sizeof(s_old_view) + sizeof(s_next_view) + 128u <= 128u * 1024u) ? 1 : -1];
+static lv_obj_t *s_frame_root, *s_next_root, *s_old_root;
+static instruction_render_pool_t *s_frame_pool, *s_next_pool, *s_old_pool;
+static bool s_prepared_started;
+static void capture_view(instruction_view_state_t *v)
+{
+    v->layout = *p_instruction_list_layout;
+    memcpy(v->app_icon, app_icon, sizeof(app_icon));
+    memcpy(v->app_widget, app_widget, sizeof(app_widget));
+    memcpy(v->touch_obj, touch_obj, sizeof(touch_obj));
+    memcpy(v->app_label, app_label, sizeof(app_label));
+    memcpy(v->app_sub, app_sub, sizeof(app_sub));
+    memcpy(v->switch_objs, switch_objs, sizeof(switch_objs));
+    memcpy(v->app_icon_shadow, app_icon_shadow, sizeof(app_icon_shadow));
+    memcpy(v->last_zoom, last_zoom, sizeof(last_zoom));
+    memcpy(v->s_lc_item, s_lc_item, sizeof(s_lc_item));
+    v->s_lc_n = s_lc_n;
+    v->s_lc_sig = s_lc_sig;
+    v->s_lc_ssig = s_lc_ssig;
+    v->s_lc_rows_hidden = s_lc_rows_hidden;
+    v->s_lc_moved = s_lc_moved;
+    v->s_lc_rows_skipped = s_lc_rows_skipped;
+    v->s_lc_ai_card = s_lc_ai_card;
+    v->s_lc_opt_n = s_lc_opt_n;
+    v->s_lc_opt_card = s_lc_opt_card;
+    v->s_lc_opt_sig = s_lc_opt_sig;
+    v->s_lc_ring_idx = s_lc_ring_idx;
+    v->s_dot_scale = s_dot_scale;
+    v->old_selected_item_index = old_selected_item_index;
+    v->app_scroll_target_item = app_scroll_target_item;
+    v->gesture_starting_value = gesture_starting_value;
+    v->open_scroll_motor = open_scroll_motor;
+    v->s_entry_landing_pending = s_entry_landing_pending;
+    v->s_entry_landing_tick = s_entry_landing_tick;
+    v->s_force_scroll_to_last = s_force_scroll_to_last;
+    v->s_force_visual_at_bottom = s_force_visual_at_bottom;
+    v->s_model_ui_dirty = s_model_ui_dirty;
+    v->s_list_ui_released = s_list_ui_released;
+    memcpy(v->options, s_lc_opt_txt, sizeof(v->options));
+    memcpy(v->notification, s_lc_opt_instance, sizeof(v->notification));
+    v->notification_revision = s_lc_opt_revision;
+    memcpy(v->ai_text, s_lc_ai_text, sizeof(v->ai_text));
+}
+static void restore_view(const instruction_view_state_t *v)
+{
+    *p_instruction_list_layout = v->layout;
+    memcpy(app_icon, v->app_icon, sizeof(app_icon));
+    memcpy(app_widget, v->app_widget, sizeof(app_widget));
+    memcpy(touch_obj, v->touch_obj, sizeof(touch_obj));
+    memcpy(app_label, v->app_label, sizeof(app_label));
+    memcpy(app_sub, v->app_sub, sizeof(app_sub));
+    memcpy(switch_objs, v->switch_objs, sizeof(switch_objs));
+    memcpy(app_icon_shadow, v->app_icon_shadow, sizeof(app_icon_shadow));
+    memcpy(last_zoom, v->last_zoom, sizeof(last_zoom));
+    memcpy(s_lc_item, v->s_lc_item, sizeof(s_lc_item));
+    s_lc_n = v->s_lc_n;
+    s_lc_sig = v->s_lc_sig;
+    s_lc_ssig = v->s_lc_ssig;
+    s_lc_rows_hidden = v->s_lc_rows_hidden;
+    s_lc_moved = v->s_lc_moved;
+    s_lc_rows_skipped = v->s_lc_rows_skipped;
+    s_lc_ai_card = v->s_lc_ai_card;
+    s_lc_opt_n = v->s_lc_opt_n;
+    s_lc_opt_card = v->s_lc_opt_card;
+    s_lc_opt_sig = v->s_lc_opt_sig;
+    s_lc_ring_idx = v->s_lc_ring_idx;
+    s_dot_scale = v->s_dot_scale;
+    old_selected_item_index = v->old_selected_item_index;
+    app_scroll_target_item = v->app_scroll_target_item;
+    gesture_starting_value = v->gesture_starting_value;
+    open_scroll_motor = v->open_scroll_motor;
+    s_entry_landing_pending = v->s_entry_landing_pending;
+    s_entry_landing_tick = v->s_entry_landing_tick;
+    s_force_scroll_to_last = v->s_force_scroll_to_last;
+    s_force_visual_at_bottom = v->s_force_visual_at_bottom;
+    s_model_ui_dirty = v->s_model_ui_dirty;
+    s_list_ui_released = v->s_list_ui_released;
+    memcpy(s_lc_opt_txt, v->options, sizeof(v->options));
+    memcpy(s_lc_opt_instance, v->notification, sizeof(v->notification));
+    s_lc_opt_revision = v->notification_revision;
+    memcpy(s_lc_ai_text, v->ai_text, sizeof(v->ai_text));
+}
+static const char *s_prepared_focus;
+void instruction_list_layout_publish(const char *focused_id);
+
+static bool create_prepared_containers(lv_obj_t *p_instruction_list_bg)
+{
+    lv_obj_t *p_instruction_list = lv_obj_create(p_instruction_list_bg);
+    if (!p_instruction_list) return false;
+    p_instruction_list_layout->list = p_instruction_list;
+    LOG_D("p_instruction_list: %p", p_instruction_list);
+    lv_obj_set_size(p_instruction_list, LV_HOR_RES, LV_VER_RES);
+    lv_obj_set_style_bg_opa(p_instruction_list, LV_OPA_0, 0);
+    lv_obj_add_flag(p_instruction_list, LV_OBJ_FLAG_SCROLLABLE);
+    lv_obj_set_scrollbar_mode(p_instruction_list, LV_SCROLLBAR_MODE_OFF);
+    lv_obj_set_scroll_dir(p_instruction_list, LV_DIR_VER);
+    lv_obj_set_scroll_snap_y(p_instruction_list, LV_SCROLL_SNAP_CENTER);
+    lv_obj_set_style_pad_ver(p_instruction_list, LV_HOR_RES / 2, 0);
+    lv_obj_align(p_instruction_list, LV_ALIGN_CENTER, 0, 0);
+    lv_obj_add_event_cb(p_instruction_list, list_window_scroll_event_cb,
+                        LV_EVENT_ALL, NULL);
+
+    lv_obj_t *empty_view = lv_obj_create(p_instruction_list_bg);
+    if (!empty_view) return false;
+    lv_obj_remove_style_all(empty_view);
+    lv_obj_set_size(empty_view, LV_SIZE_CONTENT, LV_SIZE_CONTENT);
+    lv_obj_set_flex_flow(empty_view, LV_FLEX_FLOW_COLUMN);
+    lv_obj_set_flex_align(empty_view, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER,
+                          LV_FLEX_ALIGN_CENTER);
+    lv_obj_set_style_pad_row(empty_view, 16, 0);
+    lv_obj_clear_flag(empty_view, LV_OBJ_FLAG_SCROLLABLE);
+    lv_obj_clear_flag(empty_view, LV_OBJ_FLAG_CLICKABLE);
+    lv_obj_center(empty_view);
+    p_instruction_list_layout->empty_view = empty_view;
+
+    lv_obj_t *empty_qr_card = lv_obj_create(empty_view);
+    if (!empty_qr_card) return false;
+    lv_obj_set_size(empty_qr_card, 181, 181);
+    lv_obj_set_style_bg_color(empty_qr_card, lv_color_white(), 0);
+    lv_obj_set_style_bg_opa(empty_qr_card, LV_OPA_COVER, 0);
+    lv_obj_set_style_border_width(empty_qr_card, 0, 0);
+    lv_obj_set_style_radius(empty_qr_card, 16, 0);
+    lv_obj_set_style_pad_all(empty_qr_card, 8, 0);
+    lv_obj_clear_flag(empty_qr_card, LV_OBJ_FLAG_SCROLLABLE);
+    lv_obj_clear_flag(empty_qr_card, LV_OBJ_FLAG_CLICKABLE);
+    p_instruction_list_layout->empty_qr_card = empty_qr_card;
+    /* Child lv_qrcode created lazily by ensure_empty_qr_created() — left empty here. */
+
+    lv_obj_t *empty_hint_label = lv_label_create(empty_view);
+    if (!empty_hint_label) return false;
+    lv_obj_set_style_text_font(empty_hint_label,
+                               LV_EXT_FONT_GET(get_system_font_size(1)), 0);
+    lv_obj_set_style_text_color(empty_hint_label, lv_color_hex(0xFFFFFF), 0);
+    lv_obj_set_style_text_align(empty_hint_label, LV_TEXT_ALIGN_CENTER, 0);
+    /* English strings (e.g. "Scan to connect your phone") run wider than the
+       screen at this font size — wrap instead of overflowing off-screen. */
+    lv_obj_set_width(empty_hint_label, 300);
+    lv_label_set_long_mode(empty_hint_label, LV_LABEL_LONG_WRAP);
+    p_instruction_list_layout->empty_hint_label = empty_hint_label;
+
+
+    return true;
+}
+bool instruction_list_layout_prepare(const char *focused_id)
+{
+    extern bool instruction_list_ui_is_released(void);
+    void *previous;
+    lv_obj_t *canvas;
+    bool built = false;
+    s_prepared_focus = focused_id;
+    s_prepared_started = false;
+    if (!instruction_list_is_visible() && !s_preparing_open) return true; /* Model only. */
+    if (s_list_sliding_out || left_cards_busy() ||
+        (!s_preparing_open && (instruction_list_ui_is_released() || is_user_touching_screen())) ||
+        !lv_obj_is_valid(p_instruction_list_layout->list)) return false;
+    s_next_pool = instruction_render_acquire();
+    if (!s_next_pool) return false;
+    capture_view(&s_old_view);
+    s_old_root = s_frame_root;
+    s_old_pool = s_frame_pool;
+    s_prepared_started = true;
+    s_preparing_view = true;
+    previous = instruction_render_use(s_next_pool);
+    s_next_root = lv_obj_create(p_instruction_list_layout->p_instruction_list_bg);
+    if (!s_next_root) goto done;
+    lv_obj_remove_style_all(s_next_root);
+    lv_obj_set_size(s_next_root, LV_HOR_RES, LV_VER_RES);
+    lv_obj_center(s_next_root);
+    lv_obj_clear_flag(s_next_root, LV_OBJ_FLAG_SCROLLABLE | LV_OBJ_FLAG_CLICKABLE);
+    lv_obj_add_flag(s_next_root, LV_OBJ_FLAG_HIDDEN);
+    canvas = lv_obj_create(s_next_root);
+    if (!canvas) goto done;
+    lv_obj_remove_style_all(canvas);
+    lv_obj_set_size(canvas, LV_HOR_RES, LV_VER_RES);
+    lv_obj_set_style_pad_left(canvas, lv_obj_get_style_pad_left(s_old_view.layout.p_instruction_list_bg, 0), 0);
+    lv_obj_set_style_pad_right(canvas, lv_obj_get_style_pad_right(s_old_view.layout.p_instruction_list_bg, 0), 0);
+    lv_obj_set_style_pad_top(canvas, lv_obj_get_style_pad_top(s_old_view.layout.p_instruction_list_bg, 0), 0);
+    lv_obj_set_style_pad_bottom(canvas, lv_obj_get_style_pad_bottom(s_old_view.layout.p_instruction_list_bg, 0), 0);
+    lv_obj_set_style_border_width(canvas, lv_obj_get_style_border_width(s_old_view.layout.p_instruction_list_bg, 0), 0);
+    lv_obj_clear_flag(canvas, LV_OBJ_FLAG_SCROLLABLE);
+    lv_obj_add_event_cb(canvas, list_window_scroll_event_cb, LV_EVENT_ALL, NULL);
+    p_instruction_list_layout->p_instruction_list_bg = canvas;
+    p_instruction_list_layout->arc_handle = NULL;
+    p_instruction_list_layout->empty_view = NULL;
+    p_instruction_list_layout->empty_qr_card = NULL;
+    p_instruction_list_layout->empty_hint_label = NULL;
+    memset(p_instruction_list_layout->indicator_dots, 0, sizeof(p_instruction_list_layout->indicator_dots));
+    memset(p_instruction_list_layout->indicator_dots_bg, 0, sizeof(p_instruction_list_layout->indicator_dots_bg));
+    memset(p_instruction_list_layout->p_app_indicator_btn, 0, sizeof(p_instruction_list_layout->p_app_indicator_btn));
+    memset(app_icon, 0, sizeof(app_icon)); memset(app_icon_shadow, 0, sizeof(app_icon_shadow));
+    memset(app_widget, 0, sizeof(app_widget)); memset(touch_obj, 0, sizeof(touch_obj));
+    memset(app_label, 0, sizeof(app_label)); memset(app_sub, 0, sizeof(app_sub));
+    memset(switch_objs, 0, sizeof(switch_objs)); memset(last_zoom, 0, sizeof(last_zoom));
+    s_lc_n = 0; s_lc_sig = s_lc_ssig = 0; s_lc_rows_hidden = s_lc_rows_skipped = false;
+    left_cards_prepare_begin();
+    s_list_ui_released = false;
+    if (create_prepared_containers(canvas))
+    {
+        instruction_list_layout_publish(focused_id);
+        lv_obj_update_layout(canvas);
+        built = !instruction_render_failed(s_next_pool);
+    }
+    capture_view(&s_next_view);
+    s_next_view.layout.p_instruction_list_bg = s_old_view.layout.p_instruction_list_bg;
+    s_next_view.layout.arc_handle = s_old_view.layout.arc_handle;
+    left_cards_prepare_end();
+done:
+    /* Scratch buffers must not outlive the frame's allocator. */
+    lv_mem_buf_free_all();
+    instruction_render_leave(previous);
+    restore_view(&s_old_view);
+    s_preparing_view = false;
+    return built;
+}
+
+void instruction_list_layout_publish_prepared(void)
+{
+    if (!s_prepared_started) { s_model_ui_dirty = true; return; }
+    if (s_old_root) lv_obj_add_flag(s_old_root, LV_OBJ_FLAG_HIDDEN);
+    else
+    {
+        lv_obj_add_flag(s_old_view.layout.list, LV_OBJ_FLAG_HIDDEN);
+        lv_obj_add_flag(s_old_view.layout.empty_view, LV_OBJ_FLAG_HIDDEN);
+        for (unsigned i = 0; i < MAX_LIST_ITEMS; i++)
+            if (s_old_view.layout.indicator_dots_bg[i])
+                lv_obj_add_flag(s_old_view.layout.indicator_dots_bg[i], LV_OBJ_FLAG_HIDDEN);
+    }
+    left_cards_hide_committed();
+    restore_view(&s_next_view);
+    left_cards_publish_prepared();
+    s_frame_root = s_next_root;
+    s_frame_pool = s_next_pool;
+    arc_scroll_set_list(p_instruction_list_layout->arc_handle, p_instruction_list_layout->list);
+    arc_scroll_set_item_count(p_instruction_list_layout->arc_handle, list_item_count);
+    lv_obj_clear_flag(s_frame_root, LV_OBJ_FLAG_HIDDEN);
+    arc_scroll_bring_to_front(p_instruction_list_layout->arc_handle);
+    if (p_instruction_list_layout->p_instruction_list_ai_bg)
+        lv_obj_move_foreground(p_instruction_list_layout->p_instruction_list_ai_bg);
+    s_model_ui_dirty = false;
+}
+
+void instruction_list_layout_finish(bool committed)
+{
+    lv_obj_t *discard;
+    if (!s_prepared_started) { s_prepared_focus = NULL; return; }
+    left_cards_finish_prepared(committed);
+    discard = committed ? s_old_root : s_next_root;
+    if (discard && lv_obj_is_valid(discard)) lv_obj_del(discard);
+    if (committed && !s_old_root)
+    {
+        lv_obj_del(s_old_view.layout.list);
+        lv_obj_del(s_old_view.layout.empty_view);
+        for (unsigned i = 0; i < MAX_LIST_ITEMS; i++)
+            if (s_old_view.layout.indicator_dots_bg[i]) lv_obj_del(s_old_view.layout.indicator_dots_bg[i]);
+    }
+    lv_mem_buf_free_all();
+    instruction_render_release(committed ? s_old_pool : s_next_pool);
+    s_next_root = NULL; s_next_pool = NULL;
+    s_prepared_started = false;
+    s_prepared_focus = NULL;
+}
+void instruction_list_layout_capture_focus(char *id, size_t capacity)
+{
+    if (id == NULL || capacity == 0) return;
+    id[0] = '\0';
+    if (instruction_list_is_visible() && selected_item_index < list_item_count)
+    {
+        strncpy(id, list_items[selected_item_index].id, capacity - 1);
+        id[capacity - 1] = '\0';
+    }
+}
+
+/* Complete model-to-view publication for the list module. A visible list may
+   not retain an older tree after its click targets have changed. */
+void instruction_list_layout_publish(const char *focused_id)
+{
+    s_model_ui_dirty = true;
+    const char *previous_focus = s_publishing_focus;
+    s_publishing_focus = focused_id;
+    if (s_preparing_view || instruction_list_is_visible())
+    {
+        s_last_refresh_tick = 0;
+        if (s_pending_refresh_timer != NULL)
+        {
+            lv_timer_del(s_pending_refresh_timer);
+            s_pending_refresh_timer = NULL;
+        }
+    }
+    if (!instruction_list_reapply_view_filter())
+        refresh_custom_instructions();
+    if (s_preparing_view || instruction_list_is_visible())
+        lv_obj_update_layout(p_instruction_list_layout->p_instruction_list_bg);
+    s_publishing_focus = previous_focus;
+}
 
 static void deferred_refresh_cb(lv_timer_t *t)
 {
@@ -8853,41 +9349,56 @@ static void deferred_refresh_cb(lv_timer_t *t)
     refresh_custom_instructions();
 }
 
-/* R3 device-page overlay: snapshot / restore of the watch-face instruction list.
-   feed_active_device_options_to_list (device_pager) overwrites this shared list
-   with the active device's options while on the device page; we snapshot the
-   watch-face list on the way in and restore it on the way out, so reopening the
-   watch-face skaibar shows the user's own instructions again instead of the last
-   device's options — the phone does NOT re-push them on return. Heap-backed
-   (held only while on the device page) to avoid a permanent duplicate array. */
+/* One bounded PSRAM bookmark retains the complete watch-face context while
+   device options or voice suggestions borrow the shared list. */
 static list_item_t *s_base_items = NULL;
-static uint8_t s_base_item_count;
-static uint8_t s_base_app_count;
-static list_mode_t s_base_list_mode; /* snapshot s_list_mode too: the device-page
-   feed calls clear_custom_instructions (→ PHONE mode), which would otherwise leak
-   back to the watch face and mix the next phone push into the default-app body. */
-
 void instruction_list_save_base(void)
 {
-    if (s_base_items) return; /* one snapshot per device-page visit */
-    s_base_items = rt_malloc(sizeof(list_items));
-    if (!s_base_items) return; /* OOM: skip — restore no-ops, list just stays */
-    memcpy(s_base_items, list_items, sizeof(list_items));
-    s_base_item_count = list_item_count;
-    s_base_app_count = app_base_count;
-    s_base_list_mode = s_list_mode;
+    if (s_base_items) return;
+    memcpy(&s_base_storage, s_committed_model, sizeof(s_base_storage));
+    s_base_storage.single_device = false;
+    s_base_storage.device_target[0] = '\0';
+    if (s_base_storage.disconnected)
+        s_base_storage.disconnected = s_base_storage.disconnected_items;
+    s_base_items = s_base_storage.items;
+}
+
+bool instruction_list_layout_set_device_options(const char *device, const char *const *options, uint8_t count)
+{
+    unsigned i;
+    static uint32_t version;
+    if (!device || !device[0] || strlen(device) >= sizeof(s_single_device_id) ||
+        count > MAX_LIST_ITEMS || (count && !options)) return false;
+    for (i = 0; i < count; i++)
+        if (!options[i] || strlen(options[i]) >= LIST_ITEM_ID_LEN) return false;
+    bool target_changed = !s_bar_single_device || strcmp(s_single_device_id, device) != 0;
+    s_bar_single_device = true;
+    rt_strncpy(s_single_device_id, device, sizeof(s_single_device_id) - 1);
+    s_single_device_id[sizeof(s_single_device_id) - 1] = '\0';
+    if (!options) return true; /* Registry has no options yet: retain the existing fallback. */
+    cat_filter_restore_full();
+    if (target_changed) s_view_cat = 0;
+    app_base_count = 0;
+    clear_custom_instructions();
+    version++;
+    for (i = 0; i < count; i++)
+        if (options[i][0]) add_or_update_custom_instruction(options[i], options[i], "once", 0, true, version, NULL);
+    return true;
 }
 
 void instruction_list_restore_base(void)
 {
     if (!s_base_items) return;
-    memcpy(list_items, s_base_items, sizeof(list_items));
-    list_item_count = s_base_item_count;
-    app_base_count = s_base_app_count;
-    s_list_mode = s_base_list_mode;
-    rt_free(s_base_items);
+    bool connected = s_phone_connected;
+    memcpy(s_model, &s_base_storage, sizeof(*s_model));
+    if (s_disc_backup) s_disc_backup = s_model->disconnected_items;
     s_base_items = NULL;
-    refresh_custom_instructions();
+    /* A bookmark restores the list context, never an earlier physical link. */
+    extern void instruction_list_layout_set_phone_connected(bool connected);
+    instruction_list_layout_set_phone_connected(connected);
+    s_bar_single_device = false;
+    s_single_device_id[0] = '\0';
+    s_model_ui_dirty = true;
 }
 
 /* 把 target item 的中心精確對到螢幕垂直中心(LV_VER_RES/2)。
@@ -9126,7 +9637,12 @@ void refresh_custom_instructions(void)
        被刪了)才退回舊行為。 */
     char saved_id[sizeof(list_items[0].id)];
     saved_id[0] = '\0';
-    if (saved_selected < list_item_count)
+    if (s_publishing_focus != NULL && s_publishing_focus[0] != '\0')
+    {
+        strncpy(saved_id, s_publishing_focus, sizeof(saved_id) - 1);
+        saved_id[sizeof(saved_id) - 1] = '\0';
+    }
+    else if (saved_selected < list_item_count)
     {
         strncpy(saved_id, list_items[saved_selected].id, sizeof(saved_id) - 1);
         saved_id[sizeof(saved_id) - 1] = '\0';
@@ -9309,7 +9825,7 @@ void refresh_custom_instructions(void)
     /* is_visible() not is_at_instruction_list() — same reveal-window reason as
        the s_force_scroll_to_last gate above: a reveal-then-scroll refresh must
        not reset (recenter icon/label, snap scroll) while the user is mid-slide. */
-    if (!instruction_list_is_visible())
+    if (!s_preparing_view && !instruction_list_is_visible())
     {
         reset_list();
     }
@@ -9323,14 +9839,9 @@ void refresh_custom_instructions(void)
     LOG_D("refresh_custom_instructions: %d items total", list_item_count);
     s_in_refresh_scroll = false;
 
+    s_force_scroll_to_last = false; /* one rebuild consumes this preference */
     left_cards_sync(); /* 左頁瀏覽態 → 整頁卡片蓋在列清單上面 */
-
-    /* ADR-0020:左頁的 actions 區段從 list_items[] 匯出 —— 清單落地後叫它重畫。
-       這裡已經在 LVGL thread、且過了 debounce,不會抖。 */
-    {
-        extern void session_list_actions_changed(void);
-        session_list_actions_changed();
-    }
+    s_model_ui_dirty = false;
 
     /* R21:還原進場時的 hidden(見函式開頭),再讓狀態機重新評估一次 ——
        刷新若在背景把清單掀開又蓋回,latch 仍可能停在錯值,check_main_page
@@ -9347,7 +9858,7 @@ void refresh_custom_instructions(void)
     }
     {
         extern void check_main_page(void);
-        check_main_page();
+        if (!s_preparing_view) check_main_page();
     }
 }
 
@@ -9367,6 +9878,7 @@ void update_instruction_image(const char *id, const char *path)
         return;
     }
 
+    cat_filter_restore_full();
     int idx = find_instruction_by_id(id);
     if (idx < 0)
     {
@@ -9407,6 +9919,8 @@ void update_instruction_image(const char *id, const char *path)
         lvgl_send_msg(msg);
         return;
     }
+
+    if (s_model_candidate_active) return;
 
     lv_img_cache_invalidate_src(img_path);
 
@@ -9720,6 +10234,7 @@ lv_obj_t *lv_instruction_list_layout_create(lv_obj_t *parent)
        the list's scroll-snap correction; it just no longer hosts the list. */
     lv_obj_t *p_instruction_list_bg = lv_obj_create(s_global_bar_layer);
     p_instruction_list_layout->p_instruction_list_bg = p_instruction_list_bg;
+    s_list_host = p_instruction_list_bg;
     lv_obj_set_style_bg_opa(p_instruction_list_bg, LV_OPA_0, 0);
     lv_obj_set_size(p_instruction_list_bg, LV_HOR_RES, LV_VER_RES);
     lv_obj_align(p_instruction_list_bg, LV_ALIGN_CENTER, 0, 0);
@@ -10232,7 +10747,7 @@ static void cat_filter_restore_full(void)
 
 /* Apply (cat '@'/'/') or clear (cat 0) the view filter and rebuild the UI.
    Re-packs list_items[] to the matching subset over a full-list snapshot, keeping
-   the pinned prefix — mirrors instruction_list_set_phone_connected so scroll /
+   the pinned prefix — mirrors instruction_list_layout_set_phone_connected so scroll /
    tap / indicator-dots keep working on the shorter contiguous array unchanged. */
 /* R55:大小寫不敏感的子字串比對。中文沒有大小寫,UTF-8 位元組序列直接比就對了;
    英文 action 名稱則要忽略大小寫,不然「打開 Spotify」講成小寫就篩不到。 */
@@ -10442,6 +10957,12 @@ static void text_filter_sanitize(char *s)
 /* R55:文字篩選層 —— 由輸入框的轉錄驅動。空字串 = 清掉,回到原本的清單。 */
 void instruction_list_set_text_filter(const char *text)
 {
+    instruction_list_set_query(text);
+}
+
+/* Model-only adapter. Update sequencing belongs to instruction_list.c. */
+bool instruction_list_layout_set_query(const char *text)
+{
     char next[sizeof(s_text_filter)];
     next[0] = '\0';
     if (text != NULL)
@@ -10451,7 +10972,7 @@ void instruction_list_set_text_filter(const char *text)
         text_filter_sanitize(next);
     }
     if (strcmp(next, s_text_filter) == 0)
-        return; /* 轉錄會重複推同一串:沒變就別重繪 */
+        return false; /* repeated transcript: no view change */
     strncpy(s_text_filter, next, sizeof(s_text_filter) - 1);
     s_text_filter[sizeof(s_text_filter) - 1] = '\0';
     LOG_W("[flt] set \"%s\" (cat=%d vis=%d)", s_text_filter, (int)s_cat_filter,
@@ -10459,17 +10980,7 @@ void instruction_list_set_text_filter(const char *text)
     /* 清掉篩選 → 先把完整清單放回來;有篩選 → refresh 出口會套用(pack_text_filter)。 */
     if (s_text_filter[0] == '\0')
         cat_filter_restore_full();
-    /* 查詢字換了 = session 段要重挑：平常每台露出最新 5 筆，搜尋時改成那台比中查詢的
-       最新 5 筆（池子是手錶為那台留著的 8 筆，含畫面上原本沒露出的）。 */
-    {
-        extern void session_list_text_filter_changed(void);
-        extern bool instruction_list_reapply_view_filter(void);
-        session_list_text_filter_changed();
-        /* 注入走 add_or_update_custom_instruction，那支開頭會 cat_filter_restore_full()
-           把 @// 檢視篩選解掉 —— 跟手機推播之後同一個補救。 */
-        instruction_list_reapply_view_filter();
-    }
-    refresh_custom_instructions();
+    return true;
 }
 
 const char *instruction_list_text_filter(void)
@@ -10477,7 +10988,7 @@ const char *instruction_list_text_filter(void)
     return s_text_filter;
 }
 
-static void instruction_list_set_category_filter(char cat)
+static void instruction_list_pack_category(char cat)
 {
     /* Always re-apply + rebuild (no early-return on an unchanged filter): a close
        restores list_items[] WITHOUT refreshing the UI, so the widgets can be stale
@@ -10512,6 +11023,38 @@ static void instruction_list_set_category_filter(char cat)
     }
     if (selected_item_index >= list_item_count)
         selected_item_index = list_item_count ? (list_item_count - 1) : 0;
+}
+
+bool instruction_list_layout_open_context(char category, bool preparing)
+{
+    bool changed = s_view_cat != category;
+    s_preparing_open = preparing;
+    if(preparing)
+    {
+        cat_filter_restore_full();
+        s_view_cat = category;
+    }
+    return changed;
+}
+
+void instruction_list_layout_choose_entry(void)
+{
+    selected_item_index = list_item_count ? list_item_count - 1 : 0;
+    for(unsigned i = 0; i < list_item_count; i++)
+        if(strncmp(list_items[i].id, "conv:", 5) == 0) selected_item_index = i;
+}
+void instruction_list_layout_prepare_view(void)
+{
+    if ((instruction_list_is_visible() || s_preparing_open) && s_view_cat != 0)
+        instruction_list_pack_category(s_view_cat);
+    pack_text_filter();
+}
+
+static void instruction_list_set_category_filter(char cat)
+{
+    if (s_view_cat != cat) instruction_list_scope_changed();
+    instruction_list_pack_category(cat);
+    s_last_refresh_tick = 0; /* finish the requested view before reveal */
     refresh_custom_instructions();
 }
 
@@ -10521,7 +11064,7 @@ static void instruction_list_set_category_filter(char cat)
    filtered (@ / /) list is OPEN leaves the full list on screen. apply_pending_instruction_batch
    calls this once after draining the op queue. No-op (returns false) when no filtered view is
    open — the caller then does its own plain refresh. */
-bool instruction_list_reapply_view_filter(void)
+static bool instruction_list_reapply_view_filter(void)
 {
     /* R55(founder:「session 測試功能/111/123++ 都還是出現」):手機的 replace-all 會把
        list_items[] 整份換掉、並經 cat_filter_restore_full 把篩選解除 —— 使用者正在用語音
@@ -10574,7 +11117,7 @@ void instruction_list_drop_pinned_for_device(void)
    instructions), hiding the phone-relay ones; on reconnect we restore the full
    list from the snapshot — no dependency on the phone re-pushing. App mode never
    filters (every built-in app runs offline). */
-void instruction_list_set_phone_connected(bool connected)
+void instruction_list_layout_set_phone_connected(bool connected)
 {
     if (connected == s_phone_connected)
         return;
@@ -10589,7 +11132,7 @@ void instruction_list_set_phone_connected(bool connected)
         /* DEFAULT_APPS mode has no phone-pushed list to re-pack, but a
            list_item_count==0 screen still needs to flip between the
            "add on phone" hint and the pairing QR as the link comes up/down. */
-        update_list_empty_state();
+        s_model_ui_dirty = true;
         return;
     }
 
@@ -10597,7 +11140,7 @@ void instruction_list_set_phone_connected(bool connected)
     {
         if (s_disc_backup == NULL)
         {
-            s_disc_backup = rt_malloc(sizeof(list_items));
+            s_disc_backup = s_model->disconnected_items;
             if (s_disc_backup)
             {
                 memcpy(s_disc_backup, list_items, sizeof(list_items));
@@ -10621,14 +11164,14 @@ void instruction_list_set_phone_connected(bool connected)
     {
         memcpy(list_items, s_disc_backup, sizeof(list_items));
         list_item_count = s_disc_backup_count;
-        rt_free(s_disc_backup);
+
         s_disc_backup = NULL;
     }
 
     if (selected_item_index >= list_item_count)
         selected_item_index = list_item_count ? (list_item_count - 1) : 0;
 
-    refresh_custom_instructions();
+    s_model_ui_dirty = true;
 }
 
 
@@ -10692,6 +11235,16 @@ rt_int32_t instruction_list_pause(void)
 
 rt_int32_t instruction_list_deinit(void)
 {
+    extern void instruction_list_cancel_open(void);
+    instruction_list_cancel_open();
+    extern void instruction_list_cancel_device(void);
+    instruction_list_cancel_device();
+    s_list_host = NULL;
+    if (s_pending_refresh_timer) {
+        lv_timer_del(s_pending_refresh_timer);
+        s_pending_refresh_timer = NULL;
+    }
+    left_cards_hide();
     /* EAGER 兜底輪詢隨清單生命週期走(create 建/deinit 刪)。 */
     if (s_inst_op_drain_timer)
     {
@@ -10728,21 +11281,8 @@ rt_int32_t instruction_list_deinit(void)
     // 停止所有動畫並重置狀態
     stop_all_animations_and_reset();
 
-    /* P3:list_items 的 malloc 快照(s_base_items=device-page save_base、s_disc_backup=手機斷線
-       snapshot)都是「當前清單的副本(含指標)」。清單被拆(deinit)時這些快照必然懸空 —— 必須一併
-       丟掉,否則重建後對應的 restore(restore_base / 重連 restore)會把舊快照 memcpy 回新清單 →
-       refresh 時 deref 野指標 bus fault(實機:滑鼠 app cycle 後回錶盤拉左 @ 列表崩,即 s_base_items)。
-       原本只有各自的 restore 路徑釋放,但 standalone 退出走 notify-only / Main 重建會跳過 → 在此兜底。 */
-    if (s_base_items)
-    {
-        rt_free(s_base_items);
-        s_base_items = NULL;
-    }
-    if (s_disc_backup)
-    {
-        rt_free(s_disc_backup);
-        s_disc_backup = NULL;
-    }
+    /* Models and the device bookmark contain no widget handles. Preserve
+       them across UI teardown; their row storage lives in retained PSRAM. */
 
     if (p_instruction_list_layout)
     {
@@ -10874,6 +11414,15 @@ rt_int32_t instruction_list_deinit(void)
     // extern void note_widget_stop(void);
     // note_widget_stop();
 
+    /* All objects must be destroyed before returning their backing arenas. */
+    lv_mem_buf_free_all();
+    instruction_render_release(s_frame_pool);
+    instruction_render_release(s_next_pool);
+    s_frame_root = s_next_root = s_old_root = NULL;
+    s_frame_pool = s_next_pool = s_old_pool = NULL;
+    s_prepared_started = s_preparing_view = s_preparing_open = false;
+    s_lc_rows_skipped = s_lc_rows_hidden = false;
+    s_lc_sig = s_lc_ssig = s_lc_n = 0;
     LOG_I("instruction_list_deinit");
     pause_instruction_list = true;
     return RT_EOK;
@@ -10886,7 +11435,7 @@ rt_int32_t instruction_list_deinit(void)
    lv_obj_class_init_obj 解 NULL 父物件 hard fault(founder 2026-08-12「從媒體頁往上
    滑進滑鼠頁就當機」,連兩版都當)。release 只拆「列的 UI」,資料 list_items[] 不動,
    下次開清單前 ensure 走 refresh 原路重建。 */
-static bool s_list_ui_released = false;
+
 
 void instruction_list_release_ui(void)
 {
@@ -10927,7 +11476,7 @@ void instruction_list_release_ui(void)
 /** 開清單前呼叫:被 release 過就原路重建(no-op if never released)。 */
 void instruction_list_ensure_ui(void)
 {
-    if (!s_list_ui_released)
+    if (!s_list_ui_released && !s_model_ui_dirty)
         return;
     s_list_ui_released = false;
     /* R41(founder:「左邊的 icon 還是進去才出現,第一次進去沒問題第二次才會」):

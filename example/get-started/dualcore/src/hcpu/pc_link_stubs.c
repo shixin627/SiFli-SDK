@@ -29,6 +29,11 @@
 #include "bloc_v2t.h"
 #include "ble_hid.h"
 #include "communicate_protocol.h"
+#include "app_speech.h"
+#include <string.h>
+#include <stdlib.h>
+static char pc_voice_text[2048];
+static void pc_vad_noop(void) {}
 
 /* bd_addr_t comes from BLE stack header that's not on PC; provide a stub. */
 typedef struct { uint8_t addr[6]; } bd_addr_t;
@@ -37,8 +42,6 @@ typedef struct { uint8_t addr[6]; } bd_addr_t;
 /* watch_demo.c */ void ai_tap_cb(void) {  }
 /* app_mainmenu.c */ void ai_widget_start(void) {  }
 /* app_exercise.c */ void app_exercise_background_hr_cb(int hr) {  }
-/* app_speech.h */ void app_speech_data_init(void) {  }
-/* app_message.c */ lv_ex_data_t * app_speech_get_content_data(void) { return 0; }
 /* bloc_v2t.h */ bool app_voice_get_recording_status(void) { return false; }
 /* bloc_v2t.h */ bool app_voice_get_voice2text_status(void) { return false; }
 /* app_system_interface.c */ void append_skai_widget_ai_reply(const char *text) {  }
@@ -54,7 +57,8 @@ typedef struct { uint8_t addr[6]; } bd_addr_t;
 /* app_qrcode.c */ uint8_t ble_get_public_address(bd_addr_t * addr) { return 0; }
 /* ble_hid.h */ void ble_hid_set_conn_idx(uint8_t conn_idx) {  }
 /* bloc_v2t.h */ bool check_if_user_speaking_to_ai(void) { return false; }
-/* bloc_v2t.h */ void clearVoice2Text(void) {  }
+/* Recording adapter: real speech UI, fixed text, no microphone. */
+void clearVoice2Text(void) { pc_voice_text[0] = 0; app_speech_set_content((const uint8_t *)pc_voice_text); }
 /* lv_message_list_layout.c */ void clear_media_widget(void) {  }
 /* lv_instruction_list_layout.c */ void clear_skai_widget_ai_reply(void) {  }
 /* communicate_task.h */ bool commu_send_active_device(const char *device_id) { (void)device_id; return false; }
@@ -82,7 +86,9 @@ typedef struct { uint8_t addr[6]; } bd_addr_t;
 /* communicate_task.h */ bool commu_send_media_control(void) { return false; }
 /* communicate_task.h */ bool commu_send_oled_display_time(uint8_t time) { return false; }
 /* communicate_task.h */ bool commu_send_phone_control_cmd(void) { return false; }
-/* communicate_task.h */ bool commu_send_remote_input(const char *json) { return false; }
+unsigned pc_legacy_reply_sends;
+/* Legacy recording port: an accepting transport must not bypass reply confirmation. */
+bool commu_send_remote_input(const char *json) { (void)json; pc_legacy_reply_sends++; return getenv("SKAI_REPLY_TDD") != NULL; }
 /* communicate_task.h */ bool commu_send_sport_data(void) { return false; }
 /* communicate_task.h */ bool commu_send_start_sync_file(uint32_t total_size) { return false; }
 /* communicate_task.h */ bool commu_send_sync_file(const uint8_t *chunk, uint16_t length) { return false; }
@@ -92,7 +98,7 @@ typedef struct { uint8_t addr[6]; } bd_addr_t;
 /* main.c */ void generate_random_public_address(uint8_t device_id) {  }
 /* bloc_v2t.c */ uint8_t get_ai_coding(void) { return 0; }
 /* main.c */ bool get_bluetooth_broadcasting_status(void) { return false; }
-/* bloc_v2t.h */ char * get_combined_voice2text(void) { return 0; }
+/* bloc_v2t.h */ char * get_combined_voice2text(void) { return pc_voice_text; }
 /* gesture_recognition_task.h */ int get_gesture_recognition_threshold(void) { return 0; }
 /* app_gesture.c */ bool get_imu_data_collection_status(void) { return false; }
 /* main.c */ uint8_t get_main_phonepeer_conn_idx(void) { return 0; }
@@ -105,7 +111,12 @@ typedef struct { uint8_t addr[6]; } bd_addr_t;
 /* app_media.c */ void handle_media_title(char *media_title_text) {  }
 /* app_media.c */ void handle_media_widget_play_state(bool media_state) {  }
 /* app_media.c */ void handle_media_widget_title(char *media_title_text) {  }
-/* bloc_v2t.h */ void handle_v2t_result(VOICE_RECOGNITION_PAYLOAD *msgData) {  }
+/* Recorded transcript adapter; keeps the real UI routing observable. */
+void handle_v2t_result(VOICE_RECOGNITION_PAYLOAD *msgData) {
+    if (!msgData || !msgData->p_msg_value || !msgData->length || msgData->length >= sizeof(pc_voice_text)) return;
+    memcpy(pc_voice_text, msgData->p_msg_value, msgData->length); pc_voice_text[msgData->length] = 0;
+    app_speech_set_content((const uint8_t *)pc_voice_text);
+}
 /* app_gesture.c */ void imu_lock_sw_event_callback(lv_event_t *e) {  }
 /* app_gesture.c */ void imu_raw_data_collection_sw_event_callback(lv_event_t *e) {  }
 /* app_gesture.c */ void imu_mouse_data_collection_sw_event_callback(lv_event_t *e) {  }
@@ -113,7 +124,7 @@ typedef struct { uint8_t addr[6]; } bd_addr_t;
 /* app_incoming_call.h */ void incoming_call_set_caller(const char *title, const char *id, uint8_t type) {  }
 /* app_incoming_call.h */ void incoming_call_on_action_result(bool ok) {  }
 /* main_functions.h */ void init_gesture_recognition_release_model(void) {  }
-/* bloc_v2t.h */ bool isTextEmpty(void) { return false; }
+/* bloc_v2t.h */ bool isTextEmpty(void) { return !pc_voice_text[0]; }
 /* communicate_update_image.h */ bool is_ble_dfu_thread_running(void) { return false; }
 /* log_file_backend.c */ int log_file_backend_is_enabled(void) { return 0; }
 /* log_file_backend.c */ int log_file_backend_set_enabled(int enable) { return 0; }
@@ -203,11 +214,15 @@ const lv_img_dsc_t mobile = {0};
 int rt_wdt_init(void) { return 0; }
 
 /* Voice provider struct — bloc_v2t module excluded; expose empty instance */
-VoiceProvider voice_provider = {0};
+VoiceProvider voice_provider = {NULL, pc_vad_noop, pc_vad_noop};
 
 /* bloc_v2t.h — referenced by watch_system_interact MSH_CMD handlers (now
  * pulled in by FINSH on PC sim), but bloc_v2t.c is excluded above. */
-void setVoice2Text(char *text) { (void)text; }
+void setVoice2Text(char *text) {
+    if (!text || strlen(text) >= sizeof(pc_voice_text)) return;
+    strcpy(pc_voice_text, text);
+    app_speech_set_content((const uint8_t *)pc_voice_text);
+}
 
 /* BLE RSSI checker — real impl in main.c (HCPU firmware) which is excluded on
  * PC sim; watch_system_interact.c calls these in wakeup/sleep paths so we need
@@ -309,9 +324,6 @@ bool ble_hid_mouse_relay_route(void) { return false; }
 /* communicate_task.h */ bool commu_send_device_drag(int permille, const char *to_device_id, int to_tab) { (void)permille; (void)to_device_id; (void)to_tab; return false; }
 /* communicate_task.h */ bool commu_send_phone_tab_pick(int index) { (void)index; return false; }
 /* hid_mouse (watch-only) */ bool get_switch_freehand_mode(void) { return false; }
-/* ui_handler batch apply — owning TU excluded on PC */ void apply_pending_instruction_batch(void) { }
-/* instruction-op queue — owning TU excluded on PC */ void instruction_op_enqueue_image(const char *id, const char *path) { (void)id; (void)path; }
-/* instruction-op queue — owning TU excluded on PC */ void instruction_op_enqueue_avatar(const char *av) { (void)av; }
 /* communicate_task.h */ bool commu_send_conv_avatar_req(const char *av) { (void)av; return false; }
 /* mic/audio HAL — excluded on PC */ uint16_t mic_get_rms_level(void) { return 0; }
 /* mic/audio HAL — excluded on PC */ bool mic_get_vad_active(void) { return false; }
@@ -324,3 +336,15 @@ bool ble_hid_mouse_relay_route(void) { return false; }
 /* communicate_parse_skailink.c — owning TU excluded on PC */ void tv_state_apply_pending(void) { }
 /* communicate_parse_skailink.c — owning TU excluded on PC */ void voice_ai_result_apply_pending(void) { }
 /* communicate_parse_skailink.c — owning TU excluded on PC */ void phone_tabs_apply_pending(void) { }
+
+/* Radio/DFU adapter: notification parsing itself runs unchanged on PC. */
+void mark_ota_started(void) { }
+void stop_ble_dfu_thread(void) { }
+void verify_and_upgrade_dfu_image(void) { }
+void set_ble_dfu_thread_run(int run) { (void)run; }
+void handle_ble_dfu_data(uint8_t *buf, uint16_t len) { (void)buf; (void)len; }
+bool commu_send_file_sync_result(uint8_t result) { (void)result; return false; }
+bool commu_send_watch_system_sync(void) { return false; }
+
+bool commu_send_instruction_list_resync(uint32_t id, uint32_t scope) { (void)id; (void)scope; return false; }
+bool commu_send_notification_reply(const char *json, uint16_t length) { (void)json; (void)length; return false; }

@@ -40,6 +40,7 @@ typedef struct
        0 = 沒有開關;1 = 圓點在左;2 = 圓點在右(0 是預設,舊的卡片資料不用改)。軌道不變色(半透明白),只有圓點的位置;
        整顆開關不吃點擊(冒泡),點它 = 點整張卡;呼叫端翻位置後用 left_cards_switch_set 讓圓點滑過去。 */
     uint8_t sw;
+    bool opts_disabled;
 } left_card_t;
 
 /* 卡片內容按需提供(founder 2026-10-03 要省 SRAM:不再常駐一份 30 張的陣列 + 每張 96B 的即時文字緩衝):
@@ -61,6 +62,12 @@ lv_obj_t *left_cards_show(lv_obj_t *parent, left_cards_get_cb_t get, uint8_t n, 
                           left_cards_tap_cb_t on_tap, left_cards_page_cb_t on_page,
                           left_cards_scroll_cb_t on_scroll, left_cards_option_cb_t on_option);
 void left_cards_hide(void);
+/* GUI adapter transaction; the old frame remains usable until publication. */
+void left_cards_prepare_begin(void);
+void left_cards_prepare_end(void);
+void left_cards_publish_prepared(void);
+void left_cards_hide_committed(void);
+void left_cards_finish_prepared(bool committed);
 bool left_cards_visible(void);
 uint8_t left_cards_current(void);
 /* 捲到第 idx 張(右緣圓弧撥動換到另一張時用);anim=true 走 LVGL 的捲動動畫,停穩時照常觸發換頁回呼。 */
@@ -73,6 +80,8 @@ void left_cards_set_slide(lv_coord_t tx);
 /* 說明文字之類的內容變了、但卡片數/標題/底色沒變:只重畫已建好的那幾張,不動翻頁容器(不閃、不重置位置)。
    呼叫端要先確認 left_cards_busy() 為假。 */
 void left_cards_refresh(void);
+/* Update availability without rebuilding a button during its click callback. */
+void left_cards_refresh_option_state(void);
 /* 第 idx 張卡的開關圓點滑到 sw(1 = 左,2 = 右);anim=false 就直接到位。沒有開關/沒建出來就什麼都不做。 */
 void left_cards_switch_set(uint8_t idx, uint8_t sw, bool anim);
 /* obj 是翻頁容器本身或它底下的物件(事件濾除用)。 */

@@ -1050,8 +1050,8 @@ static void refresh_bluetooth_disconnection(bool connected)
     /* Drive the watch-face instruction list: in PHONE mode a disconnect filters
        to the items the watch can run alone (apps + openApp instructions); a
        reconnect restores the full phone list. No-op in DEFAULT_APPS mode. */
-    extern void instruction_list_set_phone_connected(bool connected);
-    instruction_list_set_phone_connected(connected);
+    extern void instruction_list_link_changed(bool connected);
+    instruction_list_link_changed(connected);
     if (lv_obj_is_valid(
             p_app_clock_main->instruction_list_bluetooth_disconnection))
     {

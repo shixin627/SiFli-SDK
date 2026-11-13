@@ -672,6 +672,10 @@ void start_voice_recognition(uint8_t intent)
         LOG_W("Voice recognition is already active.");
         return;
     }
+    if (intent == V2T_INTENT_REMOTE_INPUT) {
+        extern bool notification_reply_prepare_voice(void);
+        if (!notification_reply_prepare_voice()) return;
+    }
     /* 開始辨識的短震回饋(founder 2026-08-17)。**這裡**才是真正的共同咽喉點:啟動有兩條
        家族 —— voice_provider.start_v2t()(聊天室/session 列表/skai widget…)與直接呼叫
        start_voice_recognition()(滑鼠語音站 hid_mouse.c:1547、message、speech、錶盤長按),

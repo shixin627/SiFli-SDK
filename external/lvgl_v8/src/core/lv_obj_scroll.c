@@ -60,6 +60,7 @@ void lv_obj_set_scrollbar_mode(lv_obj_t * obj, lv_scrollbar_mode_t mode)
     LV_ASSERT_OBJ(obj, MY_CLASS);
 
     lv_obj_allocate_spec_attr(obj);
+    if(obj->spec_attr == NULL) return;
 
     if(obj->spec_attr->scrollbar_mode == mode) return;
     obj->spec_attr->scrollbar_mode = mode;
@@ -69,6 +70,7 @@ void lv_obj_set_scrollbar_mode(lv_obj_t * obj, lv_scrollbar_mode_t mode)
 void lv_obj_set_scroll_dir(lv_obj_t * obj, lv_dir_t dir)
 {
     lv_obj_allocate_spec_attr(obj);
+    if(obj->spec_attr == NULL) return;
 
     if(dir != obj->spec_attr->scroll_dir) {
         obj->spec_attr->scroll_dir = dir;
@@ -78,12 +80,14 @@ void lv_obj_set_scroll_dir(lv_obj_t * obj, lv_dir_t dir)
 void lv_obj_set_scroll_snap_x(lv_obj_t * obj, lv_scroll_snap_t align)
 {
     lv_obj_allocate_spec_attr(obj);
+    if(obj->spec_attr == NULL) return;
     obj->spec_attr->scroll_snap_x = align;
 }
 
 void lv_obj_set_scroll_snap_y(lv_obj_t * obj, lv_scroll_snap_t align)
 {
     lv_obj_allocate_spec_attr(obj);
+    if(obj->spec_attr == NULL) return;
     obj->spec_attr->scroll_snap_y = align;
 }
 
