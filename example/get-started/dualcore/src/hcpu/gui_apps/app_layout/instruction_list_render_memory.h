@@ -1,4 +1,6 @@
-/* SPDX-License-Identifier: Apache-2.0 */
+/* Copyright (c) 2026 Skaiwalk Technology
+ * SPDX-License-Identifier: Apache-2.0
+ */
 #ifndef INSTRUCTION_LIST_RENDER_MEMORY_H
 #define INSTRUCTION_LIST_RENDER_MEMORY_H
 #include <stdbool.h>

@@ -1,4 +1,6 @@
-/* SPDX-License-Identifier: Apache-2.0 */
+/* Copyright (c) 2026 Skaiwalk Technology
+ * SPDX-License-Identifier: Apache-2.0
+ */
 #include <rtthread.h>
 #include <rtdevice.h>
 #include <stdlib.h>

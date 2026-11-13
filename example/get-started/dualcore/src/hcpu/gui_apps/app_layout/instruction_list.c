@@ -1,4 +1,5 @@
-/* SPDX-License-Identifier: Apache-2.0
+/* Copyright (c) 2026 Skaiwalk Technology
+ * SPDX-License-Identifier: Apache-2.0
  * Instruction-list ingress and update orchestration. The GUI owns application;
  * producers submit complete deliveries without repairing filters or refreshing.
  */

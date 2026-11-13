@@ -1,4 +1,6 @@
-/* SPDX-License-Identifier: Apache-2.0 */
+/* Copyright (c) 2026 Skaiwalk Technology
+ * SPDX-License-Identifier: Apache-2.0
+ */
 #define _CRT_RAND_S
 #include "notification_reply.h"
 #include <string.h>
@@ -593,6 +595,12 @@ void notification_reply_process(void)
                 active_voice[0] = 0; storage.voice.pending = false; voice_enabled = voice_ready = false;
                 if (!submitted) active_input = 0;
                 rt_mutex_release(&receive_mutex);
+            }
+            for (unsigned i = 0; i < 16; i++) {
+                reply_work_t *work = &storage.work[i];
+                if (work->used && work->state == NOTIFICATION_REPLY_FAILED &&
+                    work->revision == event.revision && !strcmp(work->instance, event.instance))
+                    memset(work, 0, sizeof(*work));
             }
             notification_reply_remove_version(event.instance, event.revision);
             continue;
