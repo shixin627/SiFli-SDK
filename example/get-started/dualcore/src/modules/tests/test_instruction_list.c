@@ -147,19 +147,24 @@ static void invalid_full_list_requires_resync(void)
 #endif
 }
 
-static bool visible_tree_has_title(lv_obj_t *root, const char *title)
+static bool tree_has_title(lv_obj_t *root, const char *title, bool require_on_screen)
 {
     uint32_t i;
     if (root != NULL && lv_obj_get_parent(root) == NULL) lv_obj_update_layout(root);
     if (root == NULL || lv_obj_has_flag(root, LV_OBJ_FLAG_HIDDEN)) return false;
-    if (lv_obj_check_type(root, &lv_label_class) && lv_obj_is_visible(root))
+    if (lv_obj_check_type(root, &lv_label_class) && (!require_on_screen || lv_obj_is_visible(root)))
     {
         const char *text = lv_label_get_text(root);
         if (text && strcmp(text, title) == 0) return true;
     }
     for (i = 0; i < lv_obj_get_child_cnt(root); i++)
-        if (visible_tree_has_title(lv_obj_get_child(root, i), title)) return true;
+        if (tree_has_title(lv_obj_get_child(root, i), title, require_on_screen)) return true;
     return false;
+}
+
+static bool visible_tree_has_title(lv_obj_t *root, const char *title)
+{
+    return tree_has_title(root, title, true);
 }
 
 static uint32_t visible_expected_receipt;
@@ -210,8 +215,10 @@ static void physical_voice_open_uses_prepared_frame(void)
     extern bool instruction_list_is_visible(void);
     extern const char *instruction_list_export_title(uint8_t index);
     instruction_list_presentation_t presentation = {reject_presentation, record_rejected_publication, finish_rejected_presentation};
-    char title[64] = {0};
-    bool opened, called, title_visible;
+    extern void instruction_list_layout_capture_focus(char *id, size_t capacity);
+    char focus[64];
+    const char *title = NULL;
+    bool opened, called, title_prepared;
     instruction_list_hide_now();
     instruction_list_release_ui();
     rejection_called = rejection_published = false;
@@ -227,14 +234,27 @@ static void physical_voice_open_uses_prepared_frame(void)
     if (opened || !called || rejection_published) {
         list_tdd_report("LIST_TDD FAIL physical_voice_open_uses_prepared_frame\n"); return;
     }
-    if (return_total_list_count()) rt_strncpy(title, instruction_list_export_title(0), sizeof(title) - 1);
     animate_open_ai_widget();
     opened = instruction_list_is_visible();
-    title_visible = !title[0] || visible_tree_has_title(lv_layer_top(), title);
+    instruction_list_layout_capture_focus(focus, sizeof(focus));
+    for (uint8_t i = 0; focus[0] && i < return_total_list_count(); i++)
+    {
+        const char *id = instruction_list_export_id(i);
+        if (id && strcmp(id, focus) == 0) {
+            title = instruction_list_export_title(i);
+            break;
+        }
+    }
+    /* The first prepared frame is still sliding in. Check the mounted label
+       for the actual focus selected after projecting the live phone list. */
+    title_prepared = return_total_list_count() == 0 ||
+        (title && tree_has_title(lv_layer_top(), title, false));
     instruction_list_close_ai_on_leave();
     instruction_list_close();
-    if (!opened || !title_visible) {
-        list_tdd_report("LIST_TDD FAIL physical_voice_open_did_not_rebuild\n"); return;
+    if (!opened || !title_prepared) {
+        list_tdd_report("LIST_TDD FAIL physical_voice_open_did_not_rebuild opened=%u prepared=%u\n",
+                        (unsigned)opened, (unsigned)title_prepared);
+        return;
     }
     list_tdd_report("LIST_TDD PASS physical_voice_open_uses_prepared_frame\n");
     closing_voice_keeps_the_frame_model_until_hidden();
