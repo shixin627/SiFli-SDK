@@ -264,6 +264,10 @@ extern "C"
            LVGL thread 呼叫,故走 msg 轉一手。 */
         LVGL_MSG_TYPE_WATCHFACE_SHAKE_OPEN_MOUSE,
         LVGL_MSG_TYPE_NOTIFICATION_REPLY,
+        /* Re-run handle_gesture_unlock / animate_open_ai_widget on the LVGL
+           thread when called from a gesture thread (pending bits, never dropped). */
+        LVGL_MSG_TYPE_GESTURE_UNLOCK,
+        LVGL_MSG_TYPE_OPEN_AI_WIDGET,
     };
 
     typedef struct

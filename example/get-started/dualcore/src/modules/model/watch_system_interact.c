@@ -149,6 +149,17 @@ void switch_watch_motion_control_mode(bool enable, bool animation)
 
 void handle_gesture_unlock(void)
 {
+    /* Every caller is a gesture thread (gesture_recognition 4 KB stack,
+       vir_gesture_task). Opening the browse list from there rebuilt the whole
+       instruction list off the LVGL thread: 11-14 dump "thread:gesture_ stack
+       overflow" right after [land] inject/reset/re-land → silent reboot. */
+    extern bool is_on_lvgl_thread(void);
+    if (!is_on_lvgl_thread())
+    {
+        lvgl_msg_t m = {.type = LVGL_MSG_TYPE_GESTURE_UNLOCK};
+        lvgl_send_msg(m);
+        return;
+    }
     if (SkaiWatchSys.sys_power_status == SYS_POWER_STATUS_ON)
     {
         lv_disp_trig_activity(NULL);
