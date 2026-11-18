@@ -520,7 +520,9 @@ static void gesture_event_handler_hcpu(rt_uint32_t recv_set)
   }
 }
 
-#define THREAD_STACK_SIZE 2048
+/* 6 KB (was 2): HAND_RELEASE / double tap call handle_gesture_unlock(), which
+   opens the instruction list on this thread (see gesture_recognition_task.c). */
+#define THREAD_STACK_SIZE 6144
 #define THREAD_PRIORITY RT_THREAD_PRIORITY_LOW - 1
 #define THREAD_TIMESLICE 5
 

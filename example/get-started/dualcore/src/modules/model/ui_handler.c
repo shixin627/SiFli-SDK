@@ -444,20 +444,6 @@ static void process_lvgl_message(lvgl_msg_t *msg)
         }
         break;
 
-    case LVGL_MSG_TYPE_OPEN_BROWSE_LIST:
-    {
-        extern void instruction_list_open_browse(void);
-        instruction_list_open_browse(); /* posted by handle_gesture_unlock */
-        break;
-    }
-
-    case LVGL_MSG_TYPE_OPEN_AI_WIDGET:
-    {
-        extern void animate_open_ai_widget(void);
-        animate_open_ai_widget();
-        break;
-    }
-
     case LVGL_MSG_TYPE_UNGRAB_EVENT:
         if (lvgl_msg_handler.handle_ungrab_event)
         {
@@ -1036,9 +1022,6 @@ static void lvgl_task(void *param)
    title, so it collapses to a bit too. It was 1193 of the ~1650 drops in the
    11/2026 crash dumps; dropped meant the image cache never got invalidated. */
 #define PENDING_REFRESH_MEDIA_HEADER (1u << 2)
-/* Gesture actions posted from the gesture threads (see handle_gesture_unlock). */
-#define PENDING_OPEN_BROWSE_LIST       (1u << 3)
-#define PENDING_OPEN_AI_WIDGET       (1u << 4)
 static volatile rt_uint32_t s_pending_refresh;
 
 static void ui_refresh_task_entry(struct _lv_timer_t *task)
@@ -1072,16 +1055,6 @@ static void ui_refresh_task_entry(struct _lv_timer_t *task)
         msg.type = LVGL_MSG_TYPE_MEDIA_HEADER_IMG;
         msg.data.media_data.img_path = MEDIA_HEADER_IMG;
         msg.data.media_data.title = get_media_title();
-        process_lvgl_message(&msg);
-    }
-    if (pending & PENDING_OPEN_BROWSE_LIST)
-    {
-        msg.type = LVGL_MSG_TYPE_OPEN_BROWSE_LIST;
-        process_lvgl_message(&msg);
-    }
-    if (pending & PENDING_OPEN_AI_WIDGET)
-    {
-        msg.type = LVGL_MSG_TYPE_OPEN_AI_WIDGET;
         process_lvgl_message(&msg);
     }
 }
@@ -1134,9 +1107,7 @@ void lvgl_send_msg(lvgl_msg_t msg)
     rt_uint32_t bit =
         (msg.type == LVGL_MSG_TYPE_NOTIFICATION) ? PENDING_REFRESH_NOTIFICATION :
         (msg.type == LVGL_MSG_TYPE_RESET_INSTRUCTION_LIST) ? PENDING_REFRESH_RESET_INSTR :
-        (msg.type == LVGL_MSG_TYPE_MEDIA_HEADER_IMG) ? PENDING_REFRESH_MEDIA_HEADER :
-        (msg.type == LVGL_MSG_TYPE_OPEN_BROWSE_LIST) ? PENDING_OPEN_BROWSE_LIST :
-        (msg.type == LVGL_MSG_TYPE_OPEN_AI_WIDGET) ? PENDING_OPEN_AI_WIDGET : 0;
+        (msg.type == LVGL_MSG_TYPE_MEDIA_HEADER_IMG) ? PENDING_REFRESH_MEDIA_HEADER : 0;
     if (bit)
     {
         /* see s_pending_refresh: picked up by ui_refresh_task_entry */

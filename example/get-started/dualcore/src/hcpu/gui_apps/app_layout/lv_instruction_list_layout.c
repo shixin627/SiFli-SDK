@@ -5727,14 +5727,6 @@ void instruction_list_reveal_overlay_set_enabled(bool enabled)
 
 void animate_open_ai_widget(void)
 {
-    /* Also called from the gesture-recognition and motion-tracking threads. */
-    extern bool is_on_lvgl_thread(void);
-    if (!is_on_lvgl_thread())
-    {
-        lvgl_msg_t m = {.type = LVGL_MSG_TYPE_OPEN_AI_WIDGET};
-        lvgl_send_msg(m);
-        return;
-    }
     /* Bluetooth gate (founder 2026-06-05): the input box is the voice→text entry,
        which needs the phone — so when disconnected, don't open it; surface the
        not-connected tip instead. This reverses the earlier always-open policy. It's

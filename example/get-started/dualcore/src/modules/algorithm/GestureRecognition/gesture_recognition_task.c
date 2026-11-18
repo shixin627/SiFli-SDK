@@ -498,7 +498,11 @@ static void gesture_recognition_algorithm(gesture_data_t *gesture)
         }
 }
 
-#define IMU_THREAD_STACK_SIZE 4 * 1024
+/* 8 KB (was 4): handle_gesture_unlock() opens the instruction list right here,
+   synchronously. 4 KB overflowed (11-14 dump "thread:gesture_ stack overflow").
+   Moving that work to the LVGL thread instead (1.1.183/184) delayed it and taps
+   after a release stopped being recognised, so the timing stays and the stack grows. */
+#define IMU_THREAD_STACK_SIZE 8 * 1024
 #define IMU_THREAD_PRIORITY RT_THREAD_PRIORITY_MIDDLE - 1
 #define IMU_THREAD_TIMESLICE 10
 extern bool get_motor_status(void);
