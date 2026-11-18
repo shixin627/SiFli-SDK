@@ -444,10 +444,10 @@ static void process_lvgl_message(lvgl_msg_t *msg)
         }
         break;
 
-    case LVGL_MSG_TYPE_GESTURE_UNLOCK:
+    case LVGL_MSG_TYPE_OPEN_BROWSE_LIST:
     {
-        extern void handle_gesture_unlock(void);
-        handle_gesture_unlock(); /* now on the LVGL thread */
+        extern void instruction_list_open_browse(void);
+        instruction_list_open_browse(); /* posted by handle_gesture_unlock */
         break;
     }
 
@@ -1037,7 +1037,7 @@ static void lvgl_task(void *param)
    11/2026 crash dumps; dropped meant the image cache never got invalidated. */
 #define PENDING_REFRESH_MEDIA_HEADER (1u << 2)
 /* Gesture actions posted from the gesture threads (see handle_gesture_unlock). */
-#define PENDING_GESTURE_UNLOCK       (1u << 3)
+#define PENDING_OPEN_BROWSE_LIST       (1u << 3)
 #define PENDING_OPEN_AI_WIDGET       (1u << 4)
 static volatile rt_uint32_t s_pending_refresh;
 
@@ -1074,9 +1074,9 @@ static void ui_refresh_task_entry(struct _lv_timer_t *task)
         msg.data.media_data.title = get_media_title();
         process_lvgl_message(&msg);
     }
-    if (pending & PENDING_GESTURE_UNLOCK)
+    if (pending & PENDING_OPEN_BROWSE_LIST)
     {
-        msg.type = LVGL_MSG_TYPE_GESTURE_UNLOCK;
+        msg.type = LVGL_MSG_TYPE_OPEN_BROWSE_LIST;
         process_lvgl_message(&msg);
     }
     if (pending & PENDING_OPEN_AI_WIDGET)
@@ -1135,7 +1135,7 @@ void lvgl_send_msg(lvgl_msg_t msg)
         (msg.type == LVGL_MSG_TYPE_NOTIFICATION) ? PENDING_REFRESH_NOTIFICATION :
         (msg.type == LVGL_MSG_TYPE_RESET_INSTRUCTION_LIST) ? PENDING_REFRESH_RESET_INSTR :
         (msg.type == LVGL_MSG_TYPE_MEDIA_HEADER_IMG) ? PENDING_REFRESH_MEDIA_HEADER :
-        (msg.type == LVGL_MSG_TYPE_GESTURE_UNLOCK) ? PENDING_GESTURE_UNLOCK :
+        (msg.type == LVGL_MSG_TYPE_OPEN_BROWSE_LIST) ? PENDING_OPEN_BROWSE_LIST :
         (msg.type == LVGL_MSG_TYPE_OPEN_AI_WIDGET) ? PENDING_OPEN_AI_WIDGET : 0;
     if (bit)
     {

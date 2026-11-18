@@ -149,17 +149,10 @@ void switch_watch_motion_control_mode(bool enable, bool animation)
 
 void handle_gesture_unlock(void)
 {
-    /* Every caller is a gesture thread (gesture_recognition 4 KB stack,
-       vir_gesture_task). Opening the browse list from there rebuilt the whole
-       instruction list off the LVGL thread: 11-14 dump "thread:gesture_ stack
-       overflow" right after [land] inject/reset/re-land → silent reboot. */
-    extern bool is_on_lvgl_thread(void);
-    if (!is_on_lvgl_thread())
-    {
-        lvgl_msg_t m = {.type = LVGL_MSG_TYPE_GESTURE_UNLOCK};
-        lvgl_send_msg(m);
-        return;
-    }
+    /* Runs on the gesture threads. The unlock itself (motion_control_lock and
+       the flags) must happen right here: the next tap is gated on it, and
+       deferring the whole function to the LVGL thread (1.1.183) made taps
+       right after a release get ignored. Only the list build is deferred. */
     if (SkaiWatchSys.sys_power_status == SYS_POWER_STATUS_ON)
     {
         lv_disp_trig_activity(NULL);
@@ -184,8 +177,20 @@ void handle_gesture_unlock(void)
         /* R3: the LEFT instruction_list tile is empty now — bring the floating list
            up in the browse state (list only, no input box) instead of navigating to
            the (empty) tile via animate_to_instruction_list. */
-        extern void instruction_list_open_browse(void);
-        instruction_list_open_browse();
+        /* Building the list off the LVGL thread overflowed the 4 KB
+           gesture_recognition stack (11-14 dump "thread:gesture_ stack
+           overflow" right after [land] inject/reset/re-land). */
+        extern bool is_on_lvgl_thread(void);
+        if (is_on_lvgl_thread())
+        {
+            extern void instruction_list_open_browse(void);
+            instruction_list_open_browse();
+        }
+        else
+        {
+            lvgl_msg_t m = {.type = LVGL_MSG_TYPE_OPEN_BROWSE_LIST};
+            lvgl_send_msg(m);
+        }
     }
     else
     {
