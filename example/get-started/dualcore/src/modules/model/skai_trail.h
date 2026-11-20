@@ -33,6 +33,10 @@ enum
     TR_FILE    = 7,   /* tag = file name; arg 1 = start, 2 = done, 3 = failed */
     TR_HOME    = 8,   /* main-screen state flip: bit0 = on watch face; bits1..8 = which
                          overlay/page holds it: inst msg cc mouse ai speech dev hosted */
+    TR_GSCORE  = 9,   /* gesture model verdict: tag "tNNuNN" = tap / unknown %,
+                         arg = label << 8 | release % (label 0 release, 1 tap, 2 unknown) */
+    TR_INST    = 10,  /* instruction-list op queued from the phone; arg = op kind */
+    TR_MOTOR   = 11,  /* haptic command sent to the LCPU; arg = duty */
 };
 
 /* tag: up to 8 chars are kept (may be NULL). */

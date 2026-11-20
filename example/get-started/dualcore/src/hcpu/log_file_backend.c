@@ -231,6 +231,17 @@ static int trail_format(char *out, size_t n, const trail_rec_t *r)
         }
         return (int)l;
     }
+    case TR_GSCORE:
+    {
+        static const char *const verdict[] = {"release", "tap", "unknown"};
+        unsigned label = a >> 8;
+        return rt_snprintf(out, n, "[%u] GSCORE %s rel%02u %s\n", t, tag, a & 0xff,
+                           verdict[label < 3 ? label : 2]);
+    }
+    case TR_INST:
+        return rt_snprintf(out, n, "[%u] INST   op=%u\n", t, a);
+    case TR_MOTOR:
+        return rt_snprintf(out, n, "[%u] MOTOR  duty=%u\n", t, a);
     default:
         return rt_snprintf(out, n, "[%u] ?%u arg=0x%x %s\n", t, (unsigned)r->evt, a, tag);
     }
@@ -1055,6 +1066,7 @@ static void push_ft_evidence_now(void)
         return;
     }
     drain_ring_to_fd(0);
+    trail_write_fd(current_fd, trail_head);   /* what led up to it, not only W/E text */
     fsync(current_fd);
     close(current_fd);
     current_fd = -1;
@@ -1104,6 +1116,18 @@ void log_file_diag_push(void)
 {
     crash_evidence_handled = 0;
     log_file_report_crash_evidence();
+}
+
+/* Gesture field report (gesture_recognition_task.c): the user kept tapping and
+ * the model kept answering "unknown". A worn release watch has no UART, so the
+ * GSCORE / INST / MOTOR / FILE trail is how we see what was going on. Any
+ * thread: ring_write is IRQ-safe and the push itself runs on the flush thread. */
+void log_file_push_gesture_miss(void)
+{
+    static const char hdr[] =
+        "\n=== GESTURE: 3 tap windows in a row came back unrecognised ===\n";
+    ring_write(hdr, sizeof(hdr) - 1);
+    log_file_diag_push();
 }
 
 /* Called from the HCPU WDT1 timeout handler (main.c: wdt_store_exception_

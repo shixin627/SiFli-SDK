@@ -129,6 +129,7 @@ void handle_v2t_result(VOICE_RECOGNITION_PAYLOAD *msgData) {
 /* log_file_backend.c */ int log_file_backend_is_enabled(void) { return 0; }
 /* log_file_backend.c */ int log_file_backend_set_enabled(int enable) { return 0; }
 /* log_file_backend.c */ void skai_trail(uint8_t evt, uint16_t arg, const char *tag) { (void)evt; (void)arg; (void)tag; }
+/* log_file_backend.c */ void log_file_push_gesture_miss(void) {}
 /* PC sim: return a minimal lv_obj on `parent` so callers that immediately
  * lv_obj_align/lv_obj_set_size on the result don't NULL-deref. */
 /* lv_message_list_layout.c */ lv_obj_t * lv_media_widget_builder(lv_obj_t * parent) { return parent ? lv_obj_create(parent) : NULL; }

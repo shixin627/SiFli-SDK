@@ -329,6 +329,10 @@ static void control_motor_vibration(bool enable, motor_params_t *params)
     {
         motor_on = true;
         last_motor_cmd_tick = rt_tick_get();
+        {
+            extern void skai_trail(uint8_t evt, uint16_t arg, const char *tag);
+            skai_trail(11 /* TR_MOTOR */, (uint16_t)params->duty_cycle, RT_NULL);
+        }
         if (params->repeat_times == 0)
         {
             /* Continuous vibration until an explicit stop: hold the flag and

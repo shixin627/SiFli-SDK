@@ -224,6 +224,56 @@ int get_gesture_recognition_threshold(void)
     return gesture_recognition_threshold;
 }
 
+/* Field diagnostics for the release build (a worn watch has no UART). Every
+   verdict goes into the blackbox event trail. Three unrecognised windows in a
+   row from the TAP extractor (unlocked / mouse mode: the user was tapping, not
+   doing the watch-face release, which misses often and is not counted) seal the
+   log + trail and push it to the phone. At most one push per 10 minutes. */
+#include "skai_trail.h"
+extern float g_gesture_scores[];
+extern void log_file_push_gesture_miss(void);
+extern bool app_control_get_mouse_mode(void);
+#define GESTURE_MISS_PUSH_COUNT 3
+#define GESTURE_MISS_GAP_MS (20 * 1000)       /* misses further apart are not one streak */
+#define GESTURE_MISS_PUSH_COOLDOWN_MS (10 * 60 * 1000)
+static void gesture_field_record(int label)
+{
+    static uint8_t s_misses;
+    static rt_tick_t s_last_miss, s_last_push;
+    rt_tick_t now = rt_tick_get();
+    unsigned rel = (unsigned)(g_gesture_scores[0] * 100.0f + 0.5f);
+    unsigned tap = (unsigned)(g_gesture_scores[1] * 100.0f + 0.5f);
+    unsigned unk = (unsigned)(g_gesture_scores[2] * 100.0f + 0.5f);
+    char tag[9];
+
+    rt_snprintf(tag, sizeof(tag), "t%02uu%02u", tap > 99 ? 99 : tap, unk > 99 ? 99 : unk);
+    skai_trail(TR_GSCORE, (uint16_t)(((unsigned)(label & 0xff) << 8) | (rel > 99 ? 99 : rel)), tag);
+
+    bool tap_extractor = !SkaiWatchSys.motion_control_lock || app_control_get_mouse_mode();
+    if (!tap_extractor || label == 0 || label == 1)
+    {
+        s_misses = 0;
+        return;
+    }
+    if (s_misses && (now - s_last_miss) > rt_tick_from_millisecond(GESTURE_MISS_GAP_MS))
+    {
+        s_misses = 0;
+    }
+    s_last_miss = now;
+    if (++s_misses < GESTURE_MISS_PUSH_COUNT)
+    {
+        return;
+    }
+    s_misses = 0;
+    if (s_last_push && (now - s_last_push) < rt_tick_from_millisecond(GESTURE_MISS_PUSH_COOLDOWN_MS))
+    {
+        return;
+    }
+    s_last_push = now;
+    LOG_W("tap missed %d times in a row -> pushing gesture report", GESTURE_MISS_PUSH_COUNT);
+    log_file_push_gesture_miss();
+}
+
 extern bool get_switch_freehand_mode(void);
 extern bool get_switch_mouse_scroll_mode(void);
 extern bool get_scroll_up_mode(void);
@@ -341,6 +391,7 @@ static void gesture_recognition_algorithm(gesture_data_t *gesture)
                 tap_recognition_score == 1   ? GESTURE_LED_VERDICT_TAP
                 : tap_recognition_score == 0 ? GESTURE_LED_VERDICT_RELEASE
                                              : GESTURE_LED_VERDICT_NONE);
+            gesture_field_record(tap_recognition_score);
             /* ── 雙擊(2026-09-07)──────────────────────────────────────────
                兩個 tap 判決相距 150~600 ms 就是雙擊。founder 的雙擊錄音兩下間隔
                260~410 ms;視窗都在峰值後 250 ms 送出,所以判決間距 ≈ 峰值間距。

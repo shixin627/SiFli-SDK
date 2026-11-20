@@ -73,6 +73,9 @@ namespace
 //    }
 //}
 
+/* Last model output, read by gesture_recognition_task.c for the field trail. */
+extern "C" { float g_gesture_scores[kGestureCount]; }
+
 // online prediction
 int PredictGesture(float *output) // 1*3 [probability of 3 gestures]
 {
@@ -80,6 +83,7 @@ int PredictGesture(float *output) // 1*3 [probability of 3 gestures]
 	int max_gesture_score_index = 0;
 	for (uint8_t i = 0; i < kGestureCount; i++)
 	{
+		g_gesture_scores[i] = output[i];
 		rt_kprintf("Got output index = %d, score = %0.4f\n", i, output[i]);
 		// LOG_I("Got output index = %d, score = %0.4f", i, output[i]);
 		if (output[i] > max_gesture_score)

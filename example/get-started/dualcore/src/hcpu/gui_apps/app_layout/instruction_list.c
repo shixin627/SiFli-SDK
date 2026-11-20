@@ -908,6 +908,10 @@ static void inst_op_free(inst_op_t *op)
    any thread; the LVGL thread drains via apply_pending_instruction_batch(). */
 static bool inst_op_enqueue(inst_op_kind_t kind, char *a, char *b)
 {
+    {
+        extern void skai_trail(uint8_t evt, uint16_t arg, const char *tag);
+        skai_trail(10 /* TR_INST */, (uint16_t)kind, RT_NULL);
+    }
     inst_op_t rejected;
     rejected.kind = kind;
     rejected.a = a;
